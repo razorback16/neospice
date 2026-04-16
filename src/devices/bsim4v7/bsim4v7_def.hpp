@@ -3640,4 +3640,18 @@ int  BSIM4polyDepletion(double phi, double ngate, double epsgate,
                         double coxe, double Vgs, double *Vgs_eff,
                         double *dVgs_eff_dVg);
 
+// devsup.c helpers (bsim4v7_devsup.cpp)
+double DEVlimvds  (double vnew, double vold);
+double DEVpnjlim  (double vnew, double vold, double vt, double vcrit, int *icheck);
+double DEVfetlim  (double vnew, double vold, double vto);
+void   DEVcmeyer  (double vgs0, double vgd0, double vgb0, double von0, double vdsat0,
+                   double vgs1, double vgd1, double vgb1,
+                   double covlgs, double covlgd, double covlgb,
+                   double *cgs, double *cgd, double *cgb,
+                   double phi, double cox, double von, double vdsat);
+void   DEVqmeyer  (double vgs, double vgd, double vgb, double von, double vdsat,
+                   double *capgs, double *capgd, double *capgb,
+                   double phi, double cox);
+double DEVpred    (Shim::Ckt *ckt, int loct);
+
 } // namespace neospice::bsim4v7

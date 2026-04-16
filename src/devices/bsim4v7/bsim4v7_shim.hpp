@@ -57,6 +57,11 @@ namespace Shim {
         // Phase-1b extensions (declared now so BSIM4setup can reference when it
         // allocates state offsets):
         int    CKTnumStates  = 0;        // running counter updated in BSIM4setup
+        // Phase-1b transient state vectors (stub fields for DEVpred / b4ld):
+        double  CKTdelta        = 0.0;
+        double  CKTdeltaOld[8]  = {};    // integrator time-step history
+        double *CKTstate1       = nullptr;
+        double *CKTstate2       = nullptr;
     };
 
     // --- SMPmatrix replacement ---------------------------------------------
