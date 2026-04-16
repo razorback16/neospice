@@ -16,6 +16,7 @@ add_executable(cudaspice_tests
     unit/test_klu_solver.cpp
     unit/test_resistor.cpp
     unit/test_vsource.cpp
+    unit/test_isource.cpp
 )
 
 target_link_libraries(cudaspice_tests PRIVATE
