@@ -156,14 +156,15 @@ TEST_F(NgspiceCompareTest, DISABLED_CMOSInverterTransient) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
-// 5-stage ring oscillator — 10 MOSFETs in a feedback loop.  DC op point
-// converges (unlike the CMOS inverter above), but transient waveform
-// comparison against ngspice fails because our simplified BSIM4v7 lacks
-// short-channel effects (Abulk, RDSW, velocity overshoot) and overpredicts
-// Ids ~8x.  The resulting oscillation frequency differs enough that phase
-// drift accumulates to ~1.1 V worst-case error on internal nodes — outside
-// even 2x the plan's {2e-1, 1e-1} tolerance.  Un-disable once Task 13
-// (full BSIM4 physics) lands and DC Ids matches ngspice closely.
+// 5-stage ring oscillator — 10 MOSFETs in a feedback loop.
+// Post-M2.5 status (Abulk + RDSW + gche/Idl ported): DC op-point now
+// fails to converge from the all-zero initial guess.  The circuit has
+// `.ic V(n1..n5)=...` but our `Simulator::run_dc` applies .ic only after
+// DC (as transient ICs), not during Newton.  With subthreshold gm/gds
+// below the 1e-4 V FD noise floor, gmin stepping cannot bridge to the
+// oscillating equilibrium.  Same root cause as CMOSInverterTransient
+// above — needs .nodeset-style seeding or pseudo-transient continuation.
+// Un-disable once Milestone 3 solver work lands.
 TEST_F(NgspiceCompareTest, DISABLED_RingOscillator5Stage) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/ring_osc_5stage.cir";
     auto ng_result = ngspice_->run_transient(path);
