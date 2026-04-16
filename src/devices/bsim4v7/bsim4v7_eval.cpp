@@ -198,6 +198,19 @@ BSIM4v7EvalResult bsim4v7_evaluate(
     // the CLM-boosted Ids; this keeps r.gds/r.Ids ratio physically reasonable.
     Ids *= CLM;
 
+    // --- Analytical subthreshold gm/gds (Milestone 3) ---
+    // At deep subthreshold, Ids ~ 1e-17 A and the 1e-4 V FD returns zero due
+    // to catastrophic cancellation, leaving the Jacobian singular at zero bias.
+    // Exact analytical forms: gm = Ids/(n·Vt), gds = Ids/Vt. Floor-only merge
+    // — only raise FD-computed derivatives, never lower them.
+    const double nVt = n_sub * Vt;
+    if (Vgst_eff < nVt) {
+        double gm_sub  = Ids / nVt;
+        double gds_sub = Ids / Vt;
+        if (gm_sub  > Ids_dVg * CLM) Ids_dVg = gm_sub  / CLM;
+        if (gds_sub > Ids_dVd * CLM) Ids_dVd = gds_sub / CLM;
+    }
+
     r.Ids = Ids;
     r.gm  = Ids_dVg * CLM;
     r.gds = Ids_dVd * CLM;
