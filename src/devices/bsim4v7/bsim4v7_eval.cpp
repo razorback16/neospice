@@ -155,41 +155,67 @@ BSIM4v7EvalResult bsim4v7_evaluate(
 
     // --- Early-voltage output resistance (ngspice b4v7ld.c:1826-1924) ---
     // Simplified additive combination:  1/Va = 1/VACLM + 1/VADIBL,
-    // then gds_early = Ids / Va.  ngspice's full form applies VADIBL as a
-    // multiplicative factor on Idl and VACLM as a log-factor on Idsa; we
-    // use the textbook parallel-Early-voltage form to capture the first-
-    // order output-conductance magnitude without re-deriving the full
-    // multiplicative Ids(Vds) expansion.  CLM already multiplies Ids and
-    // Ids_dVd (pre-CLM FD) below, so Early-voltage gds enters additively.
+    // then gds_early = Ids / Va.  ngspice's full form adds Vasat+VACLM and
+    // applies VADIBL multiplicatively; we use the textbook parallel-Early-
+    // voltage form to capture the first-order output-conductance magnitude
+    // without re-deriving the full multiplicative Ids(Vds) expansion.  CLM
+    // already multiplies Ids and Ids_dVd (pre-CLM FD) below, so Early-
+    // voltage gds enters additively.
     //
-    // litl (characteristic length) from ngspice b4v7temp.c:1295 with
-    // mtrlMod=0 and epsrox=3.9: sqrt(3.0 * 3.9 / epsrox * XJ * TOXE) ->
-    // sqrt(3·XJ·TOXE) ≈ 30 nm for TOXE=2nm, XJ=150nm.
+    // Characteristic length litl from ngspice b4v7temp.c:1295 (mtrlMod=0,
+    // epsrox=3.9): litl = sqrt(EPSSUB/EPSOX · XJ · TOXE).  For TOXE=2nm,
+    // XJ=150nm → litl ≈ 30 nm, the junction-depletion scale (NOT EsatL).
+    const double litl = std::sqrt(EPSSUB / EPSOX * p.XJ * p.TOXE);
+
+    // --- VACLM (ngspice b4v7ld.c:1826-1874) ---
+    // Cclm = FP · PvagTerm · T0 · T1 / (PCLM · litl)
+    //   T0 = 1 + Rds·Idl                              (b4v7ld.c:1846)
+    //   T1 = Leff + Vdsat/Esat                        (b4v7ld.c:1851-1852)
+    //   PvagTerm = 1 + (PVAG/EsatL)·Vgsteff           (b4v7ld.c:1827-1830)
+    //   FP       = 1  when FPROUT ≤ 0 (our default)   (b4v7ld.c:1817)
+    // VACLM = Cclm · (Vds - Vds_eff)                  (b4v7ld.c:1864)
     double VACLM = 0.0;
     if (p.PCLM > 0.0 && Vds > Vdsat) {
+        double PvagTerm = 1.0;
+        if (EsatL > 1e-18) {
+            double T8_pv = p.PVAG / EsatL;
+            double T9_pv = T8_pv * Vgst_eff;
+            if (T9_pv > -0.9) {
+                PvagTerm = 1.0 + T9_pv;
+            } else {
+                PvagTerm = (0.8 + T9_pv) / (17.0 + 20.0 * T9_pv);
+            }
+        }
+        const double FP = 1.0;  // FPROUT=0 default → no pocket-implant degradation
+        double T0_clm = 1.0 + Rds * Idl;
+        double T1_clm = Leff + Vdsat / Esat;
         double diffVds = Vds - Vds_eff;
-        VACLM = EsatL * (Vgst_eff + 2.0 * Vt) * diffVds /
-                (p.PCLM * (EsatL + Vgst_eff + 2.0 * Vt));
+        double Cclm = FP * PvagTerm * T0_clm * T1_clm / (p.PCLM * litl);
+        VACLM = Cclm * diffVds;
     }
+
+    // --- VADIBL (ngspice b4v7ld.c:1876-1924) ---
+    // Simplified: VADIBL = (Vgst_eff + 2·Vt) / thetaRout, using the
+    // exponential DIBL decay for thetaRout from b4v7temp.c:1446-1469.
+    // PDIBLCB body-bias modulation (b4v7ld.c:1897-1914) is omitted: our
+    // default PDIBLCB=0.0 yields identical result, and adding it now is
+    // out of scope for this fix.
     double VADIBL = 0.0;
     if (p.PDIBLC1 > 0.0 || p.PDIBLC2 > 0.0) {
         // thetaRout uses ngspice's exponential DIBL decay
         // (b4v7temp.c:1446-1469): characteristic length tmp =
         // sqrt(epssub/epsox · TOXE · Xdep0), then
         // T0 = DROUT·Leff/tmp,  T5 = exp(T0)/(exp(T0)-1)^2,
-        // thetaRout = PDIBLC1·T5 + PDIBLC2.  Linear
-        // `1 + DROUT·Leff/litl` approximation grossly overstates
-        // thetaRout for sub-µm L (factor ~30 off), yielding VADIBL
-        // ≤ 1 V.  Use the exponential form.
+        // thetaRout = PDIBLC1·T5 + PDIBLC2.
         double Xdep = std::sqrt(2.0 * EPSSUB * 0.4 / (Q_ELEC * p.NDEP * 1.0e6));
         double tmp_dibl = std::sqrt((EPSSUB / EPSOX) * p.TOXE * Xdep);
-        double T0 = (tmp_dibl > 1e-18) ? p.DROUT * Leff / tmp_dibl : 40.0;
+        // Saturate at 34.0 to match ngspice EXP_THRESHOLD (was 40.0).
+        double T0 = (tmp_dibl > 1e-18) ? p.DROUT * Leff / tmp_dibl : 34.0;
         double T5;
-        if (T0 < 40.0) {
+        if (T0 < 34.0) {
             double e_T0 = std::exp(T0);
-            double denom = (e_T0 - 1.0) * (e_T0 - 1.0);
-            if (denom < 1e-30) denom = 1e-30;
-            T5 = e_T0 / denom;
+            double em1 = e_T0 - 1.0;
+            T5 = e_T0 / (em1 * em1);
         } else {
             T5 = 0.0;  // deep saturation: DIBL ≈ PDIBLC2 only
         }
