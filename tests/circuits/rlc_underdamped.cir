@@ -1,0 +1,7 @@
+Underdamped RLC - Tests Gear Integration
+V1 in 0 PULSE(0 1 0 1n 1n 100u 200u)
+R1 in n1 10
+L1 n1 n2 10m
+C1 n2 0 100n
+.tran 100n 50u
+.end

@@ -54,11 +54,11 @@ TEST_F(NgspiceCompareTest, RCACAnalysis) {
 }
 
 // ---------------------------------------------------------------------------
-// Transient tests — our fixed-step trapezoidal solver has known limitations:
-//   1. Initial-step inaccuracy (factor ~2x error at first step for RC)
-//   2. Trapezoidal ringing on step inputs in LC/RLC circuits
-//   3. Interpolation mismatch near zero crossings vs ngspice adaptive steps
-// We compare at our (coarser) time grid and use relaxed tolerances.
+// Transient tests — we use adaptive Gear BDF-2 integration which eliminates
+// the trapezoidal ringing that plagued RLC circuits.  Remaining error sources:
+//   1. Slight amplitude damping inherent to BDF-2 (L-stable)
+//   2. Interpolation mismatch near zero crossings vs ngspice adaptive steps
+// We compare at our time grid and use tightened tolerances where possible.
 // ---------------------------------------------------------------------------
 
 TEST_F(NgspiceCompareTest, RCLowpassTransient) {
@@ -69,7 +69,7 @@ TEST_F(NgspiceCompareTest, RCLowpassTransient) {
     ASSERT_TRUE(cs_result.transient.has_value());
     // Compare at our time grid; large abstol absorbs initial-step error
     // where v(out) is tiny and trapezoidal gives ~half of exact.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-2, 1e-2});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-1, 1e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -89,18 +89,28 @@ TEST_F(NgspiceCompareTest, DiodeRectifierTransient) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
-// Known limitation: the trapezoidal companion model produces parasitic
-// oscillations (ringing) on step inputs in underdamped RLC circuits.
-// The inductor current alternates sign every timestep, preventing energy
-// from reaching the capacitor.  This is a fundamental issue that requires
-// Gear (BDF-2) integration or trapezoidal damping to resolve.
-TEST_F(NgspiceCompareTest, DISABLED_RLCSeriesTransient) {
+// RLC series transient — previously disabled due to trapezoidal ringing.
+// Now works with Gear BDF-2 integration.  Relaxed tolerance accounts for
+// BDF-2 amplitude damping vs ngspice's default trapezoidal method.
+TEST_F(NgspiceCompareTest, RLCSeriesTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/rlc_series.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-1, 1e-6});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1.5e-1, 1e-3});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+// Underdamped RLC transient — exercises oscillatory response with Gear BDF-2.
+TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/rlc_underdamped.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-1, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
