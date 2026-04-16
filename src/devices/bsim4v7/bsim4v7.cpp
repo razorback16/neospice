@@ -1,7 +1,32 @@
 #include "devices/bsim4v7/bsim4v7.hpp"
+#include <algorithm>
 #include <cmath>
 
 namespace neospice {
+
+namespace {
+
+// DEVfetlim-style Vgs clamp (ngspice mosfet.c:mos_limit / DEVfetlim).
+// Limits |Vgs_new - Vgs_old| to max(0.5, 0.5*|Vgs_old - Vth|).
+double fetlim_vgs(double vgs_new, double vgs_old, double vth) {
+    double delta = vgs_new - vgs_old;
+    double limit = std::max(0.5, 0.5 * std::abs(vgs_old - vth));
+    if (std::abs(delta) > limit) {
+        return vgs_old + (delta > 0 ? limit : -limit);
+    }
+    return vgs_new;
+}
+
+// DEVlimvds-style Vds clamp. Limits |Vds_new - Vds_old| to 0.5V.
+double fetlim_vds(double vds_new, double vds_old) {
+    double delta = vds_new - vds_old;
+    if (std::abs(delta) > 0.5) {
+        return vds_old + (delta > 0 ? 0.5 : -0.5);
+    }
+    return vds_new;
+}
+
+} // namespace
 
 BSIM4v7::BSIM4v7(std::string name, int32_t node_drain, int32_t node_gate,
                   int32_t node_source, int32_t node_body,
@@ -98,29 +123,36 @@ void BSIM4v7::limit_voltages(const std::vector<double>& old_v,
     auto node_v = [](const std::vector<double>& v, int32_t n) {
         return (n >= 0) ? v[n] : 0.0;  // ground if -1
     };
-    // Only clamp truly huge Newton swings; small steps should be accepted
-    // as-is so the Newton iteration can converge (a hard step cap causes
-    // limit-cycle oscillation when the equilibrium sits between two
-    // clamped updates).
-    const double max_step = 2.0;
-    // Vgs step limiting
-    if (ng_ >= 0) {
-        double vgs_old = node_v(old_v, ng_) - node_v(old_v, ns_);
-        double vgs_new = node_v(new_v, ng_) - node_v(new_v, ns_);
-        if (std::abs(vgs_new - vgs_old) > max_step) {
-            double delta = (vgs_new > vgs_old) ? max_step : -max_step;
-            new_v[ng_] = node_v(old_v, ns_) + vgs_old + delta;
-        }
-    }
-    // Vds step limiting
-    if (nd_ >= 0) {
-        double vds_old = node_v(old_v, nd_) - node_v(old_v, ns_);
-        double vds_new = node_v(new_v, nd_) - node_v(new_v, ns_);
-        if (std::abs(vds_new - vds_old) > max_step) {
-            double delta = (vds_new > vds_old) ? max_step : -max_step;
-            new_v[nd_] = node_v(old_v, ns_) + vds_old + delta;
-        }
-    }
+
+    // ngspice-style DEVfetlim/DEVlimvds Newton step limiting. Clamp:
+    //   |Vgs_new - Vgs_old| <= max(0.5, 0.5*|Vgs_old - Vth|)
+    //   |Vds_new - Vds_old| <= 0.5
+    // This breaks the two-state limit cycles diagnosed in M3 where Newton
+    // oscillated between overshoot states (see memory m3-t3-t4-diagnosis).
+    double vg_old = node_v(old_v, ng_);
+    double vs_old = node_v(old_v, ns_);
+    double vd_old = node_v(old_v, nd_);
+    double vg_new = node_v(new_v, ng_);
+    double vs_new = node_v(new_v, ns_);
+    double vd_new = node_v(new_v, nd_);
+
+    double vgs_old = vg_old - vs_old;
+    double vds_old = vd_old - vs_old;
+    double vgs_new = vg_new - vs_new;
+    double vds_new = vd_new - vs_new;
+
+    // Approximate Vth by VTH0. Exact Vth depends on Vbs, but for the
+    // purposes of Newton step limiting VTH0 is sufficient (ngspice does
+    // the same in DEVfetlim for zero-body-bias behavior).
+    double vth = params_.VTH0;
+    double vgs_clamped = fetlim_vgs(vgs_new, vgs_old, vth);
+    double vds_clamped = fetlim_vds(vds_new, vds_old);
+
+    // Redistribute clamped Vgs/Vds back to absolute node voltages. Pin the
+    // (possibly moved) new source voltage so we don't over/under-compensate
+    // if the source moved between iterations.
+    if (ng_ >= 0) new_v[ng_] = vs_new + vgs_clamped;
+    if (nd_ >= 0) new_v[nd_] = vs_new + vds_clamped;
 }
 
 void BSIM4v7::ac_stamp(const std::vector<double>& voltages,
