@@ -19,6 +19,7 @@ add_executable(neospice_tests
     unit/test_isource.cpp
     unit/test_capacitor.cpp
     unit/test_inductor.cpp
+    unit/test_gear.cpp
     unit/test_diode.cpp
     unit/test_circuit.cpp
     unit/test_dc.cpp

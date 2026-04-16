@@ -22,20 +22,25 @@ void Capacitor::assign_offsets(const SparsityPattern& pattern) {
 
 void Capacitor::evaluate(const std::vector<double>& /*voltages*/,
                          NumericMatrix& mat, std::vector<double>& rhs) {
-    if (!transient_) return;  // DC: open circuit — stamp nothing
+    if (!transient_) return;
 
-    const double g_eq = 2.0 * cap_ / dt_;
-    const double i_eq = g_eq * v_prev_ + i_prev_;
+    double g_eq, i_eq;
 
-    // Stamp companion conductance like a resistor
+    if (integration_method_ == 1 && gear_ready_) {
+        // Gear BDF-2
+        g_eq = 1.5 * cap_ / dt_;
+        i_eq = (cap_ / (2.0 * dt_)) * (4.0 * v_prev_ - v_prev2_);
+    } else {
+        // Trapezoidal
+        g_eq = 2.0 * cap_ / dt_;
+        i_eq = g_eq * v_prev_ + i_prev_;
+    }
+
     add_if_valid(mat, off_pp_,  g_eq);
     add_if_valid(mat, off_pn_, -g_eq);
     add_if_valid(mat, off_np_, -g_eq);
     add_if_valid(mat, off_nn_,  g_eq);
 
-    // Stamp companion current source into RHS
-    // The companion model current leaving np is g_eq*v - I_eq.
-    // The -I_eq term acts as a current source I_eq entering np.
     add_rhs_if_valid(rhs, np_,  i_eq);
     add_rhs_if_valid(rhs, nn_, -i_eq);
 }
@@ -57,6 +62,7 @@ void Capacitor::set_transient(double dt) {
 void Capacitor::clear_transient() {
     transient_ = false;
     dt_ = 0.0;
+    gear_ready_ = false;
 }
 
 void Capacitor::set_integration_method(int method) {
@@ -64,11 +70,24 @@ void Capacitor::set_integration_method(int method) {
 }
 
 void Capacitor::accept_step(double v_across) {
-    double g_eq = 2.0 * cap_ / dt_;
-    double i_eq = g_eq * v_prev_ + i_prev_;
-    double i_new = g_eq * v_across - i_eq;
-    v_prev_ = v_across;
-    i_prev_ = i_new;
+    if (integration_method_ == 1 && gear_ready_) {
+        double i_new = (cap_ / (2.0 * dt_)) * (3.0 * v_across - 4.0 * v_prev_ + v_prev2_);
+        v_prev2_ = v_prev_;
+        i_prev2_ = i_prev_;
+        v_prev_ = v_across;
+        i_prev_ = i_new;
+    } else {
+        double g_eq = 2.0 * cap_ / dt_;
+        double i_eq = g_eq * v_prev_ + i_prev_;
+        double i_new = g_eq * v_across - i_eq;
+        v_prev2_ = v_prev_;
+        i_prev2_ = i_prev_;
+        v_prev_ = v_across;
+        i_prev_ = i_new;
+        if (integration_method_ == 1) {
+            gear_ready_ = true;
+        }
+    }
 }
 
 void Capacitor::accept_step_from_solution(const std::vector<double>& sol) {
@@ -82,6 +101,18 @@ void Capacitor::init_dc_state(const std::vector<double>& sol) {
     double vc = (nn_ >= 0) ? sol[nn_] : 0.0;
     v_prev_ = va - vc;
     i_prev_ = 0.0;
+    v_prev2_ = v_prev_;
+    i_prev2_ = 0.0;
+    gear_ready_ = false;
+}
+
+void Capacitor::init_dc_state_gear(double v_prev, double i_prev,
+                                    double v_prev2, double i_prev2) {
+    v_prev_ = v_prev;
+    i_prev_ = i_prev;
+    v_prev2_ = v_prev2;
+    i_prev2_ = i_prev2;
+    gear_ready_ = true;
 }
 
 } // namespace neospice

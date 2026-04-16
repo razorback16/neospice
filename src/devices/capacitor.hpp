@@ -25,6 +25,9 @@ public:
     // Initialize DC steady-state: sets v_prev and i_prev=0 (no transient current)
     void init_dc_state(const std::vector<double>& sol);
 
+    // Initialize with explicit history for Gear BDF-2 (marks gear_ready)
+    void init_dc_state_gear(double v_prev, double i_prev, double v_prev2, double i_prev2);
+
 private:
     int32_t np_, nn_;
     double cap_;
@@ -33,6 +36,7 @@ private:
     double v_prev_ = 0.0;
     double i_prev_ = 0.0;
     int integration_method_ = 0;  // 0=trapezoidal, 1=gear2
+    bool gear_ready_ = false;
     double v_prev2_ = 0.0;        // two-step-back voltage for Gear
     double i_prev2_ = 0.0;        // two-step-back current for Gear
 
