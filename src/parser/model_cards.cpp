@@ -151,8 +151,16 @@ BSIM4v7Params to_bsim4v7_params(const ModelCard& card) {
         else if (k == "pb") p.PB = val;
         else if (k == "pbsw") p.PBSW = val;
         else if (k == "tnom") p.TNOM = val;
-        else if (k == "ags") p.AGS = val;
         else if (k == "a0") p.A0 = val;
+        else if (k == "ags") p.AGS = val;
+        else if (k == "b0") p.B0 = val;
+        else if (k == "b1") p.B1 = val;
+        else if (k == "k3b") p.K3B = val;
+        else if (k == "keta") p.KETA = val;
+        else if (k == "prwb") p.PRWB = val;
+        else if (k == "prwg") p.PRWG = val;
+        else if (k == "rdswmin") p.RDSWMIN = val;
+        else if (k == "xj") p.XJ = val;
         else if (k == "eu") p.EU = val;
         // ... additional params can be added as needed
     }
