@@ -1,6 +1,7 @@
 #pragma once
 #include "devices/device.hpp"
 #include <cmath>
+#include <vector>
 
 namespace neospice {
 
@@ -44,6 +45,9 @@ public:
 
     /// Evaluate the source value at time t.
     double value_at(double t) const;
+
+    /// Return PULSE edge breakpoints in [tstart, tstop].
+    std::vector<double> get_breakpoints(double tstart, double tstop) const;
 
     // Device interface
     int32_t extra_vars() const override { return 1; }

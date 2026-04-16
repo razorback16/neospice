@@ -21,8 +21,11 @@ static std::string to_lower(std::string s) {
 static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double tstop) {
     for (auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-            // Breakpoint infrastructure ready; source-specific breakpoints
-            // will be populated when get_breakpoints() is added in Task 6.
+            auto bps = vs->get_breakpoints(0.0, tstop);
+            for (double bp : bps) ctrl.add_breakpoint(bp);
+        } else if (auto* is = dynamic_cast<ISource*>(dev.get())) {
+            auto bps = is->get_breakpoints(0.0, tstop);
+            for (double bp : bps) ctrl.add_breakpoint(bp);
         }
     }
 }

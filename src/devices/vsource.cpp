@@ -111,4 +111,27 @@ void VSource::ac_stamp(const std::vector<double>& /*voltages*/,
     add_if_valid(G, off_branch_nn_, -1.0);
 }
 
+std::vector<double> VSource::get_breakpoints(double tstart, double tstop) const {
+    std::vector<double> bps;
+    if (func_ != SourceFunction::PULSE) return bps;
+
+    const auto& p = pulse_;
+    if (p.per <= 0.0) return bps;
+
+    int max_periods = static_cast<int>((tstop - p.td) / p.per) + 2;
+
+    for (int k = 0; k < max_periods; ++k) {
+        double t0 = p.td + k * p.per;
+        if (t0 > tstop) break;
+
+        double edges[] = { t0, t0 + p.tr, t0 + p.tr + p.pw, t0 + p.tr + p.pw + p.tf };
+        for (double e : edges) {
+            if (e > tstart && e <= tstop) {
+                bps.push_back(e);
+            }
+        }
+    }
+    return bps;
+}
+
 } // namespace neospice
