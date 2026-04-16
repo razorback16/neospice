@@ -138,11 +138,13 @@ TEST_F(NgspiceCompareTest, NMOS_DC_IV) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
-// CMOS inverter transient: DC operating point fails to converge because
-// the simplified BSIM4v7 model has a non-monotonic region near the
-// switching threshold that the plain Newton solver can't navigate.
-// Disabled until the BSIM4v7 model gains proper Vdsat/Abulk smoothing
-// or we add a damped-Newton/continuation strategy.
+// CMOS inverter transient: DC operating point fails to converge.
+// Re-checked post-M2.5 (Abulk + RDSW + gche/Idl ported, NMOS_DC_IV
+// worst_error 8× → 3.65×): the blocker is not IV non-monotonicity.
+// MOSFETs at V=0 have subthreshold gm/gds below FD-noise (h_fd=1e-4 V),
+// so gmin stepping cannot find a path from an all-zero initial guess
+// to the (out≈Vdd, in=0) equilibrium.  Needs pseudo-transient
+// continuation or a DC-IC-aware initial guess — Milestone 3 solver work.
 TEST_F(NgspiceCompareTest, DISABLED_CMOSInverterTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter.cir";
     auto ng_result = ngspice_->run_transient(path);
