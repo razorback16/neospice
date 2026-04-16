@@ -97,6 +97,21 @@ BSIM4v7EvalResult bsim4v7_evaluate(
     Abulk  *= T0_keta;
     Abulk0 *= T0_keta;
 
+    // --- Rds source/drain series resistance (ngspice b4v7ld.c:1351-1374) ---
+    // Formula: Rds = RDSWMIN + 0.5·RDSW·(1/(1+PRWG·Vgsteff) + PRWB·(sqrtPhis-sqrtPhi0) + sqrt((...)² + 0.01))
+    // Simplified: drop Vbs dependence of sqrtPhis (we've already used sqrtPhis for Vth).
+    // Weff is in metres; RDSW is in Ω·µm, so multiply RDSW by 1e-6 and divide by Weff.
+    double Rds = 0.0;
+    if (Weff > 1e-18) {
+        double T0_rds = 1.0 + p.PRWG * Vgst_eff;
+        if (T0_rds < 0.1) T0_rds = 0.1;  // avoid negative / division blow-up
+        double T1_rds = p.PRWB * (sqrtPhis - std::sqrt(0.4));  // body-bias term
+        double T2_rds = 1.0 / T0_rds + T1_rds;
+        double T3_rds = T2_rds + std::sqrt(T2_rds * T2_rds + 0.01);  // smooth max(T2, 0)
+        double rds0_ohm_m = (p.RDSW * 1e-6) / Weff;  // convert Ω·µm → Ω for this W
+        Rds = p.RDSWMIN * 1e-6 / Weff + 0.5 * rds0_ohm_m * T3_rds;
+    }
+
     // --- Saturation voltage ---
     double Esat = 2.0 * p.VSAT / mu;
     double EsatL = Esat * Leff;
