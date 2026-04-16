@@ -91,15 +91,24 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         }
 
         if (opts.verbose) {
-            double max_diff = 0.0; int worst = -1;
+            double worst_ratio = 0.0;
+            double worst_diff  = 0.0;
+            int32_t worst      = -1;
             for (int32_t i = 0; i < n; ++i) {
-                double d = std::abs(solution[i] - old_solution[i]);
-                if (d > max_diff) { max_diff = d; worst = i; }
+                double v_new = solution[i];
+                double v_old = old_solution[i];
+                double diff  = std::abs(v_new - v_old);
+                double other = (i < num_nodes) ? opts.vntol : opts.abstol;
+                double tol   = opts.reltol * std::max(std::abs(v_new), std::abs(v_old)) + other;
+                double ratio = (tol > 0.0) ? diff / tol : 0.0;
+                if (ratio > worst_ratio) { worst_ratio = ratio; worst_diff = diff; worst = i; }
             }
             std::cerr << "[newton] iter=" << iter
-                      << " max_diff=" << max_diff
-                      << " worst_idx=" << worst
-                      << (converged ? " (converged)" : "")
+                      << " max_diff=" << worst_diff
+                      << " worst_idx=" << worst;
+            if (worst >= 0 && worst < num_nodes)
+                std::cerr << " (" << ckt.node_name(worst) << ")";
+            std::cerr << (converged ? " (converged)" : "")
                       << "\n";
         }
 
