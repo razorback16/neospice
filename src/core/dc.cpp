@@ -17,10 +17,20 @@ DCResult solve_dc(Circuit& ckt) {
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
-    // 1. Initial guess: all zeros, then apply nodeset values
+    // 1. Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
+    // .nodeset wins when both are set.  .ic lets users rescue hard DC starts
+    // (ring oscillators, bistable latches, precharged nodes) where the all-zero
+    // seed lands in a region of vanishing MOSFET subthreshold conductance.
     std::vector<double> solution(n, 0.0);
+    std::vector<char> pinned(n, 0);
     for (auto& [node_idx, value] : ckt.nodeset) {
         if (node_idx >= 0 && node_idx < n) {
+            solution[node_idx] = value;
+            pinned[node_idx] = 1;
+        }
+    }
+    for (auto& [node_idx, value] : ckt.ic) {
+        if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
             solution[node_idx] = value;
         }
     }
