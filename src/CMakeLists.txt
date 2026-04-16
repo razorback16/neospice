@@ -18,6 +18,8 @@ add_library(cudaspice_lib
     parser/expression.cpp
     parser/model_cards.cpp
     parser/netlist_parser.cpp
+    api/cudaspice.cpp
+    output/raw_writer.cpp
 )
 
 target_include_directories(cudaspice_lib PUBLIC
