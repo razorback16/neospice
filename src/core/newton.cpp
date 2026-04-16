@@ -2,6 +2,7 @@
 #include "core/circuit.hpp"
 #include "core/klu_solver.hpp"
 #include <cmath>
+#include <iostream>
 #include <stdexcept>
 
 namespace neospice {
@@ -15,6 +16,13 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
 
     NumericMatrix mat(pattern);
     std::vector<double> rhs(n, 0.0);
+
+    if (opts.verbose) {
+        std::cerr << "[newton] gmin=" << opts.gmin << " start:";
+        for (int32_t i = 0; i < num_nodes; ++i)
+            std::cerr << " " << ckt.node_name(i) << "=" << solution[i];
+        std::cerr << "\n";
+    }
 
     for (int iter = 0; iter < opts.max_iter; ++iter) {
         // Save old solution for convergence check
@@ -82,10 +90,26 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
             }
         }
 
+        if (opts.verbose) {
+            double max_diff = 0.0; int worst = -1;
+            for (int32_t i = 0; i < n; ++i) {
+                double d = std::abs(solution[i] - old_solution[i]);
+                if (d > max_diff) { max_diff = d; worst = i; }
+            }
+            std::cerr << "[newton] iter=" << iter
+                      << " max_diff=" << max_diff
+                      << " worst_idx=" << worst
+                      << (converged ? " (converged)" : "")
+                      << "\n";
+        }
+
         if (converged) {
             return {true, iter + 1, solution};
         }
     }
+
+    if (opts.verbose)
+        std::cerr << "[newton] NOT converged after " << opts.max_iter << " iter\n";
 
     return {false, opts.max_iter, solution};
 }

@@ -29,6 +29,7 @@ struct SimOptions {
     double gmin   = 1e-12;
     double temp   = T_NOMINAL;
     int max_iter  = 100;
+    bool verbose  = false;
 };
 
 class ParseError : public std::runtime_error {
