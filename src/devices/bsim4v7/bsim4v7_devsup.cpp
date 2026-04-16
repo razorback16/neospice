@@ -6,6 +6,7 @@ Author: 1985 Thomas L. Quarles
     /* support routines for device models */
 
 #include "devices/bsim4v7/bsim4v7_def.hpp"
+#include <cassert>
 #include <cmath>
 
 /* Macros from UCB util.h / spice.h — reproduced locally for the port. */
@@ -355,10 +356,15 @@ double DEVpred(Shim::Ckt *ckt, int loct)
      */
 
 #ifndef NEWTRUNC
+    assert(ckt->CKTstate1 && ckt->CKTstate2 &&
+           "DEVpred called before Phase-1b transient state vectors are initialised");
     double xfact;
     xfact = ckt->CKTdelta/ckt->CKTdeltaOld[1];
     return( ( (1+xfact) * *(ckt->CKTstate1+loct) ) -
             (    xfact  * *(ckt->CKTstate2+loct) )  );
+#else
+    (void)ckt; (void)loct;
+    return 0.0;  // NEWTRUNC path not implemented in Phase 1a
 #endif /*NEWTRUNC*/
 
 }
