@@ -1,0 +1,30 @@
+{
+  "model_card": "NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9",
+  "W": 1e-6,
+  "L": 1e-7,
+  "temp_K": 300.15,
+  "source": "ngspice 45-dev-ish built from /home/subhagato/Codes/ngspice (BSIM4.8.0 tree) patched in src/spicelib/devices/bsim4/b4temp.c to fprintf(stderr, ...) pParam->BSIM4* and here->BSIM4* after BSIM4temp returns. Patch is NOT committed anywhere. ngspice-42 (system /usr/bin/ngspice) uses the same BSIM4 4.8.0 kernel internals, so values carry over. Our C++ port is 4.7.0 but these preprocessing fields (leff/weff, vth0, u0temp, vfb, vsattemp, k1ox, cdep0, phi) have identical formulas in 4.7.0 and 4.8.0 for the parameters exercised here (default mobMod=0, default stress/NUD/NF=1).",
+  "tolerance_rel": 1e-10,
+  "notes": [
+    "In BSIM4 4.7.0/4.8.0 the size-dependent per-instance precomputed values live on bsim4SizeDependParam (accessed via here->pParam), NOT on the instance directly. leff/weff/cdep0/k1ox/phi are pParam-only.",
+    "vth0/u0temp/vfb/vsattemp exist on BOTH pParam (base temperature-adjusted value) and the instance (stress-effect delta applied). With no LOD/stress inputs (default), instance values equal pParam values.",
+    "Goldens were captured with patched b4temp.c. Patch text for reference:",
+    "  fprintf(stderr, \"T12_GOLDEN pParam_BSIM4leff=%.17e\\n\", pParam->BSIM4leff); // ... etc",
+    "To re-derive: build ngspice with the patch, run on tests/goldens/probe.cir, grep T12_GOLDEN."
+  ],
+  "expected": {
+    "pParam_BSIM4leff":     1.00000000000000009e-07,
+    "pParam_BSIM4weff":     9.99999999999999955e-07,
+    "pParam_BSIM4vth0":     4.00000000000000022e-01,
+    "pParam_BSIM4u0temp":   4.00000000000000008e-02,
+    "pParam_BSIM4vfb":     -6.51465384484832377e-01,
+    "pParam_BSIM4vsattemp": 8.00000000000000000e+04,
+    "pParam_BSIM4k1ox":     2.54357049852350026e-01,
+    "pParam_BSIM4cdep0":    1.31088134194791168e-03,
+    "pParam_BSIM4phi":      8.20995507725037266e-01,
+    "here_BSIM4vth0":       4.00000000000000022e-01,
+    "here_BSIM4u0temp":     4.00000000000000008e-02,
+    "here_BSIM4vfb":       -6.51465384484832377e-01,
+    "here_BSIM4vsattemp":   8.00000000000000000e+04
+  }
+}

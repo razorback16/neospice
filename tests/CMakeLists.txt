@@ -34,8 +34,10 @@ add_executable(neospice_tests
     unit/test_api.cpp
     unit/test_raw_writer.cpp
     unit/test_ngspice_compare.cpp
+    unit/test_bsim4v7_ucb_setup.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
+    $<TARGET_OBJECTS:bsim4v7_obj>
 )
 
 target_link_libraries(neospice_tests PRIVATE
