@@ -21,6 +21,8 @@ add_executable(cudaspice_tests
     unit/test_inductor.cpp
     unit/test_diode.cpp
     unit/test_circuit.cpp
+    unit/test_dc.cpp
+    unit/test_convergence.cpp
 )
 
 target_link_libraries(cudaspice_tests PRIVATE
