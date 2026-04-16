@@ -53,10 +53,55 @@ BSIM4v7EvalResult bsim4v7_evaluate(
     if (Denomi < 1e-6) Denomi = 1e-6;
     double mu = p.U0 / Denomi;
 
+    // --- Abulk bulk-charge correction (ngspice b4v7ld.c:1376-1430) ---
+    // We omit Lpe (lateral pocket implant profile) and Vth_NarrowW (narrow-width
+    // Vth correction) since we don't model pocket implants. This yields the
+    // bulk-planar Abulk. Xdep (depletion depth) is approximated from NDEP.
+    // NDEP is stored in cm^-3 (ngspice convention); convert to SI (m^-3) for the Xdep formula.
+    double Xdep = std::sqrt(2.0 * EPSSUB * 0.4 / (Q_ELEC * p.NDEP * 1.0e6));
+    double T_abk9 = 0.5 * p.K1 / sqrtPhis;
+    double T_abk1 = T_abk9 + p.K2;             // no K3B·Vth_NarrowW term
+    double T_abk9b = std::sqrt(p.XJ * Xdep);
+    double tmp1_abk = Leff + 2.0 * T_abk9b;
+    double T_abk5 = Leff / tmp1_abk;
+    double tmp2_abk = p.A0 * T_abk5;
+    double tmp3_abk = Weff + p.B1;
+    double tmp4_abk = (std::abs(tmp3_abk) < 1e-18) ? 0.0 : p.B0 / tmp3_abk;
+    double T_abk2 = tmp2_abk + tmp4_abk;
+
+    double Abulk0 = 1.0 + T_abk1 * T_abk2;
+    double T_abk7 = T_abk5 * T_abk5 * T_abk5;   // T5^3
+    double T_abk8 = p.AGS * p.A0 * T_abk7;
+    double dAbulk_dVg = -T_abk1 * T_abk8;
+    double Abulk = Abulk0 + dAbulk_dVg * Vgst_eff;
+
+    // Smoothing clamp when Abulk0 or Abulk fall below 0.1
+    if (Abulk0 < 0.1) {
+        double T9 = 1.0 / (3.0 - 20.0 * Abulk0);
+        Abulk0 = (0.2 - Abulk0) * T9;
+    }
+    if (Abulk < 0.1) {
+        double T9 = 1.0 / (3.0 - 20.0 * Abulk);
+        Abulk = (0.2 - Abulk) * T9;
+    }
+
+    // KETA body-bias modulation on Abulk (with smoothing for Vbs < -0.9/KETA)
+    double T_keta = p.KETA * Vbs;
+    double T0_keta;
+    if (T_keta >= -0.9) {
+        T0_keta = 1.0 / (1.0 + T_keta);
+    } else {
+        double T1_keta = 1.0 / (0.8 + T_keta);
+        T0_keta = (17.0 + 20.0 * T_keta) * T1_keta;
+    }
+    Abulk  *= T0_keta;
+    Abulk0 *= T0_keta;
+
     // --- Saturation voltage ---
     double Esat = 2.0 * p.VSAT / mu;
     double EsatL = Esat * Leff;
-    double Vdsat = (EsatL * Vgst_eff) / (EsatL + Vgst_eff);
+    // Vdsat with Abulk bulk-charge correction (b4v7ld.c:1731-1735, simplified)
+    double Vdsat = (EsatL * Vgst_eff) / (Abulk * EsatL + Vgst_eff);
 
     // --- Drain-source voltage clamping ---
     double Vds_eff;
