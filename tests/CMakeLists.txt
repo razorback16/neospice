@@ -27,12 +27,18 @@ add_executable(cudaspice_tests
     unit/test_parser.cpp
     unit/test_transient.cpp
     unit/test_ac.cpp
+    unit/test_ngspice_runner.cpp
+    unit/test_comparator.cpp
+    framework/ngspice_runner.cpp
+    framework/comparator.cpp
 )
 
 target_link_libraries(cudaspice_tests PRIVATE
     gtest_main
     cudaspice_lib
 )
+
+target_include_directories(cudaspice_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_compile_definitions(cudaspice_tests PRIVATE
     NGSPICE_BINARY="/usr/bin/ngspice"
