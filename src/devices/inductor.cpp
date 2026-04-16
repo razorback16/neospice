@@ -62,11 +62,16 @@ void Inductor::evaluate(const std::vector<double>& /*voltages*/,
 }
 
 void Inductor::ac_stamp(const std::vector<double>& /*voltages*/,
-                        NumericMatrix& /*G*/, NumericMatrix& /*C*/) {
-    // AC: same coupling stamps as DC.
-    // The jwL impedance is handled by the AC solver using inductance().
-    // We stamp the KCL and branch equation coupling into G.
-    // (This is typically done by the AC solver framework, not here.)
+                        NumericMatrix& G, NumericMatrix& C) {
+    // KCL coupling into G: same ±1 as DC
+    add_if_valid(G, off_p_br_,  1.0);
+    add_if_valid(G, off_n_br_, -1.0);
+    // Branch equation coupling into G
+    add_if_valid(G, off_br_p_,  1.0);
+    add_if_valid(G, off_br_n_, -1.0);
+    // Inductance into C: branch equation gets -L at (branch, branch)
+    // This represents V(np)-V(nn) = jwL * I_branch in frequency domain
+    C.add(off_br_br_, -inductance_);
 }
 
 void Inductor::set_transient(double dt) {

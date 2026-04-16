@@ -102,4 +102,13 @@ void VSource::evaluate(const std::vector<double>& /*voltages*/,
         rhs[branch_idx_] += value_at(current_time_);
 }
 
+void VSource::ac_stamp(const std::vector<double>& /*voltages*/,
+                       NumericMatrix& G, NumericMatrix& /*C*/) {
+    // Same ±1 coupling as DC evaluate — stamp into G matrix
+    add_if_valid(G, off_np_branch_,  1.0);
+    add_if_valid(G, off_nn_branch_, -1.0);
+    add_if_valid(G, off_branch_np_,  1.0);
+    add_if_valid(G, off_branch_nn_, -1.0);
+}
+
 } // namespace cudaspice

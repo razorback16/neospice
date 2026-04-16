@@ -53,6 +53,8 @@ public:
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
                   NumericMatrix& mat, std::vector<double>& rhs) override;
+    void ac_stamp(const std::vector<double>& voltages,
+                  NumericMatrix& G, NumericMatrix& C) override;
 
 private:
     int32_t np_;           // positive node (GROUND_INTERNAL = -1)

@@ -7,6 +7,7 @@ add_library(cudaspice_lib
     core/convergence.cpp
     core/dc.cpp
     core/transient.cpp
+    core/ac.cpp
     devices/resistor.cpp
     devices/vsource.cpp
     devices/isource.cpp
