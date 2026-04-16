@@ -7,6 +7,7 @@ add_library(cudaspice_lib
     devices/isource.cpp
     devices/capacitor.cpp
     devices/inductor.cpp
+    devices/diode.cpp
 )
 
 target_include_directories(cudaspice_lib PUBLIC
