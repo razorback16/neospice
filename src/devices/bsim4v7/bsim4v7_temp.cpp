@@ -29,7 +29,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 
 #define Kb 1.3806226e-23
 #define KboQ 8.617087e-5
