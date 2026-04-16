@@ -2,8 +2,6 @@
 #include "core/matrix.hpp"
 #include <cstdint>
 #include <cstdio>
-#include <string>
-#include <vector>
 
 namespace neospice::bsim4v7 {
 
@@ -79,6 +77,7 @@ namespace Shim {
     // --- Error reporting stub ----------------------------------------------
     // UCB calls SPfrontEnd->IFerror(ERR_WARNING, fmt, varargs). We log to
     // stderr. The translated code uses Shim::report_error(level, fmt, ...).
+    [[gnu::format(printf, 2, 3)]]
     void report_error(int level, const char *fmt, ...);
     constexpr int ERR_WARNING = 1;
     constexpr int ERR_FATAL   = 2;
