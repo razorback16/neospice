@@ -91,6 +91,14 @@ void Inductor::accept_step_from_solution(const std::vector<double>& sol) {
     accept_step(i, va - vc);
 }
 
+void Inductor::init_dc_state(const std::vector<double>& sol) {
+    double va = (np_ >= 0) ? sol[np_] : 0.0;
+    double vc = (nn_ >= 0) ? sol[nn_] : 0.0;
+    double i  = (branch_idx_ >= 0) ? sol[branch_idx_] : 0.0;
+    i_prev_ = i;
+    v_prev_ = va - vc;
+}
+
 std::vector<std::string> Inductor::output_currents() const {
     return { "i(" + name_ + ")" };
 }

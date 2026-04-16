@@ -23,6 +23,7 @@ public:
     void clear_transient();
     void accept_step(double i_branch, double v_across);
     void accept_step_from_solution(const std::vector<double>& sol);
+    void init_dc_state(const std::vector<double>& sol);
 
     double inductance() const { return inductance_; }
 

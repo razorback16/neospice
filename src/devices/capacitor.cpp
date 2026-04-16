@@ -34,8 +34,10 @@ void Capacitor::evaluate(const std::vector<double>& /*voltages*/,
     add_if_valid(mat, off_nn_,  g_eq);
 
     // Stamp companion current source into RHS
-    add_rhs_if_valid(rhs, np_, -i_eq);
-    add_rhs_if_valid(rhs, nn_,  i_eq);
+    // The companion model current leaving np is g_eq*v - I_eq.
+    // The -I_eq term acts as a current source I_eq entering np.
+    add_rhs_if_valid(rhs, np_,  i_eq);
+    add_rhs_if_valid(rhs, nn_, -i_eq);
 }
 
 void Capacitor::ac_stamp(const std::vector<double>& /*voltages*/,
@@ -69,6 +71,13 @@ void Capacitor::accept_step_from_solution(const std::vector<double>& sol) {
     double va = (np_ >= 0) ? sol[np_] : 0.0;
     double vc = (nn_ >= 0) ? sol[nn_] : 0.0;
     accept_step(va - vc);
+}
+
+void Capacitor::init_dc_state(const std::vector<double>& sol) {
+    double va = (np_ >= 0) ? sol[np_] : 0.0;
+    double vc = (nn_ >= 0) ? sol[nn_] : 0.0;
+    v_prev_ = va - vc;
+    i_prev_ = 0.0;
 }
 
 } // namespace cudaspice

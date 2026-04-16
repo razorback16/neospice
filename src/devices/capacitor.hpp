@@ -21,6 +21,9 @@ public:
     // Accept step using full solution vector (device computes v_across internally)
     void accept_step_from_solution(const std::vector<double>& sol);
 
+    // Initialize DC steady-state: sets v_prev and i_prev=0 (no transient current)
+    void init_dc_state(const std::vector<double>& sol);
+
 private:
     int32_t np_, nn_;
     double cap_;
