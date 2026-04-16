@@ -2,6 +2,7 @@ add_library(cudaspice_lib
     core/types.cpp
     core/matrix.cpp
     core/klu_solver.cpp
+    core/circuit.cpp
     devices/resistor.cpp
     devices/vsource.cpp
     devices/isource.cpp

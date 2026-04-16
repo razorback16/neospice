@@ -20,6 +20,7 @@ add_executable(cudaspice_tests
     unit/test_capacitor.cpp
     unit/test_inductor.cpp
     unit/test_diode.cpp
+    unit/test_circuit.cpp
 )
 
 target_link_libraries(cudaspice_tests PRIVATE
