@@ -68,7 +68,7 @@
 
 namespace neospice::bsim4v7 {
 
-int
+static int
 BSIM4DioIjthVjmEval(double Nvtm, double Ijth, double Isb, double XExpBV, double *Vjm)
 {
 double Tb, Tc, EVjmovNv;
