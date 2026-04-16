@@ -24,6 +24,7 @@ add_executable(cudaspice_tests
     unit/test_dc.cpp
     unit/test_convergence.cpp
     unit/test_tokenizer.cpp
+    unit/test_parser.cpp
 )
 
 target_link_libraries(cudaspice_tests PRIVATE

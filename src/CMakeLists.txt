@@ -13,6 +13,9 @@ add_library(cudaspice_lib
     devices/inductor.cpp
     devices/diode.cpp
     parser/tokenizer.cpp
+    parser/expression.cpp
+    parser/model_cards.cpp
+    parser/netlist_parser.cpp
 )
 
 target_include_directories(cudaspice_lib PUBLIC
