@@ -15,6 +15,7 @@ add_library(neospice_lib
     devices/capacitor.cpp
     devices/inductor.cpp
     devices/diode.cpp
+    devices/bsim4v7/bsim4v7_eval.cpp
     parser/tokenizer.cpp
     parser/expression.cpp
     parser/model_cards.cpp
