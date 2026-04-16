@@ -127,37 +127,83 @@ BSIM4v7EvalResult bsim4v7_evaluate(
         Vds_eff = Vdsat - 0.5 * (tmp + tmp2);
     }
 
-    // --- Drain current ---
-    double Ids_lin = WL * mu * Cox * Vgst_eff * Vds_eff;
-    double Va = Vds_eff / EsatL;
-    double Ids = Ids_lin / (1.0 + Va);
+    // --- Channel conductance (ngspice b4v7ld.c:1771-1812) ---
+    // Replaces the simple Ids = µ·Cox·(W/L)·Vgst·Vds_eff form with the
+    // Abulk-corrected channel-conductance + Rds-feedback form.
+    double Coxeff_local = Cox;                            // we don't model Coxeff reduction yet
+    double beta = mu * Coxeff_local * (Weff / Leff);
+    double AbovVgst2Vtm = Abulk / (Vgst_eff + 2.0 * Vt);
+    double fgche1_T0 = 1.0 - 0.5 * Vds_eff * AbovVgst2Vtm;
+    if (fgche1_T0 < 0.0) fgche1_T0 = 0.0;                 // physical floor
+    double fgche1 = Vgst_eff * fgche1_T0;
+    double fgche2 = 1.0 + Vds_eff / EsatL;
+    double gche = beta * fgche1 / fgche2;
+
+    // --- Rds feedback: Idl = gche/(1 + gche·Rds) ---
+    // Idl has units of A/V (channel conductance); final drain current is
+    // cdrain = Idl * Vdseff (ngspice b4v7ld.c:2074).
+    double Idl_denom = 1.0 + gche * Rds;
+    if (Idl_denom < 1e-18) Idl_denom = 1e-18;
+    double Idl = gche / Idl_denom;
+    double Ids = Idl * Vds_eff;      // drain current; pre-CLM
 
     // --- Channel length modulation ---
     double CLM = 1.0;
     if (p.PCLM > 0.0 && Vds > Vdsat) {
         CLM = 1.0 + p.PCLM * std::log(1.0 + (Vds - Vds_eff) / (p.PCLM * Vdsat + 1e-20));
     }
+
+    // --- Conductances (numerical derivatives via finite difference) ---
+    // The closed-form derivatives of gche/(1+gche·Rds) with respect to Vgs, Vds
+    // are lengthy; use a 1e-4 V forward difference for robustness. Acceptable
+    // cost: ~2 extra eval() calls on hot path but this function is ~200 lines
+    // of arithmetic, still well under typical SPICE inner-loop costs.
+    // FD is done on the pre-CLM Ids; CLM is treated as approximately constant
+    // w.r.t. Vgs/Vds and multiplied onto r.gm/r.gds below (matching r.Ids *= CLM).
+    const double h_fd = 1.0e-4;
+    double Ids_dVg, Ids_dVd;
+    {
+        // Recompute Ids at Vgs + h
+        double Vgst_h  = Vgs + h_fd - Vth;
+        double Vgst_eff_h = (Vgst_h > 40.0 * n_sub * Vt) ? Vgst_h :
+                            (Vgst_h < -40.0 * n_sub * Vt) ? n_sub * Vt * std::exp(Vgst_h / (n_sub * Vt)) :
+                            n_sub * Vt * std::log(1.0 + std::exp(Vgst_h / (n_sub * Vt)));
+        double Abulk_h = Abulk;  // Abulk's Vgs dependence is small; approximate as constant for FD
+        double fgche1_T0_h = 1.0 - 0.5 * Vds_eff * Abulk_h / (Vgst_eff_h + 2.0 * Vt);
+        if (fgche1_T0_h < 0.0) fgche1_T0_h = 0.0;
+        double fgche1_h = Vgst_eff_h * fgche1_T0_h;
+        double gche_h = beta * fgche1_h / fgche2;
+        double Idl_h  = gche_h / (1.0 + gche_h * Rds);
+        double Ids_h  = Idl_h * Vds_eff;
+        Ids_dVg = (Ids_h - Ids) / h_fd;
+    }
+    {
+        // Recompute Ids at Vds + h (Vds_eff moves via its DELTA smoothing)
+        double Vds_h = Vds + h_fd;
+        double dvs_h_tmp  = Vdsat - Vds_h - p.DELTA;
+        double dvs_h_tmp2 = std::sqrt(dvs_h_tmp * dvs_h_tmp + 4.0 * p.DELTA * Vdsat);
+        double Vds_eff_h  = Vdsat - 0.5 * (dvs_h_tmp + dvs_h_tmp2);
+        double fgche1_T0_h = 1.0 - 0.5 * Vds_eff_h * AbovVgst2Vtm;
+        if (fgche1_T0_h < 0.0) fgche1_T0_h = 0.0;
+        double fgche1_h = Vgst_eff * fgche1_T0_h;
+        double fgche2_h = 1.0 + Vds_eff_h / EsatL;
+        double gche_h = beta * fgche1_h / fgche2_h;
+        double Idl_h  = gche_h / (1.0 + gche_h * Rds);
+        double Ids_h  = Idl_h * Vds_eff_h;
+        Ids_dVd = (Ids_h - Ids) / h_fd;
+    }
+
+    // Apply CLM to Ids and derivatives consistently. CLM itself depends on Vds
+    // but we approximate it as constant in the FD so gm/gds scale cleanly with
+    // the CLM-boosted Ids; this keeps r.gds/r.Ids ratio physically reasonable.
     Ids *= CLM;
 
-    // --- Conductances (numerical derivatives for robustness) ---
-    // We use analytical approximations for the main terms
-    double dIds_dVgst = WL * mu * Cox * Vds_eff / (1.0 + Va);
-    double dVgst_dVgs = 1.0;
-    if (Vgst < 40.0 * n_sub * Vt) {
-        double expg = std::exp(Vgst / (n_sub * Vt));
-        dVgst_dVgs = expg / (1.0 + expg);
-    }
-
     r.Ids = Ids;
-    r.gm = dIds_dVgst * dVgst_dVgs * CLM;
+    r.gm  = Ids_dVg * CLM;
+    r.gds = Ids_dVd * CLM;
+    if (r.gds < 0.0) r.gds = 0.0;   // physical floor; gds ≥ 0 in saturation
 
-    // Output conductance
-    r.gds = Ids * 0.01 / (std::abs(Vds) + 0.01);  // simplified
-    if (Vds > Vdsat && p.PCLM > 0.0) {
-        r.gds += Ids * p.PCLM / (Vds - Vds_eff + p.PCLM * Vdsat + 1e-20);
-    }
-
-    // Body transconductance
+    // Body transconductance (unchanged approximation)
     r.gmb = r.gm * p.K1 / (2.0 * sqrtPhis + 1e-20);
 
     // --- Intrinsic capacitances (Meyer model simplified) ---
