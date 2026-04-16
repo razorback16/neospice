@@ -12,6 +12,7 @@ add_library(cudaspice_lib
     devices/capacitor.cpp
     devices/inductor.cpp
     devices/diode.cpp
+    parser/tokenizer.cpp
 )
 
 target_include_directories(cudaspice_lib PUBLIC
