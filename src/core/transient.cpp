@@ -38,10 +38,24 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     // ---------------------------------------------------------------
     // 1. DC operating point
     // ---------------------------------------------------------------
+    // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
+    // .nodeset wins when both are set.  .ic doubles as a Newton seed hint here
+    // so circuits that ship .ic (ring oscillators, bistable latches) start DC
+    // from a feasible point instead of all-zero (where subthreshold gm/gds
+    // vanish).  The .ic overrides applied post-DC at line ~70 still take
+    // effect as transient initial conditions — that loop is independent.
     std::vector<double> solution(n, 0.0);
+    std::vector<char> pinned(n, 0);
     for (auto& [node_idx, value] : ckt.nodeset) {
-        if (node_idx >= 0 && node_idx < n)
+        if (node_idx >= 0 && node_idx < n) {
             solution[node_idx] = value;
+            pinned[node_idx] = 1;
+        }
+    }
+    for (auto& [node_idx, value] : ckt.ic) {
+        if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
+            solution[node_idx] = value;
+        }
     }
 
     KLUSolver solver;

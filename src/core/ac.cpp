@@ -61,10 +61,22 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     const int32_t num_nodes = ckt.num_nodes();
 
     // 1. DC operating point
+    // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
+    // .nodeset wins when both are set.  .ic doubles as a Newton seed hint here
+    // so circuits that ship .ic start DC from a feasible point instead of
+    // all-zero (where subthreshold gm/gds vanish).
     std::vector<double> dc_solution(n, 0.0);
+    std::vector<char> pinned(n, 0);
     for (auto& [node_idx, value] : ckt.nodeset) {
-        if (node_idx >= 0 && node_idx < n)
+        if (node_idx >= 0 && node_idx < n) {
             dc_solution[node_idx] = value;
+            pinned[node_idx] = 1;
+        }
+    }
+    for (auto& [node_idx, value] : ckt.ic) {
+        if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
+            dc_solution[node_idx] = value;
+        }
     }
 
     KLUSolver dc_solver;
