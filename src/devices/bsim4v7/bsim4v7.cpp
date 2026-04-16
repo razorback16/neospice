@@ -150,4 +150,58 @@ void BSIM4v7::ac_stamp(const std::vector<double>& voltages,
     add_if_valid(C, off_[3][3],  ev.Cgb + ev.Cbs + ev.Cbd);  // bb
 }
 
+// ---------------------------------------------------------------------------
+// Transient companion model for intrinsic MOSFET charges (Qg, Qd, Qb)
+// ---------------------------------------------------------------------------
+
+void BSIM4v7::set_transient(double dt) {
+    transient_ = true;
+    dt_ = dt;
+}
+
+void BSIM4v7::clear_transient() {
+    transient_ = false;
+    dt_ = 0.0;
+}
+
+void BSIM4v7::set_integration_method(int method) {
+    integration_method_ = method;
+}
+
+void BSIM4v7::init_dc_state(const std::vector<double>& sol) {
+    double vd = (nd_ >= 0) ? sol[nd_] : 0.0;
+    double vg = (ng_ >= 0) ? sol[ng_] : 0.0;
+    double vs = (ns_ >= 0) ? sol[ns_] : 0.0;
+    double vb = (nb_ >= 0) ? sol[nb_] : 0.0;
+
+    double Vgs = vg - vs, Vds = vd - vs, Vbs = vb - vs;
+    if (params_.is_pmos) { Vgs = -Vgs; Vds = -Vds; Vbs = -Vbs; }
+
+    auto ev = bsim4v7_evaluate(Vgs, Vds, Vbs, params_, 300.15);
+    Qg_prev_ = ev.Qg; Qd_prev_ = ev.Qd; Qb_prev_ = ev.Qb;
+    Ig_prev_ = 0.0; Id_cap_prev_ = 0.0; Ib_prev_ = 0.0;
+}
+
+void BSIM4v7::accept_step_from_solution(const std::vector<double>& sol) {
+    if (!transient_ || dt_ <= 0.0) return;
+
+    double vd = (nd_ >= 0) ? sol[nd_] : 0.0;
+    double vg = (ng_ >= 0) ? sol[ng_] : 0.0;
+    double vs = (ns_ >= 0) ? sol[ns_] : 0.0;
+    double vb = (nb_ >= 0) ? sol[nb_] : 0.0;
+
+    double Vgs = vg - vs, Vds = vd - vs, Vbs = vb - vs;
+    if (params_.is_pmos) { Vgs = -Vgs; Vds = -Vds; Vbs = -Vbs; }
+
+    auto ev = bsim4v7_evaluate(Vgs, Vds, Vbs, params_, 300.15);
+
+    // Trapezoidal: I = 2*(Q_new - Q_prev)/dt - I_prev
+    double Ig_new = 2.0 * (ev.Qg - Qg_prev_) / dt_ - Ig_prev_;
+    double Id_new = 2.0 * (ev.Qd - Qd_prev_) / dt_ - Id_cap_prev_;
+    double Ib_new = 2.0 * (ev.Qb - Qb_prev_) / dt_ - Ib_prev_;
+
+    Qg_prev_ = ev.Qg; Qd_prev_ = ev.Qd; Qb_prev_ = ev.Qb;
+    Ig_prev_ = Ig_new; Id_cap_prev_ = Id_new; Ib_prev_ = Ib_new;
+}
+
 } // namespace neospice

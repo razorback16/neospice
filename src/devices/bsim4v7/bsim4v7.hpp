@@ -23,6 +23,13 @@ public:
         return { "id(" + name_ + ")" };
     }
 
+    // Transient companion model for intrinsic MOSFET charges (Qg, Qd, Qb)
+    void set_transient(double dt);
+    void clear_transient();
+    void set_integration_method(int method);
+    void accept_step_from_solution(const std::vector<double>& sol);
+    void init_dc_state(const std::vector<double>& sol);
+
 private:
     int32_t nd_, ng_, ns_, nb_;  // drain, gate, source, body
     BSIM4v7Params params_;
@@ -38,6 +45,14 @@ private:
     MatrixOffset off_[4][4];
 
     int32_t terminal(int i) const;
+
+    // Transient state
+    bool transient_ = false;
+    double dt_ = 0.0;
+    int integration_method_ = 0;
+    // Previous step charges
+    double Qg_prev_ = 0.0, Qd_prev_ = 0.0, Qb_prev_ = 0.0;
+    double Ig_prev_ = 0.0, Id_cap_prev_ = 0.0, Ib_prev_ = 0.0;
 };
 
 } // namespace neospice
