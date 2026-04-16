@@ -116,13 +116,11 @@ TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
 }
 
 // ---------------------------------------------------------------------------
-// MOSFET tests — our BSIM4v7 is a simplified long-channel model
-// (~30 params vs ngspice's ~400). After fixing the MNA stamping sign
-// (Norton RHS) and mobility formula (BSIM4 mobMod=0), the NMOS DC
-// current is still ~7-8x higher than ngspice because we omit Abulk,
-// RDSW, polysi-depletion, velocity overshoot, and other short-channel
-// effects. The current is in the right order of magnitude and right
-// direction; tolerances below are intentionally generous to bound it.
+// MOSFET tests — BSIM4v7 short-channel physics now ported (Milestone 2.5):
+// Abulk bulk-charge correction, RDSW source/drain resistance, beta/gche/Idl
+// channel-conductance form with Rds feedback. Remaining ~3.65× Ids error
+// comes from omitted VACLM, VADIBL, velocity overshoot, polysi-depletion,
+// and pocket-implant effects — Milestone 3 work.
 // ---------------------------------------------------------------------------
 
 TEST_F(NgspiceCompareTest, NMOS_DC_IV) {
@@ -130,10 +128,10 @@ TEST_F(NgspiceCompareTest, NMOS_DC_IV) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    // Simplified BSIM4v7 overpredicts Ids ~8x vs ngspice's full model.
-    // We accept order-of-magnitude agreement until short-channel effects
-    // (Abulk, RDSW, etc.) are implemented.
-    auto cmp = compare_dc(ng_result, cs_result, {10.0, 1e-6});
+    // Post-M2.5: Ids overshoot reduced from ~8× to ~3.65× vs ngspice.
+    // Tolerance of 5.0 passes with headroom; tighten further once M3
+    // velocity-overshoot and channel-length-modulation physics land.
+    auto cmp = compare_dc(ng_result, cs_result, {5.0, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
