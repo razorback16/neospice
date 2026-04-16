@@ -153,6 +153,57 @@ BSIM4v7EvalResult bsim4v7_evaluate(
         CLM = 1.0 + p.PCLM * std::log(1.0 + (Vds - Vds_eff) / (p.PCLM * Vdsat + 1e-20));
     }
 
+    // --- Early-voltage output resistance (ngspice b4v7ld.c:1826-1924) ---
+    // Simplified additive combination:  1/Va = 1/VACLM + 1/VADIBL,
+    // then gds_early = Ids / Va.  ngspice's full form applies VADIBL as a
+    // multiplicative factor on Idl and VACLM as a log-factor on Idsa; we
+    // use the textbook parallel-Early-voltage form to capture the first-
+    // order output-conductance magnitude without re-deriving the full
+    // multiplicative Ids(Vds) expansion.  CLM already multiplies Ids and
+    // Ids_dVd (pre-CLM FD) below, so Early-voltage gds enters additively.
+    //
+    // litl (characteristic length) from ngspice b4v7temp.c:1295 with
+    // mtrlMod=0 and epsrox=3.9: sqrt(3.0 * 3.9 / epsrox * XJ * TOXE) ->
+    // sqrt(3·XJ·TOXE) ≈ 30 nm for TOXE=2nm, XJ=150nm.
+    double VACLM = 0.0;
+    if (p.PCLM > 0.0 && Vds > Vdsat) {
+        double diffVds = Vds - Vds_eff;
+        VACLM = EsatL * (Vgst_eff + 2.0 * Vt) * diffVds /
+                (p.PCLM * (EsatL + Vgst_eff + 2.0 * Vt));
+    }
+    double VADIBL = 0.0;
+    if (p.PDIBLC1 > 0.0 || p.PDIBLC2 > 0.0) {
+        // thetaRout uses ngspice's exponential DIBL decay
+        // (b4v7temp.c:1446-1469): characteristic length tmp =
+        // sqrt(epssub/epsox · TOXE · Xdep0), then
+        // T0 = DROUT·Leff/tmp,  T5 = exp(T0)/(exp(T0)-1)^2,
+        // thetaRout = PDIBLC1·T5 + PDIBLC2.  Linear
+        // `1 + DROUT·Leff/litl` approximation grossly overstates
+        // thetaRout for sub-µm L (factor ~30 off), yielding VADIBL
+        // ≤ 1 V.  Use the exponential form.
+        double Xdep = std::sqrt(2.0 * EPSSUB * 0.4 / (Q_ELEC * p.NDEP * 1.0e6));
+        double tmp_dibl = std::sqrt((EPSSUB / EPSOX) * p.TOXE * Xdep);
+        double T0 = (tmp_dibl > 1e-18) ? p.DROUT * Leff / tmp_dibl : 40.0;
+        double T5;
+        if (T0 < 40.0) {
+            double e_T0 = std::exp(T0);
+            double denom = (e_T0 - 1.0) * (e_T0 - 1.0);
+            if (denom < 1e-30) denom = 1e-30;
+            T5 = e_T0 / denom;
+        } else {
+            T5 = 0.0;  // deep saturation: DIBL ≈ PDIBLC2 only
+        }
+        double thetaRout = p.PDIBLC1 * T5 + p.PDIBLC2;
+        if (thetaRout > 1e-18)
+            VADIBL = (Vgst_eff + 2.0 * Vt) / thetaRout;
+    }
+    double Va_inv = 0.0;
+    if (VACLM  > 1e-12) Va_inv += 1.0 / VACLM;
+    if (VADIBL > 1e-12) Va_inv += 1.0 / VADIBL;
+    double Va = (Va_inv > 1e-18) ? 1.0 / Va_inv : 1e18;
+    double gds_early = Ids / Va;   // Ids is pre-CLM here; CLM only scales
+                                   // magnitude, Early voltage adds to gds.
+
     // --- Conductances (numerical derivatives via finite difference) ---
     // The closed-form derivatives of gche/(1+gche·Rds) with respect to Vgs, Vds
     // are lengthy; use a 1e-4 V forward difference for robustness. Acceptable
@@ -213,7 +264,7 @@ BSIM4v7EvalResult bsim4v7_evaluate(
 
     r.Ids = Ids;
     r.gm  = Ids_dVg * CLM;
-    r.gds = Ids_dVd * CLM;
+    r.gds = Ids_dVd * CLM + gds_early;
     if (r.gds < 0.0) r.gds = 0.0;   // physical floor; gds ≥ 0 in saturation
 
     // Body transconductance (unchanged approximation)
