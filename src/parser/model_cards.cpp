@@ -101,4 +101,50 @@ DiodeModel to_diode_model(const ModelCard& card) {
     return model;
 }
 
+BSIM4v7Params to_bsim4v7_params(const ModelCard& card) {
+    BSIM4v7Params p;
+    p.name = card.name;
+    p.is_pmos = (card.type == "pmos");
+
+    for (const auto& [key, val] : card.params) {
+        std::string k = key;  // already lowercase from parser
+        if (k == "vth0") p.VTH0 = val;
+        else if (k == "k1") p.K1 = val;
+        else if (k == "k2") p.K2 = val;
+        else if (k == "u0") p.U0 = val;
+        else if (k == "ua") p.UA = val;
+        else if (k == "ub") p.UB = val;
+        else if (k == "uc") p.UC = val;
+        else if (k == "vsat") p.VSAT = val;
+        else if (k == "toxe") p.TOXE = val;
+        else if (k == "toxp") p.TOXP = val;
+        else if (k == "toxm") p.TOXM = val;
+        else if (k == "ndep") p.NDEP = val;
+        else if (k == "nfactor") p.NFACTOR = val;
+        else if (k == "eta0") p.ETA0 = val;
+        else if (k == "dsub") p.DSUB = val;
+        else if (k == "pclm") p.PCLM = val;
+        else if (k == "pdiblc1") p.PDIBLC1 = val;
+        else if (k == "pdiblc2") p.PDIBLC2 = val;
+        else if (k == "delta") p.DELTA = val;
+        else if (k == "rdsw") p.RDSW = val;
+        else if (k == "cgso") p.CGSO = val;
+        else if (k == "cgdo") p.CGDO = val;
+        else if (k == "cgbo") p.CGBO = val;
+        else if (k == "cj") p.CJ = val;
+        else if (k == "cjsw") p.CJSW = val;
+        else if (k == "cjswg") p.CJSWG = val;
+        else if (k == "mj") p.MJ = val;
+        else if (k == "mjsw") p.MJSW = val;
+        else if (k == "pb") p.PB = val;
+        else if (k == "pbsw") p.PBSW = val;
+        else if (k == "tnom") p.TNOM = val;
+        else if (k == "ags") p.AGS = val;
+        else if (k == "a0") p.A0 = val;
+        else if (k == "eu") p.EU = val;
+        // ... additional params can be added as needed
+    }
+    return p;
+}
+
 } // namespace neospice
