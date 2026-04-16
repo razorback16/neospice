@@ -1,0 +1,6 @@
+RC Lowpass
+V1 in 0 PULSE(0 5 0 1n 1n 10u 20u)
+R1 in out 1k
+C1 out 0 1u
+.tran 0.1u 50u
+.end

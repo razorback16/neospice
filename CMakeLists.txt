@@ -37,3 +37,6 @@ if(CUDASPICE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+add_executable(cudaspice cli/main.cpp)
+target_link_libraries(cudaspice PRIVATE cudaspice_lib)

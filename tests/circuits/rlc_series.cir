@@ -1,0 +1,7 @@
+RLC Series
+V1 in 0 PULSE(0 1 0 1n 1n 5u 10u)
+R1 in n1 100
+L1 n1 n2 1m
+C1 n2 0 1n
+.tran 1n 20u
+.end
