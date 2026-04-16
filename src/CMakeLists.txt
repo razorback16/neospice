@@ -44,3 +44,5 @@ target_link_libraries(neospice_lib PUBLIC
 if(OpenMP_CXX_FOUND)
     target_link_libraries(neospice_lib PUBLIC OpenMP::OpenMP_CXX)
 endif()
+
+add_subdirectory(devices/bsim4v7)
