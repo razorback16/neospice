@@ -6,6 +6,7 @@ add_library(bsim4v7_obj OBJECT
     bsim4v7_param.cpp
     bsim4v7_mpar.cpp
     bsim4v7_check.cpp
+    bsim4v7_geo.cpp
 )
 target_include_directories(bsim4v7_obj PUBLIC
     ${CMAKE_SOURCE_DIR}/src
