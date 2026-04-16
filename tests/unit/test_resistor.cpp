@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "devices/resistor.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(Resistor, StampPattern) {
     Resistor r("R1", 0, 1, 1000.0);

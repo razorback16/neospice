@@ -3,7 +3,7 @@
 #include <cmath>
 #include <limits>
 
-namespace cudaspice {
+namespace neospice {
 
 namespace {
 
@@ -211,4 +211,4 @@ CompareResult compare_ac(const ACResult& expected, const ACResult& actual, Toler
     return result;
 }
 
-} // namespace cudaspice
+} // namespace neospice

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include "api/cudaspice.hpp"
+#include "api/neospice.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(SimulatorAPI, ParseAndRunDC) {
     Simulator sim;

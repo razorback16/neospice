@@ -10,7 +10,7 @@ FetchContent_MakeAvailable(googletest)
 
 include(GoogleTest)
 
-add_executable(cudaspice_tests
+add_executable(neospice_tests
     unit/test_smoke.cpp
     unit/test_matrix.cpp
     unit/test_klu_solver.cpp
@@ -36,16 +36,16 @@ add_executable(cudaspice_tests
     framework/comparator.cpp
 )
 
-target_link_libraries(cudaspice_tests PRIVATE
+target_link_libraries(neospice_tests PRIVATE
     gtest_main
-    cudaspice_lib
+    neospice_lib
 )
 
-target_include_directories(cudaspice_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(neospice_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_compile_definitions(cudaspice_tests PRIVATE
+target_compile_definitions(neospice_tests PRIVATE
     NGSPICE_BINARY="/usr/bin/ngspice"
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )
 
-gtest_discover_tests(cudaspice_tests)
+gtest_discover_tests(neospice_tests)

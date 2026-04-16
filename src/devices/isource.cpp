@@ -1,7 +1,7 @@
 #include "devices/isource.hpp"
 #include <cmath>
 
-namespace cudaspice {
+namespace neospice {
 
 ISource::ISource(std::string name, int32_t node_pos, int32_t node_neg, double dc_value)
     : Device(std::move(name)), np_(node_pos), nn_(node_neg), dc_value_(dc_value)
@@ -74,4 +74,4 @@ void ISource::evaluate(const std::vector<double>& /*voltages*/,
     add_rhs_if_valid(rhs, nn_,  I);
 }
 
-} // namespace cudaspice
+} // namespace neospice

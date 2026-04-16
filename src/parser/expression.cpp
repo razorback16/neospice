@@ -4,7 +4,7 @@
 #include <cctype>
 #include <stdexcept>
 
-namespace cudaspice {
+namespace neospice {
 
 namespace {
 
@@ -138,4 +138,4 @@ double eval_expression(const std::string& expr,
     return parser.parse();
 }
 
-} // namespace cudaspice
+} // namespace neospice

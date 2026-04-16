@@ -9,14 +9,14 @@
 #include <stdexcept>
 #include <filesystem>
 
-namespace cudaspice {
+namespace neospice {
 
 NgspiceRunner::NgspiceRunner(const std::string& binary_path)
     : binary_(binary_path) {}
 
 std::string NgspiceRunner::run_batch(const std::string& cir_path) {
     // Create a temporary directory for output
-    auto tmp_dir = std::filesystem::temp_directory_path() / "cudaspice_ngspice_XXXXXX";
+    auto tmp_dir = std::filesystem::temp_directory_path() / "neospice_ngspice_XXXXXX";
     std::string tmp_dir_str = tmp_dir.string();
     char* dir = mkdtemp(tmp_dir_str.data());
     if (!dir) {
@@ -204,4 +204,4 @@ ACResult NgspiceRunner::run_ac(const std::string& cir_path) {
     return result;
 }
 
-} // namespace cudaspice
+} // namespace neospice

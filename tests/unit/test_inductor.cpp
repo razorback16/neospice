@@ -2,7 +2,7 @@
 #include "devices/inductor.hpp"
 #include "core/matrix.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(Inductor, StampPattern) {
     // Between nodes 0 and 1, branch index 2 → 5 entries

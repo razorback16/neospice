@@ -4,7 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace cudaspice {
+namespace neospice {
 
 NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
                           std::vector<double>& solution,
@@ -91,4 +91,4 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
     return {false, opts.max_iter, solution};
 }
 
-} // namespace cudaspice
+} // namespace neospice

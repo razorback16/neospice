@@ -2,7 +2,7 @@
 #include "core/circuit.hpp"
 #include "core/klu_solver.hpp"
 
-namespace cudaspice {
+namespace neospice {
 
 NewtonResult gmin_stepping(Circuit& ckt, KLUSolver& solver,
                            std::vector<double>& solution,
@@ -66,4 +66,4 @@ NewtonResult source_stepping(Circuit& ckt, KLUSolver& solver,
     return {false, 0, solution};
 }
 
-} // namespace cudaspice
+} // namespace neospice

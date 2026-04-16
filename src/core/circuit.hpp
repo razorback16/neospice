@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace cudaspice {
+namespace neospice {
 
 struct AnalysisCommand {
     enum Type { OP, TRAN, AC, DC_SWEEP };
@@ -54,4 +54,4 @@ private:
     std::unique_ptr<SparsityPattern> pattern_;
 };
 
-} // namespace cudaspice
+} // namespace neospice

@@ -2,7 +2,7 @@
 #include "devices/isource.hpp"
 #include "core/matrix.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(ISource, NoMatrixEntries) {
     ISource is("I1", 0, GROUND_INTERNAL, 0.001);

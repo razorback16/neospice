@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "framework/comparator.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(Comparator, IdenticalResultsPass) {
     TransientResult a, b;

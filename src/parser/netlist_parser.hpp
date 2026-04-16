@@ -2,7 +2,7 @@
 #include "core/circuit.hpp"
 #include <string>
 
-namespace cudaspice {
+namespace neospice {
 
 class NetlistParser {
 public:
@@ -10,4 +10,4 @@ public:
     Circuit parse_file(const std::string& filepath);
 };
 
-} // namespace cudaspice
+} // namespace neospice

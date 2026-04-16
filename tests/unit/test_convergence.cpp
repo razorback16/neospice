@@ -5,7 +5,7 @@
 #include "devices/resistor.hpp"
 #include "devices/diode.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 using std::make_unique;
 
 TEST(Convergence, DiodeDC) {

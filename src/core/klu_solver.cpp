@@ -2,7 +2,7 @@
 #include <suitesparse/klu.h>
 #include <stdexcept>
 
-namespace cudaspice {
+namespace neospice {
 
 KLUSolver::KLUSolver()
     : common_(new klu_common),
@@ -128,4 +128,4 @@ void KLUSolver::solve(std::vector<double>& rhs)
     }
 }
 
-}  // namespace cudaspice
+}  // namespace neospice

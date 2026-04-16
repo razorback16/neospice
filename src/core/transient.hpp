@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace cudaspice {
+namespace neospice {
 
 struct TransientResult {
     std::vector<double> time;
@@ -14,4 +14,4 @@ struct TransientResult {
 
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop);
 
-} // namespace cudaspice
+} // namespace neospice

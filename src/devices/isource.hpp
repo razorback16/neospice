@@ -2,7 +2,7 @@
 #include "devices/device.hpp"
 #include "devices/vsource.hpp"  // for PulseParams, SinParams, SourceFunction
 
-namespace cudaspice {
+namespace neospice {
 
 // ---------------------------------------------------------------------------
 // ISource — ideal current source (RHS-only stamp, no branch variable)
@@ -49,4 +49,4 @@ private:
     double         current_time_ = 0.0;
 };
 
-} // namespace cudaspice
+} // namespace neospice

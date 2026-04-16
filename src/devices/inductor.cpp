@@ -1,7 +1,7 @@
 #include "devices/inductor.hpp"
 #include <stdexcept>
 
-namespace cudaspice {
+namespace neospice {
 
 Inductor::Inductor(std::string name, int32_t node_pos, int32_t node_neg, double inductance)
     : Device(std::move(name)), np_(node_pos), nn_(node_neg), inductance_(inductance)
@@ -108,4 +108,4 @@ std::vector<std::string> Inductor::output_currents() const {
     return { "i(" + name_ + ")" };
 }
 
-} // namespace cudaspice
+} // namespace neospice

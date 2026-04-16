@@ -13,7 +13,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace cudaspice {
+namespace neospice {
 
 namespace {
 
@@ -391,4 +391,4 @@ Circuit NetlistParser::parse_file(const std::string& filepath) {
     return parse(oss.str());
 }
 
-} // namespace cudaspice
+} // namespace neospice

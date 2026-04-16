@@ -5,7 +5,7 @@
 #include "devices/isource.hpp"
 #include "devices/resistor.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 using std::make_unique;
 
 TEST(DC, ResistorDivider) {

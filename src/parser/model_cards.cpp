@@ -4,7 +4,7 @@
 #include <sstream>
 #include <cctype>
 
-namespace cudaspice {
+namespace neospice {
 
 static std::string to_lower(const std::string& s) {
     std::string result = s;
@@ -101,4 +101,4 @@ DiodeModel to_diode_model(const ModelCard& card) {
     return model;
 }
 
-} // namespace cudaspice
+} // namespace neospice

@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace cudaspice {
+namespace neospice {
 
 class NgspiceRunner {
 public:
@@ -31,4 +31,4 @@ private:
     RawData parse_raw(const std::string& raw_path);
 };
 
-} // namespace cudaspice
+} // namespace neospice

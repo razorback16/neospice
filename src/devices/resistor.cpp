@@ -1,6 +1,6 @@
 #include "devices/resistor.hpp"
 
-namespace cudaspice {
+namespace neospice {
 
 Resistor::Resistor(std::string name, int32_t node_pos, int32_t node_neg, double resistance)
     : Device(std::move(name)), np_(node_pos), nn_(node_neg), resistance_(resistance)
@@ -39,4 +39,4 @@ void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
     add_if_valid(G, off_nn_,  g);
 }
 
-} // namespace cudaspice
+} // namespace neospice

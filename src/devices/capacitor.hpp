@@ -1,7 +1,7 @@
 #pragma once
 #include "devices/device.hpp"
 
-namespace cudaspice {
+namespace neospice {
 
 class Capacitor : public Device {
 public:
@@ -35,4 +35,4 @@ private:
     MatrixOffset off_pp_ = -1, off_pn_ = -1, off_np_ = -1, off_nn_ = -1;
 };
 
-} // namespace cudaspice
+} // namespace neospice

@@ -5,7 +5,7 @@
 #include <cctype>
 #include <cstdlib>
 
-namespace cudaspice {
+namespace neospice {
 
 static std::string to_lower(const std::string& s) {
     std::string result = s;
@@ -131,4 +131,4 @@ double parse_spice_number(const std::string& str) {
     return val;
 }
 
-} // namespace cudaspice
+} // namespace neospice

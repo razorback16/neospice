@@ -2,7 +2,7 @@
 #include "core/klu_solver.hpp"
 #include "core/matrix.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 // Helper: build the 2x2 fully-dense pattern and stamp values.
 //

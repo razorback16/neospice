@@ -2,7 +2,7 @@
 #include "framework/ngspice_runner.hpp"
 #include <cstdlib>
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(NgspiceRunner, DISABLED_RunDC) {
     NgspiceRunner ngspice(NGSPICE_BINARY);

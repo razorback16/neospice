@@ -3,7 +3,7 @@
 #include <string>
 #include <cmath>
 
-namespace cudaspice {
+namespace neospice {
 
 // ---------------------------------------------------------------------------
 // DiodeModel — SPICE-style diode model parameters
@@ -54,4 +54,4 @@ private:
     double last_cd_ = 0.0;     // cached small-signal capacitance for AC
 };
 
-} // namespace cudaspice
+} // namespace neospice

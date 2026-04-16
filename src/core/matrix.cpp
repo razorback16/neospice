@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace cudaspice {
+namespace neospice {
 
 // ---------------------------------------------------------------------------
 // SparsityPattern
@@ -104,4 +104,4 @@ double NumericMatrix::value(MatrixOffset offset) const {
     return values_[offset];
 }
 
-}  // namespace cudaspice
+}  // namespace neospice

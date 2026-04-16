@@ -4,7 +4,7 @@
 #include <utility>
 #include <stdexcept>
 
-namespace cudaspice {
+namespace neospice {
 
 /// Compressed Sparse Column data (structure only, no values)
 struct CSCData {
@@ -81,4 +81,4 @@ private:
     std::vector<double> values_;
 };
 
-}  // namespace cudaspice
+}  // namespace neospice

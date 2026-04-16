@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(cudaspice LANGUAGES C CXX)
+project(neospice LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,11 +32,11 @@ find_package(OpenMP)
 
 add_subdirectory(src)
 
-option(CUDASPICE_BUILD_TESTS "Build tests" ON)
-if(CUDASPICE_BUILD_TESTS)
+option(NEOSPICE_BUILD_TESTS "Build tests" ON)
+if(NEOSPICE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
 
-add_executable(cudaspice cli/main.cpp)
-target_link_libraries(cudaspice PRIVATE cudaspice_lib)
+add_executable(neospice cli/main.cpp)
+target_link_libraries(neospice PRIVATE neospice_lib)

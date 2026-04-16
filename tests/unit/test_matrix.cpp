@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "core/matrix.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 // ---------------------------------------------------------------------------
 // SparsityBuilder tests

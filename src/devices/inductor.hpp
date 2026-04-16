@@ -1,7 +1,7 @@
 #pragma once
 #include "devices/device.hpp"
 
-namespace cudaspice {
+namespace neospice {
 
 class Inductor : public Device {
 public:
@@ -45,4 +45,4 @@ private:
     MatrixOffset off_br_br_ = -1;  // (branch, branch)
 };
 
-} // namespace cudaspice
+} // namespace neospice

@@ -2,7 +2,7 @@
 #include "core/newton.hpp"
 #include <vector>
 
-namespace cudaspice {
+namespace neospice {
 
 class Circuit;
 class KLUSolver;
@@ -15,4 +15,4 @@ NewtonResult source_stepping(Circuit& ckt, KLUSolver& solver,
                              std::vector<double>& solution,
                              const SimOptions& opts);
 
-} // namespace cudaspice
+} // namespace neospice

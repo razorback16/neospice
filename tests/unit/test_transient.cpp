@@ -3,7 +3,7 @@
 #include "parser/netlist_parser.hpp"
 #include <cmath>
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(Transient, RCStepResponse) {
     // RC circuit: V1=5V DC, R=1k, C=1uF -> tau = 1ms

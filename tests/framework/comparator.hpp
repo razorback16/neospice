@@ -4,7 +4,7 @@
 #include "core/ac.hpp"
 #include <string>
 
-namespace cudaspice {
+namespace neospice {
 
 struct Tolerance {
     double relative = 1e-3;
@@ -22,4 +22,4 @@ CompareResult compare_dc(const DCResult& expected, const DCResult& actual, Toler
 CompareResult compare_transient(const TransientResult& expected, const TransientResult& actual, Tolerance tol = {});
 CompareResult compare_ac(const ACResult& expected, const ACResult& actual, Tolerance tol = {});
 
-} // namespace cudaspice
+} // namespace neospice

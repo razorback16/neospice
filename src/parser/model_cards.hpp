@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace cudaspice {
+namespace neospice {
 
 struct ModelCard {
     std::string name;
@@ -15,4 +15,4 @@ struct ModelCard {
 ModelCard parse_model_card(const std::vector<std::string>& tokens);
 DiodeModel to_diode_model(const ModelCard& card);
 
-} // namespace cudaspice
+} // namespace neospice

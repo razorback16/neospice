@@ -2,7 +2,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace cudaspice {
+namespace neospice {
 double eval_expression(const std::string& expr,
                        const std::unordered_map<std::string, double>& params);
-} // namespace cudaspice
+} // namespace neospice

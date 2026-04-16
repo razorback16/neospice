@@ -6,7 +6,7 @@
 #include "devices/inductor.hpp"
 #include <algorithm>
 
-namespace cudaspice {
+namespace neospice {
 
 static std::string to_lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
@@ -79,4 +79,4 @@ DCResult solve_dc(Circuit& ckt) {
     return dc_result;
 }
 
-} // namespace cudaspice
+} // namespace neospice

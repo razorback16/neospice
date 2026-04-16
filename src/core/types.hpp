@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <cmath>
 
-namespace cudaspice {
+namespace neospice {
 using NodeIndex = int32_t;
 constexpr NodeIndex GROUND = 0;
 using MatrixOffset = int32_t;
@@ -38,4 +38,4 @@ class ParseError : public std::runtime_error {
 class ConvergenceError : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
-} // namespace cudaspice
+} // namespace neospice

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "parser/tokenizer.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(Tokenizer, SimpleLine) {
     auto lines = tokenize("R1 net1 0 1k\n");

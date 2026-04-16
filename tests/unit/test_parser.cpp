@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "parser/netlist_parser.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(Parser, ResistorDivider) {
     std::string netlist = R"(

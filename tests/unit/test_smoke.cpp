@@ -6,6 +6,6 @@ TEST(Smoke, BuildWorks) {
 }
 
 TEST(Smoke, ThermalVoltage) {
-    double vt = cudaspice::thermal_voltage();
+    double vt = neospice::thermal_voltage();
     EXPECT_NEAR(vt, 0.02586, 0.001);
 }

@@ -2,7 +2,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace cudaspice {
+namespace neospice {
 
 VSource::VSource(std::string name, int32_t node_pos, int32_t node_neg, double dc_value)
     : Device(std::move(name)), np_(node_pos), nn_(node_neg), dc_value_(dc_value)
@@ -111,4 +111,4 @@ void VSource::ac_stamp(const std::vector<double>& /*voltages*/,
     add_if_valid(G, off_branch_nn_, -1.0);
 }
 
-} // namespace cudaspice
+} // namespace neospice

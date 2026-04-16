@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace cudaspice {
+namespace neospice {
 
 constexpr int32_t GROUND_INTERNAL = -1;  // internal index for ground node
 
@@ -44,4 +44,4 @@ protected:
     }
 };
 
-} // namespace cudaspice
+} // namespace neospice

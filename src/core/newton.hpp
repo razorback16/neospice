@@ -2,7 +2,7 @@
 #include "core/types.hpp"
 #include <vector>
 
-namespace cudaspice {
+namespace neospice {
 
 class Circuit;
 class KLUSolver;
@@ -17,4 +17,4 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts);
 
-} // namespace cudaspice
+} // namespace neospice

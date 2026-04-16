@@ -2,7 +2,7 @@
 #include <cmath>
 #include <algorithm>
 
-namespace cudaspice {
+namespace neospice {
 
 Diode::Diode(std::string name, int32_t node_anode, int32_t node_cathode,
              const DiodeModel& model)
@@ -150,4 +150,4 @@ std::vector<std::string> Diode::output_currents() const {
     return { "i(" + name_ + ")" };
 }
 
-} // namespace cudaspice
+} // namespace neospice

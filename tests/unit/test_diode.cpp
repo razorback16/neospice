@@ -2,7 +2,7 @@
 #include "devices/diode.hpp"
 #include "core/matrix.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 // Default model helper
 static DiodeModel default_model() {

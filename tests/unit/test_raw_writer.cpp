@@ -4,7 +4,7 @@
 #include <fstream>
 #include <filesystem>
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(RawWriter, WritesTransientFile) {
     TransientResult result;

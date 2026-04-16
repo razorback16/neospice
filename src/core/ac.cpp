@@ -8,7 +8,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace cudaspice {
+namespace neospice {
 
 static std::string to_lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
@@ -224,4 +224,4 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     return ac_result;
 }
 
-} // namespace cudaspice
+} // namespace neospice

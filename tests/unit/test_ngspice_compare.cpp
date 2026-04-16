@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
-#include "api/cudaspice.hpp"
+#include "api/neospice.hpp"
 #include "framework/ngspice_runner.hpp"
 #include "framework/comparator.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 class NgspiceCompareTest : public ::testing::Test {
 protected:

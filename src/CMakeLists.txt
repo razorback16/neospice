@@ -1,4 +1,4 @@
-add_library(cudaspice_lib
+add_library(neospice_lib
     core/types.cpp
     core/matrix.cpp
     core/klu_solver.cpp
@@ -18,19 +18,19 @@ add_library(cudaspice_lib
     parser/expression.cpp
     parser/model_cards.cpp
     parser/netlist_parser.cpp
-    api/cudaspice.cpp
+    api/neospice.cpp
     output/raw_writer.cpp
 )
 
-target_include_directories(cudaspice_lib PUBLIC
+target_include_directories(neospice_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_include_directories(cudaspice_lib PRIVATE
+target_include_directories(neospice_lib PRIVATE
     ${SLEEF_INCLUDE_DIR}
 )
 
-target_link_libraries(cudaspice_lib PUBLIC
+target_link_libraries(neospice_lib PUBLIC
     SuiteSparse::KLU
     SuiteSparse::AMD
     SuiteSparse::COLAMD
@@ -41,5 +41,5 @@ target_link_libraries(cudaspice_lib PUBLIC
 )
 
 if(OpenMP_CXX_FOUND)
-    target_link_libraries(cudaspice_lib PUBLIC OpenMP::OpenMP_CXX)
+    target_link_libraries(neospice_lib PUBLIC OpenMP::OpenMP_CXX)
 endif()

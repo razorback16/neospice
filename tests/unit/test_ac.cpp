@@ -3,7 +3,7 @@
 #include "parser/netlist_parser.hpp"
 #include <cmath>
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(AC, RCLowpass) {
     // RC lowpass: R=1k, C=1nF -> fc = 1/(2*pi*RC) ~ 159kHz

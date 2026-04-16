@@ -5,7 +5,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace cudaspice {
+namespace neospice {
 
 struct ACResult {
     std::vector<double> frequency;
@@ -16,4 +16,4 @@ struct ACResult {
 ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
                   int npoints, double fstart, double fstop);
 
-} // namespace cudaspice
+} // namespace neospice

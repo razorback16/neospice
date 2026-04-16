@@ -6,7 +6,7 @@
 #include <string>
 #include <map>
 
-namespace cudaspice {
+namespace neospice {
 
 static std::string current_date_string() {
     std::time_t now = std::time(nullptr);
@@ -41,7 +41,7 @@ void write_raw(const std::string& filepath, const TransientResult& result) {
     std::size_t nvars = var_names.size();
 
     // Write text header
-    out << "Title: CudaSPICE Transient Analysis\n";
+    out << "Title: neospice Transient Analysis\n";
     out << "Date: " << current_date_string() << "\n";
     out << "Plotname: Transient Analysis\n";
     out << "Flags: real\n";
@@ -93,7 +93,7 @@ void write_raw(const std::string& filepath, const DCResult& result) {
 
     std::size_t nvars = var_names.size();
 
-    out << "Title: CudaSPICE DC Analysis\n";
+    out << "Title: neospice DC Analysis\n";
     out << "Date: " << current_date_string() << "\n";
     out << "Plotname: DC Operating Point\n";
     out << "Flags: real\n";
@@ -140,7 +140,7 @@ void write_raw(const std::string& filepath, const ACResult& result) {
     std::size_t npoints = result.frequency.size();
     std::size_t nvars = var_names.size();
 
-    out << "Title: CudaSPICE AC Analysis\n";
+    out << "Title: neospice AC Analysis\n";
     out << "Date: " << current_date_string() << "\n";
     out << "Plotname: AC Analysis\n";
     out << "Flags: complex\n";
@@ -178,4 +178,4 @@ void write_raw(const std::string& filepath, const ACResult& result) {
     }
 }
 
-} // namespace cudaspice
+} // namespace neospice

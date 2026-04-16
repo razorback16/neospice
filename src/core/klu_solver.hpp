@@ -3,7 +3,7 @@
 #include <suitesparse/klu.h>
 #include <vector>
 
-namespace cudaspice {
+namespace neospice {
 
 /// Thin wrapper around KLU that provides symbolic analysis, numeric
 /// factorization, refactorization, and triangular solve.
@@ -50,4 +50,4 @@ private:
     std::vector<int32_t> row_idx_;
 };
 
-}  // namespace cudaspice
+}  // namespace neospice

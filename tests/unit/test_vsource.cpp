@@ -2,7 +2,7 @@
 #include "devices/vsource.hpp"
 #include "core/klu_solver.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 // ---------------------------------------------------------------------------
 // stamp_pattern — with node0 and GROUND, branch=1 → 2x2 MNA

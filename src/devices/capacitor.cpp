@@ -1,6 +1,6 @@
 #include "devices/capacitor.hpp"
 
-namespace cudaspice {
+namespace neospice {
 
 Capacitor::Capacitor(std::string name, int32_t node_pos, int32_t node_neg, double capacitance)
     : Device(std::move(name)), np_(node_pos), nn_(node_neg), cap_(capacitance)
@@ -80,4 +80,4 @@ void Capacitor::init_dc_state(const std::vector<double>& sol) {
     i_prev_ = 0.0;
 }
 
-} // namespace cudaspice
+} // namespace neospice

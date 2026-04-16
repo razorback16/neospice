@@ -2,7 +2,7 @@
 #include "devices/device.hpp"
 #include <cmath>
 
-namespace cudaspice {
+namespace neospice {
 
 // ---------------------------------------------------------------------------
 // Shared source-function types (used by VSource and ISource)
@@ -79,4 +79,4 @@ private:
     MatrixOffset off_branch_nn_ = -1;  // (branch, nn)
 };
 
-} // namespace cudaspice
+} // namespace neospice

@@ -1,4 +1,4 @@
-#include "api/cudaspice.hpp"
+#include "api/neospice.hpp"
 #include "output/raw_writer.hpp"
 #include <iostream>
 #include <string>
@@ -6,7 +6,7 @@
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: cudaspice <netlist.cir> [-o output.raw]\n";
+        std::cerr << "Usage: neospice <netlist.cir> [-o output.raw]\n";
         return 1;
     }
 
@@ -25,27 +25,27 @@ int main(int argc, char* argv[]) {
     }
 
     try {
-        cudaspice::Simulator sim;
+        neospice::Simulator sim;
         auto ckt = sim.load(input_path);
         auto result = sim.run(ckt);
 
         if (result.transient) {
-            cudaspice::write_raw(output_path, *result.transient);
+            neospice::write_raw(output_path, *result.transient);
             std::cout << "Transient results written to " << output_path << "\n";
         } else if (result.dc) {
-            cudaspice::write_raw(output_path, *result.dc);
+            neospice::write_raw(output_path, *result.dc);
             std::cout << "DC results written to " << output_path << "\n";
         } else if (result.ac) {
-            cudaspice::write_raw(output_path, *result.ac);
+            neospice::write_raw(output_path, *result.ac);
             std::cout << "AC results written to " << output_path << "\n";
         } else {
             std::cerr << "No analysis commands found in netlist\n";
             return 1;
         }
-    } catch (const cudaspice::ParseError& e) {
+    } catch (const neospice::ParseError& e) {
         std::cerr << "Parse error: " << e.what() << "\n";
         return 1;
-    } catch (const cudaspice::ConvergenceError& e) {
+    } catch (const neospice::ConvergenceError& e) {
         std::cerr << "Convergence error: " << e.what() << "\n";
         return 1;
     } catch (const std::exception& e) {

@@ -3,7 +3,7 @@
 #include "devices/inductor.hpp"
 #include <stdexcept>
 
-namespace cudaspice {
+namespace neospice {
 
 int32_t Circuit::node(const std::string& name) {
     // Treat "0", "gnd", "GND" as ground
@@ -75,4 +75,4 @@ void Circuit::finalize() {
     }
 }
 
-} // namespace cudaspice
+} // namespace neospice

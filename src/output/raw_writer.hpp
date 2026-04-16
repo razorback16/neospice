@@ -4,8 +4,8 @@
 #include "core/ac.hpp"
 #include <string>
 
-namespace cudaspice {
+namespace neospice {
 void write_raw(const std::string& filepath, const TransientResult& result);
 void write_raw(const std::string& filepath, const DCResult& result);
 void write_raw(const std::string& filepath, const ACResult& result);
-} // namespace cudaspice
+} // namespace neospice

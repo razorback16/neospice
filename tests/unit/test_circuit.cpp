@@ -3,7 +3,7 @@
 #include "devices/vsource.hpp"
 #include <gtest/gtest.h>
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(Circuit, NodeMapping) {
     Circuit ckt;

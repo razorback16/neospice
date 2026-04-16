@@ -2,7 +2,7 @@
 #include "devices/capacitor.hpp"
 #include "core/matrix.hpp"
 
-using namespace cudaspice;
+using namespace neospice;
 
 TEST(Capacitor, StampPattern) {
     // Two non-ground nodes: expect 4 non-zeros

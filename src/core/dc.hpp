@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace cudaspice {
+namespace neospice {
 
 struct DCResult {
     std::unordered_map<std::string, double> node_voltages;
@@ -12,4 +12,4 @@ struct DCResult {
 
 DCResult solve_dc(Circuit& ckt);
 
-} // namespace cudaspice
+} // namespace neospice
