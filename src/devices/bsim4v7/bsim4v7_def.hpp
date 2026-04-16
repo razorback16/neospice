@@ -3625,16 +3625,16 @@ int  BSIM4checkModel(BSIM4v7Model *model, BSIM4v7Instance *here,
                     Shim::Ckt *ckt);
 int  BSIM4PAeffGeo (double nf, int geo, int minSD,
                     double Weffcj, double DMCG, double DMCI, double DMDG,
-                    double *Aseff, double *Adeff,
-                    double *Pseff, double *Pdeff);
+                    double *Ps, double *Pd,
+                    double *As, double *Ad);
 int  BSIM4RdseffGeo(double nf, int geo, int rgeo, int minSD,
                     double Weffcj, double Rsh, double DMCG, double DMCI,
                     double DMDG, int Type, double *Rtot);
 int  BSIM4RdsEndIso(double Weffcj, double Rsh, double DMCG, double DMCI,
-                    double DMDG, double nuIntD, double nuEndD, int rgeo,
+                    double DMDG, double nuEnd, int rgeo,
                     int Type, double *Rend);
 int  BSIM4RdsEndSha(double Weffcj, double Rsh, double DMCG, double DMCI,
-                    double DMDG, double nuIntD, double nuEndD, int rgeo,
+                    double DMDG, double nuEnd, int rgeo,
                     int Type, double *Rend);
 int  BSIM4polyDepletion(double phi, double ngate, double epsgate,
                         double coxe, double Vgs, double *Vgs_eff,
