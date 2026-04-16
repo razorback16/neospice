@@ -3,6 +3,8 @@ add_library(cudaspice_lib
     core/matrix.cpp
     core/klu_solver.cpp
     devices/resistor.cpp
+    devices/vsource.cpp
+    devices/isource.cpp
 )
 
 target_include_directories(cudaspice_lib PUBLIC

@@ -1,0 +1,80 @@
+#pragma once
+#include "devices/device.hpp"
+#include <cmath>
+
+namespace cudaspice {
+
+// ---------------------------------------------------------------------------
+// Shared source-function types (used by VSource and ISource)
+// ---------------------------------------------------------------------------
+
+enum class SourceFunction { DC, PULSE, SIN };
+
+struct PulseParams {
+    double v1 = 0, v2 = 0, td = 0, tr = 0, tf = 0, pw = 0, per = 0;
+};
+
+struct SinParams {
+    double v0 = 0, va = 0, freq = 0, td = 0, theta = 0, phase = 0;
+};
+
+// ---------------------------------------------------------------------------
+// VSource — ideal voltage source with MNA branch variable
+// ---------------------------------------------------------------------------
+
+class VSource : public Device {
+public:
+    VSource(std::string name, int32_t node_pos, int32_t node_neg, double dc_value);
+
+    /// Assign the branch (extra) variable index in the MNA system.
+    void set_branch_index(int32_t idx);
+    int32_t branch_index() const { return branch_idx_; }
+
+    /// AC analysis parameters.
+    void set_ac(double mag, double phase_deg = 0.0);
+    double ac_mag() const { return ac_mag_; }
+    double ac_phase_rad() const { return ac_phase_deg_ * (M_PI / 180.0); }
+
+    /// Time-domain waveforms.
+    void set_pulse(PulseParams p);
+    void set_sin(SinParams p);
+
+    /// Called before evaluate() during transient analysis.
+    void set_time(double t) { current_time_ = t; }
+
+    /// Evaluate the source value at time t.
+    double value_at(double t) const;
+
+    // Device interface
+    int32_t extra_vars() const override { return 1; }
+    std::vector<std::string> output_currents() const override;
+
+    void stamp_pattern(SparsityBuilder& builder) const override;
+    void assign_offsets(const SparsityPattern& pattern) override;
+    void evaluate(const std::vector<double>& voltages,
+                  NumericMatrix& mat, std::vector<double>& rhs) override;
+
+private:
+    int32_t np_;           // positive node (GROUND_INTERNAL = -1)
+    int32_t nn_;           // negative node (GROUND_INTERNAL = -1)
+    double  dc_value_;
+    int32_t branch_idx_ = -1;  // index of the branch current variable
+
+    // AC
+    double ac_mag_       = 0.0;
+    double ac_phase_deg_ = 0.0;
+
+    // Transient
+    SourceFunction func_ = SourceFunction::DC;
+    PulseParams    pulse_;
+    SinParams      sin_;
+    double         current_time_ = 0.0;
+
+    // Cached offsets (assigned after pattern is built)
+    MatrixOffset off_np_branch_ = -1;  // (np, branch)
+    MatrixOffset off_nn_branch_ = -1;  // (nn, branch)
+    MatrixOffset off_branch_np_ = -1;  // (branch, np)
+    MatrixOffset off_branch_nn_ = -1;  // (branch, nn)
+};
+
+} // namespace cudaspice
