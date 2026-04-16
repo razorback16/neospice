@@ -43,7 +43,13 @@ struct BSIM4v7Params {
     double A0 = 1.0;       // Non-uniform depletion width coefficient
     double A1 = 0.0;       // First non-saturation factor
     double A2 = 1.0;       // Second non-saturation factor
-    double AGS = 0.2;      // Gate bias coefficient of Abulk
+    double AGS = 0.0;      // Gate bias coefficient of Abulk
+
+    // --- Abulk bulk-charge correction (b4v7set.c:249-306) ---
+    double B0 = 0.0;       // Narrow-width bulk charge offset
+    double B1 = 0.0;       // Narrow-width bulk charge denominator offset
+    double KETA = -0.047;  // Body-bias coefficient on Abulk (1/V)
+    double XJ = 0.15e-6;   // Junction depth (m)
 
     // --- Subthreshold ---
     double NFACTOR = 1.0;  // Subthreshold swing factor
@@ -107,9 +113,10 @@ struct BSIM4v7Params {
 
     // --- Parasitic resistance ---
     double RDSW = 200.0;   // Source/drain sheet resistance (ohm*um)
+    double RDSWMIN = 0.0;  // Minimum source/drain resistance (ohm*um)
     double RSH = 0.0;      // Source/drain sheet resistance
     double PRWB = 0.0;     // Body bias coefficient of RDSW
-    double PRWG = 0.0;     // Gate bias coefficient of RDSW
+    double PRWG = 1.0;     // Gate bias coefficient of RDSW
     double WR = 1.0;       // Width offset from Weff for Rds
 
     // Physical constants (derived, set during model init)
