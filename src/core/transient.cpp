@@ -6,8 +6,14 @@
 #include "devices/isource.hpp"
 #include "devices/capacitor.hpp"
 #include "devices/inductor.hpp"
+#include <algorithm>
 
 namespace cudaspice {
+
+static std::string to_lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
 
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     const int32_t n = ckt.num_vars();
@@ -62,20 +68,20 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     auto store_point = [&](double t, const std::vector<double>& sol) {
         tran_result.time.push_back(t);
         for (int32_t i = 0; i < num_nodes; ++i) {
-            std::string key = "v(" + ckt.node_name(i) + ")";
+            std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
             tran_result.voltages[key].push_back(sol[i]);
         }
         for (const auto& dev : ckt.devices()) {
             if (auto* vs = dynamic_cast<const VSource*>(dev.get())) {
                 int32_t br = vs->branch_index();
                 if (br >= 0 && br < n) {
-                    std::string key = "i(" + dev->name() + ")";
+                    std::string key = "i(" + to_lower(dev->name()) + ")";
                     tran_result.currents[key].push_back(sol[br]);
                 }
             } else if (auto* ind = dynamic_cast<const Inductor*>(dev.get())) {
                 int32_t br = ind->branch_index();
                 if (br >= 0 && br < n) {
-                    std::string key = "i(" + dev->name() + ")";
+                    std::string key = "i(" + to_lower(dev->name()) + ")";
                     tran_result.currents[key].push_back(sol[br]);
                 }
             }

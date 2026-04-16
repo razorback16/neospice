@@ -43,7 +43,7 @@ TEST(DC, BranchCurrentReported) {
     ckt.finalize();
     DCResult result = solve_dc(ckt);
     // Branch current through V1 should be reported
-    ASSERT_TRUE(result.branch_currents.count("i(V1)") > 0);
+    ASSERT_TRUE(result.branch_currents.count("i(v1)") > 0);
     // Current = 10V / 2000 ohms = 5mA
-    EXPECT_NEAR(std::abs(result.branch_currents["i(V1)"]), 5e-3, 1e-9);
+    EXPECT_NEAR(std::abs(result.branch_currents["i(v1)"]), 5e-3, 1e-9);
 }

@@ -4,8 +4,14 @@
 #include "core/klu_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
+#include <algorithm>
 
 namespace cudaspice {
+
+static std::string to_lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
 
 DCResult solve_dc(Circuit& ckt) {
     const int32_t n = ckt.num_vars();
@@ -49,7 +55,7 @@ DCResult solve_dc(Circuit& ckt) {
 
     // Node voltages
     for (int32_t i = 0; i < num_nodes; ++i) {
-        std::string key = "v(" + ckt.node_name(i) + ")";
+        std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
         dc_result.node_voltages[key] = solution[i];
     }
 
@@ -58,13 +64,13 @@ DCResult solve_dc(Circuit& ckt) {
         if (auto* vs = dynamic_cast<const VSource*>(dev.get())) {
             int32_t br = vs->branch_index();
             if (br >= 0 && br < n) {
-                std::string key = "i(" + dev->name() + ")";
+                std::string key = "i(" + to_lower(dev->name()) + ")";
                 dc_result.branch_currents[key] = solution[br];
             }
         } else if (auto* ind = dynamic_cast<const Inductor*>(dev.get())) {
             int32_t br = ind->branch_index();
             if (br >= 0 && br < n) {
-                std::string key = "i(" + dev->name() + ")";
+                std::string key = "i(" + to_lower(dev->name()) + ")";
                 dc_result.branch_currents[key] = solution[br];
             }
         }

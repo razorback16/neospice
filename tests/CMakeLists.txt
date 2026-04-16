@@ -31,6 +31,7 @@ add_executable(cudaspice_tests
     unit/test_comparator.cpp
     unit/test_api.cpp
     unit/test_raw_writer.cpp
+    unit/test_ngspice_compare.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )

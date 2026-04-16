@@ -4,10 +4,16 @@
 #include "core/klu_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
 namespace cudaspice {
+
+static std::string to_lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
 
 // Generate frequency points based on mode
 static std::vector<double> generate_frequencies(AnalysisCommand::ACMode mode,
@@ -141,15 +147,15 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
 
     // Initialize voltage/current result vectors
     for (int32_t i = 0; i < num_nodes; ++i) {
-        std::string key = "v(" + ckt.node_name(i) + ")";
+        std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
         ac_result.voltages[key].resize(freqs.size());
     }
     for (auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-            std::string key = "i(" + dev->name() + ")";
+            std::string key = "i(" + to_lower(dev->name()) + ")";
             ac_result.currents[key].resize(freqs.size());
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
-            std::string key = "i(" + dev->name() + ")";
+            std::string key = "i(" + to_lower(dev->name()) + ")";
             ac_result.currents[key].resize(freqs.size());
         }
     }
@@ -195,20 +201,20 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
 
         // Extract complex solution
         for (int32_t i = 0; i < num_nodes; ++i) {
-            std::string key = "v(" + ckt.node_name(i) + ")";
+            std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
             ac_result.voltages[key][fi] = {rhs_2n[i], rhs_2n[i + n]};
         }
         for (auto& dev : ckt.devices()) {
             if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
                 int32_t br = vs->branch_index();
                 if (br >= 0 && br < n) {
-                    std::string key = "i(" + dev->name() + ")";
+                    std::string key = "i(" + to_lower(dev->name()) + ")";
                     ac_result.currents[key][fi] = {rhs_2n[br], rhs_2n[br + n]};
                 }
             } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
                 int32_t br = ind->branch_index();
                 if (br >= 0 && br < n) {
-                    std::string key = "i(" + dev->name() + ")";
+                    std::string key = "i(" + to_lower(dev->name()) + ")";
                     ac_result.currents[key][fi] = {rhs_2n[br], rhs_2n[br + n]};
                 }
             }
