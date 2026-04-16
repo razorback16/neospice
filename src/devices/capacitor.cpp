@@ -59,6 +59,10 @@ void Capacitor::clear_transient() {
     dt_ = 0.0;
 }
 
+void Capacitor::set_integration_method(int method) {
+    integration_method_ = method;
+}
+
 void Capacitor::accept_step(double v_across) {
     double g_eq = 2.0 * cap_ / dt_;
     double i_eq = g_eq * v_prev_ + i_prev_;

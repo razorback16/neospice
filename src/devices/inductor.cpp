@@ -84,6 +84,10 @@ void Inductor::clear_transient() {
     dt_ = 0.0;
 }
 
+void Inductor::set_integration_method(int method) {
+    integration_method_ = method;
+}
+
 void Inductor::accept_step(double i_branch, double v_across) {
     i_prev_ = i_branch;
     v_prev_ = v_across;

@@ -21,6 +21,7 @@ public:
 
     void set_transient(double dt);
     void clear_transient();
+    void set_integration_method(int method);  // 0=trap, 1=gear2
     void accept_step(double i_branch, double v_across);
     void accept_step_from_solution(const std::vector<double>& sol);
     void init_dc_state(const std::vector<double>& sol);
@@ -37,6 +38,9 @@ private:
     double dt_ = 0.0;
     double v_prev_ = 0.0;
     double i_prev_ = 0.0;
+    int integration_method_ = 0;  // 0=trapezoidal, 1=gear2
+    double v_prev2_ = 0.0;
+    double i_prev2_ = 0.0;
 
     MatrixOffset off_p_br_  = -1;  // (np, branch)
     MatrixOffset off_n_br_  = -1;  // (nn, branch)

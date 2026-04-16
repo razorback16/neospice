@@ -6,6 +6,8 @@
 
 namespace neospice {
 
+enum class IntegrationMethod { TRAPEZOIDAL, GEAR2 };
+
 struct TransientResult {
     std::vector<double> time;
     std::unordered_map<std::string, std::vector<double>> voltages;

@@ -16,6 +16,7 @@ public:
 
     void set_transient(double dt);           // enable transient companion model
     void clear_transient();                  // disable (back to DC open circuit)
+    void set_integration_method(int method);  // 0=trap, 1=gear2
     void accept_step(double v_across);       // save state after converged step
 
     // Accept step using full solution vector (device computes v_across internally)
@@ -31,6 +32,9 @@ private:
     double dt_ = 0.0;
     double v_prev_ = 0.0;
     double i_prev_ = 0.0;
+    int integration_method_ = 0;  // 0=trapezoidal, 1=gear2
+    double v_prev2_ = 0.0;        // two-step-back voltage for Gear
+    double i_prev2_ = 0.0;        // two-step-back current for Gear
 
     MatrixOffset off_pp_ = -1, off_pn_ = -1, off_np_ = -1, off_nn_ = -1;
 };
