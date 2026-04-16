@@ -41,7 +41,6 @@ int
 BSIM4setup(Shim::Matrix *matrix, BSIM4v7Model *model, Shim::Ckt *ckt, int *states)
 {
 BSIM4v7Instance *here;
-double tmp1, tmp2;
 int    noiseAnalGiven = 0, createNode;  /* Criteria for new node creation */
 double Rtot, DMCGeff, DMCIeff, DMDGeff;
 
