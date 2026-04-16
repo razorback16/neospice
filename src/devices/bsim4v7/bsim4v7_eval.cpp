@@ -29,8 +29,46 @@ BSIM4v7EvalResult bsim4v7_evaluate(
     // Clamp DIBL contribution: in real BSIM4 this saturates; here we clamp Vds
     // contribution to Vth so Newton overshoots don't produce huge negative Vth.
     double Vds_clamped = std::max(0.0, std::min(Vds, 5.0));
-    double Vth = p.VTH0 + p.K1 * sqrtPhis - p.K2 * Vbs
-                 - p.ETA0 * Vds_clamped - p.DSUB * Vds_clamped;
+
+    // --- DIBL Vth-shift (ngspice b4v7temp.c:1446-1456 + b4v7ld.c:1145-1155) ---
+    // theta0vb0 shapes the exponential decay of the DIBL contribution as a
+    // function of Leff/litl_like. DSUB is the exponent coefficient; it does
+    // NOT enter Vth linearly. The previous code summed -ETA0·Vds - DSUB·Vds
+    // which double-counted DIBL and drove Vth_eff strongly negative at large
+    // Vds, causing NMOS to conduct at Vgs=0.
+    //
+    //   tmp_dibl = sqrt(epssub/epsox · TOXE · Xdep0)       (litl-like length)
+    //   T0       = DSUB · Leff / tmp_dibl
+    //   T1       = exp(T0); T2 = T1 - 1; T4 = T2² + 2·T1·MIN_EXP
+    //   theta0vb0 = T1 / T4
+    //   DIBL_Sft  = (ETA0 + ETAB·Vbs) · theta0vb0 · Vds
+    //   Vth      -= DIBL_Sft
+    const double MIN_EXP_B4 = 1.713908e-15;  // exp(-34) — matches ngspice EXP_THRESHOLD=34
+    double sqrtPhi_dibl = std::sqrt(0.4);  // 2*phi_s at zero bias, simplified
+    double Xdep0_dibl = std::sqrt(2.0 * EPSSUB * 0.4 / (Q_ELEC * p.NDEP * 1.0e6))
+                      * sqrtPhi_dibl;
+    double tmp_dibl_vth = std::sqrt(EPSSUB / EPSOX * p.TOXE * Xdep0_dibl);
+    double theta0vb0;
+    if (tmp_dibl_vth > 1e-30) {
+        double T0_dibl = p.DSUB * Leff / tmp_dibl_vth;
+        if (T0_dibl < 34.0) {
+            double T1_dibl = std::exp(T0_dibl);
+            double T2_dibl = T1_dibl - 1.0;
+            // T4 = (T1-1)² + 2·T1·MIN_EXP keeps the denominator finite for
+            // small T0_dibl (short Leff or large tmp_dibl).
+            double T4_dibl = T2_dibl * T2_dibl + 2.0 * T1_dibl * MIN_EXP_B4;
+            theta0vb0 = T1_dibl / T4_dibl;
+        } else {
+            theta0vb0 = 0.0;  // exponentially small
+        }
+    } else {
+        theta0vb0 = 0.0;
+    }
+    // ETAB body-bias modulation (default ETAB=0 so term vanishes unless set).
+    double eta_eff = p.ETA0 + p.ETAB * Vbs;
+    double DIBL_Sft = eta_eff * theta0vb0 * Vds_clamped;
+
+    double Vth = p.VTH0 + p.K1 * sqrtPhis - p.K2 * Vbs - DIBL_Sft;
 
     // --- Subthreshold region ---
     double n_sub = 1.0 + p.NFACTOR * EPSSUB / (Cox * Leff);
