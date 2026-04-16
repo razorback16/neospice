@@ -8,6 +8,7 @@ add_library(neospice_lib
     core/dc.cpp
     core/transient.cpp
     core/ac.cpp
+    core/timestep.cpp
     devices/resistor.cpp
     devices/vsource.cpp
     devices/isource.cpp
