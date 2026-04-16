@@ -280,3 +280,7 @@ int BSIM4param(int param, Shim::IfValue *value, BSIM4v7Instance *here, Shim::IfV
 }
 
 } // namespace neospice::bsim4v7
+
+#undef IOP
+#undef IP
+#undef OP

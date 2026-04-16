@@ -4549,3 +4549,7 @@ BSIM4mParam(int param, Shim::IfValue *value, BSIM4v7Model *mod)
 
 
 } // namespace neospice::bsim4v7
+
+#undef IOP
+#undef IP
+#undef OP
