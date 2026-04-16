@@ -2,17 +2,29 @@
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/klu_solver.hpp"
+#include "core/timestep.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include "devices/capacitor.hpp"
 #include "devices/inductor.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace neospice {
 
 static std::string to_lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
     return s;
+}
+
+// Collect PULSE/SIN breakpoints from sources
+static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double tstop) {
+    for (auto& dev : ckt.devices()) {
+        if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
+            // Breakpoint infrastructure ready; source-specific breakpoints
+            // will be populated when get_breakpoints() is added in Task 6.
+        }
+    }
 }
 
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
@@ -23,12 +35,9 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     // 1. DC operating point
     // ---------------------------------------------------------------
     std::vector<double> solution(n, 0.0);
-
-    // Apply nodeset hints
     for (auto& [node_idx, value] : ckt.nodeset) {
-        if (node_idx >= 0 && node_idx < n) {
+        if (node_idx >= 0 && node_idx < n)
             solution[node_idx] = value;
-        }
     }
 
     KLUSolver solver;
@@ -52,16 +61,15 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
 
     // ---------------------------------------------------------------
-    // 2. Apply .ic overrides on top of DC solution
+    // 2. Apply .ic overrides
     // ---------------------------------------------------------------
     for (auto& [node_idx, value] : ckt.ic) {
-        if (node_idx >= 0 && node_idx < n) {
+        if (node_idx >= 0 && node_idx < n)
             solution[node_idx] = value;
-        }
     }
 
     // ---------------------------------------------------------------
-    // Helper: store a time point into the result
+    // Result storage helper
     // ---------------------------------------------------------------
     TransientResult tran_result;
 
@@ -89,24 +97,25 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     };
 
     // ---------------------------------------------------------------
-    // 3. Store t=0 point
+    // 3. Store t=0
     // ---------------------------------------------------------------
     store_point(0.0, solution);
 
     // ---------------------------------------------------------------
-    // 4. Enable transient mode on reactive devices
+    // 4. Enable transient and set integration method
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
             cap->set_transient(tstep);
+            cap->set_integration_method(1);  // Gear
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->set_transient(tstep);
+            ind->set_integration_method(1);  // Gear
         }
     }
 
     // ---------------------------------------------------------------
-    // 5. Initialize DC steady-state on reactive devices
-    //    (sets v_prev to DC voltage, i_prev to 0 for caps / DC current for inductors)
+    // 5. Initialize DC state
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
@@ -117,13 +126,56 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
 
     // ---------------------------------------------------------------
-    // 6. Time-stepping loop
+    // 6. Set up time step controller
     // ---------------------------------------------------------------
-    int num_steps = static_cast<int>(std::round(tstop / tstep));
-    for (int step = 1; step <= num_steps; ++step) {
-        double t = step * tstep;
+    TimeStepController ctrl;
+    ctrl.init(tstep, tstop);
+    collect_breakpoints(ckt, ctrl, tstop);
 
-        // (a) Update time on sources
+    // Add output times as breakpoints so we land exactly on them
+    {
+        int num_output = static_cast<int>(std::round(tstop / tstep));
+        for (int i = 1; i <= num_output; ++i) {
+            ctrl.add_breakpoint(i * tstep);
+        }
+    }
+
+    // Step bounds
+    const double dt_min = tstep * 1e-6;
+    const double dt_max = tstep * 100.0;
+
+    // History for LTE (stores the two previous accepted solutions)
+    std::vector<double> sol_prev = solution;
+    std::vector<double> sol_prev2 = solution;
+    double next_output_time = tstep;
+    int step_count = 0;
+
+    // ---------------------------------------------------------------
+    // 7. Adaptive time-stepping loop
+    // ---------------------------------------------------------------
+    double dt = tstep;
+
+    while (ctrl.current_time() < tstop - 1e-18) {
+        // Clamp dt to not exceed tstop, breakpoints, or next output point
+        dt = std::min(dt, dt_max);
+        dt = std::max(dt, dt_min);
+        dt = ctrl.clamp_to_breakpoint(dt);
+        dt = ctrl.clamp_to_end(dt);
+
+        if (dt < 1e-20) break;
+
+        double t = ctrl.current_time() + dt;
+
+        // Update timestep on reactive devices
+        for (auto& dev : ckt.devices()) {
+            if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
+                cap->set_transient(dt);
+            } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
+                ind->set_transient(dt);
+            }
+        }
+
+        // Update time on sources
         for (auto& dev : ckt.devices()) {
             if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
                 vs->set_time(t);
@@ -132,22 +184,49 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             }
         }
 
-        // (b) Newton-Raphson solve
+        // Newton-Raphson solve
         auto nr = newton_solve(ckt, solver, solution, ckt.options);
         if (!nr.converged) {
-            // Clean up transient state before throwing
-            for (auto& dev : ckt.devices()) {
-                if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
-                    cap->clear_transient();
-                } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
-                    ind->clear_transient();
+            // Newton failed — halve dt and retry
+            dt *= 0.5;
+            if (dt < dt_min) {
+                // Clean up and throw
+                for (auto& dev : ckt.devices()) {
+                    if (auto* cap = dynamic_cast<Capacitor*>(dev.get()))
+                        cap->clear_transient();
+                    else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
+                        ind->clear_transient();
                 }
+                throw ConvergenceError("Transient failed to converge at t=" + std::to_string(t));
             }
-            throw ConvergenceError("Transient analysis failed to converge at t=" + std::to_string(t));
+            continue;
         }
         solution = nr.solution;
 
-        // (c) Accept step on reactive devices
+        // LTE check (skip first two steps — need three points)
+        bool accepted = true;
+        if (step_count >= 2) {
+            ctrl.set_dt(dt);  // set before evaluate so proposed_dt is relative to current dt
+            accepted = ctrl.evaluate_step(solution, sol_prev, sol_prev2, num_nodes, ckt.options);
+            // If rejected but dt is already at minimum, force acceptance
+            if (!accepted && dt <= dt_min * 1.01) {
+                accepted = true;
+            }
+        }
+
+        if (!accepted) {
+            // Reject: restore solution and retry with smaller dt
+            solution = sol_prev;
+            dt = std::max(ctrl.proposed_dt(), dt_min);
+            continue;
+        }
+
+        // Accept step
+        ctrl.advance(dt);
+        ctrl.set_dt(dt);
+        step_count++;
+
+        // Accept on reactive devices
         for (auto& dev : ckt.devices()) {
             if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
                 cap->accept_step_from_solution(solution);
@@ -156,21 +235,46 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             }
         }
 
-        // (d) Store point
-        store_point(t, solution);
+        // Store output at tstep intervals (interpolate if we overshot)
+        while (next_output_time <= ctrl.current_time() + 1e-18 && next_output_time <= tstop + 1e-18) {
+            if (std::abs(ctrl.current_time() - next_output_time) < 1e-18) {
+                // Landed exactly on output point
+                store_point(next_output_time, solution);
+            } else {
+                // Interpolate between sol_prev (at t-dt) and solution (at t)
+                double alpha = (next_output_time - (ctrl.current_time() - dt)) / dt;
+                alpha = std::max(0.0, std::min(1.0, alpha));
+                std::vector<double> interp(n);
+                for (int32_t i = 0; i < n; ++i) {
+                    interp[i] = sol_prev[i] + alpha * (solution[i] - sol_prev[i]);
+                }
+                store_point(next_output_time, interp);
+            }
+            next_output_time += tstep;
+        }
+
+        // Shift history
+        sol_prev2 = sol_prev;
+        sol_prev = solution;
+
+        // Propose next dt
+        if (step_count >= 2) {
+            dt = std::max(ctrl.proposed_dt(), dt_min);
+        }
+        // else keep dt = tstep for the first few steps
     }
 
     // ---------------------------------------------------------------
-    // 7. Clean up: disable transient mode
+    // 8. Clean up
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {
-        if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
+        if (auto* cap = dynamic_cast<Capacitor*>(dev.get()))
             cap->clear_transient();
-        } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
+        else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
             ind->clear_transient();
-        }
     }
 
+    tran_result.rejected_steps = ctrl.rejected_count();
     return tran_result;
 }
 
