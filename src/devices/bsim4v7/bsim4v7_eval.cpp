@@ -26,8 +26,11 @@ BSIM4v7EvalResult bsim4v7_evaluate(
 
     // --- Threshold voltage ---
     double sqrtPhis = std::sqrt(std::max(0.4, 0.4 - Vbs));  // simplified 2*phi_s
+    // Clamp DIBL contribution: in real BSIM4 this saturates; here we clamp Vds
+    // contribution to Vth so Newton overshoots don't produce huge negative Vth.
+    double Vds_clamped = std::max(0.0, std::min(Vds, 5.0));
     double Vth = p.VTH0 + p.K1 * sqrtPhis - p.K2 * Vbs
-                 - p.ETA0 * Vds - p.DSUB * Vds;
+                 - p.ETA0 * Vds_clamped - p.DSUB * Vds_clamped;
 
     // --- Subthreshold region ---
     double n_sub = 1.0 + p.NFACTOR * EPSSUB / (Cox * Leff);
@@ -43,10 +46,12 @@ BSIM4v7EvalResult bsim4v7_evaluate(
         Vgst_eff = n_sub * Vt * std::log(1.0 + std::exp(Vgst / (n_sub * Vt)));
     }
 
-    // --- Mobility degradation ---
-    double Eeff = (Vgst_eff + 2.0 * (0.4 - Vbs)) / (6.0 * p.TOXE);
-    double mu = p.U0 / (1.0 + p.UA * std::pow(std::abs(Eeff), p.EU)
-                         + p.UB * Eeff * Eeff);
+    // --- Mobility degradation (BSIM4 mobMod=0, matches ngspice b4ld.c) ---
+    // T3 = (Vgsteff + 2*Vth) / TOXE ; mu = U0 / (1 + T3*(UA + UB*T3))
+    double T3 = (Vgst_eff + 2.0 * Vth) / p.TOXE;
+    double Denomi = 1.0 + T3 * (p.UA + p.UB * T3);
+    if (Denomi < 1e-6) Denomi = 1e-6;
+    double mu = p.U0 / Denomi;
 
     // --- Saturation voltage ---
     double Esat = 2.0 * p.VSAT / mu;

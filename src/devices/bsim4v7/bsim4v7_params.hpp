@@ -35,10 +35,10 @@ struct BSIM4v7Params {
 
     // --- Mobility ---
     double U0 = 0.067;     // Low-field mobility (m^2/V/s)
-    double UA = 2.25e-9;   // First-order mobility degradation (m/V)
-    double UB = 5.87e-19;  // Second-order mobility degradation (m/V)^2
+    double UA = 1.0e-9;    // First-order mobility degradation (m/V) — BSIM4 default
+    double UB = 1.0e-19;   // Second-order mobility degradation (m/V)^2 — BSIM4 default
     double UC = -4.65e-11; // Body bias effect on mobility
-    double EU = 1.67;      // Exponent for mobility degradation
+    double EU = 1.67;      // Exponent (unused in current mobMod=0 formula; kept for ABI)
     double VSAT = 1.5e5;   // Saturation velocity (m/s)
     double A0 = 1.0;       // Non-uniform depletion width coefficient
     double A1 = 0.0;       // First non-saturation factor

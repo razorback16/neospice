@@ -20,18 +20,11 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         // Save old solution for convergence check
         std::vector<double> old_solution = solution;
 
-        // Voltage limiting (skip first iteration)
-        if (iter > 0) {
-            for (auto& dev : ckt.devices()) {
-                dev->limit_voltages(old_solution, solution);
-            }
-        }
-
         // Clear matrix and RHS
         mat.clear();
         std::fill(rhs.begin(), rhs.end(), 0.0);
 
-        // Evaluate all devices
+        // Evaluate all devices at the current guess
         for (auto& dev : ckt.devices()) {
             dev->evaluate(solution, mat, rhs);
         }
@@ -56,8 +49,14 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         // Solve: rhs is overwritten with the delta or new solution
         solver.solve(rhs);
 
-        // rhs now contains the new solution
+        // rhs now contains the new proposed solution
         solution = rhs;
+
+        // Apply per-device voltage limiting between old and proposed solutions
+        // to tame large Newton swings at nonlinear junctions.
+        for (auto& dev : ckt.devices()) {
+            dev->limit_voltages(old_solution, solution);
+        }
 
         // Check convergence
         bool converged = true;

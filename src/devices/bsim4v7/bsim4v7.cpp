@@ -48,14 +48,17 @@ void BSIM4v7::evaluate(const std::vector<double>& voltages,
     double Vds = vd - vs;
     double Vbs = vb - vs;
 
-    // PMOS: invert polarities
+    // PMOS: invert polarities and use |VTH0| so the internal model runs
+    // in "NMOS-like" positive coordinates (ngspice BSIM4 convention).
     double sign = 1.0;
+    BSIM4v7Params params_use = params_;
     if (params_.is_pmos) {
         Vgs = -Vgs; Vds = -Vds; Vbs = -Vbs;
         sign = -1.0;
+        params_use.VTH0 = std::abs(params_.VTH0);
     }
 
-    auto ev = bsim4v7_evaluate(Vgs, Vds, Vbs, params_, 300.15);
+    auto ev = bsim4v7_evaluate(Vgs, Vds, Vbs, params_use, 300.15);
     last_eval_ = ev;
 
     double Ids = sign * ev.Ids;
@@ -85,31 +88,37 @@ void BSIM4v7::evaluate(const std::vector<double>& voltages,
     // g row: gate current = 0 (ideal MOSFET), no stamps
     // b row: body current = 0 (simplified), no stamps
 
-    // RHS: Norton equivalent current
-    add_rhs_if_valid(rhs, nd_,  Ieq);   // current into drain
-    add_rhs_if_valid(rhs, ns_, -Ieq);   // current out of source
+    // RHS: Norton equivalent current (current OUT of drain = +Ids; move to RHS flips sign)
+    add_rhs_if_valid(rhs, nd_, -Ieq);
+    add_rhs_if_valid(rhs, ns_,  Ieq);
 }
 
 void BSIM4v7::limit_voltages(const std::vector<double>& old_v,
                               std::vector<double>& new_v) {
-    // Gate voltage limiting
-    if (ng_ >= 0 && ns_ >= 0) {
-        double vgs_old = old_v[ng_] - old_v[ns_];
-        double vgs_new = new_v[ng_] - new_v[ns_];
-        double max_step = 0.5;  // limit Vgs change per iteration
+    auto node_v = [](const std::vector<double>& v, int32_t n) {
+        return (n >= 0) ? v[n] : 0.0;  // ground if -1
+    };
+    // Only clamp truly huge Newton swings; small steps should be accepted
+    // as-is so the Newton iteration can converge (a hard step cap causes
+    // limit-cycle oscillation when the equilibrium sits between two
+    // clamped updates).
+    const double max_step = 2.0;
+    // Vgs step limiting
+    if (ng_ >= 0) {
+        double vgs_old = node_v(old_v, ng_) - node_v(old_v, ns_);
+        double vgs_new = node_v(new_v, ng_) - node_v(new_v, ns_);
         if (std::abs(vgs_new - vgs_old) > max_step) {
             double delta = (vgs_new > vgs_old) ? max_step : -max_step;
-            new_v[ng_] = old_v[ng_] + delta;
+            new_v[ng_] = node_v(old_v, ns_) + vgs_old + delta;
         }
     }
-    // Drain voltage limiting
-    if (nd_ >= 0 && ns_ >= 0) {
-        double vds_old = old_v[nd_] - old_v[ns_];
-        double vds_new = new_v[nd_] - new_v[ns_];
-        double max_step = 0.5;
+    // Vds step limiting
+    if (nd_ >= 0) {
+        double vds_old = node_v(old_v, nd_) - node_v(old_v, ns_);
+        double vds_new = node_v(new_v, nd_) - node_v(new_v, ns_);
         if (std::abs(vds_new - vds_old) > max_step) {
             double delta = (vds_new > vds_old) ? max_step : -max_step;
-            new_v[nd_] = old_v[nd_] + delta;
+            new_v[nd_] = node_v(old_v, ns_) + vds_old + delta;
         }
     }
 }
@@ -175,9 +184,13 @@ void BSIM4v7::init_dc_state(const std::vector<double>& sol) {
     double vb = (nb_ >= 0) ? sol[nb_] : 0.0;
 
     double Vgs = vg - vs, Vds = vd - vs, Vbs = vb - vs;
-    if (params_.is_pmos) { Vgs = -Vgs; Vds = -Vds; Vbs = -Vbs; }
+    BSIM4v7Params params_use = params_;
+    if (params_.is_pmos) {
+        Vgs = -Vgs; Vds = -Vds; Vbs = -Vbs;
+        params_use.VTH0 = std::abs(params_.VTH0);
+    }
 
-    auto ev = bsim4v7_evaluate(Vgs, Vds, Vbs, params_, 300.15);
+    auto ev = bsim4v7_evaluate(Vgs, Vds, Vbs, params_use, 300.15);
     Qg_prev_ = ev.Qg; Qd_prev_ = ev.Qd; Qb_prev_ = ev.Qb;
     Ig_prev_ = 0.0; Id_cap_prev_ = 0.0; Ib_prev_ = 0.0;
 }
@@ -191,9 +204,13 @@ void BSIM4v7::accept_step_from_solution(const std::vector<double>& sol) {
     double vb = (nb_ >= 0) ? sol[nb_] : 0.0;
 
     double Vgs = vg - vs, Vds = vd - vs, Vbs = vb - vs;
-    if (params_.is_pmos) { Vgs = -Vgs; Vds = -Vds; Vbs = -Vbs; }
+    BSIM4v7Params params_use = params_;
+    if (params_.is_pmos) {
+        Vgs = -Vgs; Vds = -Vds; Vbs = -Vbs;
+        params_use.VTH0 = std::abs(params_.VTH0);
+    }
 
-    auto ev = bsim4v7_evaluate(Vgs, Vds, Vbs, params_, 300.15);
+    auto ev = bsim4v7_evaluate(Vgs, Vds, Vbs, params_use, 300.15);
 
     // Trapezoidal: I = 2*(Q_new - Q_prev)/dt - I_prev
     double Ig_new = 2.0 * (ev.Qg - Qg_prev_) / dt_ - Ig_prev_;

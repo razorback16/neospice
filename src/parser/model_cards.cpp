@@ -28,28 +28,40 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
         rest += tokens[i];
     }
 
-    // Find the type name (everything before optional '(')
+    // Find the type name. In SPICE, the .model line is either
+    //   .model NAME TYPE(k=v ...)       (parenthesized)
+    //   .model NAME TYPE k=v k=v ...    (bare — paren-less form)
+    // In both cases, TYPE is the first whitespace-delimited token of `rest`.
     size_t paren_pos = rest.find('(');
     std::string type_str;
+    std::string params_str;
     if (paren_pos == std::string::npos) {
-        type_str = rest;
+        // No parens: first token is type, everything after is params
+        size_t first_space = rest.find_first_of(" \t");
+        if (first_space == std::string::npos) {
+            type_str = rest;
+            params_str = "";
+        } else {
+            type_str = rest.substr(0, first_space);
+            params_str = rest.substr(first_space + 1);
+        }
     } else {
+        // Parens: type is everything before '(' (trimmed)
         type_str = rest.substr(0, paren_pos);
+        size_t close_paren = rest.rfind(')');
+        if (close_paren != std::string::npos && close_paren > paren_pos) {
+            params_str = rest.substr(paren_pos + 1, close_paren - paren_pos - 1);
+        } else {
+            params_str = rest.substr(paren_pos + 1);
+        }
     }
     // Trim whitespace from type
     while (!type_str.empty() && std::isspace(static_cast<unsigned char>(type_str.back())))
         type_str.pop_back();
     card.type = to_lower(type_str);
 
-    // Parse parameters inside parentheses
-    if (paren_pos != std::string::npos) {
-        size_t close_paren = rest.rfind(')');
-        std::string params_str;
-        if (close_paren != std::string::npos && close_paren > paren_pos) {
-            params_str = rest.substr(paren_pos + 1, close_paren - paren_pos - 1);
-        } else {
-            params_str = rest.substr(paren_pos + 1);
-        }
+    // Parse parameters (from paren block or bare params)
+    if (!params_str.empty()) {
 
         // Replace '=' with ' = ' for easier parsing, then split
         std::string normalized;
