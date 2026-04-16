@@ -1,0 +1,10 @@
+CMOS Inverter
+VDD vdd 0 1.8
+VIN in 0 PULSE(0 1.8 0 100p 100p 5n 10n)
+M1 out in vdd vdd PMOD W=2u L=100n
+M2 out in 0 0 NMOD W=1u L=100n
+CL out 0 10f
+.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
+.model PMOD PMOS LEVEL=14 VTH0=-0.4 U0=0.02 TOXE=2e-9
+.tran 10p 20n
+.end

@@ -1,0 +1,17 @@
+5-Stage Ring Oscillator
+VDD vdd 0 1.8
+M1p n1 n5 vdd vdd PMOD W=2u L=100n
+M1n n1 n5 0 0 NMOD W=1u L=100n
+M2p n2 n1 vdd vdd PMOD W=2u L=100n
+M2n n2 n1 0 0 NMOD W=1u L=100n
+M3p n3 n2 vdd vdd PMOD W=2u L=100n
+M3n n3 n2 0 0 NMOD W=1u L=100n
+M4p n4 n3 vdd vdd PMOD W=2u L=100n
+M4n n4 n3 0 0 NMOD W=1u L=100n
+M5p n5 n4 vdd vdd PMOD W=2u L=100n
+M5n n5 n4 0 0 NMOD W=1u L=100n
+.ic V(n1)=0 V(n2)=1.8 V(n3)=0 V(n4)=1.8 V(n5)=0
+.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
+.model PMOD PMOS LEVEL=14 VTH0=-0.4 U0=0.02 TOXE=2e-9
+.tran 1p 5n
+.end
