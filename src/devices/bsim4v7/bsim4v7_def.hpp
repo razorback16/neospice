@@ -725,7 +725,7 @@ struct BSIM4v7Model
     int    BSIM4tempMod;
     int    BSIM4binUnit;
     int    BSIM4paramChk;
-    char   *BSIM4version;
+    const char   *BSIM4version;
     double BSIM4eot;
     double BSIM4vddeot;
 	double BSIM4tempeot;
@@ -3643,6 +3643,8 @@ int  BSIM4polyDepletion(double phi, double ngate, double epsgate,
 // Parameter tables (defined in bsim4v7_param.cpp / bsim4v7_mpar.cpp).
 extern const Shim::IfParm BSIM4pTable[];
 extern const int BSIM4pTSize;
+extern const Shim::IfParm BSIM4mPTable[];
+extern const int BSIM4mPTSize;
 
 // devsup.c helpers (bsim4v7_devsup.cpp)
 double DEVlimvds  (double vnew, double vold);
