@@ -1,0 +1,42 @@
+#include "devices/resistor.hpp"
+
+namespace cudaspice {
+
+Resistor::Resistor(std::string name, int32_t node_pos, int32_t node_neg, double resistance)
+    : Device(std::move(name)), np_(node_pos), nn_(node_neg), resistance_(resistance)
+{}
+
+void Resistor::stamp_pattern(SparsityBuilder& builder) const {
+    stamp_if_not_ground(builder, np_, np_);
+    stamp_if_not_ground(builder, np_, nn_);
+    stamp_if_not_ground(builder, nn_, np_);
+    stamp_if_not_ground(builder, nn_, nn_);
+}
+
+void Resistor::assign_offsets(const SparsityPattern& pattern) {
+    off_pp_ = offset_if_not_ground(pattern, np_, np_);
+    off_pn_ = offset_if_not_ground(pattern, np_, nn_);
+    off_np_ = offset_if_not_ground(pattern, nn_, np_);
+    off_nn_ = offset_if_not_ground(pattern, nn_, nn_);
+}
+
+void Resistor::evaluate(const std::vector<double>& /*voltages*/,
+                        NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+    const double g = 1.0 / resistance_;
+    add_if_valid(mat, off_pp_,  g);
+    add_if_valid(mat, off_pn_, -g);
+    add_if_valid(mat, off_np_, -g);
+    add_if_valid(mat, off_nn_,  g);
+}
+
+void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
+                        NumericMatrix& G, NumericMatrix& /*C*/) {
+    // Pure conductance: same stamp as DC, no capacitance contribution
+    const double g = 1.0 / resistance_;
+    add_if_valid(G, off_pp_,  g);
+    add_if_valid(G, off_pn_, -g);
+    add_if_valid(G, off_np_, -g);
+    add_if_valid(G, off_nn_,  g);
+}
+
+} // namespace cudaspice

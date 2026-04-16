@@ -14,6 +14,7 @@ add_executable(cudaspice_tests
     unit/test_smoke.cpp
     unit/test_matrix.cpp
     unit/test_klu_solver.cpp
+    unit/test_resistor.cpp
 )
 
 target_link_libraries(cudaspice_tests PRIVATE
