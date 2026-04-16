@@ -32,8 +32,10 @@ namespace Shim {
         const char *sValue = nullptr;
         // Vector value (for string arrays / real arrays):
         // UCB's IFvalue uses v.numValue and v.vec.rVec; we mirror that shape.
-        struct VecHolder { double *rVec = nullptr; };
-        struct { int numValue = 0; VecHolder vec; } v{};
+        struct {
+            int numValue = 0;
+            struct { double *rVec = nullptr; } vec;
+        } v{};
     };
 
     // --- UCB IFparm replacement --------------------------------------------

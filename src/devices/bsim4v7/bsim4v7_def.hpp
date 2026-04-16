@@ -3618,7 +3618,7 @@ int  BSIM4temp     (BSIM4v7Model *model, Shim::Ckt *ckt);
 int  BSIM4setup    (Shim::Matrix *matrix, BSIM4v7Model *model,
                     Shim::Ckt *ckt, int *states);
 int  BSIM4param    (int param, Shim::IfValue *value,
-                    BSIM4v7Instance *inst, Shim::IfValue *select);
+                    BSIM4v7Instance *here, Shim::IfValue *select);
 int  BSIM4mParam   (int param, Shim::IfValue *value,
                     BSIM4v7Model *model);
 int  BSIM4checkModel(BSIM4v7Model *model, BSIM4v7Instance *here,
@@ -3643,9 +3643,6 @@ int  BSIM4polyDepletion(double phi, double ngate, double epsgate,
 // Parameter tables (defined in bsim4v7_param.cpp / bsim4v7_mpar.cpp).
 extern const Shim::IfParm BSIM4pTable[];
 extern const int BSIM4pTSize;
-
-// Instance-parameter setter (bsim4v7_param.cpp).
-int BSIM4param(int param, Shim::IfValue *value, BSIM4v7Instance *here, Shim::IfValue *select);
 
 // devsup.c helpers (bsim4v7_devsup.cpp)
 double DEVlimvds  (double vnew, double vold);
