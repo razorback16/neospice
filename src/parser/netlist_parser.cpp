@@ -8,7 +8,6 @@
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include "devices/diode.hpp"
-#include "devices/bsim4v7/bsim4v7.hpp"
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -358,45 +357,12 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                        line.line_number});
 
         } else if (elem_type == 'm') {
-            // M name drain gate source body modelname [W=val] [L=val] ...
-            if (tokens.size() < 6) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": MOSFET requires name, drain, gate, source, body, modelname");
-            }
-            std::string mname = tokens[0];
-            std::string drain_name = tokens[1];
-            std::string gate_name = tokens[2];
-            std::string source_name = tokens[3];
-            std::string body_name = tokens[4];
-            std::string model_name = tokens[5];
-
-            auto it_model = models.find(model_name);
-            if (it_model == models.end()) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": Unknown model '" + model_name + "'");
-            }
-            auto bparams = to_bsim4v7_params(it_model->second);
-
-            // Parse instance parameters W=, L=, NF=, AS=, AD=, PS=, PD=
-            for (size_t i = 6; i < tokens.size(); ++i) {
-                auto eq = tokens[i].find('=');
-                if (eq == std::string::npos) continue;
-                std::string pk = to_lower(tokens[i].substr(0, eq));
-                double pv = parse_spice_number(tokens[i].substr(eq + 1));
-                if (pk == "w") bparams.W = pv;
-                else if (pk == "l") bparams.L = pv;
-                else if (pk == "nf") bparams.nf = pv;
-                else if (pk == "as") bparams.AS = pv;
-                else if (pk == "ad") bparams.AD = pv;
-                else if (pk == "ps") bparams.PS = pv;
-                else if (pk == "pd") bparams.PD = pv;
-            }
-
-            int32_t nd = ckt.node(drain_name);
-            int32_t ng = ckt.node(gate_name);
-            int32_t ns = ckt.node(source_name);
-            int32_t nbody = ckt.node(body_name);
-            ckt.add_device(std::make_unique<BSIM4v7>(mname, nd, ng, ns, nbody, bparams));
+            // TODO(Phase-1b): MOSFET kernel under rebuild (UCB Z-port).
+            // M-card is parsed and silently skipped — no device is added to
+            // the circuit.  Tests that exercise M-cards are gated with
+            // GTEST_SKIP until the UCB kernel is wired in Task 3+.
+            fprintf(stderr, "M card '%s' skipped: MOSFET kernel under rebuild (Phase 1b)\n",
+                    tokens.empty() ? "?" : tokens[0].c_str());
 
         } else if (elem_type == 'e' || elem_type == 'f' || elem_type == 'g' ||
                    elem_type == 'h' || elem_type == 'b' || elem_type == 'x') {

@@ -7,7 +7,6 @@
 #include "devices/isource.hpp"
 #include "devices/capacitor.hpp"
 #include "devices/inductor.hpp"
-#include "devices/bsim4v7/bsim4v7.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -129,10 +128,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->set_transient(tstep);
             ind->set_integration_method(1);  // Gear
-        } else if (auto* mos = dynamic_cast<BSIM4v7*>(dev.get())) {
-            mos->set_transient(tstep);
-            mos->set_integration_method(0);  // Trapezoidal companion for intrinsic caps
         }
+        // TODO(Phase-1b): MOSFET set_transient/set_integration_method wired in Task 3+
     }
 
     // ---------------------------------------------------------------
@@ -143,9 +140,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             cap->init_dc_state(solution);
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->init_dc_state(solution);
-        } else if (auto* mos = dynamic_cast<BSIM4v7*>(dev.get())) {
-            mos->init_dc_state(solution);
         }
+        // TODO(Phase-1b): MOSFET init_dc_state wired in Task 3+
     }
 
     // ---------------------------------------------------------------
@@ -195,9 +191,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                 cap->set_transient(dt);
             } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
                 ind->set_transient(dt);
-            } else if (auto* mos = dynamic_cast<BSIM4v7*>(dev.get())) {
-                mos->set_transient(dt);
             }
+            // TODO(Phase-1b): MOSFET set_transient(dt) wired in Task 3+
         }
 
         // Update time on sources
@@ -221,8 +216,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                         cap->clear_transient();
                     else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
                         ind->clear_transient();
-                    else if (auto* mos = dynamic_cast<BSIM4v7*>(dev.get()))
-                        mos->clear_transient();
+                    // TODO(Phase-1b): MOSFET clear_transient wired in Task 3+
                 }
                 throw ConvergenceError("Transient failed to converge at t=" + std::to_string(t));
             }
@@ -259,9 +253,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                 cap->accept_step_from_solution(solution);
             } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
                 ind->accept_step_from_solution(solution);
-            } else if (auto* mos = dynamic_cast<BSIM4v7*>(dev.get())) {
-                mos->accept_step_from_solution(solution);
             }
+            // TODO(Phase-1b): MOSFET accept_step_from_solution wired in Task 3+
         }
 
         // Store output at tstep intervals (interpolate if we overshot)
@@ -301,8 +294,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             cap->clear_transient();
         else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
             ind->clear_transient();
-        else if (auto* mos = dynamic_cast<BSIM4v7*>(dev.get()))
-            mos->clear_transient();
+        // TODO(Phase-1b): MOSFET clear_transient wired in Task 3+
     }
 
     tran_result.rejected_steps = ctrl.rejected_count();

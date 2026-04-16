@@ -22,11 +22,6 @@ add_executable(neospice_tests
     unit/test_gear.cpp
     unit/test_timestep.cpp
     unit/test_diode.cpp
-    unit/test_bsim4v7.cpp
-    unit/test_bsim4v7_dibl_clamp.cpp
-    unit/test_bsim4v7_subthreshold_gm.cpp
-    unit/test_bsim4v7_vaclm.cpp
-    unit/test_newton_limiting.cpp
     unit/test_circuit.cpp
     unit/test_dc.cpp
     unit/test_convergence.cpp
