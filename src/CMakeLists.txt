@@ -1,5 +1,6 @@
 add_library(cudaspice_lib
     core/types.cpp
+    core/matrix.cpp
 )
 
 target_include_directories(cudaspice_lib PUBLIC

@@ -12,6 +12,7 @@ include(GoogleTest)
 
 add_executable(cudaspice_tests
     unit/test_smoke.cpp
+    unit/test_matrix.cpp
 )
 
 target_link_libraries(cudaspice_tests PRIVATE
