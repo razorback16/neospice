@@ -11,6 +11,7 @@
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include "core/matrix.hpp"
 #include <cmath>
+#include <cstdlib>
 
 using namespace neospice::bsim4v7;
 
@@ -57,6 +58,17 @@ struct ModelFixture {
         // --- Circuit state: T=300.15 K (27 C), matches ngspice default ---
         ckt.CKTtemp    = 300.15;
         ckt.CKTnomTemp = 300.15;
+    }
+
+    ~ModelFixture() {
+        // BSIM4temp mallocs bsim4SizeDependParam nodes and threads them onto
+        // model.pSizeDependParamKnot. BSIM4v7Model is a POD, so release here.
+        auto *p = model.pSizeDependParamKnot;
+        while (p) {
+            auto *next = p->pNext;
+            std::free(p);
+            p = next;
+        }
     }
 };
 
