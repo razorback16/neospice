@@ -5,6 +5,14 @@
 
 namespace neospice::bsim4v7 {
 
+// UCB gendefs.h Boolean constants (used throughout the UCB model files).
+#ifndef TRUE
+#define TRUE  1
+#endif
+#ifndef FALSE
+#define FALSE 0
+#endif
+
 // --- Error codes (subset of UCB sperror.h used by Phase 1a files) -----------
 namespace Shim {
     constexpr int OK          = 0;
@@ -23,7 +31,9 @@ namespace Shim {
         double      rValue = 0.0;
         const char *sValue = nullptr;
         // Vector value (for string arrays / real arrays):
-        struct { int numValue; double *vec; } v{};
+        // UCB's IFvalue uses v.numValue and v.vec.rVec; we mirror that shape.
+        struct VecHolder { double *rVec = nullptr; };
+        struct { int numValue = 0; VecHolder vec; } v{};
     };
 
     // --- UCB IFparm replacement --------------------------------------------
@@ -38,6 +48,7 @@ namespace Shim {
     constexpr int IF_INTEGER = 0x02;
     constexpr int IF_STRING  = 0x04;
     constexpr int IF_FLAG    = 0x08;
+    constexpr int IF_REALVEC = 0x10;    // real vector (IC parameter)
     constexpr int IF_ASK     = 0x100;
     constexpr int IF_SET     = 0x200;
     constexpr int IF_REDUNDANT = 0x400;  // UCB uses for aliases

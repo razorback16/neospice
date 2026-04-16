@@ -3640,6 +3640,13 @@ int  BSIM4polyDepletion(double phi, double ngate, double epsgate,
                         double coxe, double Vgs, double *Vgs_eff,
                         double *dVgs_eff_dVg);
 
+// Parameter tables (defined in bsim4v7_param.cpp / bsim4v7_mpar.cpp).
+extern const Shim::IfParm BSIM4pTable[];
+extern const int BSIM4pTSize;
+
+// Instance-parameter setter (bsim4v7_param.cpp).
+int BSIM4param(int param, Shim::IfValue *value, BSIM4v7Instance *here, Shim::IfValue *select);
+
 // devsup.c helpers (bsim4v7_devsup.cpp)
 double DEVlimvds  (double vnew, double vold);
 double DEVpnjlim  (double vnew, double vold, double vt, double vcrit, int *icheck);
