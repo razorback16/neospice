@@ -13,6 +13,10 @@ neospice::MatrixOffset Matrix::make_elt(int row, int col) {
     return 0;  // sentinel: "reserved, resolve later"
 }
 
+int Ckt::add_internal_node(const char * /*name*/) {
+    return CKTinternalNodeCounter++;
+}
+
 void report_error(int /*level*/, const char *fmt, ...) {
     std::va_list ap;
     va_start(ap, fmt);

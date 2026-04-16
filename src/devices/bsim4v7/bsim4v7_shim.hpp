@@ -75,6 +75,11 @@ namespace Shim {
         double  CKTdeltaOld[8]  = {};    // integrator time-step history
         double *CKTstate1       = nullptr;
         double *CKTstate2       = nullptr;
+
+        // Phase-1a: return sequential internal node IDs starting at 1000.
+        // Phase-1b will replace this with the real node-table registrar.
+        int CKTinternalNodeCounter = 1000;
+        int add_internal_node(const char *name);
     };
 
     // --- SMPmatrix replacement ---------------------------------------------
