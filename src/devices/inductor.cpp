@@ -34,31 +34,26 @@ void Inductor::assign_offsets(const SparsityPattern& pattern) {
 
 void Inductor::evaluate(const std::vector<double>& /*voltages*/,
                         NumericMatrix& mat, std::vector<double>& rhs) {
-    // KCL rows: np gets +I_branch, nn gets -I_branch
     add_if_valid(mat, off_p_br_,  1.0);
     add_if_valid(mat, off_n_br_, -1.0);
-
-    // Branch equation coefficients
     add_if_valid(mat, off_br_p_,  1.0);
     add_if_valid(mat, off_br_n_, -1.0);
 
     if (transient_) {
-        // Trapezoidal companion model:
-        //   R_eq = 2L / dt
-        //   V_eq = R_eq * I_prev + V_prev
-        //   Branch equation: V(np) - V(nn) - R_eq * I_branch = V_eq
-        const double r_eq = 2.0 * inductance_ / dt_;
-        const double v_eq = r_eq * i_prev_ + v_prev_;
+        double r_eq, v_eq;
 
-        // -R_eq at (branch, branch)
+        if (integration_method_ == 1 && gear_ready_) {
+            r_eq = 1.5 * inductance_ / dt_;
+            v_eq = (inductance_ / (2.0 * dt_)) * (4.0 * i_prev_ - i_prev2_);
+        } else {
+            r_eq = 2.0 * inductance_ / dt_;
+            v_eq = r_eq * i_prev_ + v_prev_;
+        }
+
         mat.add(off_br_br_, -r_eq);
-
-        // RHS[branch] = V_eq
         if (branch_idx_ >= 0)
             rhs[branch_idx_] += v_eq;
     }
-    // DC: R_eq = 0, V_eq = 0 => branch equation is just V(np) - V(nn) = 0
-    // off_br_br_ gets no contribution and rhs[branch] += 0
 }
 
 void Inductor::ac_stamp(const std::vector<double>& /*voltages*/,
@@ -82,6 +77,7 @@ void Inductor::set_transient(double dt) {
 void Inductor::clear_transient() {
     transient_ = false;
     dt_ = 0.0;
+    gear_ready_ = false;
 }
 
 void Inductor::set_integration_method(int method) {
@@ -89,8 +85,13 @@ void Inductor::set_integration_method(int method) {
 }
 
 void Inductor::accept_step(double i_branch, double v_across) {
+    v_prev2_ = v_prev_;
+    i_prev2_ = i_prev_;
     i_prev_ = i_branch;
     v_prev_ = v_across;
+    if (integration_method_ == 1 && !gear_ready_) {
+        gear_ready_ = true;
+    }
 }
 
 void Inductor::accept_step_from_solution(const std::vector<double>& sol) {
@@ -106,6 +107,18 @@ void Inductor::init_dc_state(const std::vector<double>& sol) {
     double i  = (branch_idx_ >= 0) ? sol[branch_idx_] : 0.0;
     i_prev_ = i;
     v_prev_ = va - vc;
+    i_prev2_ = i;
+    v_prev2_ = va - vc;
+    gear_ready_ = false;
+}
+
+void Inductor::init_dc_state_gear(double i_prev, double v_prev,
+                                   double i_prev2, double v_prev2) {
+    i_prev_ = i_prev;
+    v_prev_ = v_prev;
+    i_prev2_ = i_prev2;
+    v_prev2_ = v_prev2;
+    gear_ready_ = true;
 }
 
 std::vector<std::string> Inductor::output_currents() const {

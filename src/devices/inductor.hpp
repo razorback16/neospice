@@ -25,6 +25,8 @@ public:
     void accept_step(double i_branch, double v_across);
     void accept_step_from_solution(const std::vector<double>& sol);
     void init_dc_state(const std::vector<double>& sol);
+    void init_dc_state_gear(double i_prev, double v_prev,
+                            double i_prev2, double v_prev2);
 
     double inductance() const { return inductance_; }
 
@@ -41,6 +43,7 @@ private:
     int integration_method_ = 0;  // 0=trapezoidal, 1=gear2
     double v_prev2_ = 0.0;
     double i_prev2_ = 0.0;
+    bool gear_ready_ = false;
 
     MatrixOffset off_p_br_  = -1;  // (np, branch)
     MatrixOffset off_n_br_  = -1;  // (nn, branch)
