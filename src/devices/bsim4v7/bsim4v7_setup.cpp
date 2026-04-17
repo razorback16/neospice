@@ -37,6 +37,9 @@
 
 namespace neospice::bsim4v7 {
 
+// Phase 1b note: TSTALLOC records a reservation ID on here->BSIM4*Ptr.
+// The device adapter (see bsim4v7_device.cpp) resolves these IDs to real
+// MatrixOffsets in assign_offsets() after the SparsityPattern is built.
 int
 BSIM4setup(Shim::Matrix *matrix, BSIM4v7Model *model, Shim::Ckt *ckt, int *states)
 {

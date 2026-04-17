@@ -2,6 +2,8 @@
 #include "core/matrix.hpp"
 #include <cstdint>
 #include <cstdio>
+#include <utility>
+#include <vector>
 
 namespace neospice::bsim4v7 {
 
@@ -125,11 +127,25 @@ namespace Shim {
     class Matrix {
     public:
         Matrix(neospice::SparsityBuilder &builder) : builder_(builder) {}
-        // make_elt: reserve (row, col) and return the offset. Grounds (-1)
-        // return -1 so the caller can skip.
+
+        /// Reserve a (row, col) position. Returns a sequential reservation ID
+        /// (0, 1, 2, ...) for later resolution, or -1 if either index is ground.
+        /// NOTE: in Phase-1a semantics the return was a "MatrixOffset" but it was
+        /// a 0-sentinel. In Phase-1b it is a distinct ID into the journal.
         neospice::MatrixOffset make_elt(int row, int col);
+
+        /// After the SparsityPattern is built, replay the journal and return
+        /// the real MatrixOffset for each reservation (ground reservations get -1).
+        std::vector<neospice::MatrixOffset>
+        resolve_offsets(const neospice::SparsityPattern &pat) const;
+
+        /// Reset the journal — useful if the same Shim::Matrix is reused across
+        /// multiple stamp_pattern() calls (it is not, but leave the hook).
+        void clear() { journal_.clear(); }
+
     private:
         neospice::SparsityBuilder &builder_;
+        std::vector<std::pair<int,int>> journal_;  // in reservation order
     };
 
     // --- Error reporting stub ----------------------------------------------
