@@ -39,27 +39,28 @@ DCResult solve_dc(Circuit& ckt) {
     KLUSolver solver;
     solver.symbolic(ckt.pattern());
 
-    // CKTmode bits: MODEDC=0x70, MODEDCOP=0x40, MODEINITJCT=0x200, MODEINITFIX=0x400
-    // (source: ngspice cktdefs.h; mirrored in devices/bsim4v7/bsim4v7_shim.hpp)
+    // CKTmode bits (ngspice cktdefs.h; mirrored in devices/bsim4v7/bsim4v7_shim.hpp):
+    //   MODEDC=0x70 (mask: DCOP|TRANOP|DCTRANCURVE), MODEDCOP=0x10,
+    //   MODEINITJCT=0x200, MODEINITFIX=0x400.
+    // MODEDC already covers MODEDCOP so we just OR in the INIT discriminant.
     constexpr int MODEDC_BITS     = 0x70;
-    constexpr int MODEDCOP_BIT    = 0x40;
     constexpr int MODEINITJCT_BIT = 0x200;
     constexpr int MODEINITFIX_BIT = 0x400;
 
     // 3. Try newton_solve first (initial junction guess mode)
-    ckt.integrator_ctx.mode = MODEDC_BITS | MODEDCOP_BIT | MODEINITJCT_BIT;
+    ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
     } else {
         // 4. Try gmin stepping (fix/iterate mode)
-        ckt.integrator_ctx.mode = MODEDC_BITS | MODEDCOP_BIT | MODEINITFIX_BIT;
+        ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
         } else {
             // 5. Try source stepping
-            ckt.integrator_ctx.mode = MODEDC_BITS | MODEDCOP_BIT | MODEINITFIX_BIT;
+            ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
             result = source_stepping(ckt, solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
