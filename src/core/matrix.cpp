@@ -1,5 +1,6 @@
 #include "core/matrix.hpp"
 #include <algorithm>
+#include <cassert>
 #include <stdexcept>
 #include <string>
 
@@ -97,11 +98,15 @@ void NumericMatrix::clear() {
 }
 
 void NumericMatrix::add(MatrixOffset offset, double val) {
-    // Negative offset is the project-wide sentinel for "ground-touching"
-    // stamps — see Device::stamp() in devices/device.hpp. Silently drop
-    // so raw mat.add() call sites (e.g. the translated UCB BSIM4v7 load)
-    // don't need to guard every one.
-    if (offset < 0) return;
+    // -1 is the project-wide sentinel for "ground-touching" stamps — see
+    // Device::add_if_valid() in devices/device.hpp. Silently drop so raw
+    // mat.add() call sites (e.g. the translated UCB BSIM4v7 load) don't
+    // need to guard every one. Any *other* negative offset indicates a
+    // garbage pointer from a wrong stamp path — we trip a debug assert so
+    // the bug surfaces instead of producing a silently wrong result.
+    assert(offset >= -1 &&
+           "NumericMatrix::add: offset must be >= -1; -1 is the ground sentinel");
+    if (offset < 0) return;  // sentinel: ground node — no-op
     values_[offset] += val;
 }
 

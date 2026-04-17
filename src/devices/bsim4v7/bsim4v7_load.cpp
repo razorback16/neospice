@@ -29,6 +29,7 @@
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 
 namespace neospice::bsim4v7 {
 
@@ -65,12 +66,16 @@ static inline int NIintegrate(Shim::Ckt *ckt, double *geq, double *ceq,
                               double /*cap*/, int /*qcap*/) {
     // Phase-1b guard: we only support DC here. When the transient driver
     // enables state storage (T10/T11) this stub must be replaced with the
-    // real integrator; see TODO above.
+    // real integrator; see TODO above.  Note: Shim::report_error only
+    // writes to stderr and returns — it does NOT abort — so we must throw
+    // explicitly.  Throwing (rather than std::abort) lets tests verify
+    // the trap via ASSERT_THROW.
     if (ckt && (ckt->CKTmode & MODETRAN)) {
         Shim::report_error(Shim::ERR_FATAL,
             "BSIM4v7 NIintegrate stub reached in transient mode — not yet "
             "implemented (Phase-1b deferred to T10/T11).");
-        return -1;
+        throw std::runtime_error(
+            "NIintegrate stub reached in transient mode");
     }
     if (geq) *geq = 0.0;
     if (ceq) *ceq = 0.0;

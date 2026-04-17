@@ -119,7 +119,13 @@ void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
     Shim::Ckt setup_ckt;
     setup_ckt.CKTtemp    = 300.15;
     setup_ckt.CKTnomTemp = 300.15;
-    setup_ckt.CKTinternalNodeCounter = 1000;  // guaranteed above real nodes
+    // Seed above any plausible real-node index.  Phase-1b only supports the
+    // intrinsic path (no internal nodes); see the post-setup guard below.
+    // TODO(Phase-2): plumb internal nodes through Circuit's SparsityBuilder
+    // when rgateMod/rbodyMod/rdsMod/trnqsMod/rsh paths are re-enabled.  The
+    // wire-up happens here (seed counter = max_external_node+1) and in
+    // Circuit (extend var count + ghost rhs to cover the extras).
+    setup_ckt.CKTinternalNodeCounter = 1000;
 
     int states = 0;
     int rc = BSIM4setup(&shim_matrix,
@@ -129,30 +135,22 @@ void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
         throw std::runtime_error("BSIM4setup failed with rc=" + std::to_string(rc));
     }
 
-    // Replay the Shim::Matrix journal so we (a) record every reservation
-    // for assign_offsets to resolve and (b) promote non-ground entries to
-    // the real builder in neospice coords.
-    //
-    // We can't read Shim::Matrix's journal directly (it's private), so we
-    // re-run make_elt for the same (r,c) pairs...  No — the TSTALLOC
-    // reservations were one-shot and have already been written into
-    // inst_.BSIM4*Ptr as sequential IDs (0, 1, 2, ...).  We must be able
-    // to recover the (r, c) pairs from those IDs.  Shim::Matrix exposes
-    // resolve_offsets(pat) but that needs a finalized pattern.  The
-    // easiest thing: build a dummy SparsityPattern over scratch and ask
-    // for resolve_offsets to retrieve the list — the scratch pattern is
-    // only used for its journal contents (we store (r,c) ourselves).
-    //
-    // Simpler still: iterate the reservations via a hand-coded loop.
-    // We know each BSIM4*Ptr id is the journal index; the journal size
-    // equals the number of make_elt calls we issued.  Read the journal
-    // back through a friend-style helper... rather than expand the Shim
-    // API, we just ask Matrix to resolve_offsets against a deliberately
-    // oversized SparsityPattern built from scratch.  That pattern
-    // contains every (r,c) make_elt was passed, and its offset() call
-    // returns the canonical CSC index — but we don't need that; we need
-    // the (r,c) pair.  So: add a tiny accessor below.
-    const auto& journal = shim_matrix._debug_journal();
+    // Phase-1b: reject any model card that allocated internal nodes.
+    // BSIM4setup only calls add_internal_node when rgateMod/rbodyMod/
+    // rdsMod/trnqsMod/rsh are enabled; those paths need Circuit-side
+    // wiring we haven't done yet (see TODO above).  Without this guard,
+    // internal-node IDs (>=1000) leak into the RHS ghost array in
+    // evaluate() and index out of bounds.
+    if (setup_ckt.CKTinternalNodeCounter != 1000) {
+        throw std::runtime_error(
+            "BSIM4v7Device: model card allocated internal nodes "
+            "(rgateMod/rbodyMod/rdsMod/trnqsMod/rsh). "
+            "Phase-1b only supports the intrinsic path; "
+            "wire internals through Circuit in Phase-2.");
+    }
+
+    // Journal is in UCB coordinates; we copy it out and shift per-entry below.
+    const auto& journal = shim_matrix.reservation_journal();
     journal_.assign(journal.begin(), journal.end());
 
     // Promote non-ground entries to the real builder, shifting from UCB
@@ -226,8 +224,11 @@ void BSIM4v7Device::assign_offsets(const SparsityPattern& pattern) {
 
 #undef RESOLVE
 
-    // Count sanity — 70 RESOLVE() lines above match the 70 TSTALLOC
-    // call sites in bsim4v7_setup.cpp.  If either number changes, update
+    // Count sanity — 70 RESOLVE() invocations above match the 70
+    // TSTALLOC invocation sites in bsim4v7_setup.cpp (verified by
+    // `grep -oE 'RESOLVE\(BSIM4' bsim4v7_device.cpp | wc -l` and
+    // `grep -cE '^[^/]*\\bTSTALLOC\\(' bsim4v7_setup.cpp` minus the
+    // single `#define TSTALLOC` line).  If either number changes, update
     // both or the device will silently leave pointer IDs unresolved.
 }
 

@@ -73,8 +73,9 @@ public:
 private:
     explicit BSIM4v7Device(std::string name) : Device(std::move(name)) {}
 
-    bsim4v7::BSIM4v7Instance inst_{};
-    bsim4v7::BSIM4v7Model*   model_ = nullptr;
+    // mutable: BSIM4setup writes through stamp_pattern (const) by design.
+    mutable bsim4v7::BSIM4v7Instance inst_{};
+    bsim4v7::BSIM4v7Model*           model_ = nullptr;
 
     // Journal of (row, col) reservations in UCB-convention coords (0 =
     // ground, >=1 = real).  Populated by stamp_pattern via a private

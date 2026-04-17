@@ -119,3 +119,28 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
         << "Drain current mismatch.  Sim=" << id_sim
         << " Golden=" << id_golden;
 }
+
+// ---------------------------------------------------------------------------
+// C3 guard test: BSIM4setup allocates internal nodes when rgateMod != 0
+// (see bsim4v7_setup.cpp:2325 et al.).  Phase-1b doesn't wire those
+// internals through Circuit, so stamp_pattern must throw rather than
+// silently let internal node IDs (>= 1000) leak into the RHS ghost
+// array in evaluate().  See the TODO(Phase-2) block in
+// bsim4v7_device.cpp:stamp_pattern.
+// ---------------------------------------------------------------------------
+TEST(BSIM4v7UCBLoad, StampPatternThrowsOnInternalNodeAlloc) {
+    BSIM4v7ModelCard card;
+    fill_nmod_card(card);
+    // Enable rgateMod so BSIM4setup allocates a "gate" internal node.
+    card.ucb.BSIM4rgateMod      = 1;
+    card.ucb.BSIM4rgateModGiven = 1;
+
+    BSIM4v7Device::Geom g;
+    g.W = 1e-6;
+    g.L = 1e-7;
+    g.NF = 1.0;
+    auto dev = BSIM4v7Device::make("M1", 0, 1, 2, 3, g, card);
+
+    SparsityBuilder builder(4);
+    EXPECT_THROW(dev->stamp_pattern(builder), std::runtime_error);
+}

@@ -46,6 +46,11 @@ protected:
         if (r >= 0 && c >= 0) return pattern.offset(r, c);
         return -1;
     }
+    // add_if_valid is the preferred stamp helper for new code.  NOTE: raw
+    // `mat.add(off, val)` is also accepted with sentinel-only semantics —
+    // NumericMatrix::add no-ops on off == -1 (ground) and asserts on any
+    // other negative offset (see core/matrix.cpp). The translated UCB
+    // BSIM4v7 load path relies on that sentinel behaviour.
     static void add_if_valid(NumericMatrix& mat, MatrixOffset off, double val) {
         if (off >= 0) mat.add(off, val);
     }

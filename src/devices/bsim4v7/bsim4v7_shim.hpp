@@ -156,7 +156,7 @@ namespace Shim {
         /// BSIM4v7Device adapter which owns the shifted-coord convention
         /// and needs to walk reservations itself.  Not intended for
         /// production code outside the adapter.
-        const std::vector<std::pair<int,int>>& _debug_journal() const { return journal_; }
+        const std::vector<std::pair<int,int>>& reservation_journal() const { return journal_; }
 
     private:
         neospice::SparsityBuilder &builder_;
