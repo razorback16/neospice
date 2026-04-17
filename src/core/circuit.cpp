@@ -61,8 +61,16 @@ void Circuit::add_bsim4_model_card(std::unique_ptr<BSIM4v7ModelCard> card) {
 }
 
 void Circuit::finalize() {
+    // 0. Let devices declare internal nodes. These get allocated from
+    //    next_node_ via the normal Circuit::node() path, so they appear
+    //    before branch indices in the MNA variable numbering.
+    for (auto& dev : devices_) {
+        dev->declare_internal_nodes(*this);
+    }
+
     // 1. Assign branch indices for devices that carry extra MNA variables.
-    //    Branch indices start right after the node variables.
+    //    Branch indices start right after ALL node variables (external +
+    //    internal, since internal nodes were just allocated above).
     int32_t branch_idx = next_node_;
 
     for (auto& dev : devices_) {

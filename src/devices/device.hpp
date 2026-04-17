@@ -6,6 +6,8 @@
 
 namespace neospice {
 
+class Circuit;  // forward decl for declare_internal_nodes
+
 constexpr int32_t GROUND_INTERNAL = -1;  // internal index for ground node
 
 class Device {
@@ -13,6 +15,11 @@ public:
     explicit Device(std::string name) : name_(std::move(name)) {}
     virtual ~Device() = default;
     const std::string& name() const { return name_; }
+
+    /// Called by Circuit::finalize() before branch assignment and sparsity
+    /// build. Devices that need internal MNA nodes (e.g. BSIM4 resistance
+    /// models) override this to allocate them via ckt.node().
+    virtual void declare_internal_nodes(Circuit& /*ckt*/) {}
 
     virtual void stamp_pattern(SparsityBuilder& builder) const = 0;
     virtual void assign_offsets(const SparsityPattern& pattern) = 0;
