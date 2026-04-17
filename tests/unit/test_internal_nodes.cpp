@@ -18,6 +18,15 @@ TEST(InternalNodes, RdsModAllocatesInternalDrainSource) {
         << "RDSMOD=1 should allocate internal drain/source nodes";
 }
 
+TEST(InternalNodes, RgateModAllocatesInternalGate) {
+    Simulator sim;
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_rgatemod.cir";
+    auto ckt = sim.load(path);
+    // drain, gate = 2 external nodes + 1 internal (gNodePrime) + 2 VSource branches = 5
+    EXPECT_GT(ckt.num_vars(), 4)
+        << "RGATEMOD=1 should allocate internal gate node";
+}
+
 TEST(InternalNodes, IntrinsicPathNoExtraNodes) {
     Simulator sim;
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_iv.cir";

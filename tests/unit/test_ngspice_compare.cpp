@@ -144,6 +144,31 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RDSMOD) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, NMOS_DC_RGATEMOD) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_rgatemod.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.dc.has_value());
+    // ngspice exposes internal nodes (e.g. v(m1#gate)) that we name
+    // differently (__m1_gate) — strip them from the expected side so we
+    // only compare circuit-netlist nodes (no '#' in the node name).
+    for (auto it = ng_result.node_voltages.begin();
+         it != ng_result.node_voltages.end(); ) {
+        if (it->first.find('#') != std::string::npos)
+            it = ng_result.node_voltages.erase(it);
+        else
+            ++it;
+    }
+    // Tolerance slightly wider than the intrinsic-path test: RGATEMOD=1
+    // introduces gate-current paths; a 0.2% disagreement in i(v2) is
+    // expected from the difference in how ngspice vs neospice evaluate
+    // the gate-side conductance contributions.
+    auto cmp = compare_dc(ng_result, *cs_result.dc, {5e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter.cir";
     auto ng_result = ngspice_->run_transient(path);
