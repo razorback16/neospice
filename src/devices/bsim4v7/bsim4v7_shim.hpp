@@ -2,6 +2,7 @@
 #include "core/matrix.hpp"
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -103,6 +104,12 @@ namespace Shim {
         // Internal node registrar
         int CKTinternalNodeCounter = 1000;
         int add_internal_node(const char *name);
+
+        // Node allocation callback. When set, add_internal_node delegates
+        // to this instead of incrementing the stub counter. The callback
+        // receives the UCB node name and must return a UCB-convention index
+        // (>= 1 for real nodes, 0 for ground).
+        std::function<int(const char*)> node_alloc;
     };
 
     // --- CKTmode bit flags (values match ngspice cktdefs.h exactly) --------

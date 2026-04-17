@@ -1,6 +1,6 @@
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 
-#include "core/circuit.hpp"        // for tls_integrator_ctx / IntegratorCtx
+#include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
 
 #include <cstdlib>                 // std::free for pSizeDependParamKnot
@@ -106,41 +106,31 @@ BSIM4v7Device::make(std::string name,
 }
 
 // ---------------------------------------------------------------------------
-// stamp_pattern — run BSIM4setup once to populate per-instance pParam and
-// to journal every (row, col) reservation.  UCB-convention coords are
-// stored in journal_; the corresponding real (row-1, col-1) pairs are
-// appended to the caller's real SparsityBuilder.  Ground-touching
-// reservations (r==0 || c==0 in UCB form) are deliberately skipped — the
-// associated BSIM4*Ptr fields are left at -1 and any stamp into them is
-// guarded by an rgateMod/rbodyMod/rdsMod/trnqsMod branch in b4ld.c that
-// our simple NMOS case never enters.
+// declare_internal_nodes — run BSIM4setup to populate per-instance pParam
+// and to journal every (row, col) reservation.  When resistance models
+// (rgateMod/rbodyMod/rdsMod) are active, BSIM4setup calls add_internal_node;
+// we delegate those to Circuit::node() via the node_alloc callback so the
+// internal nodes get real MNA indices.  This runs before branch assignment
+// in finalize(), so internal nodes sit between external nodes and branch
+// variables in the MNA numbering.
 // ---------------------------------------------------------------------------
-void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
-    // Shim::Matrix wraps a SparsityBuilder reference.  We give it a
-    // short-lived *throwaway* builder whose outputs we ignore; the real
-    // builder receives a shifted-down-by-1 copy of each non-ground entry.
-    SparsityBuilder scratch(1);  // size doesn't matter — we discard its pattern
+void BSIM4v7Device::declare_internal_nodes(Circuit& ckt) {
+    SparsityBuilder scratch(1);  // throwaway — real builder comes in stamp_pattern
     Shim::Matrix shim_matrix(scratch);
 
-    // Fresh Shim::Ckt for the setup call — only CKTtemp/CKTnomTemp are
-    // read (and CKTinternalNodeCounter for add_internal_node, which our
-    // minimal case does not trigger).  BSIM4setup does not consume the
-    // user-configured temperature (that happens in BSIM4temp, which the
-    // adapter re-runs on the first evaluate() once the real options are
-    // published).  T_NOMINAL is a safe placeholder.
     Shim::Ckt setup_ckt;
     setup_ckt.CKTtemp    = T_NOMINAL;
     setup_ckt.CKTnomTemp = T_NOMINAL;
-    // Seed above any plausible real-node index.  Phase-1b only supports
-    // the intrinsic path (no internal nodes); see the post-setup guard
-    // below.  Phase-2 internal-node plumbing is tracked in
-    //   docs/superpowers/plans/2026-04-16-milestone4-bsim4-ucb-z-port-phase1b.md
-    // under "T7 follow-up / F1 (internal nodes)".  The work spans
-    // Circuit (new allocate_internal_node + internal_node_count virtual),
-    // Device interface (set_internal_nodes hook), and this adapter
-    // (translate UCB 1000+k IDs back to Circuit var indices during stamp
-    // and evaluate, and size the ghost arrays to cover the extras).
-    setup_ckt.CKTinternalNodeCounter = 1000;
+    setup_ckt.CKTinternalNodeCounter = 1000;  // fallback seed (unused when callback is set)
+
+    // Delegate internal-node allocation to Circuit::node().  The lambda
+    // converts the returned neospice index (>=0) to UCB convention (>=1)
+    // so BSIM4setup sees consistent coordinates.
+    setup_ckt.node_alloc = [&ckt, this](const char* name) -> int {
+        std::string full = "__" + name_ + "_" + name;
+        int32_t neo = ckt.node(full);
+        return neo + 1;  // UCB convention: ground=0, real>=1
+    };
 
     int states = 0;
     int rc = BSIM4setup(&shim_matrix,
@@ -150,28 +140,35 @@ void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
         throw std::runtime_error("BSIM4setup failed with rc=" + std::to_string(rc));
     }
 
-    // Phase-1b: reject any model card that allocated internal nodes.
-    // BSIM4setup only calls add_internal_node when rgateMod/rbodyMod/
-    // rdsMod/trnqsMod/rsh are enabled; those paths need Circuit-side
-    // wiring we haven't done yet (see F1 blocker and plan reference
-    // above).  Without this guard, internal-node IDs (>=1000) leak into
-    // the RHS ghost array in evaluate() and index out of bounds.
-    if (setup_ckt.CKTinternalNodeCounter != 1000) {
-        throw std::runtime_error(
-            "BSIM4v7Device: model card allocated internal nodes "
-            "(rgateMod/rbodyMod/rdsMod/trnqsMod/rsh). "
-            "Phase-1b only supports the intrinsic path; "
-            "wire internals through Circuit in Phase-2.");
-    }
-
-    // Journal is in UCB coordinates; we copy it out and shift per-entry below.
+    // Capture the journal for stamp_pattern / assign_offsets replay.
     const auto& journal = shim_matrix.reservation_journal();
     journal_.assign(journal.begin(), journal.end());
 
-    // Promote non-ground entries to the real builder, shifting from UCB
-    // coords (>=1) back to neospice coords (>=0).
+    // Recompute max_neo_node_ to cover internal nodes.  Some journal entries
+    // reference internal-node UCB indices (allocated above via Circuit::node)
+    // that are larger than any external node index this device was handed at
+    // make() time.  The ghost rhs/voltage arrays in evaluate() must be sized
+    // to cover the widest UCB index.
     for (auto [r, c] : journal_) {
-        if (r <= 0 || c <= 0) continue;   // ground-touching entry — skip
+        int mx = std::max(r, c);
+        if (mx > 0) {
+            int32_t neo = mx - 1;  // UCB -> neospice
+            if (neo > max_neo_node_) max_neo_node_ = neo;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// stamp_pattern — replay the journal captured by declare_internal_nodes.
+// Each non-ground entry is shifted from UCB coords (>=1) to neospice
+// coords (>=0) and appended to the caller's SparsityBuilder.
+// ---------------------------------------------------------------------------
+void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
+    // Journal was populated by declare_internal_nodes (BSIM4setup).
+    // Replay non-ground entries into the real builder, shifting from UCB
+    // coords (>=1) to neospice coords (>=0).
+    for (auto [r, c] : journal_) {
+        if (r <= 0 || c <= 0) continue;
         builder.add(r - 1, c - 1);
     }
 }

@@ -121,14 +121,19 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
 }
 
 // ---------------------------------------------------------------------------
-// C3 guard test: BSIM4setup allocates internal nodes when rgateMod != 0
-// (see bsim4v7_setup.cpp:2325 et al.).  Phase-1b doesn't wire those
-// internals through Circuit, so stamp_pattern must throw rather than
-// silently let internal node IDs (>= 1000) leak into the RHS ghost
-// array in evaluate().  See the TODO(Phase-2) block in
-// bsim4v7_device.cpp:stamp_pattern.
+// Phase-2 test: BSIM4setup allocates internal nodes when rgateMod != 0
+// (see bsim4v7_setup.cpp:2325 et al.).  declare_internal_nodes now
+// delegates those allocations to Circuit::node() via the Shim::Ckt
+// node_alloc callback.  Verify the device successfully runs setup and
+// produces a journal (no throw).
 // ---------------------------------------------------------------------------
-TEST(BSIM4v7UCBLoad, StampPatternThrowsOnInternalNodeAlloc) {
+TEST(BSIM4v7UCBLoad, DeclareInternalNodesSucceedsWithRgateMod) {
+    Circuit ckt;
+    auto nd = ckt.node("d");
+    auto ng = ckt.node("g");
+    auto ns = GROUND_INTERNAL;
+    auto nb = ckt.node("b");
+
     BSIM4v7ModelCard card;
     fill_nmod_card(card);
     // Enable rgateMod so BSIM4setup allocates a "gate" internal node.
@@ -139,8 +144,11 @@ TEST(BSIM4v7UCBLoad, StampPatternThrowsOnInternalNodeAlloc) {
     g.W = 1e-6;
     g.L = 1e-7;
     g.NF = 1.0;
-    auto dev = BSIM4v7Device::make("M1", 0, 1, 2, 3, g, card);
+    auto dev = BSIM4v7Device::make("M1", nd, ng, ns, nb, g, card);
+    ckt.add_device(std::move(dev));
 
-    SparsityBuilder builder(4);
-    EXPECT_THROW(dev->stamp_pattern(builder), std::runtime_error);
+    // finalize calls declare_internal_nodes then stamp_pattern — no throw.
+    EXPECT_NO_THROW(ckt.finalize());
+    // rgateMod=1 adds at least 1 internal node, so num_nodes > 3 (d,g,b).
+    EXPECT_GT(ckt.num_nodes(), 3);
 }

@@ -62,6 +62,7 @@ public:
         const Geom& geom, BSIM4v7ModelCard& shared_card);
 
     // Device interface
+    void declare_internal_nodes(Circuit& ckt) override;
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,

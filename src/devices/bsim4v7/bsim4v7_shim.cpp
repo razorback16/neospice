@@ -25,7 +25,8 @@ Matrix::resolve_offsets(const neospice::SparsityPattern &pat) const {
     return out;
 }
 
-int Ckt::add_internal_node(const char * /*name*/) {
+int Ckt::add_internal_node(const char *name) {
+    if (node_alloc) return node_alloc(name);
     return CKTinternalNodeCounter++;
 }
 
