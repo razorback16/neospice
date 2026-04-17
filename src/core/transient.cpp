@@ -169,6 +169,11 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     double next_output_time = tstep;
     int step_count = 0;
 
+    // CKTmode bits for transient
+    // MODETRAN=0x1, MODEINITTRAN=0x1000 (source: ngspice cktdefs.h; mirrored in bsim4v7_shim.hpp)
+    constexpr int MODETRAN_BIT     = 0x1;
+    constexpr int MODEINITTRAN_BIT = 0x1000;
+
     // ---------------------------------------------------------------
     // 7. Adaptive time-stepping loop
     // ---------------------------------------------------------------
@@ -201,6 +206,34 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                 vs->set_time(t);
             } else if (auto* is = dynamic_cast<ISource*>(dev.get())) {
                 is->set_time(t);
+            }
+        }
+
+        // Fill integrator context before Newton load
+        {
+            bool first_step = (step_count == 0);
+            int cur_order = ctrl.order();
+            ckt.integrator_ctx.order = cur_order;
+            ckt.integrator_ctx.delta = dt;
+            ckt.integrator_ctx.delta_old[1] = ctrl.prev_dt();
+            ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : 0);
+
+            if (cur_order == 1) {
+                // Backward Euler
+                ckt.integrator_ctx.ag[0] =  1.0 / dt;
+                ckt.integrator_ctx.ag[1] = -1.0 / dt;
+            } else {
+                // Gear-2
+                double h_old = ctrl.prev_dt();
+                if (h_old > 0.0) {
+                    double r = dt / h_old;
+                    ckt.integrator_ctx.ag[0] = (1.0 + 2.0 * r) / (dt * (1.0 + r));
+                    ckt.integrator_ctx.ag[1] = -(1.0 + r) / (dt * r);
+                } else {
+                    // Fallback to BE if prev_dt not yet set
+                    ckt.integrator_ctx.ag[0] =  1.0 / dt;
+                    ckt.integrator_ctx.ag[1] = -1.0 / dt;
+                }
             }
         }
 
@@ -243,9 +276,18 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         }
 
         // Accept step
+        ctrl.set_prev_dt(dt);
         ctrl.advance(dt);
         ctrl.set_dt(dt);
         step_count++;
+
+        // Advance to Gear-2 once two steps have been accepted
+        if (step_count == 2) {
+            ctrl.set_order(2);
+        }
+
+        // Rotate state history ring for BSIM4-style state-storing devices
+        ckt.rotate_state();
 
         // Accept on reactive devices
         for (auto& dev : ckt.devices()) {

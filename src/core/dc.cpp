@@ -39,17 +39,27 @@ DCResult solve_dc(Circuit& ckt) {
     KLUSolver solver;
     solver.symbolic(ckt.pattern());
 
-    // 3. Try newton_solve first
+    // CKTmode bits: MODEDC=0x70, MODEDCOP=0x40, MODEINITJCT=0x200, MODEINITFIX=0x400
+    // (source: ngspice cktdefs.h; mirrored in devices/bsim4v7/bsim4v7_shim.hpp)
+    constexpr int MODEDC_BITS     = 0x70;
+    constexpr int MODEDCOP_BIT    = 0x40;
+    constexpr int MODEINITJCT_BIT = 0x200;
+    constexpr int MODEINITFIX_BIT = 0x400;
+
+    // 3. Try newton_solve first (initial junction guess mode)
+    ckt.integrator_ctx.mode = MODEDC_BITS | MODEDCOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
     } else {
-        // 4. Try gmin stepping
+        // 4. Try gmin stepping (fix/iterate mode)
+        ckt.integrator_ctx.mode = MODEDC_BITS | MODEDCOP_BIT | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
         } else {
             // 5. Try source stepping
+            ckt.integrator_ctx.mode = MODEDC_BITS | MODEDCOP_BIT | MODEINITFIX_BIT;
             result = source_stepping(ckt, solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;

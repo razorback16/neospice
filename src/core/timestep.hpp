@@ -28,12 +28,23 @@ public:
 
     int rejected_count() const { return rejected_; }
 
+    /// Integration order: 1 = Backward Euler, 2 = Gear-2.
+    /// Starts at 1; caller increments once a second accepted step is available.
+    int order() const { return order_; }
+    void set_order(int o) { order_ = o; }
+
+    /// Previous accepted step size (h_{n-1}), set by the transient driver.
+    double prev_dt() const { return prev_dt_; }
+    void set_prev_dt(double h) { prev_dt_ = h; }
+
 private:
     double dt_ = 0.0;
     double time_ = 0.0;
     double tstop_ = 0.0;
     double proposed_dt_ = 0.0;
     int rejected_ = 0;
+    int order_ = 1;
+    double prev_dt_ = 0.0;
     std::set<double> breakpoints_;
 };
 

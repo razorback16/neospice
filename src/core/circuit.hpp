@@ -19,6 +19,16 @@ struct AnalysisCommand {
     double ac_fstart = 1.0, ac_fstop = 1e6;
 };
 
+/// Populated by the transient/DC driver before each Newton load, read by
+/// state-storing devices (BSIM4v7). DC leaves mode=MODEDC|MODEDCOP|MODEINITJCT/FIX.
+struct IntegratorCtx {
+    int    mode  = 0;       // Shim-style CKTmode bitfield
+    double ag[8] = {};      // UCB integrator coeffs (BE/Trap/Gear2)
+    double delta = 0.0;
+    double delta_old[8] = {};
+    int    order = 1;
+};
+
 class Circuit {
 public:
     /// Map node name to internal index. "0", "gnd", "GND" → GROUND_INTERNAL (-1)
@@ -26,6 +36,7 @@ public:
 
     int32_t num_nodes() const { return next_node_; }
     int32_t num_vars() const  { return num_vars_; }
+    int32_t num_states() const { return num_states_; }
 
     void add_device(std::unique_ptr<Device> dev);
 
@@ -36,6 +47,13 @@ public:
     const std::vector<std::unique_ptr<Device>>& devices() const { return devices_; }
     std::vector<std::unique_ptr<Device>>& devices()             { return devices_; }
 
+    double* state0() { return state0_.data(); }
+    double* state1() { return state1_.data(); }
+    double* state2() { return state2_.data(); }
+
+    /// Rotate state history: state2 <- state1 <- state0 (buffer addresses stay stable).
+    void rotate_state();
+
     std::string node_name(int32_t idx) const;
     int32_t     node_index(const std::string& name) const;
 
@@ -45,12 +63,16 @@ public:
     std::unordered_map<int32_t, double> nodeset;  // .nodeset
     std::vector<std::string>            save_signals;
 
+    IntegratorCtx integrator_ctx;
+
 private:
     std::vector<std::unique_ptr<Device>> devices_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     int32_t next_node_ = 0;
     int32_t num_vars_  = 0;
+    int32_t num_states_ = 0;
+    std::vector<double> state0_, state1_, state2_;
     std::unique_ptr<SparsityPattern> pattern_;
 };
 

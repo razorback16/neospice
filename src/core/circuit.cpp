@@ -73,6 +73,30 @@ void Circuit::finalize() {
     for (auto& dev : devices_) {
         dev->assign_offsets(*pattern_);
     }
+
+    // 5. Allocate state ring buffers and bind per-device base offsets.
+    num_states_ = 0;
+    for (auto& dev : devices_) num_states_ += dev->state_vars();
+    state0_.assign(num_states_, 0.0);
+    state1_.assign(num_states_, 0.0);
+    state2_.assign(num_states_, 0.0);
+
+    int32_t base = 0;
+    for (auto& dev : devices_) {
+        int32_t n = dev->state_vars();
+        if (n > 0) {
+            dev->set_state_ptrs(state0_.data(), state1_.data(), state2_.data(), base);
+            base += n;
+        }
+    }
+}
+
+void Circuit::rotate_state() {
+    state2_.swap(state1_);
+    state1_ = state0_;   // value copy; same backing buffer
+    // Pointers to state0_/1/2_.data() are unchanged because swap() keeps the
+    // backing buffers and copy-assign on an already-sized vector reuses storage.
+    // Do NOT rebind devices.
 }
 
 } // namespace neospice
