@@ -213,6 +213,28 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter_resistance.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    // ngspice exposes internal gate nodes (v(m1#gate), v(m2#gate)) which we
+    // name differently — strip them so we only compare circuit-netlist nodes.
+    for (auto it = ng_result.voltages.begin();
+         it != ng_result.voltages.end(); ) {
+        if (it->first.find('#') != std::string::npos)
+            it = ng_result.voltages.erase(it);
+        else
+            ++it;
+    }
+    // Gear-2 vs Trap mismatch + resistance-model RC delay — use same
+    // tolerance as the intrinsic CMOS inverter test.
+    auto cmp = compare_transient(ng_result, *cs_result.transient, {5e-1, 5e-2});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 // 5-stage ring oscillator — 10 MOSFETs in a feedback loop.
 //
 // Enabled with compare_transient_oscillator: ring oscillators are
