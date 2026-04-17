@@ -1,0 +1,57 @@
+model:
+  ngspice_prefix: "BSIM4v7"
+  neospice_name: "bsim4v7"
+  neospice_namespace: "bsim4v7"
+  instance_struct: "BSIM4v7instance"
+  model_struct: "BSIM4v7model"
+  instance_tag: "sBSIM4v7instance"
+  model_tag: "sBSIM4v7model"
+  cpp_instance: "BSIM4v7Instance"
+  cpp_model: "BSIM4v7Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "BSIM4v7dNode" }
+    - { name: "g", field: "BSIM4v7gNodeExt" }
+    - { name: "s", field: "BSIM4v7sNode" }
+    - { name: "b", field: "BSIM4v7bNode" }
+  state_count: 29
+  state_base_field: "BSIM4v7states"
+  next_instance_field: "BSIM4v7nextInstance"
+  instances_field: "BSIM4v7instances"
+  next_model_field: "BSIM4v7nextModel"
+  model_ptr_field: "BSIM4v7modPtr"
+  name_field: "BSIM4v7name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "b4v7set.c"
+    load: "b4v7ld.c"
+    temp: "b4v7temp.c"
+    check: "b4v7check.c"
+    mpar: "b4v7mpar.c"
+    param: "b4v7par.c"
+    geo: "b4v7geo.c"
+    devsup: "b4v7.c"
+  skip_files:
+    - "b4v7acld.c"
+    - "b4v7noi.c"
+    - "b4v7pzld.c"
+    - "b4v7cvtest.c"
+    - "b4v7ask.c"
+    - "b4v7mask.c"
+    - "b4v7del.c"
+    - "b4v7dest.c"
+    - "b4v7getic.c"
+    - "b4v7trunc.c"
+    - "b4v7soachk.c"
+    - "bsim4v7init.c"
+  defines:
+    - "PREDICTOR"
+  has_internal_nodes: true
+  setup_function: "BSIM4setup"
+  temp_function: "BSIM4temp"
+  load_function: "BSIM4load"
+  geometry:
+    - { name: "W", field: "BSIM4v7w", given: "BSIM4v7wGiven", default: "1e-6" }
+    - { name: "L", field: "BSIM4v7l", given: "BSIM4v7lGiven", default: "1e-7" }
+    - { name: "NF", field: "BSIM4v7nf", given: "BSIM4v7nfGiven", default: "1.0" }
