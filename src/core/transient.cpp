@@ -93,7 +93,17 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
 
     // ---------------------------------------------------------------
-    // 2. Apply .ic overrides
+    // 2. Seed state1 with DC op-point
+    // ---------------------------------------------------------------
+    // BSIM4's MODEINITTRAN branch (bsim4v7_load.cpp ~line 264-276) reads
+    // vds/vgs/vbs/... from CKTstate1 to seed the first transient Newton
+    // iteration.  The DC preamble above wrote the converged op-point into
+    // state0 — rotate it into state1 so the first transient step starts
+    // from a valid operating point instead of zero.
+    ckt.rotate_state();
+
+    // ---------------------------------------------------------------
+    // 3. Apply .ic overrides
     // ---------------------------------------------------------------
     for (auto& [node_idx, value] : ckt.ic) {
         if (node_idx >= 0 && node_idx < n)
@@ -129,12 +139,12 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     };
 
     // ---------------------------------------------------------------
-    // 3. Store t=0
+    // 4. Store t=0
     // ---------------------------------------------------------------
     store_point(0.0, solution);
 
     // ---------------------------------------------------------------
-    // 4. Enable transient and set integration method
+    // 5. Enable transient and set integration method
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
@@ -148,7 +158,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
 
     // ---------------------------------------------------------------
-    // 5. Initialize DC state
+    // 6. Initialize DC state
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
@@ -160,7 +170,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
 
     // ---------------------------------------------------------------
-    // 6. Set up time step controller
+    // 7. Set up time step controller
     // ---------------------------------------------------------------
     TimeStepController ctrl;
     ctrl.init(tstep, tstop);
@@ -190,7 +200,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     constexpr int MODEINITTRAN_BIT = 0x1000;
 
     // ---------------------------------------------------------------
-    // 7. Adaptive time-stepping loop
+    // 8. Adaptive time-stepping loop
     // ---------------------------------------------------------------
     double dt = tstep;
 
@@ -344,7 +354,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
 
     // ---------------------------------------------------------------
-    // 8. Clean up
+    // 9. Clean up
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get()))
