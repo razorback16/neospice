@@ -319,6 +319,17 @@ CompareResult compare_transient_oscillator(const TransientResult& expected,
         if (amp_err > tol.amplitude_relative) {
             result.passed = false;
         }
+
+        // Mid-level (DC bias) offset check — catches a bug where the waveform
+        // oscillates at the right frequency/amplitude but is shifted up/down.
+        double mid_err = std::abs(se.mid - sa.mid);
+        if (mid_err > result.worst_error) {
+            result.worst_error = mid_err;
+            result.worst_signal = name + " (mid-offset)";
+        }
+        if (mid_err > tol.mid_absolute) {
+            result.passed = false;
+        }
     }
 
     return result;

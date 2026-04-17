@@ -108,3 +108,18 @@ TEST(OscillatorComparator, ClassificationMismatchFails) {
     EXPECT_NE(cmp.worst_signal.find("DC"), std::string::npos)
         << "worst_signal was: " << cmp.worst_signal;
 }
+
+TEST(OscillatorComparator, DetectsMidOffsetShift) {
+    // Two 1 MHz sines with same period (1 MHz) and amplitude (1 V), but one
+    // is DC-shifted by 0.5 V: expected mid = 0 V, actual mid = 0.5 V.
+    // With mid_absolute = 0.1 (100 mV), the 0.5 V shift should fail and
+    // report worst_signal containing "mid-offset".
+    auto expected = make_sine("v(out)", 1.0e6, 1.0, 0.0, 10.0e-6, 2001);
+    auto actual   = make_sine("v(out)", 1.0e6, 1.0, 0.5, 10.0e-6, 2001);
+    OscillatorTolerance tol{};
+    tol.mid_absolute = 0.1;  // 100 mV tolerance — 500 mV shift should fail
+    auto cmp = compare_transient_oscillator(expected, actual, tol);
+    EXPECT_FALSE(cmp.passed);
+    EXPECT_NE(cmp.worst_signal.find("mid-offset"), std::string::npos)
+        << "worst_signal was: " << cmp.worst_signal;
+}

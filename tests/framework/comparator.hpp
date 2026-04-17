@@ -22,6 +22,7 @@ struct OscillatorTolerance {
     double period_relative = 1e-2;    // <=1% period error
     double amplitude_relative = 5e-2; // <=5% peak-to-peak amplitude error
     double dc_absolute = 5e-2;        // 50 mV absolute for DC-tied nodes
+    double mid_absolute = 1e-1;       // 100 mV: max allowed |mid_expected - mid_actual| for oscillating signals
     int min_periods = 3;              // require >= this many periods in the window
 };
 
