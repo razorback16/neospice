@@ -244,20 +244,38 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : 0);
 
             if (cur_order == 1) {
-                // Backward Euler
+                // Backward Euler: y'(t_n) ≈ (y_n - y_{n-1}) / dt
                 ckt.integrator_ctx.ag[0] =  1.0 / dt;
                 ckt.integrator_ctx.ag[1] = -1.0 / dt;
+                ckt.integrator_ctx.ag[2] =  0.0;
             } else {
-                // Gear-2
+                // Variable-step Gear-2 (BDF2).  Derived from the Lagrange
+                // polynomial through (t_{n-2}, y_{n-2}), (t_{n-1}, y_{n-1}),
+                // (t_n, y_n) differentiated at t_n.  With h = dt = t_n -
+                // t_{n-1} and k = h_old = t_{n-1} - t_{n-2}:
+                //
+                //   ag[0] =  (2h + k) / ( h * (h + k) )
+                //   ag[1] = -(h  + k) / ( h * k       )
+                //   ag[2] =   h       / ( k * (h + k) )
+                //
+                // Uniform-step sanity: h = k → (1.5, -2, 0.5)/h ✓.
+                // Shim::NIintegrate (bsim4v7_shim.cpp) sums all three terms
+                // over CKTstate0/1/2 for CKTorder==2, so all three must be
+                // populated — the previous code populated only ag[0]/ag[1]
+                // and additionally used an ag[1] expression that was only
+                // correct for uniform h=k.
                 double h_old = ctrl.prev_dt();
                 if (h_old > 0.0) {
-                    double r = dt / h_old;
-                    ckt.integrator_ctx.ag[0] = (1.0 + 2.0 * r) / (dt * (1.0 + r));
-                    ckt.integrator_ctx.ag[1] = -(1.0 + r) / (dt * r);
+                    double sum = dt + h_old;
+                    ckt.integrator_ctx.ag[0] =  (2.0 * dt + h_old) / (dt    * sum  );
+                    ckt.integrator_ctx.ag[1] = -(dt + h_old)       / (dt    * h_old);
+                    ckt.integrator_ctx.ag[2] =  dt                 / (h_old * sum  );
                 } else {
-                    // Fallback to BE if prev_dt not yet set
+                    // Fallback to BE if prev_dt not yet set (shouldn't happen
+                    // once step_count ≥ 2, but keeps us safe).
                     ckt.integrator_ctx.ag[0] =  1.0 / dt;
                     ckt.integrator_ctx.ag[1] = -1.0 / dt;
+                    ckt.integrator_ctx.ag[2] =  0.0;
                 }
             }
         }
