@@ -56,8 +56,8 @@ namespace Shim {
     constexpr int IF_REDUNDANT = 0x400;  // UCB uses for aliases
 
     // --- CKTcircuit replacement --------------------------------------------
-    // Only the fields that b4temp.c + b4set.c actually read are declared here.
-    // b4ld.c will extend this in Phase 1b (state vectors, integrator coeffs).
+    // Fields mirror the CKTcircuit members read by b4temp.c, b4set.c, and
+    // b4ld.c.  Bit values for CKTmode flags match ngspice cktdefs.h exactly.
     struct Ckt {
         double CKTtemp       = 300.15;  // K; 27 C default
         double CKTnomTemp    = 300.15;
@@ -67,20 +67,55 @@ namespace Shim {
         double CKTvoltTol    = 1e-6;
         int    CKTmode       = 0;        // MODEDC | MODETRAN etc. (bit flags)
         int    CKTbadMos3    = 0;        // UCB convention: unused here
-        // Phase-1b extensions (declared now so BSIM4setup can reference when it
-        // allocates state offsets):
         int    CKTnumStates  = 0;        // running counter updated in BSIM4setup
-        // Phase-1b transient state vectors (stub fields for DEVpred / b4ld):
-        double  CKTdelta        = 0.0;
-        double  CKTdeltaOld[8]  = {};    // integrator time-step history
-        double *CKTstate1       = nullptr;
-        double *CKTstate2       = nullptr;
 
-        // Phase-1a: return sequential internal node IDs starting at 1000.
-        // Phase-1b will replace this with the real node-table registrar.
+        // Transient integrator state
+        double  CKTdelta        = 0.0;
+        double  CKTdeltaOld[8]  = {};   // UCB uses indices [0..5]
+        double  CKTag[8]        = {};   // integrator coefficients (UCB reads [0..1])
+        int     CKTorder        = 1;
+
+        // State vector ring (bound by the device adapter each load call).
+        // Length = total state size across all devices; indexed by inst->BSIM4states + offset.
+        double *CKTstate0 = nullptr;
+        double *CKTstate1 = nullptr;
+        double *CKTstate2 = nullptr;
+
+        // Residual / previous-iterate pointers (bound by adapter each load call).
+        double *CKTrhs    = nullptr;
+        double *CKTrhsOld = nullptr;
+
+        // Matrix binding (bound by adapter each load call). UCB uses ckt->CKTmatrix
+        // indirectly; our translated code stamps through mat directly.
+        neospice::NumericMatrix *mat = nullptr;
+
+        // Internal node registrar
         int CKTinternalNodeCounter = 1000;
         int add_internal_node(const char *name);
     };
+
+    // --- CKTmode bit flags (values match ngspice cktdefs.h exactly) --------
+    // old 'mode' parameters
+    constexpr int MODE             = 0x3;    // AC | TRAN mask
+    constexpr int MODETRAN         = 0x1;
+    constexpr int MODEAC           = 0x2;
+    // old 'modedc' parameters
+    constexpr int MODEDC           = 0x70;   // DC mask (DCOP | TRANOP | DCTRAN)
+    constexpr int MODEDCOP         = 0x10;
+    constexpr int MODETRANOP       = 0x20;
+    constexpr int MODEDCTRANCURVE  = 0x40;
+    // old 'initf' parameters
+    constexpr int INITF            = 0x3f00;
+    constexpr int MODEINITFLOAT    = 0x100;
+    constexpr int MODEINITJCT      = 0x200;
+    constexpr int MODEINITFIX      = 0x400;
+    constexpr int MODEINITSMSIG    = 0x800;
+    constexpr int MODEINITTRAN     = 0x1000;
+    constexpr int MODEINITPRED     = 0x2000;
+    // old 'nosolv' parameter
+    constexpr int MODEUIC          = 0x10000;
+    // bypass flag (not in ngspice CKTmode — kept for translated code compatibility)
+    constexpr int MODEBYPASS       = 0x1000000;
 
     // --- SMPmatrix replacement ---------------------------------------------
     // UCB calls SMPmakeElt(matrix, row, col) to reserve a sparse entry and
