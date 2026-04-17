@@ -9,6 +9,7 @@ add_library(bsim4v7_obj OBJECT
     bsim4v7_geo.cpp
     bsim4v7_temp.cpp
     bsim4v7_setup.cpp
+    bsim4v7_load.cpp
 )
 target_include_directories(bsim4v7_obj PUBLIC
     ${CMAKE_SOURCE_DIR}/src
