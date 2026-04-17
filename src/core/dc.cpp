@@ -39,6 +39,10 @@ DCResult solve_dc(Circuit& ckt) {
     KLUSolver solver;
     solver.symbolic(ckt.pattern());
 
+    // Publish SimOptions for BSIM4v7Device (and any future state-storing
+    // device) via the same integrator_ctx channel used for CKTmode/ag.
+    ckt.integrator_ctx.options = &ckt.options;
+
     // CKTmode bits (ngspice cktdefs.h; mirrored in devices/bsim4v7/bsim4v7_shim.hpp):
     //   MODEDC=0x70 (mask: DCOP|TRANOP|DCTRANCURVE), MODEDCOP=0x10,
     //   MODEINITJCT=0x200, MODEINITFIX=0x400.

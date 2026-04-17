@@ -30,6 +30,10 @@ struct ModelFixture {
 
     ModelFixture() : matrix(builder) {
         // --- Model card: NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9 ---
+        // Match BSIM4v7Device::make() — stamp the real kernel version so
+        // BSIM4checkModel doesn't fire its "wrong version number" warning.
+        model.BSIM4version = "4.7.0";
+        model.BSIM4versionGiven = 1;
         model.BSIM4modName = "NMOD";
         model.BSIM4type        = NMOS;
         model.BSIM4typeGiven   = 1;

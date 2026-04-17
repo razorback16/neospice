@@ -178,6 +178,21 @@ namespace Shim {
     inline void FREE(T *&p) { delete[] p; p = nullptr; }
     template <typename T>
     inline T *tmalloc(std::size_t n) { return new T[n](); }
+
+    // --- Implicit integrator -----------------------------------------------
+    // Port of ngspice src/ckt/niintegr.c::NIintegrate, specialised to Gear
+    // (BE is Gear order 1).  Neospice does not yet carry a per-circuit
+    // `integrateMethod` field, so we always use Gear; a future trap
+    // extension would add an enum to Shim::Ckt and switch here.
+    //
+    // Shape matches UCB call sites in bsim4v7_load.cpp exactly:
+    //   NIintegrate(ckt, &geq, &ceq, cap, qcap)
+    // where qcap is the state-vector offset of the charge and ccap=qcap+1
+    // holds the numerical current.  BSIM4 passes cap=0.0 at every call site
+    // (b4ld.c derives geq separately via analytic dq/dv) so this routine
+    // effectively just runs the Gear summation over CKTstate{0,1,2}.
+    int NIintegrate(Ckt *ckt, double *geq, double *ceq,
+                    double cap, int qcap);
 } // namespace Shim
 
 } // namespace neospice::bsim4v7

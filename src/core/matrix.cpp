@@ -98,12 +98,21 @@ void NumericMatrix::clear() {
 }
 
 void NumericMatrix::add(MatrixOffset offset, double val) {
-    // -1 is the project-wide sentinel for "ground-touching" stamps — see
-    // Device::add_if_valid() in devices/device.hpp. Silently drop so raw
-    // mat.add() call sites (e.g. the translated UCB BSIM4v7 load) don't
-    // need to guard every one. Any *other* negative offset indicates a
-    // garbage pointer from a wrong stamp path — we trip a debug assert so
-    // the bug surfaces instead of producing a silently wrong result.
+    // Sentinel-only semantics — NOT error swallowing:
+    //
+    //   offset == -1  : canonical ground sentinel, NO-OP silently.
+    //   offset <  -1  : debug-assert fires (garbage offset from a broken
+    //                   stamp path).  Release builds still tolerate the
+    //                   bogus value as a no-op to stay memory-safe, but
+    //                   the assert catches the bug during development.
+    //   offset >=  0  : normal stamp into the values_ array.
+    //
+    // Devices produce -1 whenever a stamp target maps to ground — the
+    // translated UCB BSIM4v7 load and Device::add_if_valid() in
+    // devices/device.hpp both rely on this so they don't have to guard
+    // every mat.add() call.  If you find yourself wanting to "allow" any
+    // other negative value, you have a sparsity-offset resolution bug —
+    // do not remove the assert.
     assert(offset >= -1 &&
            "NumericMatrix::add: offset must be >= -1; -1 is the ground sentinel");
     if (offset < 0) return;  // sentinel: ground node — no-op

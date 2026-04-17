@@ -53,34 +53,10 @@ using namespace Shim;
 // DEVpnjlim / DEVlimvds / DEVfetlim are declared in bsim4v7_def.hpp and
 // implemented in bsim4v7_devsup.cpp.
 //
-// NIintegrate is UCB's implicit-integrator hook — it advances a stored
-// charge via BE/Gear using CKTag[0..1] and writes geq/ceq stamps.  Phase-1b
-// target is DC-only (op-point goldens), so this stub is exercised only when
-// MODETRAN is OFF.  The assert catches any transient wire-up that reaches
-// here before T10/T11 plumb in the real integrator.
-//
-// Reference for the real formula (geq = CKTag[0], ceq = state0 - CKTag[0]*xo
-// with xo derived from state1/CKTag[1]): ngspice src/frontend/niintegr.c
-// (function NIintegrate) and UCB bsim4 b4ld.c call sites.
-static inline int NIintegrate(Shim::Ckt *ckt, double *geq, double *ceq,
-                              double /*cap*/, int /*qcap*/) {
-    // Phase-1b guard: we only support DC here. When the transient driver
-    // enables state storage (T10/T11) this stub must be replaced with the
-    // real integrator; see TODO above.  Note: Shim::report_error only
-    // writes to stderr and returns — it does NOT abort — so we must throw
-    // explicitly.  Throwing (rather than std::abort) lets tests verify
-    // the trap via ASSERT_THROW.
-    if (ckt && (ckt->CKTmode & MODETRAN)) {
-        Shim::report_error(Shim::ERR_FATAL,
-            "BSIM4v7 NIintegrate stub reached in transient mode — not yet "
-            "implemented (Phase-1b deferred to T10/T11).");
-        throw std::runtime_error(
-            "NIintegrate stub reached in transient mode");
-    }
-    if (geq) *geq = 0.0;
-    if (ceq) *ceq = 0.0;
-    return 0;
-}
+// NIintegrate: real implementation now lives in bsim4v7_shim.cpp (it is a
+// shim-level integrator, not a BSIM4-specific one).  The `using namespace
+// Shim;` above means the UCB call sites here — all of the shape
+// "NIintegrate(ckt, &geq, &ceq, 0.0, qcap)" — resolve to Shim::NIintegrate.
 
 #define MAX_EXPL 2.688117142e+43
 #define MIN_EXPL 3.720075976e-44

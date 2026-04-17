@@ -27,6 +27,12 @@ struct IntegratorCtx {
     double delta = 0.0;
     double delta_old[8] = {};
     int    order = 1;
+
+    // Published by the analysis driver (dc.cpp / transient.cpp) before the
+    // Newton stamp loop so state-storing devices can read user-configured
+    // temperature / tolerances without threading them through the Device
+    // interface. Lifetime: the Circuit::options field (never dangling).
+    const SimOptions* options = nullptr;
 };
 
 class Circuit {

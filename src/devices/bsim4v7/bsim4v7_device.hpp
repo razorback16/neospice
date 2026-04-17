@@ -95,6 +95,12 @@ private:
     // Cached neospice node indices (so evaluate() can size the ghost rhs/
     // voltage arrays without re-interrogating the instance).
     int32_t max_neo_node_ = -1;
+
+    // Ghost buffers kept across evaluate() calls — size is stable for the
+    // device's lifetime, so resize() is O(1) after the first iteration and
+    // we avoid 2N heap allocations per Newton sweep.
+    std::vector<double> ghost_voltages_;
+    std::vector<double> ghost_rhs_;
 };
 
 } // namespace neospice

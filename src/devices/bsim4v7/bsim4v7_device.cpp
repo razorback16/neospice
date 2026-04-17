@@ -54,6 +54,15 @@ BSIM4v7Device::make(std::string name,
     std::unique_ptr<BSIM4v7Device> dev(new BSIM4v7Device(std::move(name)));
     dev->model_ = &shared_card.ucb;
 
+    // Our translated kernel is BSIM4 v4.7.0. bsim4v7_setup.cpp defaults an
+    // un-given BSIM4version to "4.6.0" and bsim4v7_check.cpp warns when the
+    // translated code disagrees. Stamp the real version here (parser will
+    // do this properly in T8 when it knows the .model source line).
+    if (!shared_card.ucb.BSIM4versionGiven) {
+        shared_card.ucb.BSIM4version = "4.7.0";
+        shared_card.ucb.BSIM4versionGiven = 1;
+    }
+
     auto& inst = dev->inst_;
     inst.BSIM4name     = dev->name().c_str();
     inst.BSIM4modPtr   = dev->model_;
@@ -115,16 +124,22 @@ void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
 
     // Fresh Shim::Ckt for the setup call — only CKTtemp/CKTnomTemp are
     // read (and CKTinternalNodeCounter for add_internal_node, which our
-    // minimal case does not trigger).
+    // minimal case does not trigger).  BSIM4setup does not consume the
+    // user-configured temperature (that happens in BSIM4temp, which the
+    // adapter re-runs on the first evaluate() once the real options are
+    // published).  T_NOMINAL is a safe placeholder.
     Shim::Ckt setup_ckt;
-    setup_ckt.CKTtemp    = 300.15;
-    setup_ckt.CKTnomTemp = 300.15;
-    // Seed above any plausible real-node index.  Phase-1b only supports the
-    // intrinsic path (no internal nodes); see the post-setup guard below.
-    // TODO(Phase-2): plumb internal nodes through Circuit's SparsityBuilder
-    // when rgateMod/rbodyMod/rdsMod/trnqsMod/rsh paths are re-enabled.  The
-    // wire-up happens here (seed counter = max_external_node+1) and in
-    // Circuit (extend var count + ghost rhs to cover the extras).
+    setup_ckt.CKTtemp    = T_NOMINAL;
+    setup_ckt.CKTnomTemp = T_NOMINAL;
+    // Seed above any plausible real-node index.  Phase-1b only supports
+    // the intrinsic path (no internal nodes); see the post-setup guard
+    // below.  Phase-2 internal-node plumbing is tracked in
+    //   docs/superpowers/plans/2026-04-16-milestone4-bsim4-ucb-z-port-phase1b.md
+    // under "T7 follow-up / F1 (internal nodes)".  The work spans
+    // Circuit (new allocate_internal_node + internal_node_count virtual),
+    // Device interface (set_internal_nodes hook), and this adapter
+    // (translate UCB 1000+k IDs back to Circuit var indices during stamp
+    // and evaluate, and size the ghost arrays to cover the extras).
     setup_ckt.CKTinternalNodeCounter = 1000;
 
     int states = 0;
@@ -138,9 +153,9 @@ void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
     // Phase-1b: reject any model card that allocated internal nodes.
     // BSIM4setup only calls add_internal_node when rgateMod/rbodyMod/
     // rdsMod/trnqsMod/rsh are enabled; those paths need Circuit-side
-    // wiring we haven't done yet (see TODO above).  Without this guard,
-    // internal-node IDs (>=1000) leak into the RHS ghost array in
-    // evaluate() and index out of bounds.
+    // wiring we haven't done yet (see F1 blocker and plan reference
+    // above).  Without this guard, internal-node IDs (>=1000) leak into
+    // the RHS ghost array in evaluate() and index out of bounds.
     if (setup_ckt.CKTinternalNodeCounter != 1000) {
         throw std::runtime_error(
             "BSIM4v7Device: model card allocated internal nodes "
@@ -267,29 +282,18 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
     // n_ghost covers UCB indices 0..max_neo_node_+1, which is all real
     // nodes this device can write to.
 
-    // --- Ghost shifted arrays.  voltages[0..n_real-1] are neospice
-    // solution entries; UCB voltage for ground (index 0) is 0.0, and UCB
-    // voltage for neospice node k is voltages[k].
-    std::vector<double> ghost_voltages(n_ghost, 0.0);
-    std::vector<double> ghost_rhs     (n_ghost, 0.0);
+    // --- Ghost shifted arrays kept as members so the per-evaluate() cost
+    // stays at O(n_ghost) assignment instead of 2x heap alloc/free.  The
+    // size is a function of max_neo_node_ (stable for a device's lifetime);
+    // the assign(n_ghost, 0.0) both resizes on first call and zeroes on
+    // every subsequent call without releasing storage.
+    ghost_voltages_.assign(n_ghost, 0.0);
+    ghost_rhs_.assign(n_ghost, 0.0);
     for (int32_t k = 0; k <= max_neo_node_ && k < n_real; ++k) {
-        ghost_voltages[k + 1] = voltages[k];
+        ghost_voltages_[k + 1] = voltages[k];
     }
 
     Shim::Ckt ckt;
-    ckt.CKTtemp    = 300.15;
-    ckt.CKTnomTemp = 300.15;
-    // Default tolerances from SimOptions.  We don't plumb the Circuit's
-    // SimOptions in yet (T7 hardcodes defaults); T10/T11 can thread them.
-    // TODO(T10): wire Circuit::options into this Shim::Ckt init so the
-    // BSIM4 bypass/convergence checks use the user-configured tolerances.
-    SimOptions opts;
-    ckt.CKTgmin    = opts.gmin;
-    ckt.CKTreltol  = opts.reltol;
-    ckt.CKTabstol  = opts.abstol;
-    ckt.CKTvoltTol = opts.vntol;
-    ckt.CKTbypass  = 0;   // no bypass in Phase-1b
-    ckt.CKTnoncon  = 0;
 
     // Integrator context — read from the thread-local set by newton_solve.
     // If absent (caller forgot the guard), fall back to DC op defaults so
@@ -306,6 +310,22 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
         ckt.CKTorder = 1;
     }
 
+    // Pull user-configured SimOptions (temp + tolerances) off the
+    // IntegratorCtx where dc.cpp / transient.cpp published them.  Fall
+    // back to T_NOMINAL and library defaults if no driver is live (e.g.
+    // in a direct unit-test call).
+    const SimOptions* sim_opts = (ic ? ic->options : nullptr);
+    SimOptions fallback;
+    if (!sim_opts) sim_opts = &fallback;
+    ckt.CKTtemp    = sim_opts->temp;
+    ckt.CKTnomTemp = sim_opts->temp;   // nom/temp not separated in neospice yet
+    ckt.CKTgmin    = sim_opts->gmin;
+    ckt.CKTreltol  = sim_opts->reltol;
+    ckt.CKTabstol  = sim_opts->abstol;
+    ckt.CKTvoltTol = sim_opts->vntol;
+    ckt.CKTbypass  = 0;   // no bypass in Phase-1b
+    ckt.CKTnoncon  = 0;
+
     // State ring.
     ckt.CKTstate0 = state0_;
     ckt.CKTstate1 = state1_;
@@ -313,8 +333,8 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
 
     // Ghost rhs / old-iterate pointers.  const_cast because BSIM4load
     // reads CKTrhsOld as plain double* even though it only reads.
-    ckt.CKTrhs    = ghost_rhs.data();
-    ckt.CKTrhsOld = ghost_voltages.data();
+    ckt.CKTrhs    = ghost_rhs_.data();
+    ckt.CKTrhsOld = ghost_voltages_.data();
     ckt.mat       = &mat;
 
     // First-call BSIM4temp (UCB preprocesses temperature-dependent
@@ -343,7 +363,7 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
     // silently dropped (matching ngspice's behaviour where ground-row
     // writes are no-ops in the solver).
     for (int32_t k = 1; k <= max_neo_node_ + 1 && k < n_ghost; ++k) {
-        if (k - 1 < n_real) rhs[k - 1] += ghost_rhs[k];
+        if (k - 1 < n_real) rhs[k - 1] += ghost_rhs_[k];
     }
 }
 

@@ -60,6 +60,10 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     KLUSolver solver;
     solver.symbolic(ckt.pattern());
 
+    // Publish SimOptions (temp, tolerances, gmin) so BSIM4v7Device can read
+    // user-configured values from evaluate() via tls_integrator_ctx.
+    ckt.integrator_ctx.options = &ckt.options;
+
     // DC preamble — mirror dc.cpp's integrator_ctx.mode sequence so BSIM4v7
     // (and any future state-storing device) sees MODEDC + MODEINITJCT/FIX
     // at the same phases of gmin/source stepping.  See dc.cpp for the bit

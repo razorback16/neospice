@@ -41,6 +41,9 @@ add_executable(neospice_tests
     unit/test_bsim4v7_ucb_load.cpp
     unit/test_circuit_state_allocation.cpp
     unit/test_circuit_state_rotation.cpp
+    unit/test_newton_init_mode_flip.cpp
+    unit/test_bsim4v7_niintegrate.cpp
+    unit/test_sim_options_temp_plumbing.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
     $<TARGET_OBJECTS:bsim4v7_obj>
