@@ -131,6 +131,19 @@ TEST_F(NgspiceCompareTest, NMOS_DC_IV) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, NMOS_DC_RDSMOD) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_rdsmod.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.dc.has_value());
+    // ngspice is the expected side so we only compare external nodes
+    // (internal nodes like dNodePrime/sNodePrime are not in ngspice output)
+    auto cmp = compare_dc(ng_result, *cs_result.dc, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter.cir";
     auto ng_result = ngspice_->run_transient(path);
