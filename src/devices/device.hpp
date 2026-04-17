@@ -25,6 +25,16 @@ public:
     virtual int32_t extra_vars() const { return 0; }
     virtual std::vector<std::string> output_currents() const { return {}; }
 
+    /// Number of BSIM-style state slots per instance (0 for stateless devices).
+    /// Summed by Circuit during finalize() to size the per-circuit state buffers.
+    virtual int32_t state_vars() const { return 0; }
+
+    /// Bind three rotating state buffers and the per-instance base offset.
+    /// state0 is the latest iterate; state1/state2 are previous timesteps
+    /// (for PREDICTOR and integrator history). Default is a no-op.
+    virtual void set_state_ptrs(double* /*state0*/, double* /*state1*/,
+                                double* /*state2*/, int32_t /*base*/) {}
+
 protected:
     std::string name_;
 
