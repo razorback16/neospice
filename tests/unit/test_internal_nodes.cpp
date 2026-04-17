@@ -27,6 +27,15 @@ TEST(InternalNodes, RgateModAllocatesInternalGate) {
         << "RGATEMOD=1 should allocate internal gate node";
 }
 
+TEST(InternalNodes, RbodyModAllocatesInternalBodyNodes) {
+    Simulator sim;
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_rbodymod.cir";
+    auto ckt = sim.load(path);
+    // drain, gate = 2 external + 3 internal (dbody, body, sbody) + 2 VSource = 7
+    EXPECT_GT(ckt.num_vars(), 4)
+        << "RBODYMOD=1 should allocate 3 internal body nodes";
+}
+
 TEST(InternalNodes, IntrinsicPathNoExtraNodes) {
     Simulator sim;
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_iv.cir";

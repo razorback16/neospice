@@ -169,6 +169,27 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RGATEMOD) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, NMOS_DC_RBODYMOD) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_rbodymod.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.dc.has_value());
+    // ngspice exposes internal body nodes (e.g. v(m1#body)) that we name
+    // differently — strip them from the expected side so we only compare
+    // circuit-netlist nodes (no '#' in the node name).
+    for (auto it = ng_result.node_voltages.begin();
+         it != ng_result.node_voltages.end(); ) {
+        if (it->first.find('#') != std::string::npos)
+            it = ng_result.node_voltages.erase(it);
+        else
+            ++it;
+    }
+    auto cmp = compare_dc(ng_result, *cs_result.dc, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter.cir";
     auto ng_result = ngspice_->run_transient(path);
