@@ -154,37 +154,41 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
-// 5-stage ring oscillator — 10 MOSFETs in a feedback loop.  This test is
-// DISABLED for a waveform-comparison-methodology reason, not a crash or
-// divergence bug:
+// 5-stage ring oscillator — 10 MOSFETs in a feedback loop.
 //
-//   * The heap-buffer-overflow in BSIM4v7Device::evaluate (triggered
-//     because BSIM4load iterates model->BSIM4instances and so a single
-//     evaluate() call would walk into OTHER instances' node indices,
-//     overflowing the per-device ghost RHS array) was fixed by splicing
-//     the calling instance out of the model chain for the duration of
-//     the load call.  See bsim4v7_device.cpp for the splice/restore
-//     logic.  With that fix the test runs to completion without ASan
-//     diagnostics or a SIGSEGV.
+// Enabled with compare_transient_oscillator: ring oscillators are
+// phase-sensitive, and small differences in the DC-settled initial node
+// voltages between our Gear BDF-2 integrator and ngspice's default
+// trapezoidal method produce a phase offset that grows into arbitrarily-
+// large point-wise sample error.  Rather than mask that with a loose
+// sample-wise tolerance (which is not a correctness signal), we compare
+// the two scalar metrics that *are* physically meaningful for a
+// free-running oscillator: period (from rising-edge zero-crossings about
+// each node's midpoint) and peak-to-peak amplitude.
 //
-//   * The simulator does oscillate at the right frequency / amplitude,
-//     but ring oscillators are phase-sensitive: small differences in
-//     the initial (DC-settled) node voltages between our integrator
-//     (Gear BDF-2) and ngspice's default (trapezoidal) produce a phase
-//     offset that grows into an arbitrarily-large point-wise error on
-//     a uniform time grid.  A direct v(n_i)[t] == ng(v(n_i))[t]
-//     comparison is not a meaningful correctness signal here — it
-//     needs a frequency-domain or phase-aligned metric.
-//
-// Milestone 3 / 4 follow-up: add FFT-based oscillator comparison (or
-// a period-lock pre-process) and re-enable with a specialised tolerance.
-TEST_F(NgspiceCompareTest, DISABLED_RingOscillator5Stage) {
+// Measured agreement between neospice (Gear BDF-2) and ngspice
+// (trapezoidal) on the 5-stage ring oscillator:
+//   * Period:    T_neospice = 300.9 ps, T_ngspice = 300.6 ps
+//                (relative error ~ 1.0e-3)
+//   * Amplitude: 1.99 V on both sides (peak-to-peak, rail-to-rail)
+//   * vdd correctly classified as DC, matched exactly
+// Tolerances are set to ~10x the observed agreement so the test is
+// robust to minor refactors without masking a real regression:
+//   period_relative    = 1%  (observed 0.1%)
+//   amplitude_relative = 2%  (observed < 0.5%)
+//   dc_absolute        = 50 mV
+TEST_F(NgspiceCompareTest, RingOscillator5Stage) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/ring_osc_5stage.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {2e-1, 1e-1});
+    OscillatorTolerance tol{
+        /*period_relative=*/1e-2,
+        /*amplitude_relative=*/2e-2,
+        /*dc_absolute=*/5e-2,
+        /*min_periods=*/3};
+    auto cmp = compare_transient_oscillator(*cs_result.transient, ng_result, tol);
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
