@@ -1,3 +1,4 @@
+#define PREDICTOR
 /**** BSIM4.7.0 Released by Darsen Lu 04/08/2011 ****/
 
 /**********
@@ -10,38 +11,85 @@
  * Project Director: Prof. Chenming Hu.
  **********/
 
-/* Mechanical translation from b4geo.c to C++ for the neospice BSIM4v7 port.
- * Function bodies are preserved verbatim; only the following changes were made:
- *   - UCB #includes replaced with project headers
- *   - K&R function signatures converted to ISO C++
- *   - return 0 → return Shim::OK
- *   - Wrapped in namespace neospice::bsim4v7
- *   - BSIM4NumFingerDiff made static (file-local helper, not in public API)
- *   - Guarded MAX macro added (used by BSIM4NumFingerDiff)
- */
+// Translated to C++ for neospice by tools/ngspice_migrate.
 
 #include "devices/bsim4v7/bsim4v7_def.hpp"
+#include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
+#ifndef CONSTvt0
+#define CONSTvt0 0.025852037
+#endif
+#ifndef CONSTroot2
+#define CONSTroot2 1.4142135623730950488
+#endif
+#ifndef CONSTCtoK
+#define CONSTCtoK 273.15
+#endif
+#ifndef CHARGE
+#define CHARGE 1.6021918e-19
+#endif
+#ifndef FABS
+#define FABS(x) std::fabs(x)
+#endif
+#ifndef ABS
+#define ABS(x) std::fabs(x)
+#endif
 #ifndef MAX
-#define MAX(a,b) ((a) > (b) ? (a) : (b))
-#define _BSIM4GEO_UNDEF_MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef TMALLOC
+#define TMALLOC(type, num) (new type[num]())
+#endif
+#ifndef NG_IGNORE
+#define NG_IGNORE(x) (void)(x)
+#endif
+#ifndef cp_getvar
+#define cp_getvar(name, type, ptr) 0
+#endif
+#ifndef CP_REAL
+#define CP_REAL 0
+#endif
+#ifndef NUMELEMS
+#define NUMELEMS(ARRAY) (sizeof(ARRAY)/sizeof(*(ARRAY)))
+#endif
+#ifndef IOP
+#define IOP(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|c), d}
+#endif
+#ifndef IOPU
+#define IOPU(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|c), d}
+#endif
+#ifndef IP
+#define IP(a,b,c,d) {a, b, (Shim::IF_SET|c), d}
+#endif
+#ifndef OP
+#define OP(a,b,c,d) {a, b, (Shim::IF_ASK|c), d}
+#endif
+#ifndef OPU
+#define OPU(a,b,c,d) {a, b, (Shim::IF_ASK|c), d}
 #endif
 
 namespace neospice::bsim4v7 {
 
+using namespace Shim;
+
 /*
  * WDLiu:
  * This subrutine is a special module to process the geometry dependent
- * parasitics for BSIM4, which calculates Ps, Pd, As, Ad, and Rs and  Rd
+ * parasitics for BSIM4v7, which calculates Ps, Pd, As, Ad, and Rs and  Rd
  * for multi-fingers and varous GEO and RGEO options.
  */
 
 static int
-BSIM4NumFingerDiff(double nf, int minSD,
-                   double *nuIntD, double *nuEndD,
-                   double *nuIntS, double *nuEndS)
+BSIM4v7NumFingerDiff(
+double nf,
+int minSD,
+double *nuIntD, double *nuEndD, double *nuIntS, double *nuEndS)
 {
 int NF;
         NF = (int)nf;
@@ -63,14 +111,16 @@ int NF;
                 *nuIntS = 2.0 * MAX((nf / 2.0 - 1.0), 0.0);
 	    }
 	}
-return Shim::OK;
+return 0;
 }
 
 
 int
-BSIM4PAeffGeo(double nf, int geo, int minSD,
-              double Weffcj, double DMCG, double DMCI, double DMDG,
-              double *Ps, double *Pd, double *As, double *Ad)
+BSIM4v7PAeffGeo(
+double nf,
+int geo, int minSD,
+double Weffcj, double DMCG, double DMCI, double DMDG,
+double *Ps, double *Pd, double *As, double *Ad)
 {
 double T0, T1, T2;
 double ADiso, ADsha, ADmer, ASiso, ASsha, ASmer;
@@ -78,7 +128,7 @@ double PDiso, PDsha, PDmer, PSiso, PSsha, PSmer;
 double nuIntD = 0.0, nuEndD = 0.0, nuIntS = 0.0, nuEndS = 0.0;
 
 	if (geo < 9) /* For geo = 9 and 10, the numbers of S/D diffusions already known */
-	BSIM4NumFingerDiff(nf, minSD, &nuIntD, &nuEndD, &nuIntS, &nuEndS);
+	BSIM4v7NumFingerDiff(nf, minSD, &nuIntD, &nuEndD, &nuIntS, &nuEndS);
 
 	T0 = DMCG + DMCI;
 	T1 = DMCG + DMCG;
@@ -160,34 +210,37 @@ double nuIntD = 0.0, nuEndD = 0.0, nuIntS = 0.0, nuEndS = 0.0;
                 *Ad = ADiso + (nf - 1.0) * ADsha;
                 break;
 	    default:
-		printf("Warning: Specified GEO = %d not matched\n", geo);
+		printf("Warning: Specified GEO = %d not matched\n", geo); 
 	}
-return Shim::OK;
+return 0;
 }
 
 
 int
-BSIM4RdseffGeo(double nf, int geo, int rgeo, int minSD,
-               double Weffcj, double Rsh, double DMCG, double DMCI,
-               double DMDG, int Type, double *Rtot)
+BSIM4v7RdseffGeo(
+double nf,
+int geo, int rgeo, int minSD,
+double Weffcj, double Rsh, double DMCG, double DMCI, double DMDG,
+int Type,
+double *Rtot)
 {
-double Rint, Rend = 0.0;
+double Rint=0.0, Rend = 0.0;
 double nuIntD = 0.0, nuEndD = 0.0, nuIntS = 0.0, nuEndS = 0.0;
 
         if (geo < 9) /* since geo = 9 and 10 only happen when nf = even */
-        {   BSIM4NumFingerDiff(nf, minSD, &nuIntD, &nuEndD, &nuIntS, &nuEndS);
+        {   BSIM4v7NumFingerDiff(nf, minSD, &nuIntD, &nuEndD, &nuIntS, &nuEndS);
 
             /* Internal S/D resistance -- assume shared S or D and all wide contacts */
 	    if (Type == 1)
 	    {   if (nuIntS == 0.0)
 		    Rint = 0.0;
 	        else
-		    Rint = Rsh * DMCG / ( Weffcj * nuIntS);
+		    Rint = Rsh * DMCG / ( Weffcj * nuIntS); 
 	    }
 	    else
 	    {  if (nuIntD == 0.0)
                    Rint = 0.0;
-               else
+               else        
                    Rint = Rsh * DMCG / ( Weffcj * nuIntD);
 	    }
 	}
@@ -195,51 +248,51 @@ double nuIntD = 0.0, nuEndD = 0.0, nuIntS = 0.0, nuEndS = 0.0;
         /* End S/D resistance  -- geo dependent */
         switch(geo)
         {   case 0:
-		if (Type == 1) BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
+		if (Type == 1) BSIM4v7RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
 					      nuEndS, rgeo, 1, &Rend);
-		else           BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
+		else           BSIM4v7RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
 			     		      nuEndD, rgeo, 0, &Rend);
                 break;
             case 1:
-                if (Type == 1) BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                if (Type == 1) BSIM4v7RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
                                               nuEndS, rgeo, 1, &Rend);
-                else           BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                else           BSIM4v7RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
 					      nuEndD, rgeo, 0, &Rend);
                 break;
             case 2:
-                if (Type == 1) BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                if (Type == 1) BSIM4v7RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
 					      nuEndS, rgeo, 1, &Rend);
-                else           BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                else           BSIM4v7RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
 					      nuEndD, rgeo, 0, &Rend);
                 break;
             case 3:
-                if (Type == 1) BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                if (Type == 1) BSIM4v7RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
                                               nuEndS, rgeo, 1, &Rend);
-                else           BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                else           BSIM4v7RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
                                               nuEndD, rgeo, 0, &Rend);
                 break;
             case 4:
-                if (Type == 1) BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                if (Type == 1) BSIM4v7RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
                                               nuEndS, rgeo, 1, &Rend);
                 else           Rend = Rsh * DMDG / Weffcj;
                 break;
             case 5:
-                if (Type == 1) BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                if (Type == 1) BSIM4v7RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
                                               nuEndS, rgeo, 1, &Rend);
                 else           Rend = Rsh * DMDG / (Weffcj * nuEndD);
                 break;
             case 6:
                 if (Type == 1) Rend = Rsh * DMDG / Weffcj;
-                else           BSIM4RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                else           BSIM4v7RdsEndIso(Weffcj, Rsh, DMCG, DMCI, DMDG,
                                               nuEndD, rgeo, 0, &Rend);
                 break;
             case 7:
                 if (Type == 1) Rend = Rsh * DMDG / (Weffcj * nuEndS);
-                else           BSIM4RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
+                else           BSIM4v7RdsEndSha(Weffcj, Rsh, DMCG, DMCI, DMDG,
                                               nuEndD, rgeo, 0, &Rend);
                 break;
             case 8:
-                Rend = Rsh * DMDG / Weffcj;
+                Rend = Rsh * DMDG / Weffcj;	
                 break;
             case 9: /* all wide contacts assumed for geo = 9 and 10 */
 		if (Type == 1)
@@ -279,15 +332,19 @@ double nuIntD = 0.0, nuEndD = 0.0, nuIntS = 0.0, nuEndS = 0.0;
 	    *Rtot = Rint * Rend / (Rint + Rend);
 if(*Rtot==0.0)
 	printf("Warning: Zero resistance returned from RdseffGeo\n");
-return Shim::OK;
+return 0;
 }
 
 
 int
-BSIM4RdsEndIso(double Weffcj, double Rsh, double DMCG, double DMCI,
-               double DMDG, double nuEnd, int rgeo,
-               int Type, double *Rend)
-{
+BSIM4v7RdsEndIso(
+double Weffcj, double Rsh, double DMCG, double DMCI, double DMDG,
+double nuEnd,
+int rgeo, int Type,
+double *Rend)
+{	
+        NG_IGNORE(DMDG);
+
 	if (Type == 1)
 	{   switch(rgeo)
             {	case 1:
@@ -336,15 +393,20 @@ BSIM4RdsEndIso(double Weffcj, double Rsh, double DMCG, double DMCI,
                     printf("Warning: Specified RGEO = %d not matched\n", rgeo);
             }
 	}
-return Shim::OK;
+return 0;
 }
 
 
 int
-BSIM4RdsEndSha(double Weffcj, double Rsh, double DMCG, double DMCI,
-               double DMDG, double nuEnd, int rgeo,
-               int Type, double *Rend)
+BSIM4v7RdsEndSha(
+double Weffcj, double Rsh, double DMCG, double DMCI, double DMDG,
+double nuEnd,
+int rgeo, int Type,
+double *Rend)
 {
+        NG_IGNORE(DMCI);
+        NG_IGNORE(DMDG);
+
         if (Type == 1)
         {   switch(rgeo)
             {   case 1:
@@ -393,12 +455,7 @@ BSIM4RdsEndSha(double Weffcj, double Rsh, double DMCG, double DMCI,
                     printf("Warning: Specified RGEO = %d not matched\n", rgeo);
             }
         }
-return Shim::OK;
+return 0;
 }
 
 } // namespace neospice::bsim4v7
-
-#ifdef _BSIM4GEO_UNDEF_MAX
-#undef MAX
-#undef _BSIM4GEO_UNDEF_MAX
-#endif

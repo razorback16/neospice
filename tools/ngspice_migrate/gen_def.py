@@ -42,6 +42,9 @@ except (ImportError, ModuleNotFoundError):
         gen_instance: str = "GENinstance"
         gen_model: str = "GENmodel"
         matrix_ptr_suffix: str = "Ptr"
+        setup_function: str = ""
+        temp_function: str = ""
+        load_function: str = ""
 
 
 def generate_def_hpp(src: str, desc: ModelDescriptor) -> str:
@@ -95,6 +98,7 @@ def generate_def_hpp(src: str, desc: ModelDescriptor) -> str:
         "",
         text,
         count=1,
+        flags=re.MULTILINE,
     )
     # Strip the trailing #endif that closed the guard.
     # We look for the *last* #endif (possibly followed by a comment) at EOF.
@@ -153,6 +157,23 @@ def generate_def_hpp(src: str, desc: ModelDescriptor) -> str:
     )
 
     # -----------------------------------------------------------------
+    # 5b. Replace bare typedef names (not preceded by 'struct')
+    # -----------------------------------------------------------------
+    # After removing the typedef closing lines in steps 3-4, bare uses of
+    # the old typedef names (e.g. ``BSIM4v7instance *BSIM4v7instances;``)
+    # must be renamed to the C++ struct names.
+    text = re.sub(
+        r'\b' + re.escape(desc.instance_struct) + r'\b',
+        desc.cpp_instance,
+        text,
+    )
+    text = re.sub(
+        r'\b' + re.escape(desc.model_struct) + r'\b',
+        desc.cpp_model,
+        text,
+    )
+
+    # -----------------------------------------------------------------
     # 6. Replace double * matrix pointer fields with MatrixOffset
     # -----------------------------------------------------------------
     # Match lines like:  ``    double *PREFIXfooBarPtr;``
@@ -175,6 +196,16 @@ def generate_def_hpp(src: str, desc: ModelDescriptor) -> str:
     text = re.sub(r'\bIFuid\b', 'const char *', text)
 
     # -----------------------------------------------------------------
+    # 7b. Convert char * struct fields to const char *
+    # -----------------------------------------------------------------
+    text = re.sub(
+        r'^([ \t]+)char\s+\*',
+        r'\1const char *',
+        text,
+        flags=re.MULTILINE,
+    )
+
+    # -----------------------------------------------------------------
     # 8. Replace GENmodel / GENinstance references
     # -----------------------------------------------------------------
     text = re.sub(
@@ -189,18 +220,49 @@ def generate_def_hpp(src: str, desc: ModelDescriptor) -> str:
     )
 
     # -----------------------------------------------------------------
+    # 8b. Replace CKTcircuit with forward-declared Shim::Ckt
+    # -----------------------------------------------------------------
+    text = re.sub(r'\bCKTcircuit\s*\*', 'Shim::Ckt *', text)
+
+    # -----------------------------------------------------------------
     # 9. Wrap in #pragma once, includes, namespace
     # -----------------------------------------------------------------
+    nstatvars_guard = (
+        "#ifndef NSTATVARS\n"
+        "#define NSTATVARS 3\n"
+        "#endif\n"
+        "\n"
+    )
+
     wrapped = (
         "#pragma once\n"
         "\n"
         '#include "core/matrix.hpp"\n'
         "\n"
-        f"namespace neospice::{desc.namespace} {{\n"
+        + nstatvars_guard
+        + f"namespace neospice::{desc.namespace} {{\n"
+        "\n"
+        "namespace Shim { struct Ckt; class Matrix; }\n"
+        "\n"
+        f"struct {desc.cpp_model};\n"
         "\n"
         + text.strip()
         + "\n"
         "\n"
+        "// --- Parameter tables and dispatchers (defined in devsup/mpar) ------\n"
+        f"namespace Shim {{ struct IfParm; struct IfValue; }}\n"
+        f"extern Shim::IfParm {desc.prefix}pTable[];\n"
+        f"extern int {desc.prefix}pTSize;\n"
+        f"extern Shim::IfParm {desc.prefix}mPTable[];\n"
+        f"extern int {desc.prefix}mPTSize;\n"
+        f"int {desc.prefix}mParam(int param, Shim::IfValue *value, {desc.cpp_model} *model);\n"
+        f"int {desc.prefix}param(int param, Shim::IfValue *value, {desc.cpp_instance} *inst, Shim::IfValue *select);\n"
+        "\n"
+        "// --- UCB entry points (defined in setup/temp/load .cpp) ------\n"
+        + (f"int {desc.setup_function}(Shim::Matrix*, {desc.cpp_model}*, Shim::Ckt*, int*);\n" if desc.setup_function else "")
+        + (f"int {desc.temp_function}({desc.cpp_model}*, Shim::Ckt*);\n" if desc.temp_function else "")
+        + (f"int {desc.load_function}({desc.cpp_model}*, Shim::Ckt*);\n" if desc.load_function else "")
+        + "\n"
         f"}} // namespace neospice::{desc.namespace}\n"
     )
 

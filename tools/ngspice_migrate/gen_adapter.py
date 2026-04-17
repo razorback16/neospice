@@ -12,18 +12,31 @@ adapters for diodes, BJTs, MOSFETs, and any other migrated model.
 
 from __future__ import annotations
 
-from typing import List, Protocol
+import re
+from typing import List, Optional, Protocol
 
 
 # ---------------------------------------------------------------------------
 # Minimal protocol for the descriptor fields we consume
 # ---------------------------------------------------------------------------
 
+class _CleanupLinkedList(Protocol):
+    field: str
+    next_field: str
+
+
+class _VersionStamp(Protocol):
+    field: str
+    given_field: str
+    value: str
+
+
 class _GeomParam(Protocol):
     name: str
     field: str
     given: str
     default: str
+    always_given: bool
 
 
 class _Terminal(Protocol):
@@ -50,6 +63,29 @@ class _Desc(Protocol):
     load_function: str
     geometry: List[_GeomParam]
     has_internal_nodes: bool
+    cleanup_linked_lists: List[_CleanupLinkedList]
+    version_stamp: Optional[_VersionStamp]
+
+
+# ---------------------------------------------------------------------------
+# TSTALLOC extraction
+# ---------------------------------------------------------------------------
+
+def extract_tstalloc_fields(setup_source: str, ptr_suffix: str = "Ptr") -> List[str]:
+    """Extract matrix pointer field names from TSTALLOC calls in translated setup source.
+
+    Returns a list of unique field names (e.g. ``["BSIM4v7DPbpPtr", ...]``)
+    preserving first-occurrence order.
+    """
+    pattern = rf'TSTALLOC\(\s*([A-Za-z0-9_]+{re.escape(ptr_suffix)})\s*,'
+    seen: set[str] = set()
+    result: list[str] = []
+    for m in re.finditer(pattern, setup_source):
+        name = m.group(1)
+        if name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +97,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
     parts: list[str] = []
     ns = desc.namespace
     prefix = desc.prefix
+    has_cleanup = bool(desc.cleanup_linked_lists)
 
     # --- Preamble ----------------------------------------------------------
     parts.append("#pragma once\n")
@@ -84,6 +121,8 @@ def generate_adapter_hpp(desc: _Desc) -> str:
     parts.append("\n")
     parts.append(f"    {prefix}ModelCard() = default;\n")
     parts.append(f"    ~{prefix}ModelCard();\n")
+    if has_cleanup:
+        parts.append(f"    {prefix}ModelCard({prefix}ModelCard&&) noexcept = delete;\n")
     parts.append("\n")
     parts.append("    // Non-copyable / non-movable: UCB model is threaded with raw\n")
     parts.append("    // pointers; copying would alias them.\n")
@@ -157,12 +196,23 @@ def generate_adapter_hpp(desc: _Desc) -> str:
 # Implementation generator
 # ---------------------------------------------------------------------------
 
-def generate_adapter_cpp(desc: _Desc) -> str:
-    """Return the complete text of the device adapter implementation file."""
+def generate_adapter_cpp(desc: _Desc, setup_source: str = "") -> str:
+    """Return the complete text of the device adapter implementation file.
+
+    Parameters
+    ----------
+    desc:
+        Model descriptor.
+    setup_source:
+        Translated setup .cpp source text.  When provided, TSTALLOC field
+        names are extracted and used to emit RESOLVE() calls in
+        assign_offsets.  When empty, a TODO comment is emitted instead.
+    """
     parts: list[str] = []
     ns = desc.namespace
     name = desc.neospice_name
     prefix = desc.prefix
+    has_cleanup = bool(desc.cleanup_linked_lists)
 
     # --- Includes ----------------------------------------------------------
     parts.append(f'#include "devices/{ns}/{ns}_device.hpp"\n')
@@ -170,14 +220,18 @@ def generate_adapter_cpp(desc: _Desc) -> str:
     parts.append('#include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx\n')
     parts.append('#include "core/types.hpp"          // SimOptions defaults\n')
     parts.append("\n")
+    if has_cleanup:
+        parts.append("#include <cstdlib>\n")
     parts.append("#include <stdexcept>\n")
     parts.append("#include <string>\n")
     parts.append("\n")
 
-    # --- Forward declaration for load function -----------------------------
-    parts.append(f"// Forward declaration for {desc.load_function}.\n")
+    # --- Forward declarations for UCB entry-point functions -----------------
+    parts.append(f"// Forward declarations for translated UCB functions.\n")
     parts.append(f"namespace neospice::{ns} {{\n")
-    parts.append(f"    int {desc.load_function}({desc.cpp_model}* model, Shim::Ckt* ckt);\n")
+    parts.append(f"    int {desc.setup_function}(Shim::Matrix*, {desc.cpp_model}*, Shim::Ckt*, int*);\n")
+    parts.append(f"    int {desc.temp_function}({desc.cpp_model}*, Shim::Ckt*);\n")
+    parts.append(f"    int {desc.load_function}({desc.cpp_model}*, Shim::Ckt*);\n")
     parts.append("}\n")
     parts.append("\n")
 
@@ -191,7 +245,19 @@ def generate_adapter_cpp(desc: _Desc) -> str:
     parts.append("// ---------------------------------------------------------------------------\n")
     parts.append(f"// {prefix}ModelCard destructor\n")
     parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append(f"{prefix}ModelCard::~{prefix}ModelCard() = default;\n")
+    if has_cleanup:
+        parts.append(f"{prefix}ModelCard::~{prefix}ModelCard() {{\n")
+        for cl in desc.cleanup_linked_lists:
+            parts.append(f"    auto* p = ucb.{cl.field};\n")
+            parts.append("    while (p) {\n")
+            parts.append(f"        auto* next = p->{cl.next_field};\n")
+            parts.append("        std::free(p);\n")
+            parts.append("        p = next;\n")
+            parts.append("    }\n")
+            parts.append(f"    ucb.{cl.field} = nullptr;\n")
+        parts.append("}\n")
+    else:
+        parts.append(f"{prefix}ModelCard::~{prefix}ModelCard() = default;\n")
     parts.append("\n")
 
     # --- neo_to_ucb helper -------------------------------------------------
@@ -219,6 +285,16 @@ def generate_adapter_cpp(desc: _Desc) -> str:
     parts.append(f"    std::unique_ptr<{prefix}Device> dev(new {prefix}Device(std::move(name)));\n")
     parts.append("    dev->model_ = &shared_card.ucb;\n")
     parts.append("\n")
+
+    # Version stamp (before anything else touches the model)
+    vs = desc.version_stamp
+    if vs:
+        parts.append(f"    if (!shared_card.ucb.{vs.given_field}) {{\n")
+        parts.append(f'        shared_card.ucb.{vs.field} = "{vs.value}";\n')
+        parts.append(f"        shared_card.ucb.{vs.given_field} = 1;\n")
+        parts.append("    }\n")
+        parts.append("\n")
+
     parts.append("    auto& inst = dev->inst_;\n")
     parts.append(f"    inst.{desc.name_field} = dev->name().c_str();\n")
     parts.append(f"    inst.{desc.model_ptr_field} = dev->model_;\n")
@@ -234,12 +310,12 @@ def generate_adapter_cpp(desc: _Desc) -> str:
     if desc.geometry:
         parts.append("    // Geometry.\n")
         for gp in desc.geometry:
-            if gp.default:
-                parts.append(f"    inst.{gp.field} = geom.{gp.name};\n")
-                parts.append(f"    inst.{gp.given} = (geom.{gp.name} != {gp.default}) ? 1 : 0;\n")
+            parts.append(f"    inst.{gp.field} = geom.{gp.name};\n")
+            if gp.always_given:
+                parts.append(f"    inst.{gp.given} = 1;\n")
             else:
-                parts.append(f"    inst.{gp.field} = geom.{gp.name};\n")
-                parts.append(f"    inst.{gp.given} = (geom.{gp.name} != 0.0) ? 1 : 0;\n")
+                cmp_val = gp.default if gp.default else "0.0"
+                parts.append(f"    inst.{gp.given} = (geom.{gp.name} != {cmp_val}) ? 1 : 0;\n")
         parts.append("\n")
 
     # Thread onto instance list
@@ -331,8 +407,14 @@ def generate_adapter_cpp(desc: _Desc) -> str:
     parts.append("            inst_.f = offsets[inst_.f];                                  \\\n")
     parts.append("    } while (0)\n")
     parts.append("\n")
-    parts.append(f"    // TODO: add RESOLVE() calls for each {prefix}*Ptr field\n")
-    parts.append("    // (model-specific; must match TSTALLOC sites in the setup file).\n")
+
+    tstalloc_fields = extract_tstalloc_fields(setup_source, desc.matrix_ptr_suffix) if setup_source else []
+    if tstalloc_fields:
+        for fld in tstalloc_fields:
+            parts.append(f"    RESOLVE({fld});\n")
+    else:
+        parts.append(f"    // TODO: add RESOLVE() calls for each {prefix}*{desc.matrix_ptr_suffix} field\n")
+        parts.append("    // (model-specific; must match TSTALLOC sites in the setup file).\n")
     parts.append("\n")
     parts.append("#undef RESOLVE\n")
     parts.append("}\n")

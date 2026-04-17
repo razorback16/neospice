@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     print("\nGenerating adapter files:")
     adapter_hpp = generate_adapter_hpp(desc)
-    adapter_cpp = generate_adapter_cpp(desc)
+    adapter_cpp = generate_adapter_cpp(desc, setup_source=setup_content)
     _write_file(output_dir / f"{ns}_device.hpp", adapter_hpp, dry_run=dry_run)
     _write_file(output_dir / f"{ns}_device.cpp", adapter_cpp, dry_run=dry_run)
     generated_sources.append(f"{ns}_device.cpp")
