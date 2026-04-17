@@ -1,3 +1,5 @@
+add_subdirectory(devices/bsim4v7)
+
 add_library(neospice_lib
     core/types.cpp
     core/matrix.cpp
@@ -21,6 +23,7 @@ add_library(neospice_lib
     parser/netlist_parser.cpp
     api/neospice.cpp
     output/raw_writer.cpp
+    $<TARGET_OBJECTS:bsim4v7_obj>
 )
 
 target_include_directories(neospice_lib PUBLIC
@@ -44,5 +47,3 @@ target_link_libraries(neospice_lib PUBLIC
 if(OpenMP_CXX_FOUND)
     target_link_libraries(neospice_lib PUBLIC OpenMP::OpenMP_CXX)
 endif()
-
-add_subdirectory(devices/bsim4v7)

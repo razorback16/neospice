@@ -15,6 +15,3 @@ add_library(bsim4v7_obj OBJECT
 target_include_directories(bsim4v7_obj PUBLIC
     ${CMAKE_SOURCE_DIR}/src
 )
-target_link_libraries(bsim4v7_obj PRIVATE
-    neospice_lib  # for NumericMatrix / SparsityBuilder
-)

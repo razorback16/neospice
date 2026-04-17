@@ -48,7 +48,6 @@ add_executable(neospice_tests
     unit/test_sim_options_temp_plumbing.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
-    $<TARGET_OBJECTS:bsim4v7_obj>
 )
 
 target_link_libraries(neospice_tests PRIVATE
