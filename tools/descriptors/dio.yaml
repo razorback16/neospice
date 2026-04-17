@@ -1,0 +1,63 @@
+model:
+  ngspice_prefix: "DIO"
+  neospice_name: "dio"
+  neospice_namespace: "dio"
+  instance_struct: "DIOinstance"
+  model_struct: "DIOmodel"
+  instance_tag: "sDIOinstance"
+  model_tag: "sDIOmodel"
+  cpp_instance: "DIOInstance"
+  cpp_model: "DIOModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "pos", field: "DIOposNode" }
+    - { name: "neg", field: "DIOnegNode" }
+  state_count: 5
+  state_base_field: "DIOstate"
+  next_instance_field: "DIOnextInstance"
+  instances_field: "DIOinstances"
+  next_model_field: "DIOnextModel"
+  model_ptr_field: "DIOmodPtr"
+  name_field: "DIOname"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "diosetup.c"
+    load: "dioload.c"
+    temp: "diotemp.c"
+    param: "dioparam.c"
+    mpar: "diompar.c"
+    devsup: "dio.c"
+  skip_files:
+    - "dioacld.c"
+    - "dioask.c"
+    - "dioconv.c"
+    - "diodel.c"
+    - "diodest.c"
+    - "diodisto.c"
+    - "diodset.c"
+    - "diogetic.c"
+    - "dioinit.c"
+    - "diomask.c"
+    - "diomdel.c"
+    - "dionoise.c"
+    - "diopzld.c"
+    - "diosacl.c"
+    - "diosload.c"
+    - "diosoachk.c"
+    - "diosprt.c"
+    - "diosset.c"
+    - "diosupd.c"
+    - "diotrunc.c"
+  defines:
+    - "PREDICTOR"
+  has_internal_nodes: true
+  setup_function: "DIOsetup"
+  temp_function: "DIOtemp"
+  load_function: "DIOload"
+  geometry:
+    - { name: "area", field: "DIOarea", given: "DIOareaGiven", default: "1.0" }
+    - { name: "pj", field: "DIOpj", given: "DIOpjGiven", default: "0.0" }
+    - { name: "w", field: "DIOw", given: "DIOwGiven", default: "0.0" }
+    - { name: "l", field: "DIOl", given: "DIOlGiven", default: "0.0" }
+    - { name: "m", field: "DIOm", given: "DIOmGiven", default: "1.0" }
