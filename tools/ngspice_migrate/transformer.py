@@ -129,6 +129,7 @@ class Transformer:
         subs.append((re.compile(rf"\b{re.escape(cfg.gen_instance)}\b"), cfg.cpp_instance))
         subs.append((re.compile(r"\bCKTcircuit\b"), "Shim::Ckt"))
         subs.append((re.compile(r"\bIFvalue\b"), "Shim::IfValue"))
+        subs.append((re.compile(r"\bIFparm\b"), "Shim::IfParm"))
         subs.append((re.compile(r"\bIFuid\b"), "const char *"))
         subs.append((re.compile(r"\bSMPmatrix\b"), "Shim::Matrix"))
 
@@ -155,6 +156,21 @@ class Transformer:
             r"Shim::tmalloc<double>(\1)",
         ))
         subs.append((re.compile(r"\bFREE\s*\("), "Shim::FREE("))
+
+        # Rule G2: SMPmakeElt(matrix, ...) -> matrix->make_elt(...)
+        subs.append((
+            re.compile(r"\bSMPmakeElt\s*\(\s*matrix\s*,"),
+            "matrix->make_elt(",
+        ))
+
+        # Rule G3: ngspice infrastructure functions -> Shim:: prefixed
+        subs.append((re.compile(r"\bCKTdltNNum\b"), "Shim::CKTdltNNum"))
+        subs.append((re.compile(r"\bCKTmkVolt\b"), "Shim::CKTmkVolt"))
+        subs.append((re.compile(r"\bCKTinst2Node\b"), "Shim::CKTinst2Node"))
+        subs.append((re.compile(r"\bCKTnode\b"), "Shim::CKTnode"))
+
+        # Rule G4: ngspice copy() string duplication -> strdup
+        subs.append((re.compile(r"\bcopy\s*\("), "strdup("))
 
         return subs
 
@@ -383,14 +399,67 @@ class Transformer:
         src = patt_a.sub("Shim::report_error", src)
         patt_b = re.compile(r"\bSPfrontEnd\s*->\s*IFerror\b")
         src = patt_b.sub("Shim::report_error", src)
+        patt_c = re.compile(r"\bSPfrontEnd\s*->\s*IFerrorf\s*")
+        src = patt_c.sub("Shim::report_error", src)
         src = re.sub(r"\bERR_WARNING\b", "Shim::ERR_WARNING", src)
         src = re.sub(r"\bERR_FATAL\b", "Shim::ERR_FATAL", src)
+        return src
+
+    @staticmethod
+    def rewrite_tstalloc_macro(src: str) -> str:
+        """Rewrite the TSTALLOC macro definition to use matrix->make_elt.
+
+        All ngspice models define the same TSTALLOC macro pattern::
+
+            #define TSTALLOC(ptr,first,second) \\
+            do { if((here->ptr = SMPmakeElt(matrix,...)) == (double *)NULL) ...
+
+        We replace it with the simplified C++ version::
+
+            #define TSTALLOC(ptr,first,second) \\
+            { here->ptr = matrix->make_elt(here->first, here->second); }
+        """
+        patt = re.compile(
+            r'#\s*define\s+TSTALLOC\s*\([^)]*\)\s*\\\n'
+            r'(?:.*\\\n)*'
+            r'.*',
+            re.MULTILINE,
+        )
+        replacement = (
+            "#define TSTALLOC(ptr,first,second) \\\n"
+            "{ here->ptr = matrix->make_elt(here->first, here->second); }"
+        )
+        return patt.sub(replacement, src)
+
+    @staticmethod
+    def strip_ngspice_frontend(src: str) -> str:
+        """Strip ngspice front-end constructs that have no neospice equivalent.
+
+        Removes:
+        - JOB/TSKtask variable declarations
+        - Noise-analysis job-list lookup loops (ft_curckt->ci_curTask)
+        - int error; / CKTnode *tmp; declarations when unused
+
+        This runs on the RAW source (before protect_literals) so comments and
+        string literals are still visible.
+        """
+        src = re.sub(
+            r'^[ \t]*JOB\s+\*\w+\s*;\s*\n', '', src, flags=re.MULTILINE,
+        )
+        src = re.sub(
+            r'/\*[^*]*noise analysis[^*]*\*/\s*\n'
+            r'[ \t]*for\s*\([^;]*ft_curckt[^{]*\{[^}]*\{[^}]*\}[^}]*\}\s*\n',
+            '',
+            src,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
         return src
 
     def apply_token_subs(self, src: str) -> str:
         for patt, repl in self._token_subs:
             src = patt.sub(repl, src)
         src = self._rewrite_iferror(src)
+        src = self.rewrite_tstalloc_macro(src)
         return src
 
     # -----------------------------------------------------------------------
@@ -564,6 +633,64 @@ class Transformer:
         for d in cfg.defines:
             header_prefix += f"#define {d}\n"
 
+        compat_defines = (
+            "\n"
+            "#ifndef CONSTvt0\n"
+            "#define CONSTvt0 0.025852037\n"
+            "#endif\n"
+            "#ifndef CONSTroot2\n"
+            "#define CONSTroot2 1.4142135623730950488\n"
+            "#endif\n"
+            "#ifndef CONSTCtoK\n"
+            "#define CONSTCtoK 273.15\n"
+            "#endif\n"
+            "#ifndef CHARGE\n"
+            "#define CHARGE 1.6021918e-19\n"
+            "#endif\n"
+            "#ifndef FABS\n"
+            "#define FABS(x) std::fabs(x)\n"
+            "#endif\n"
+            "#ifndef ABS\n"
+            "#define ABS(x) std::fabs(x)\n"
+            "#endif\n"
+            "#ifndef MAX\n"
+            "#define MAX(a, b) (((a) > (b)) ? (a) : (b))\n"
+            "#endif\n"
+            "#ifndef MIN\n"
+            "#define MIN(a, b) (((a) < (b)) ? (a) : (b))\n"
+            "#endif\n"
+            "#ifndef TMALLOC\n"
+            "#define TMALLOC(type, num) (new type[num]())\n"
+            "#endif\n"
+            "#ifndef NG_IGNORE\n"
+            "#define NG_IGNORE(x) (void)(x)\n"
+            "#endif\n"
+            "#ifndef cp_getvar\n"
+            "#define cp_getvar(name, type, ptr) 0\n"
+            "#endif\n"
+            "#ifndef CP_REAL\n"
+            "#define CP_REAL 0\n"
+            "#endif\n"
+            "#ifndef NUMELEMS\n"
+            "#define NUMELEMS(ARRAY) (sizeof(ARRAY)/sizeof(*(ARRAY)))\n"
+            "#endif\n"
+            "#ifndef IOP\n"
+            "#define IOP(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|c), d}\n"
+            "#endif\n"
+            "#ifndef IOPU\n"
+            "#define IOPU(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|c), d}\n"
+            "#endif\n"
+            "#ifndef IP\n"
+            "#define IP(a,b,c,d) {a, b, (Shim::IF_SET|c), d}\n"
+            "#endif\n"
+            "#ifndef OP\n"
+            "#define OP(a,b,c,d) {a, b, (Shim::IF_ASK|c), d}\n"
+            "#endif\n"
+            "#ifndef OPU\n"
+            "#define OPU(a,b,c,d) {a, b, (Shim::IF_ASK|c), d}\n"
+            "#endif\n"
+        )
+
         translated_header = (
             "\n"
             "// Translated to C++ for neospice by tools/ngspice_migrate.\n"
@@ -572,7 +699,9 @@ class Transformer:
             f"#include \"devices/{cfg.namespace}/{cfg.namespace}_shim.hpp\"\n"
             "#include <cmath>\n"
             "#include <cstdio>\n"
-            "\n"
+            "#include <cstring>\n"
+            + compat_defines
+            + "\n"
             f"namespace neospice::{cfg.namespace} {{\n"
             "\n"
             "using namespace Shim;\n"
@@ -591,6 +720,17 @@ class Transformer:
     # -----------------------------------------------------------------------
     # Helpers applied after unprotect
     # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _insert_mat_ref(src: str) -> str:
+        """Insert ``auto &mat = *ckt->mat;`` in functions that use ``mat.add(``."""
+        if "mat.add(" not in src:
+            return src
+        return re.sub(
+            r'(Shim::Ckt\s*\*\s*ckt\s*\)\s*\{)\n',
+            r'\1\nauto &mat = *ckt->mat;\n',
+            src,
+        )
 
     @staticmethod
     def _annotate_tstalloc(src: str) -> str:
@@ -655,6 +795,9 @@ class Transformer:
         # 1. Strip USE_OMP blocks.
         src = self.strip_omp_blocks(source_text)
 
+        # 1b. Strip ngspice front-end constructs (JOB, ft_curckt, etc.)
+        src = self.strip_ngspice_frontend(src)
+
         # 2. Split off banner.
         banner, rest = self.split_banner(src)
 
@@ -688,5 +831,8 @@ class Transformer:
                 flags=re.MULTILINE,
             )
 
-        # 8b. Wrap.
+        # 8b. Insert mat reference for functions with matrix stamps.
+        body = self._insert_mat_ref(body)
+
+        # 8c. Wrap.
         return self.wrap(body, banner)

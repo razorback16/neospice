@@ -3,14 +3,15 @@
 #include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
 
-#include <cstdlib>                 // std::free for pSizeDependParamKnot
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 
-// Forward declaration for BSIM4load — bsim4v7_load.cpp defines it but
-// bsim4v7_def.hpp does not list it alongside BSIM4setup / BSIM4temp.
+// Forward declarations for translated UCB functions.
 namespace neospice::bsim4v7 {
-    int BSIM4load(BSIM4v7Model* model, Shim::Ckt* ckt);
+    int BSIM4v7setup(Shim::Matrix*, BSIM4v7Model*, Shim::Ckt*, int*);
+    int BSIM4v7temp(BSIM4v7Model*, Shim::Ckt*);
+    int BSIM4v7load(BSIM4v7Model*, Shim::Ckt*);
 }
 
 namespace neospice {
@@ -18,10 +19,7 @@ namespace neospice {
 using namespace neospice::bsim4v7;
 
 // ---------------------------------------------------------------------------
-// BSIM4v7ModelCard destructor — free the pSizeDependParamKnot linked list
-// that BSIM4temp() mallocs (one knot per distinct (L,W,NF) tuple across
-// instances).  BSIM4v7Model is an aggregate so it can't own an RAII handle
-// itself; the card wraps it and does the cleanup.
+// BSIM4v7ModelCard destructor
 // ---------------------------------------------------------------------------
 BSIM4v7ModelCard::~BSIM4v7ModelCard() {
     auto* p = ucb.pSizeDependParamKnot;
@@ -34,7 +32,7 @@ BSIM4v7ModelCard::~BSIM4v7ModelCard() {
 }
 
 // ---------------------------------------------------------------------------
-// Neospice→UCB node translation.
+// Neospice -> UCB node translation.
 // Neospice uses GROUND_INTERNAL = -1 for ground and consecutive non-negative
 // indices for real nodes.  UCB uses 0 for ground and >=1 for real nodes.
 // ---------------------------------------------------------------------------
@@ -43,89 +41,80 @@ static inline int neo_to_ucb(int32_t neo) {
 }
 
 // ---------------------------------------------------------------------------
-// make — initialise a BSIM4v7Instance, link it into the model's instance
-// chain, and copy geometry fields. Node indices are stored in UCB form so
-// BSIM4setup/temp/load all see consistent coordinates.
+// make
 // ---------------------------------------------------------------------------
 std::unique_ptr<BSIM4v7Device>
 BSIM4v7Device::make(std::string name,
-                    int32_t nd, int32_t ng, int32_t ns, int32_t nb,
-                    const Geom& geom, BSIM4v7ModelCard& shared_card) {
+        int32_t n_d, int32_t n_g, int32_t n_s, int32_t n_b,
+        const Geom& geom, BSIM4v7ModelCard& shared_card) {
     std::unique_ptr<BSIM4v7Device> dev(new BSIM4v7Device(std::move(name)));
     dev->model_ = &shared_card.ucb;
 
-    // Our translated kernel is BSIM4 v4.7.0. bsim4v7_setup.cpp defaults an
-    // un-given BSIM4version to "4.6.0" and bsim4v7_check.cpp warns when the
-    // translated code disagrees. Stamp the real version here (parser will
-    // do this properly in T8 when it knows the .model source line).
-    if (!shared_card.ucb.BSIM4versionGiven) {
-        shared_card.ucb.BSIM4version = "4.7.0";
-        shared_card.ucb.BSIM4versionGiven = 1;
+    if (!shared_card.ucb.BSIM4v7versionGiven) {
+        shared_card.ucb.BSIM4v7version = "4.7.0";
+        shared_card.ucb.BSIM4v7versionGiven = 1;
     }
 
     auto& inst = dev->inst_;
-    inst.BSIM4name     = dev->name().c_str();
-    inst.BSIM4modPtr   = dev->model_;
+    inst.BSIM4v7name = dev->name().c_str();
+    inst.BSIM4v7modPtr = dev->model_;
 
     // Node wiring (UCB convention).
-    inst.BSIM4dNode    = neo_to_ucb(nd);
-    inst.BSIM4gNodeExt = neo_to_ucb(ng);
-    inst.BSIM4sNode    = neo_to_ucb(ns);
-    inst.BSIM4bNode    = neo_to_ucb(nb);
-    // *NodePrime fields are zero-initialized and will be assigned by
-    // BSIM4setup (== node or an internal allocation via add_internal_node).
-    // dbNode/sbNode/qNode likewise get their values from setup.
+    inst.BSIM4v7dNode = neo_to_ucb(n_d);
+    inst.BSIM4v7gNodeExt = neo_to_ucb(n_g);
+    inst.BSIM4v7sNode = neo_to_ucb(n_s);
+    inst.BSIM4v7bNode = neo_to_ucb(n_b);
 
-    // Geometry.  Mark each as Given so BSIM4setup/temp honour the passed
-    // value instead of falling back to the model default.
-    inst.BSIM4w            = geom.W;  inst.BSIM4wGiven            = 1;
-    inst.BSIM4l            = geom.L;  inst.BSIM4lGiven            = 1;
-    inst.BSIM4nf           = geom.NF; inst.BSIM4nfGiven           = 1;
-    inst.BSIM4drainArea       = geom.AD; inst.BSIM4drainAreaGiven       = (geom.AD != 0.0);
-    inst.BSIM4sourceArea      = geom.AS; inst.BSIM4sourceAreaGiven      = (geom.AS != 0.0);
-    inst.BSIM4drainPerimeter  = geom.PD; inst.BSIM4drainPerimeterGiven  = (geom.PD != 0.0);
-    inst.BSIM4sourcePerimeter = geom.PS; inst.BSIM4sourcePerimeterGiven = (geom.PS != 0.0);
-    inst.BSIM4drainSquares    = geom.NRD; inst.BSIM4drainSquaresGiven   = (geom.NRD != 0.0);
-    inst.BSIM4sourceSquares   = geom.NRS; inst.BSIM4sourceSquaresGiven  = (geom.NRS != 0.0);
-    inst.BSIM4sa = geom.SA; inst.BSIM4saGiven = (geom.SA != 0.0);
-    inst.BSIM4sb = geom.SB; inst.BSIM4sbGiven = (geom.SB != 0.0);
-    inst.BSIM4sd = geom.SD; inst.BSIM4sdGiven = (geom.SD != 0.0);
+    // Geometry.
+    inst.BSIM4v7w = geom.W;
+    inst.BSIM4v7wGiven = 1;
+    inst.BSIM4v7l = geom.L;
+    inst.BSIM4v7lGiven = 1;
+    inst.BSIM4v7nf = geom.NF;
+    inst.BSIM4v7nfGiven = 1;
+    inst.BSIM4v7drainArea = geom.AD;
+    inst.BSIM4v7drainAreaGiven = (geom.AD != 0.0) ? 1 : 0;
+    inst.BSIM4v7sourceArea = geom.AS;
+    inst.BSIM4v7sourceAreaGiven = (geom.AS != 0.0) ? 1 : 0;
+    inst.BSIM4v7drainPerimeter = geom.PD;
+    inst.BSIM4v7drainPerimeterGiven = (geom.PD != 0.0) ? 1 : 0;
+    inst.BSIM4v7sourcePerimeter = geom.PS;
+    inst.BSIM4v7sourcePerimeterGiven = (geom.PS != 0.0) ? 1 : 0;
+    inst.BSIM4v7drainSquares = geom.NRD;
+    inst.BSIM4v7drainSquaresGiven = (geom.NRD != 0.0) ? 1 : 0;
+    inst.BSIM4v7sourceSquares = geom.NRS;
+    inst.BSIM4v7sourceSquaresGiven = (geom.NRS != 0.0) ? 1 : 0;
+    inst.BSIM4v7sa = geom.SA;
+    inst.BSIM4v7saGiven = (geom.SA != 0.0) ? 1 : 0;
+    inst.BSIM4v7sb = geom.SB;
+    inst.BSIM4v7sbGiven = (geom.SB != 0.0) ? 1 : 0;
+    inst.BSIM4v7sd = geom.SD;
+    inst.BSIM4v7sdGiven = (geom.SD != 0.0) ? 1 : 0;
 
-    // Thread onto the shared model's instance list (append at head — the
-    // UCB setup loop iterates model->BSIM4instances which is fine).
-    inst.BSIM4nextInstance = shared_card.ucb.BSIM4instances;
-    shared_card.ucb.BSIM4instances = &inst;
+    // Thread onto the shared model's instance list.
+    inst.BSIM4v7nextInstance = shared_card.ucb.BSIM4v7instances;
+    shared_card.ucb.BSIM4v7instances = &inst;
 
-    // Remember the widest real node index we were handed so the ghost
-    // rhs/voltage arrays in evaluate() are sized correctly.
+    // Remember the widest real node index for ghost array sizing.
     int32_t widest = -1;
-    for (int32_t n : {nd, ng, ns, nb}) if (n > widest) widest = n;
+    for (int32_t n : {n_d, n_g, n_s, n_b}) if (n > widest) widest = n;
     dev->max_neo_node_ = widest;
 
     return dev;
 }
 
 // ---------------------------------------------------------------------------
-// declare_internal_nodes — run BSIM4setup to populate per-instance pParam
-// and to journal every (row, col) reservation.  When resistance models
-// (rgateMod/rbodyMod/rdsMod) are active, BSIM4setup calls add_internal_node;
-// we delegate those to Circuit::node() via the node_alloc callback so the
-// internal nodes get real MNA indices.  This runs before branch assignment
-// in finalize(), so internal nodes sit between external nodes and branch
-// variables in the MNA numbering.
+// declare_internal_nodes
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::declare_internal_nodes(Circuit& ckt) {
-    SparsityBuilder scratch(1);  // throwaway — real builder comes in stamp_pattern
+    SparsityBuilder scratch(1);
     Shim::Matrix shim_matrix(scratch);
 
     Shim::Ckt setup_ckt;
     setup_ckt.CKTtemp    = T_NOMINAL;
     setup_ckt.CKTnomTemp = T_NOMINAL;
-    setup_ckt.CKTinternalNodeCounter = 1000;  // fallback seed (unused when callback is set)
+    setup_ckt.CKTinternalNodeCounter = 1000;
 
-    // Delegate internal-node allocation to Circuit::node().  The lambda
-    // converts the returned neospice index (>=0) to UCB convention (>=1)
-    // so BSIM4setup sees consistent coordinates.
     setup_ckt.node_alloc = [&ckt, this](const char* name) -> int {
         std::string full = "__" + name_ + "_" + name;
         int32_t neo = ckt.node(full);
@@ -133,38 +122,28 @@ void BSIM4v7Device::declare_internal_nodes(Circuit& ckt) {
     };
 
     int states = 0;
-    int rc = BSIM4setup(&shim_matrix, model_, &setup_ckt, &states);
+    int rc = BSIM4v7setup(&shim_matrix, model_, &setup_ckt, &states);
     if (rc != Shim::OK) {
-        throw std::runtime_error("BSIM4setup failed with rc=" + std::to_string(rc));
+        throw std::runtime_error("BSIM4v7setup failed with rc=" + std::to_string(rc));
     }
 
-    // Capture the journal for stamp_pattern / assign_offsets replay.
     const auto& journal = shim_matrix.reservation_journal();
     journal_.assign(journal.begin(), journal.end());
 
-    // Recompute max_neo_node_ to cover internal nodes.  Some journal entries
-    // reference internal-node UCB indices (allocated above via Circuit::node)
-    // that are larger than any external node index this device was handed at
-    // make() time.  The ghost rhs/voltage arrays in evaluate() must be sized
-    // to cover the widest UCB index.
+    // Recompute max_neo_node_ to cover internal nodes.
     for (auto [r, c] : journal_) {
         int mx = std::max(r, c);
         if (mx > 0) {
-            int32_t neo = mx - 1;  // UCB -> neospice
+            int32_t neo = mx - 1;
             if (neo > max_neo_node_) max_neo_node_ = neo;
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// stamp_pattern — replay the journal captured by declare_internal_nodes.
-// Each non-ground entry is shifted from UCB coords (>=1) to neospice
-// coords (>=0) and appended to the caller's SparsityBuilder.
+// stamp_pattern
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
-    // Journal was populated by declare_internal_nodes (BSIM4setup).
-    // Replay non-ground entries into the real builder, shifting from UCB
-    // coords (>=1) to neospice coords (>=0).
     for (auto [r, c] : journal_) {
         if (r <= 0 || c <= 0) continue;
         builder.add(r - 1, c - 1);
@@ -172,116 +151,116 @@ void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
 }
 
 // ---------------------------------------------------------------------------
-// assign_offsets — walk the journal we captured during declare_internal_nodes and
-// rewrite every BSIM4*Ptr field.  The journal index used by BSIM4setup
-// became the initial value of the field; we replace it with the real
-// MatrixOffset from the finalized pattern.  Ground-touching reservations
-// (UCB 0 in either coord) resolve to -1; any stamp into them must be
-// suppressed by the load-side branch guards.
+// assign_offsets
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::assign_offsets(const SparsityPattern& pattern) {
     std::vector<MatrixOffset> offsets(journal_.size(), -1);
     for (std::size_t i = 0; i < journal_.size(); ++i) {
         auto [r, c] = journal_[i];
-        if (r <= 0 || c <= 0) continue;   // ground -> -1
+        if (r <= 0 || c <= 0) continue;
         offsets[i] = pattern.offset(r - 1, c - 1);
     }
 
-    // RESOLVE(f): if inst_.f is a valid journal index (>= 0), replace it
-    // with the real MatrixOffset from `offsets`.  Ground-touching
-    // reservations were already set to -1 by make_elt and stay -1.
 #define RESOLVE(f)                                                       \
     do {                                                                 \
         if (inst_.f >= 0)                                                \
             inst_.f = offsets[inst_.f];                                  \
     } while (0)
 
-    // --- Unconditional TSTALLOC sites (see bsim4v7_setup.cpp:2376-2408) ---
-    RESOLVE(BSIM4DPbpPtr);  RESOLVE(BSIM4GPbpPtr);  RESOLVE(BSIM4SPbpPtr);
-    RESOLVE(BSIM4BPdpPtr);  RESOLVE(BSIM4BPgpPtr);  RESOLVE(BSIM4BPspPtr);
-    RESOLVE(BSIM4BPbpPtr);
-    RESOLVE(BSIM4DdPtr);    RESOLVE(BSIM4GPgpPtr);  RESOLVE(BSIM4SsPtr);
-    RESOLVE(BSIM4DPdpPtr);  RESOLVE(BSIM4SPspPtr);
-    RESOLVE(BSIM4DdpPtr);   RESOLVE(BSIM4GPdpPtr);  RESOLVE(BSIM4GPspPtr);
-    RESOLVE(BSIM4SspPtr);   RESOLVE(BSIM4DPspPtr);  RESOLVE(BSIM4DPdPtr);
-    RESOLVE(BSIM4DPgpPtr);  RESOLVE(BSIM4SPgpPtr);  RESOLVE(BSIM4SPsPtr);
-    RESOLVE(BSIM4SPdpPtr);
-    RESOLVE(BSIM4QqPtr);    RESOLVE(BSIM4QbpPtr);   RESOLVE(BSIM4QdpPtr);
-    RESOLVE(BSIM4QspPtr);   RESOLVE(BSIM4QgpPtr);   RESOLVE(BSIM4DPqPtr);
-    RESOLVE(BSIM4SPqPtr);   RESOLVE(BSIM4GPqPtr);
-
-    // --- rgateMod != 0 ---
-    RESOLVE(BSIM4GEgePtr);  RESOLVE(BSIM4GEgpPtr);  RESOLVE(BSIM4GPgePtr);
-    RESOLVE(BSIM4GEdpPtr);  RESOLVE(BSIM4GEspPtr);  RESOLVE(BSIM4GEbpPtr);
-    RESOLVE(BSIM4GMdpPtr);  RESOLVE(BSIM4GMgpPtr);  RESOLVE(BSIM4GMgmPtr);
-    RESOLVE(BSIM4GMgePtr);  RESOLVE(BSIM4GMspPtr);  RESOLVE(BSIM4GMbpPtr);
-    RESOLVE(BSIM4DPgmPtr);  RESOLVE(BSIM4GPgmPtr);  RESOLVE(BSIM4GEgmPtr);
-    RESOLVE(BSIM4SPgmPtr);  RESOLVE(BSIM4BPgmPtr);
-
-    // --- rbodyMod in {1, 2} ---
-    RESOLVE(BSIM4DPdbPtr);  RESOLVE(BSIM4SPsbPtr);
-    RESOLVE(BSIM4DBdpPtr);  RESOLVE(BSIM4DBdbPtr);  RESOLVE(BSIM4DBbpPtr);
-    RESOLVE(BSIM4DBbPtr);
-    RESOLVE(BSIM4BPdbPtr);  RESOLVE(BSIM4BPbPtr);   RESOLVE(BSIM4BPsbPtr);
-    RESOLVE(BSIM4SBspPtr);  RESOLVE(BSIM4SBbpPtr);  RESOLVE(BSIM4SBbPtr);
-    RESOLVE(BSIM4SBsbPtr);
-    RESOLVE(BSIM4BdbPtr);   RESOLVE(BSIM4BbpPtr);   RESOLVE(BSIM4BsbPtr);
-    RESOLVE(BSIM4BbPtr);
-
-    // --- model->BSIM4rdsMod ---
-    RESOLVE(BSIM4DgpPtr);   RESOLVE(BSIM4DspPtr);   RESOLVE(BSIM4DbpPtr);
-    RESOLVE(BSIM4SdpPtr);   RESOLVE(BSIM4SgpPtr);   RESOLVE(BSIM4SbpPtr);
+    RESOLVE(BSIM4v7DPbpPtr);
+    RESOLVE(BSIM4v7GPbpPtr);
+    RESOLVE(BSIM4v7SPbpPtr);
+    RESOLVE(BSIM4v7BPdpPtr);
+    RESOLVE(BSIM4v7BPgpPtr);
+    RESOLVE(BSIM4v7BPspPtr);
+    RESOLVE(BSIM4v7BPbpPtr);
+    RESOLVE(BSIM4v7DdPtr);
+    RESOLVE(BSIM4v7GPgpPtr);
+    RESOLVE(BSIM4v7SsPtr);
+    RESOLVE(BSIM4v7DPdpPtr);
+    RESOLVE(BSIM4v7SPspPtr);
+    RESOLVE(BSIM4v7DdpPtr);
+    RESOLVE(BSIM4v7GPdpPtr);
+    RESOLVE(BSIM4v7GPspPtr);
+    RESOLVE(BSIM4v7SspPtr);
+    RESOLVE(BSIM4v7DPspPtr);
+    RESOLVE(BSIM4v7DPdPtr);
+    RESOLVE(BSIM4v7DPgpPtr);
+    RESOLVE(BSIM4v7SPgpPtr);
+    RESOLVE(BSIM4v7SPsPtr);
+    RESOLVE(BSIM4v7SPdpPtr);
+    RESOLVE(BSIM4v7QqPtr);
+    RESOLVE(BSIM4v7QbpPtr);
+    RESOLVE(BSIM4v7QdpPtr);
+    RESOLVE(BSIM4v7QspPtr);
+    RESOLVE(BSIM4v7QgpPtr);
+    RESOLVE(BSIM4v7DPqPtr);
+    RESOLVE(BSIM4v7SPqPtr);
+    RESOLVE(BSIM4v7GPqPtr);
+    RESOLVE(BSIM4v7GEgePtr);
+    RESOLVE(BSIM4v7GEgpPtr);
+    RESOLVE(BSIM4v7GPgePtr);
+    RESOLVE(BSIM4v7GEdpPtr);
+    RESOLVE(BSIM4v7GEspPtr);
+    RESOLVE(BSIM4v7GEbpPtr);
+    RESOLVE(BSIM4v7GMdpPtr);
+    RESOLVE(BSIM4v7GMgpPtr);
+    RESOLVE(BSIM4v7GMgmPtr);
+    RESOLVE(BSIM4v7GMgePtr);
+    RESOLVE(BSIM4v7GMspPtr);
+    RESOLVE(BSIM4v7GMbpPtr);
+    RESOLVE(BSIM4v7DPgmPtr);
+    RESOLVE(BSIM4v7GPgmPtr);
+    RESOLVE(BSIM4v7GEgmPtr);
+    RESOLVE(BSIM4v7SPgmPtr);
+    RESOLVE(BSIM4v7BPgmPtr);
+    RESOLVE(BSIM4v7DPdbPtr);
+    RESOLVE(BSIM4v7SPsbPtr);
+    RESOLVE(BSIM4v7DBdpPtr);
+    RESOLVE(BSIM4v7DBdbPtr);
+    RESOLVE(BSIM4v7DBbpPtr);
+    RESOLVE(BSIM4v7DBbPtr);
+    RESOLVE(BSIM4v7BPdbPtr);
+    RESOLVE(BSIM4v7BPbPtr);
+    RESOLVE(BSIM4v7BPsbPtr);
+    RESOLVE(BSIM4v7SBspPtr);
+    RESOLVE(BSIM4v7SBbpPtr);
+    RESOLVE(BSIM4v7SBbPtr);
+    RESOLVE(BSIM4v7SBsbPtr);
+    RESOLVE(BSIM4v7BdbPtr);
+    RESOLVE(BSIM4v7BbpPtr);
+    RESOLVE(BSIM4v7BsbPtr);
+    RESOLVE(BSIM4v7BbPtr);
+    RESOLVE(BSIM4v7DgpPtr);
+    RESOLVE(BSIM4v7DspPtr);
+    RESOLVE(BSIM4v7DbpPtr);
+    RESOLVE(BSIM4v7SdpPtr);
+    RESOLVE(BSIM4v7SgpPtr);
+    RESOLVE(BSIM4v7SbpPtr);
 
 #undef RESOLVE
-
-    // Count sanity — 70 RESOLVE() invocations above match the 70
-    // TSTALLOC invocation sites in bsim4v7_setup.cpp (verified by
-    // `grep -oE 'RESOLVE\(BSIM4' bsim4v7_device.cpp | wc -l` and
-    // `grep -cE '^[^/]*\\bTSTALLOC\\(' bsim4v7_setup.cpp` minus the
-    // single `#define TSTALLOC` line).  If either number changes, update
-    // both or the device will silently leave pointer IDs unresolved.
 }
 
 // ---------------------------------------------------------------------------
-// set_state_ptrs — cache the Circuit's state-ring pointers and bind
-// inst_.BSIM4states to our base offset.  BSIM4load reads/writes state via
-// CKTstate0/1/2 + (BSIM4states + local-offset) so the base captured here
-// must match the Circuit's ring slotting from finalize()/rotate_state().
+// set_state_ptrs
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
     state0_ = s0;
     state1_ = s1;
     state2_ = s2;
     state_base_ = base;
-    inst_.BSIM4states = base;
+    inst_.BSIM4v7states = base;
 }
 
 // ---------------------------------------------------------------------------
-// evaluate — the load path.  Builds a Shim::Ckt tied to the Circuit's
-// integrator context and state buffers, re-runs BSIM4temp on first call
-// (UCB puts all size-dependent preprocessing there), then calls
-// BSIM4load to stamp matrix + rhs.
-//
-// Because BSIM4load indexes rhs via node index (e.g. CKTrhs+dNodePrime),
-// we allocate *ghost* rhs/voltage vectors with an extra slot at index 0
-// (UCB ground) so it can scribble without undershooting.  After load we
-// fold ghost_rhs[i] (i>=1) back into the real rhs[i-1].  Matrix stamps
-// go directly to the real NumericMatrix — assign_offsets already
-// rewrote every BSIM4*Ptr to a real offset.
+// evaluate
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
-                             NumericMatrix& mat,
-                             std::vector<double>& rhs) {
+                               NumericMatrix& mat,
+                               std::vector<double>& rhs) {
     const int n_real = static_cast<int>(rhs.size());
     const int n_ghost = (max_neo_node_ >= 0 ? max_neo_node_ + 1 : 0) + 1;
-    // n_ghost covers UCB indices 0..max_neo_node_+1, which is all real
-    // nodes this device can write to.
 
-    // --- Ghost shifted arrays kept as members so the per-evaluate() cost
-    // stays at O(n_ghost) assignment instead of 2x heap alloc/free.  The
-    // size is a function of max_neo_node_ (stable for a device's lifetime);
-    // the assign(n_ghost, 0.0) both resizes on first call and zeroes on
-    // every subsequent call without releasing storage.
     ghost_voltages_.assign(n_ghost, 0.0);
     ghost_rhs_.assign(n_ghost, 0.0);
     for (int32_t k = 0; k <= max_neo_node_ && k < n_real; ++k) {
@@ -290,9 +269,7 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
 
     Shim::Ckt ckt;
 
-    // Integrator context — read from the thread-local set by newton_solve.
-    // If absent (caller forgot the guard), fall back to DC op defaults so
-    // we at least give BSIM4load consistent bits.
+    // Integrator context.
     const IntegratorCtx* ic = tls_integrator_ctx;
     if (ic) {
         ckt.CKTmode  = ic->mode;
@@ -305,20 +282,17 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
         ckt.CKTorder = 1;
     }
 
-    // Pull user-configured SimOptions (temp + tolerances) off the
-    // IntegratorCtx where dc.cpp / transient.cpp published them.  Fall
-    // back to T_NOMINAL and library defaults if no driver is live (e.g.
-    // in a direct unit-test call).
+    // SimOptions.
     const SimOptions* sim_opts = (ic ? ic->options : nullptr);
     SimOptions fallback;
     if (!sim_opts) sim_opts = &fallback;
     ckt.CKTtemp    = sim_opts->temp;
-    ckt.CKTnomTemp = sim_opts->temp;   // nom/temp not separated in neospice yet
+    ckt.CKTnomTemp = sim_opts->temp;
     ckt.CKTgmin    = sim_opts->gmin;
     ckt.CKTreltol  = sim_opts->reltol;
     ckt.CKTabstol  = sim_opts->abstol;
     ckt.CKTvoltTol = sim_opts->vntol;
-    ckt.CKTbypass  = 0;   // no bypass in Phase-1b
+    ckt.CKTbypass  = 0;
     ckt.CKTnoncon  = 0;
 
     // State ring.
@@ -326,59 +300,36 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
     ckt.CKTstate1 = state1_;
     ckt.CKTstate2 = state2_;
 
-    // Ghost rhs / old-iterate pointers.  const_cast because BSIM4load
-    // reads CKTrhsOld as plain double* even though it only reads.
+    // Ghost rhs / old-iterate pointers.
     ckt.CKTrhs    = ghost_rhs_.data();
     ckt.CKTrhsOld = ghost_voltages_.data();
     ckt.mat       = &mat;
 
-    // First-call BSIM4temp (UCB preprocesses temperature-dependent
-    // size parameters here; pParam is allocated in BSIM4setup but filled
-    // in BSIM4temp).
+    // First-call BSIM4v7temp.
     if (!temp_done_) {
-        int rc = BSIM4temp(model_, &ckt);
+        int rc = BSIM4v7temp(model_, &ckt);
         if (rc != Shim::OK) {
-            throw std::runtime_error(
-                "BSIM4temp failed with rc=" + std::to_string(rc));
+            throw std::runtime_error("BSIM4v7temp failed with rc=" + std::to_string(rc));
         }
         temp_done_ = true;
     }
 
-    // BSIM4load is the UCB per-circuit-step load routine — it iterates
-    // `model->BSIM4instances` and `model->BSIM4nextModel`, loading every
-    // MOSFET on the shared model card in a single call.  Neospice's Device
-    // interface calls evaluate() once per device, so we splice this device's
-    // instance out of the shared chain, splice it back as a one-element list
-    // head, suppress the next-model walk, call BSIM4load for just this
-    // instance, then restore the original links.  Without this, a 10-FET
-    // circuit (e.g. 5-stage ring oscillator) would cause each evaluate()
-    // to load all 10 instances into this device's ghost_rhs_, overflowing
-    // the ghost array sized to the caller's own nodes (ASan heap-buffer-
-    // overflow in bsim4v7_load.cpp at the CKTrhs +=/ -= statements).
-    BSIM4v7Instance* saved_head      = model_->BSIM4instances;
-    BSIM4v7Instance* saved_next_inst = inst_.BSIM4nextInstance;
-    BSIM4v7Model*    saved_next_mod  = model_->BSIM4nextModel;
-    model_->BSIM4instances  = &inst_;
-    inst_.BSIM4nextInstance = nullptr;
-    model_->BSIM4nextModel  = nullptr;
-    int rc = BSIM4load(model_, &ckt);
-    // Restore chain links before throwing so downstream cleanup isn't
-    // confused by a partially-spliced model card.
-    model_->BSIM4instances  = saved_head;
-    inst_.BSIM4nextInstance = saved_next_inst;
-    model_->BSIM4nextModel  = saved_next_mod;
+    // Splice this instance as sole member, call load, then restore.
+    BSIM4v7Instance* saved_head      = model_->BSIM4v7instances;
+    BSIM4v7Instance* saved_next_inst = inst_.BSIM4v7nextInstance;
+    BSIM4v7Model*    saved_next_mod  = model_->BSIM4v7nextModel;
+    model_->BSIM4v7instances  = &inst_;
+    inst_.BSIM4v7nextInstance = nullptr;
+    model_->BSIM4v7nextModel  = nullptr;
+    int rc = BSIM4v7load(model_, &ckt);
+    model_->BSIM4v7instances  = saved_head;
+    inst_.BSIM4v7nextInstance = saved_next_inst;
+    model_->BSIM4v7nextModel  = saved_next_mod;
     if (rc != Shim::OK) {
-        throw std::runtime_error(
-            "BSIM4load failed with rc=" + std::to_string(rc));
+        throw std::runtime_error("BSIM4v7load failed with rc=" + std::to_string(rc));
     }
 
-    // Fold ghost rhs contributions (indices 1..max_neo_node_+1) back into
-    // the real rhs (indices 0..max_neo_node_).  Ghost index 0 (UCB
-    // ground) is discarded — BSIM4 only writes there when a ground node
-    // is specified, which happens only via guarded branches for our
-    // simple setup.  If a guard ever leaks, it lands in ghost[0] and is
-    // silently dropped (matching ngspice's behaviour where ground-row
-    // writes are no-ops in the solver).
+    // Fold ghost rhs contributions back into the real rhs.
     for (int32_t k = 1; k <= max_neo_node_ + 1 && k < n_ghost; ++k) {
         if (k - 1 < n_real) rhs[k - 1] += ghost_rhs_[k];
     }

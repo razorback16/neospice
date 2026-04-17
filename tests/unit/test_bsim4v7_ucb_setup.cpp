@@ -31,33 +31,33 @@ struct ModelFixture {
     ModelFixture() : matrix(builder) {
         // --- Model card: NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9 ---
         // Match BSIM4v7Device::make() — stamp the real kernel version so
-        // BSIM4checkModel doesn't fire its "wrong version number" warning.
-        model.BSIM4version = "4.7.0";
-        model.BSIM4versionGiven = 1;
-        model.BSIM4modName = "NMOD";
-        model.BSIM4type        = NMOS;
-        model.BSIM4typeGiven   = 1;
-        model.BSIM4mobMod      = 0;
-        model.BSIM4capMod      = 2;
-        model.BSIM4rdsMod      = 0;
-        model.BSIM4vth0        = 0.4;   model.BSIM4vth0Given = 1;
-        model.BSIM4u0          = 0.04;  model.BSIM4u0Given   = 1;
-        model.BSIM4toxe        = 2e-9;  model.BSIM4toxeGiven = 1;
+        // BSIM4v7checkModel doesn't fire its "wrong version number" warning.
+        model.BSIM4v7version = "4.7.0";
+        model.BSIM4v7versionGiven = 1;
+        model.BSIM4v7modName = "NMOD";
+        model.BSIM4v7type        = NMOS;
+        model.BSIM4v7typeGiven   = 1;
+        model.BSIM4v7mobMod      = 0;
+        model.BSIM4v7capMod      = 2;
+        model.BSIM4v7rdsMod      = 0;
+        model.BSIM4v7vth0        = 0.4;   model.BSIM4v7vth0Given = 1;
+        model.BSIM4v7u0          = 0.04;  model.BSIM4v7u0Given   = 1;
+        model.BSIM4v7toxe        = 2e-9;  model.BSIM4v7toxeGiven = 1;
 
         // --- Instance: M1 W=1u L=100n, NF=1 ---
-        inst.BSIM4name     = "M1";
-        inst.BSIM4w  = 1e-6;  inst.BSIM4wGiven  = 1;
-        inst.BSIM4l  = 1e-7;  inst.BSIM4lGiven  = 1;
-        inst.BSIM4nf = 1.0;   inst.BSIM4nfGiven = 1;
+        inst.BSIM4v7name     = "M1";
+        inst.BSIM4v7w  = 1e-6;  inst.BSIM4v7wGiven  = 1;
+        inst.BSIM4v7l  = 1e-7;  inst.BSIM4v7lGiven  = 1;
+        inst.BSIM4v7nf = 1.0;   inst.BSIM4v7nfGiven = 1;
 
         // Minimal topology: D=1, G=2, S=0 (ground), B=3.
-        inst.BSIM4dNode    = 1; inst.BSIM4gNodeExt = 2;
-        inst.BSIM4sNode    = 0; inst.BSIM4bNode    = 3;
+        inst.BSIM4v7dNode    = 1; inst.BSIM4v7gNodeExt = 2;
+        inst.BSIM4v7sNode    = 0; inst.BSIM4v7bNode    = 3;
 
-        inst.BSIM4modPtr       = &model;
-        inst.BSIM4nextInstance = nullptr;
-        model.BSIM4instances   = &inst;
-        model.BSIM4nextModel   = nullptr;
+        inst.BSIM4v7modPtr       = &model;
+        inst.BSIM4v7nextInstance = nullptr;
+        model.BSIM4v7instances   = &inst;
+        model.BSIM4v7nextModel   = nullptr;
 
         // --- Circuit state: T=300.15 K (27 C), matches ngspice default ---
         ckt.CKTtemp    = 300.15;
@@ -65,7 +65,7 @@ struct ModelFixture {
     }
 
     ~ModelFixture() {
-        // BSIM4temp mallocs bsim4SizeDependParam nodes and threads them onto
+        // BSIM4v7temp mallocs bsim4SizeDependParam nodes and threads them onto
         // model.pSizeDependParamKnot. BSIM4v7Model is a POD, so release here.
         auto *p = model.pSizeDependParamKnot;
         while (p) {
@@ -79,7 +79,7 @@ struct ModelFixture {
 // Goldens extracted from a patched ngspice (source tree at
 // /home/subhagato/Codes/ngspice, BSIM4.8.0 kernel, b4temp.c patched to
 // emit pParam->BSIM4* and here->BSIM4* fields as T12_GOLDEN stderr lines
-// after BSIM4temp completes). See tests/goldens/bsim4v7_nmos_setup.json.
+// after BSIM4v7temp completes). See tests/goldens/bsim4v7_nmos_setup.json.
 //
 // NOTE: leff/weff/cdep0/k1ox/phi live on pParam (bsim4SizeDependParam).
 //       vth0/u0temp/vfb/vsattemp on the instance are copies of pParam
@@ -113,33 +113,33 @@ static inline double atol_for(double g) {
 TEST(BSIM4v7UCBSetup, NmosPreprocChainMatchesNgspice) {
     ModelFixture f;
 
-    // UCB ordering: BSIM4setup populates default model params and allocates
-    // per-instance pParam; BSIM4temp then fills it with temperature-adjusted
-    // values and internally calls BSIM4checkModel.
-    ASSERT_EQ(0, BSIM4setup(&f.matrix, &f.model, &f.ckt, &f.states));
-    ASSERT_EQ(0, BSIM4temp (&f.model, &f.ckt));
+    // UCB ordering: BSIM4v7setup populates default model params and allocates
+    // per-instance pParam; BSIM4v7temp then fills it with temperature-adjusted
+    // values and internally calls BSIM4v7checkModel.
+    ASSERT_EQ(0, BSIM4v7setup(&f.matrix, &f.model, &f.ckt, &f.states));
+    ASSERT_EQ(0, BSIM4v7temp (&f.model, &f.ckt));
 
     ASSERT_NE(f.inst.pParam, nullptr);
     const auto *p = f.inst.pParam;
 
     // Geometry: LINT=WINT=0 by default, so effective = drawn.
-    EXPECT_NEAR(p->BSIM4leff, golden::leff, atol_for(golden::leff));
-    EXPECT_NEAR(p->BSIM4weff, golden::weff, atol_for(golden::weff));
+    EXPECT_NEAR(p->BSIM4v7leff, golden::leff, atol_for(golden::leff));
+    EXPECT_NEAR(p->BSIM4v7weff, golden::weff, atol_for(golden::weff));
 
     // Ngspice-derived goldens @ T=300.15K.
-    EXPECT_NEAR(p->BSIM4vth0,     golden::vth0,     atol_for(golden::vth0));
-    EXPECT_NEAR(p->BSIM4u0temp,   golden::u0temp,   atol_for(golden::u0temp));
-    EXPECT_NEAR(p->BSIM4vfb,      golden::vfb,      atol_for(golden::vfb));
-    EXPECT_NEAR(p->BSIM4vsattemp, golden::vsattemp, atol_for(golden::vsattemp));
-    EXPECT_NEAR(p->BSIM4k1ox,     golden::k1ox,     atol_for(golden::k1ox));
-    EXPECT_NEAR(p->BSIM4cdep0,    golden::cdep0,    atol_for(golden::cdep0));
-    EXPECT_NEAR(p->BSIM4phi,      golden::phi,      atol_for(golden::phi));
+    EXPECT_NEAR(p->BSIM4v7vth0,     golden::vth0,     atol_for(golden::vth0));
+    EXPECT_NEAR(p->BSIM4v7u0temp,   golden::u0temp,   atol_for(golden::u0temp));
+    EXPECT_NEAR(p->BSIM4v7vfb,      golden::vfb,      atol_for(golden::vfb));
+    EXPECT_NEAR(p->BSIM4v7vsattemp, golden::vsattemp, atol_for(golden::vsattemp));
+    EXPECT_NEAR(p->BSIM4v7k1ox,     golden::k1ox,     atol_for(golden::k1ox));
+    EXPECT_NEAR(p->BSIM4v7cdep0,    golden::cdep0,    atol_for(golden::cdep0));
+    EXPECT_NEAR(p->BSIM4v7phi,      golden::phi,      atol_for(golden::phi));
 
     // Instance-level mirrors (no stress → identical to pParam).
-    EXPECT_NEAR(f.inst.BSIM4vth0,     golden::vth0,     atol_for(golden::vth0));
-    EXPECT_NEAR(f.inst.BSIM4u0temp,   golden::u0temp,   atol_for(golden::u0temp));
-    EXPECT_NEAR(f.inst.BSIM4vfb,      golden::vfb,      atol_for(golden::vfb));
-    EXPECT_NEAR(f.inst.BSIM4vsattemp, golden::vsattemp, atol_for(golden::vsattemp));
+    EXPECT_NEAR(f.inst.BSIM4v7vth0,     golden::vth0,     atol_for(golden::vth0));
+    EXPECT_NEAR(f.inst.BSIM4v7u0temp,   golden::u0temp,   atol_for(golden::u0temp));
+    EXPECT_NEAR(f.inst.BSIM4v7vfb,      golden::vfb,      atol_for(golden::vfb));
+    EXPECT_NEAR(f.inst.BSIM4v7vsattemp, golden::vsattemp, atol_for(golden::vsattemp));
 }
 
 } // namespace

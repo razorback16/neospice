@@ -28,6 +28,9 @@ class _Descriptor:
     gen_instance: str = "GENinstance"
     gen_model: str = "GENmodel"
     matrix_ptr_suffix: str = "Ptr"
+    setup_function: str = ""
+    temp_function: str = ""
+    load_function: str = ""
 
 
 @pytest.fixture
@@ -142,8 +145,8 @@ def test_remove_include_guard(desc):
     assert "#pragma once" in result
     assert "#ifndef DIO_DEF_H" not in result
     assert "#define DIO_DEF_H" not in result
-    # The trailing #endif for the guard should be gone
-    assert "#endif" not in result
+    # The old include guard's #endif should be gone (NSTATVARS guard is OK)
+    assert "#endif /* DIO_DEF_H */" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -316,9 +319,8 @@ def test_full_round_trip(desc):
 
     # Removed artifacts
     assert "typedef" not in result
-    assert "#ifndef" not in result
+    assert "#ifndef DIODEF_H" not in result
     assert "#define DIODEF_H" not in result
-    assert "#endif" not in result
     assert '#include "ngspice/' not in result
     assert '#include "ifsim.h"' not in result
     assert "#include <stdio.h>" not in result

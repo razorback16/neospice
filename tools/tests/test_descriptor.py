@@ -9,9 +9,11 @@ import pytest
 import yaml
 
 from ngspice_migrate.descriptor import (
+    CleanupLinkedList,
     GeomParam,
     ModelDescriptor,
     Terminal,
+    VersionStamp,
     load_descriptor,
 )
 from ngspice_migrate.transformer import TransformerConfig
@@ -167,13 +169,24 @@ def test_bsim4v7_full_fields():
     # feature flags
     assert desc.has_internal_nodes is True
     # functions
-    assert desc.setup_function == "BSIM4setup"
-    assert desc.temp_function == "BSIM4temp"
-    assert desc.load_function == "BSIM4load"
+    assert desc.setup_function == "BSIM4v7setup"
+    assert desc.temp_function == "BSIM4v7temp"
+    assert desc.load_function == "BSIM4v7load"
     # geometry
-    assert len(desc.geometry) == 3
+    assert len(desc.geometry) == 12
     assert all(isinstance(g, GeomParam) for g in desc.geometry)
     assert desc.geometry[0].name == "W"
     assert desc.geometry[0].default == "1e-6"
+    assert desc.geometry[0].always_given is True
     assert desc.geometry[2].name == "NF"
     assert desc.geometry[2].given == "BSIM4v7nfGiven"
+    assert desc.geometry[3].name == "AD"
+    assert desc.geometry[3].always_given is False
+    # cleanup linked lists
+    assert len(desc.cleanup_linked_lists) == 1
+    assert desc.cleanup_linked_lists[0].field == "pSizeDependParamKnot"
+    assert desc.cleanup_linked_lists[0].next_field == "pNext"
+    # version stamp
+    assert desc.version_stamp is not None
+    assert desc.version_stamp.field == "BSIM4v7version"
+    assert desc.version_stamp.value == "4.7.0"

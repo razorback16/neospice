@@ -29,19 +29,19 @@ namespace {
 
 // ---------------------------------------------------------------------------
 // Model-card helper: minimal NMOS .model LEVEL=14 matching the one in
-// tests/goldens/probe.cir.  Sets the "*Given" flags so BSIM4temp honours
+// tests/goldens/probe.cir.  Sets the "*Given" flags so BSIM4v7temp honours
 // each parameter; UCB param.c already mirrors the front-end's "Given"
 // convention.
 // ---------------------------------------------------------------------------
 static void fill_nmod_card(BSIM4v7ModelCard& card) {
     auto& m = card.ucb;
-    m.BSIM4modName      = "NMOD";
-    m.BSIM4type         = NMOS;       m.BSIM4typeGiven = 1;
-    m.BSIM4vth0         = 0.4;        m.BSIM4vth0Given = 1;
-    m.BSIM4u0           = 0.04;       m.BSIM4u0Given   = 1;
-    m.BSIM4toxe         = 2e-9;       m.BSIM4toxeGiven = 1;
-    m.BSIM4nextModel    = nullptr;
-    m.BSIM4instances    = nullptr;    // populated by BSIM4v7Device::make
+    m.BSIM4v7modName      = "NMOD";
+    m.BSIM4v7type         = NMOS;       m.BSIM4v7typeGiven = 1;
+    m.BSIM4v7vth0         = 0.4;        m.BSIM4v7vth0Given = 1;
+    m.BSIM4v7u0           = 0.04;       m.BSIM4v7u0Given   = 1;
+    m.BSIM4v7toxe         = 2e-9;       m.BSIM4v7toxeGiven = 1;
+    m.BSIM4v7nextModel    = nullptr;
+    m.BSIM4v7instances    = nullptr;    // populated by BSIM4v7Device::make
 }
 
 } // namespace
@@ -88,7 +88,7 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
     // but we want to exercise newton_solve directly to keep the test
     // independent of DC fallback logic.)
     //
-    // Set the integrator mode to MODEDC | MODEINITJCT so BSIM4load takes
+    // Set the integrator mode to MODEDC | MODEINITJCT so BSIM4v7load takes
     // the junction-initialisation branch.
     constexpr int MODEDC_BITS     = 0x70;
     constexpr int MODEINITJCT_BIT = 0x200;
@@ -121,7 +121,7 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase-2 test: BSIM4setup allocates internal nodes when rgateMod != 0
+// Phase-2 test: BSIM4v7setup allocates internal nodes when rgateMod != 0
 // (see bsim4v7_setup.cpp:2325 et al.).  declare_internal_nodes now
 // delegates those allocations to Circuit::node() via the Shim::Ckt
 // node_alloc callback.  Verify the device successfully runs setup and
@@ -136,9 +136,9 @@ TEST(BSIM4v7UCBLoad, DeclareInternalNodesSucceedsWithRgateMod) {
 
     BSIM4v7ModelCard card;
     fill_nmod_card(card);
-    // Enable rgateMod so BSIM4setup allocates a "gate" internal node.
-    card.ucb.BSIM4rgateMod      = 1;
-    card.ucb.BSIM4rgateModGiven = 1;
+    // Enable rgateMod so BSIM4v7setup allocates a "gate" internal node.
+    card.ucb.BSIM4v7rgateMod      = 1;
+    card.ucb.BSIM4v7rgateModGiven = 1;
 
     BSIM4v7Device::Geom g;
     g.W = 1e-6;

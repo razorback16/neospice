@@ -48,10 +48,25 @@ model:
   defines:
     - "PREDICTOR"
   has_internal_nodes: true
-  setup_function: "BSIM4setup"
-  temp_function: "BSIM4temp"
-  load_function: "BSIM4load"
+  setup_function: "BSIM4v7setup"
+  temp_function: "BSIM4v7temp"
+  load_function: "BSIM4v7load"
+  cleanup_linked_lists:
+    - { field: "pSizeDependParamKnot", next_field: "pNext" }
+  version_stamp:
+    field: "BSIM4v7version"
+    given_field: "BSIM4v7versionGiven"
+    value: "4.7.0"
   geometry:
-    - { name: "W", field: "BSIM4v7w", given: "BSIM4v7wGiven", default: "1e-6" }
-    - { name: "L", field: "BSIM4v7l", given: "BSIM4v7lGiven", default: "1e-7" }
-    - { name: "NF", field: "BSIM4v7nf", given: "BSIM4v7nfGiven", default: "1.0" }
+    - { name: "W",   field: "BSIM4v7w",                given: "BSIM4v7wGiven",                default: "1e-6",  always_given: true }
+    - { name: "L",   field: "BSIM4v7l",                given: "BSIM4v7lGiven",                default: "1e-7",  always_given: true }
+    - { name: "NF",  field: "BSIM4v7nf",               given: "BSIM4v7nfGiven",               default: "1.0",   always_given: true }
+    - { name: "AD",  field: "BSIM4v7drainArea",         given: "BSIM4v7drainAreaGiven",         default: "0.0" }
+    - { name: "AS",  field: "BSIM4v7sourceArea",        given: "BSIM4v7sourceAreaGiven",        default: "0.0" }
+    - { name: "PD",  field: "BSIM4v7drainPerimeter",    given: "BSIM4v7drainPerimeterGiven",    default: "0.0" }
+    - { name: "PS",  field: "BSIM4v7sourcePerimeter",   given: "BSIM4v7sourcePerimeterGiven",   default: "0.0" }
+    - { name: "NRD", field: "BSIM4v7drainSquares",      given: "BSIM4v7drainSquaresGiven",      default: "0.0" }
+    - { name: "NRS", field: "BSIM4v7sourceSquares",     given: "BSIM4v7sourceSquaresGiven",     default: "0.0" }
+    - { name: "SA",  field: "BSIM4v7sa",                given: "BSIM4v7saGiven",                default: "0.0" }
+    - { name: "SB",  field: "BSIM4v7sb",                given: "BSIM4v7sbGiven",                default: "0.0" }
+    - { name: "SD",  field: "BSIM4v7sd",                given: "BSIM4v7sdGiven",                default: "0.0" }

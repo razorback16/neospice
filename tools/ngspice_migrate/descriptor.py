@@ -32,6 +32,23 @@ class Terminal:
 
 
 @dataclass
+class CleanupLinkedList:
+    """A malloc'd linked list in the model struct that needs freeing."""
+
+    field: str       # e.g. "pSizeDependParamKnot"
+    next_field: str  # e.g. "pNext"
+
+
+@dataclass
+class VersionStamp:
+    """Optional version field to set in make() if not already given."""
+
+    field: str        # e.g. "BSIM4versionGiven"
+    given_field: str  # e.g. "BSIM4versionGiven"
+    value: str        # e.g. "4.7.0"
+
+
+@dataclass
 class GeomParam:
     """One geometry parameter with an optional default value."""
 
@@ -39,6 +56,7 @@ class GeomParam:
     field: str
     given: str
     default: str = ""
+    always_given: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +118,12 @@ class ModelDescriptor:
 
     # Matrix stamp suffix ----------------------------------------------------
     matrix_ptr_suffix: str = "Ptr"
+
+    # Destructor cleanup — linked lists in model struct to free --------------
+    cleanup_linked_lists: List[CleanupLinkedList] = field(default_factory=list)
+
+    # Version stamp — set in make() if not already given ---------------------
+    version_stamp: VersionStamp | None = None
 
     # -----------------------------------------------------------------------
     # Conversion to TransformerConfig
@@ -180,9 +204,24 @@ def load_descriptor(path: Path) -> ModelDescriptor:
             field=g["field"],
             given=g["given"],
             default=str(g.get("default", "")),
+            always_given=bool(g.get("always_given", False)),
         )
         for g in m.get("geometry", [])
     ]
+
+    cleanup_linked_lists = [
+        CleanupLinkedList(field=c["field"], next_field=c["next_field"])
+        for c in m.get("cleanup_linked_lists", [])
+    ]
+
+    version_stamp_raw = m.get("version_stamp")
+    version_stamp = None
+    if version_stamp_raw:
+        version_stamp = VersionStamp(
+            field=version_stamp_raw["field"],
+            given_field=version_stamp_raw["given_field"],
+            value=str(version_stamp_raw["value"]),
+        )
 
     return ModelDescriptor(
         prefix=prefix,
@@ -213,4 +252,6 @@ def load_descriptor(path: Path) -> ModelDescriptor:
         load_function=m.get("load_function", ""),
         geometry=geometry,
         matrix_ptr_suffix=m.get("matrix_ptr_suffix", "Ptr"),
+        cleanup_linked_lists=cleanup_linked_lists,
+        version_stamp=version_stamp,
     )

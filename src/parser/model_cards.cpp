@@ -134,11 +134,11 @@ std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card) {
 
     // Type check — .model TYPE field is lowercased at parse time.
     if (card.type == "nmos") {
-        ucb.BSIM4type      = 1;
-        ucb.BSIM4typeGiven = 1;
+        ucb.BSIM4v7type      = 1;
+        ucb.BSIM4v7typeGiven = 1;
     } else if (card.type == "pmos") {
-        ucb.BSIM4type      = -1;
-        ucb.BSIM4typeGiven = 1;
+        ucb.BSIM4v7type      = -1;
+        ucb.BSIM4v7typeGiven = 1;
     } else {
         throw ParseError(
             "Model '" + card.name + "': unsupported MOS type '" + card.type +
@@ -171,9 +171,9 @@ std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card) {
         // parser code runs once per circuit so this is not hot.
         // mPTable keywords are stored lowercase — matches ModelCard::params.
         const bsim4v7::Shim::IfParm* entry = nullptr;
-        for (int i = 0; i < bsim4v7::BSIM4mPTSize; ++i) {
-            if (std::strcmp(bsim4v7::BSIM4mPTable[i].keyword, lkey.c_str()) == 0) {
-                entry = &bsim4v7::BSIM4mPTable[i];
+        for (int i = 0; i < bsim4v7::BSIM4v7mPTSize; ++i) {
+            if (std::strcmp(bsim4v7::BSIM4v7mPTable[i].keyword, lkey.c_str()) == 0) {
+                entry = &bsim4v7::BSIM4v7mPTable[i];
                 break;
             }
         }
@@ -213,7 +213,7 @@ std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card) {
                 "' has unrecognized data type in BSIM4mPTable");
         }
 
-        int rc = bsim4v7::BSIM4mParam(entry->id, &v, &ucb);
+        int rc = bsim4v7::BSIM4v7mParam(entry->id, &v, &ucb);
         if (rc != bsim4v7::Shim::OK) {
             throw ParseError(
                 "Model '" + card.name + "': BSIM4mParam failed for '" +

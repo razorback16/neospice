@@ -1,3 +1,4 @@
+#define PREDICTOR
 /**** BSIM4.7.0 Released by Darsen Lu 04/08/2011 ****/
 
 /**********
@@ -12,262 +13,246 @@
  * Modified by Xuemei Xi, 11/15/2002.
  * Modified by Xuemei Xi, 05/09/2003.
  * Modified by Xuemei Xi, Mohan Dunga, 07/29/2005.
- *
- * Mechanical translation to C++ by neospice Z-port Task 6.
- * Original: third_party/bsim4_4.7.0/code/b4par.c  (instance-parameter setter)
- * Original: third_party/bsim4_4.7.0/code/b4.c     (BSIM4pTable[] initializer)
 **********/
 
-#include "devices/bsim4v7/bsim4v7_def.hpp"
+// Translated to C++ for neospice by tools/ngspice_migrate.
 
-// UCB SPICE3 ifsim.h compatibility macros for pTable initializer:
-// IOP = input/output parameter, IP = input-only, OP = output-only.
-#define IOP(kw,id,type,desc) { kw, id, (type) | Shim::IF_SET | Shim::IF_ASK, desc }
-#define IP(kw,id,type,desc)  { kw, id, (type) | Shim::IF_SET,                 desc }
-#define OP(kw,id,type,desc)  { kw, id, (type) | Shim::IF_ASK,                 desc }
+#include "devices/bsim4v7/bsim4v7_def.hpp"
+#include "devices/bsim4v7/bsim4v7_shim.hpp"
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+
+#ifndef CONSTvt0
+#define CONSTvt0 0.025852037
+#endif
+#ifndef CONSTroot2
+#define CONSTroot2 1.4142135623730950488
+#endif
+#ifndef CONSTCtoK
+#define CONSTCtoK 273.15
+#endif
+#ifndef CHARGE
+#define CHARGE 1.6021918e-19
+#endif
+#ifndef FABS
+#define FABS(x) std::fabs(x)
+#endif
+#ifndef ABS
+#define ABS(x) std::fabs(x)
+#endif
+#ifndef MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef TMALLOC
+#define TMALLOC(type, num) (new type[num]())
+#endif
+#ifndef NG_IGNORE
+#define NG_IGNORE(x) (void)(x)
+#endif
+#ifndef cp_getvar
+#define cp_getvar(name, type, ptr) 0
+#endif
+#ifndef CP_REAL
+#define CP_REAL 0
+#endif
+#ifndef NUMELEMS
+#define NUMELEMS(ARRAY) (sizeof(ARRAY)/sizeof(*(ARRAY)))
+#endif
+#ifndef IOP
+#define IOP(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|c), d}
+#endif
+#ifndef IOPU
+#define IOPU(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|c), d}
+#endif
+#ifndef IP
+#define IP(a,b,c,d) {a, b, (Shim::IF_SET|c), d}
+#endif
+#ifndef OP
+#define OP(a,b,c,d) {a, b, (Shim::IF_ASK|c), d}
+#endif
+#ifndef OPU
+#define OPU(a,b,c,d) {a, b, (Shim::IF_ASK|c), d}
+#endif
 
 namespace neospice::bsim4v7 {
 
-const Shim::IfParm BSIM4pTable[] = { /* parameters */
-IOP( "l",   BSIM4_L,      Shim::IF_REAL   , "Length"),
-IOP( "w",   BSIM4_W,      Shim::IF_REAL   , "Width"),
-IOP( "nf",  BSIM4_NF,     Shim::IF_REAL   , "Number of fingers"),
-IOP( "sa",  BSIM4_SA,     Shim::IF_REAL   , "distance between  OD edge to poly of one side "),
-IOP( "sb",  BSIM4_SB,     Shim::IF_REAL   , "distance between  OD edge to poly of the other side"),
-IOP( "sd",  BSIM4_SD,     Shim::IF_REAL   , "distance between neighbour fingers"),
-IOP( "sca",  BSIM4_SCA,     Shim::IF_REAL   , "Integral of the first distribution function for scattered well dopant"),
-IOP( "scb",  BSIM4_SCB,     Shim::IF_REAL   , "Integral of the second distribution function for scattered well dopant"),
-IOP( "scc",  BSIM4_SCC,     Shim::IF_REAL   , "Integral of the third distribution function for scattered well dopant"),
-IOP( "sc",  BSIM4_SC,     Shim::IF_REAL   , "Distance to a single well edge "),
-IOP( "min",  BSIM4_MIN,   Shim::IF_INTEGER , "Minimize either D or S"),
-IOP( "ad",  BSIM4_AD,     Shim::IF_REAL   , "Drain area"),
-IOP( "as",  BSIM4_AS,     Shim::IF_REAL   , "Source area"),
-IOP( "pd",  BSIM4_PD,     Shim::IF_REAL   , "Drain perimeter"),
-IOP( "ps",  BSIM4_PS,     Shim::IF_REAL   , "Source perimeter"),
-IOP( "nrd", BSIM4_NRD,    Shim::IF_REAL   , "Number of squares in drain"),
-IOP( "nrs", BSIM4_NRS,    Shim::IF_REAL   , "Number of squares in source"),
-IOP( "off", BSIM4_OFF,    Shim::IF_FLAG   , "Device is initially off"),
-IOP( "rbdb", BSIM4_RBDB,  Shim::IF_REAL   , "Body resistance"),
-IOP( "rbsb", BSIM4_RBSB,  Shim::IF_REAL   , "Body resistance"),
-IOP( "rbpb", BSIM4_RBPB,  Shim::IF_REAL   , "Body resistance"),
-IOP( "rbps", BSIM4_RBPS,  Shim::IF_REAL   , "Body resistance"),
-IOP( "rbpd", BSIM4_RBPD,  Shim::IF_REAL   , "Body resistance"),
-IOP( "delvto", BSIM4_DELVTO,  Shim::IF_REAL   , "Zero bias threshold voltage variation"),
-IOP( "xgw",  BSIM4_XGW, Shim::IF_REAL, "Distance from gate contact center to device edge"),
-IOP( "ngcon", BSIM4_NGCON, Shim::IF_REAL, "Number of gate contacts"),
+using namespace Shim;
 
-
-IOP( "trnqsmod", BSIM4_TRNQSMOD, Shim::IF_INTEGER, "Transient NQS model selector"),
-IOP( "acnqsmod", BSIM4_ACNQSMOD, Shim::IF_INTEGER, "AC NQS model selector"),
-IOP( "rbodymod", BSIM4_RBODYMOD, Shim::IF_INTEGER, "Distributed body R model selector"),
-IOP( "rgatemod", BSIM4_RGATEMOD, Shim::IF_INTEGER, "Gate resistance model selector"),
-IOP( "geomod", BSIM4_GEOMOD, Shim::IF_INTEGER, "Geometry dependent parasitics model selector"),
-IOP( "rgeomod", BSIM4_RGEOMOD, Shim::IF_INTEGER, "S/D resistance and contact model selector"),
-IP( "ic",  BSIM4_IC,     Shim::IF_REALVEC , "Vector of DS,GS,BS initial voltages"),
-OP( "gmbs",         BSIM4_GMBS,       Shim::IF_REAL,    "Gmb"),
-OP( "gm",           BSIM4_GM,         Shim::IF_REAL,    "Gm"),
-OP( "gds",          BSIM4_GDS,        Shim::IF_REAL,    "Gds"),
-OP( "vdsat",        BSIM4_VDSAT,      Shim::IF_REAL,    "Vdsat"),
-OP( "vth",          BSIM4_VON,        Shim::IF_REAL,    "Vth"),
-OP( "id",           BSIM4_CD,         Shim::IF_REAL,    "Ids"),
-OP( "ibd",          BSIM4_CBD,        Shim::IF_REAL,    "Ibd"),
-OP( "ibs",          BSIM4_CBS,        Shim::IF_REAL,    "Ibs"),
-OP( "gbd",          BSIM4_GBD,        Shim::IF_REAL,    "gbd"),
-OP( "gbs",          BSIM4_GBS,        Shim::IF_REAL,    "gbs"),
-OP( "isub",         BSIM4_CSUB,       Shim::IF_REAL,    "Isub"),
-OP( "igidl",        BSIM4_IGIDL,      Shim::IF_REAL,    "Igidl"),
-OP( "igisl",        BSIM4_IGISL,      Shim::IF_REAL,    "Igisl"),
-OP( "igs",          BSIM4_IGS,        Shim::IF_REAL,    "Igs"),
-OP( "igd",          BSIM4_IGD,        Shim::IF_REAL,    "Igd"),
-OP( "igb",          BSIM4_IGB,        Shim::IF_REAL,    "Igb"),
-OP( "igcs",         BSIM4_IGCS,       Shim::IF_REAL,    "Igcs"),
-OP( "igcd",         BSIM4_IGCD,       Shim::IF_REAL,    "Igcd"),
-OP( "vbs",          BSIM4_VBS,        Shim::IF_REAL,    "Vbs"),
-OP( "vgs",          BSIM4_VGS,        Shim::IF_REAL,    "Vgs"),
-OP( "vds",          BSIM4_VDS,        Shim::IF_REAL,    "Vds"),
-OP( "cgg",         BSIM4_CGGB,       Shim::IF_REAL,    "Cggb"),
-OP( "cgs",         BSIM4_CGSB,       Shim::IF_REAL,    "Cgsb"),
-OP( "cgd",         BSIM4_CGDB,       Shim::IF_REAL,    "Cgdb"),
-OP( "cbg",         BSIM4_CBGB,       Shim::IF_REAL,    "Cbgb"),
-OP( "cbd",         BSIM4_CBDB,       Shim::IF_REAL,    "Cbdb"),
-OP( "cbs",         BSIM4_CBSB,       Shim::IF_REAL,    "Cbsb"),
-OP( "cdg",         BSIM4_CDGB,       Shim::IF_REAL,    "Cdgb"),
-OP( "cdd",         BSIM4_CDDB,       Shim::IF_REAL,    "Cddb"),
-OP( "cds",         BSIM4_CDSB,       Shim::IF_REAL,    "Cdsb"),
-OP( "csg",         BSIM4_CSGB,       Shim::IF_REAL,    "Csgb"),
-OP( "csd",         BSIM4_CSDB,       Shim::IF_REAL,    "Csdb"),
-OP( "css",         BSIM4_CSSB,       Shim::IF_REAL,    "Cssb"),
-OP( "cgb",         BSIM4_CGBB,       Shim::IF_REAL,    "Cgbb"),
-OP( "cdb",         BSIM4_CDBB,       Shim::IF_REAL,    "Cdbb"),
-OP( "csb",         BSIM4_CSBB,       Shim::IF_REAL,    "Csbb"),
-OP( "cbb",         BSIM4_CBBB,       Shim::IF_REAL,    "Cbbb"),
-OP( "capbd",       BSIM4_CAPBD,      Shim::IF_REAL,    "Capbd"),
-OP( "capbs",       BSIM4_CAPBS,      Shim::IF_REAL,    "Capbs"),
-OP( "qg",          BSIM4_QG,         Shim::IF_REAL,    "Qgate"),
-OP( "qb",          BSIM4_QB,         Shim::IF_REAL,    "Qbulk"),
-OP( "qd",          BSIM4_QD,         Shim::IF_REAL,    "Qdrain"),
-OP( "qs",          BSIM4_QS,         Shim::IF_REAL,    "Qsource"),
-OP( "qinv",        BSIM4_QINV,       Shim::IF_REAL,    "Qinversion"),
-OP( "qdef",        BSIM4_QDEF,       Shim::IF_REAL,    "Qdef"),
-OP( "gcrg",        BSIM4_GCRG,       Shim::IF_REAL,    "Gcrg"),
-OP( "gtau",        BSIM4_GTAU,       Shim::IF_REAL,    "Gtau"),
-};
-
-const int BSIM4pTSize = sizeof(BSIM4pTable) / sizeof(BSIM4pTable[0]);
-
-int BSIM4param(int param, Shim::IfValue *value, BSIM4v7Instance *here, Shim::IfValue * /*select*/)
+int
+BSIM4v7param(
+int param,
+Shim::IfValue *value,
+BSIM4v7Instance *inst,
+Shim::IfValue *select)
 {
-    switch(param)
-    {   case BSIM4_W:
-            here->BSIM4w = value->rValue;
-            here->BSIM4wGiven = TRUE;
+    double scale;
+
+    BSIM4v7Instance *here = (BSIM4v7Instance*)inst;
+
+    NG_IGNORE(select);
+
+    if (!cp_getvar("scale", CP_REAL, &scale))
+        scale = 1;
+
+    switch(param) 
+    {   case BSIM4v7_W:
+            here->BSIM4v7w = value->rValue * scale;
+            here->BSIM4v7wGiven = TRUE;
             break;
-        case BSIM4_L:
-            here->BSIM4l = value->rValue;
-            here->BSIM4lGiven = TRUE;
+        case BSIM4v7_L:
+            here->BSIM4v7l = value->rValue * scale;
+            here->BSIM4v7lGiven = TRUE;
             break;
-        case BSIM4_NF:
-            here->BSIM4nf = value->rValue;
-            here->BSIM4nfGiven = TRUE;
+        case BSIM4v7_M:
+            here->BSIM4v7m = value->rValue;
+            here->BSIM4v7mGiven = TRUE;
             break;
-        case BSIM4_MIN:
-            here->BSIM4min = value->iValue;
-            here->BSIM4minGiven = TRUE;
+        case BSIM4v7_NF:
+            here->BSIM4v7nf = value->rValue;
+            here->BSIM4v7nfGiven = TRUE;
             break;
-        case BSIM4_AS:
-            here->BSIM4sourceArea = value->rValue;
-            here->BSIM4sourceAreaGiven = TRUE;
+        case BSIM4v7_MIN:
+            here->BSIM4v7min = value->iValue;
+            here->BSIM4v7minGiven = TRUE;
             break;
-        case BSIM4_AD:
-            here->BSIM4drainArea = value->rValue;
-            here->BSIM4drainAreaGiven = TRUE;
+        case BSIM4v7_AS:
+            here->BSIM4v7sourceArea = value->rValue * scale * scale;
+            here->BSIM4v7sourceAreaGiven = TRUE;
             break;
-        case BSIM4_PS:
-            here->BSIM4sourcePerimeter = value->rValue;
-            here->BSIM4sourcePerimeterGiven = TRUE;
+        case BSIM4v7_AD:
+            here->BSIM4v7drainArea = value->rValue * scale * scale;
+            here->BSIM4v7drainAreaGiven = TRUE;
             break;
-        case BSIM4_PD:
-            here->BSIM4drainPerimeter = value->rValue;
-            here->BSIM4drainPerimeterGiven = TRUE;
+        case BSIM4v7_PS:
+            here->BSIM4v7sourcePerimeter = value->rValue * scale;
+            here->BSIM4v7sourcePerimeterGiven = TRUE;
             break;
-        case BSIM4_NRS:
-            here->BSIM4sourceSquares = value->rValue;
-            here->BSIM4sourceSquaresGiven = TRUE;
+        case BSIM4v7_PD:
+            here->BSIM4v7drainPerimeter = value->rValue * scale;
+            here->BSIM4v7drainPerimeterGiven = TRUE;
             break;
-        case BSIM4_NRD:
-            here->BSIM4drainSquares = value->rValue;
-            here->BSIM4drainSquaresGiven = TRUE;
+        case BSIM4v7_NRS:
+            here->BSIM4v7sourceSquares = value->rValue;
+            here->BSIM4v7sourceSquaresGiven = TRUE;
             break;
-        case BSIM4_OFF:
-            here->BSIM4off = value->iValue;
+        case BSIM4v7_NRD:
+            here->BSIM4v7drainSquares = value->rValue;
+            here->BSIM4v7drainSquaresGiven = TRUE;
             break;
-        case BSIM4_SA:
-            here->BSIM4sa = value->rValue;
-            here->BSIM4saGiven = TRUE;
+        case BSIM4v7_OFF:
+            here->BSIM4v7off = value->iValue;
             break;
-        case BSIM4_SB:
-            here->BSIM4sb = value->rValue;
-            here->BSIM4sbGiven = TRUE;
+        case BSIM4v7_SA:
+            here->BSIM4v7sa = value->rValue;
+            here->BSIM4v7saGiven = TRUE;
             break;
-        case BSIM4_SD:
-            here->BSIM4sd = value->rValue;
-            here->BSIM4sdGiven = TRUE;
+        case BSIM4v7_SB:
+            here->BSIM4v7sb = value->rValue;
+            here->BSIM4v7sbGiven = TRUE;
             break;
-        case BSIM4_SCA:
-            here->BSIM4sca = value->rValue;
-            here->BSIM4scaGiven = TRUE;
+        case BSIM4v7_SD:
+            here->BSIM4v7sd = value->rValue;
+            here->BSIM4v7sdGiven = TRUE;
             break;
-        case BSIM4_SCB:
-            here->BSIM4scb = value->rValue;
-            here->BSIM4scbGiven = TRUE;
+        case BSIM4v7_SCA:
+            here->BSIM4v7sca = value->rValue;
+            here->BSIM4v7scaGiven = TRUE;
             break;
-        case BSIM4_SCC:
-            here->BSIM4scc = value->rValue;
-            here->BSIM4sccGiven = TRUE;
+        case BSIM4v7_SCB:
+            here->BSIM4v7scb = value->rValue;
+            here->BSIM4v7scbGiven = TRUE;
             break;
-        case BSIM4_SC:
-            here->BSIM4sc = value->rValue;
-            here->BSIM4scGiven = TRUE;
+        case BSIM4v7_SCC:
+            here->BSIM4v7scc = value->rValue;
+            here->BSIM4v7sccGiven = TRUE;
             break;
-        case BSIM4_RBSB:
-            here->BSIM4rbsb = value->rValue;
-            here->BSIM4rbsbGiven = TRUE;
+        case BSIM4v7_SC:
+            here->BSIM4v7sc = value->rValue;
+            here->BSIM4v7scGiven = TRUE;
             break;
-        case BSIM4_RBDB:
-            here->BSIM4rbdb = value->rValue;
-            here->BSIM4rbdbGiven = TRUE;
+        case BSIM4v7_RBSB:
+            here->BSIM4v7rbsb = value->rValue;
+            here->BSIM4v7rbsbGiven = TRUE;
             break;
-        case BSIM4_RBPB:
-            here->BSIM4rbpb = value->rValue;
-            here->BSIM4rbpbGiven = TRUE;
+        case BSIM4v7_RBDB:
+            here->BSIM4v7rbdb = value->rValue;
+            here->BSIM4v7rbdbGiven = TRUE;
             break;
-        case BSIM4_RBPS:
-            here->BSIM4rbps = value->rValue;
-            here->BSIM4rbpsGiven = TRUE;
+        case BSIM4v7_RBPB:
+            here->BSIM4v7rbpb = value->rValue;
+            here->BSIM4v7rbpbGiven = TRUE;
             break;
-        case BSIM4_RBPD:
-            here->BSIM4rbpd = value->rValue;
-            here->BSIM4rbpdGiven = TRUE;
+        case BSIM4v7_RBPS:
+            here->BSIM4v7rbps = value->rValue;
+            here->BSIM4v7rbpsGiven = TRUE;
             break;
-        case BSIM4_DELVTO:
-            here->BSIM4delvto = value->rValue;
-            here->BSIM4delvtoGiven = TRUE;
+        case BSIM4v7_RBPD:
+            here->BSIM4v7rbpd = value->rValue;
+            here->BSIM4v7rbpdGiven = TRUE;
             break;
-        case BSIM4_XGW:
-            here->BSIM4xgw = value->rValue;
-            here->BSIM4xgwGiven = TRUE;
+        case BSIM4v7_DELVTO:
+            here->BSIM4v7delvto = value->rValue;
+            here->BSIM4v7delvtoGiven = TRUE;
             break;
-        case BSIM4_NGCON:
-            here->BSIM4ngcon = value->rValue;
-            here->BSIM4ngconGiven = TRUE;
+        case BSIM4v7_XGW:
+            here->BSIM4v7xgw = value->rValue;
+            here->BSIM4v7xgwGiven = TRUE;
             break;
-        case BSIM4_TRNQSMOD:
-            here->BSIM4trnqsMod = value->iValue;
-            here->BSIM4trnqsModGiven = TRUE;
+        case BSIM4v7_NGCON:
+            here->BSIM4v7ngcon = value->rValue;
+            here->BSIM4v7ngconGiven = TRUE;
             break;
-        case BSIM4_ACNQSMOD:
-            here->BSIM4acnqsMod = value->iValue;
-            here->BSIM4acnqsModGiven = TRUE;
+        case BSIM4v7_TRNQSMOD:
+            here->BSIM4v7trnqsMod = value->iValue;
+            here->BSIM4v7trnqsModGiven = TRUE;
             break;
-        case BSIM4_RBODYMOD:
-            here->BSIM4rbodyMod = value->iValue;
-            here->BSIM4rbodyModGiven = TRUE;
+        case BSIM4v7_ACNQSMOD:
+            here->BSIM4v7acnqsMod = value->iValue;
+            here->BSIM4v7acnqsModGiven = TRUE;
             break;
-        case BSIM4_RGATEMOD:
-            here->BSIM4rgateMod = value->iValue;
-            here->BSIM4rgateModGiven = TRUE;
+        case BSIM4v7_RBODYMOD:
+            here->BSIM4v7rbodyMod = value->iValue;
+            here->BSIM4v7rbodyModGiven = TRUE;
             break;
-        case BSIM4_GEOMOD:
-            here->BSIM4geoMod = value->iValue;
-            here->BSIM4geoModGiven = TRUE;
+        case BSIM4v7_RGATEMOD:
+            here->BSIM4v7rgateMod = value->iValue;
+            here->BSIM4v7rgateModGiven = TRUE;
             break;
-        case BSIM4_RGEOMOD:
-            here->BSIM4rgeoMod = value->iValue;
-            here->BSIM4rgeoModGiven = TRUE;
+        case BSIM4v7_GEOMOD:
+            here->BSIM4v7geoMod = value->iValue;
+            here->BSIM4v7geoModGiven = TRUE;
             break;
-        case BSIM4_IC_VDS:
-            here->BSIM4icVDS = value->rValue;
-            here->BSIM4icVDSGiven = TRUE;
+        case BSIM4v7_RGEOMOD:
+            here->BSIM4v7rgeoMod = value->iValue;
+            here->BSIM4v7rgeoModGiven = TRUE;
             break;
-        case BSIM4_IC_VGS:
-            here->BSIM4icVGS = value->rValue;
-            here->BSIM4icVGSGiven = TRUE;
+        case BSIM4v7_IC_VDS:
+            here->BSIM4v7icVDS = value->rValue;
+            here->BSIM4v7icVDSGiven = TRUE;
             break;
-        case BSIM4_IC_VBS:
-            here->BSIM4icVBS = value->rValue;
-            here->BSIM4icVBSGiven = TRUE;
+        case BSIM4v7_IC_VGS:
+            here->BSIM4v7icVGS = value->rValue;
+            here->BSIM4v7icVGSGiven = TRUE;
             break;
-        case BSIM4_IC:
+        case BSIM4v7_IC_VBS:
+            here->BSIM4v7icVBS = value->rValue;
+            here->BSIM4v7icVBSGiven = TRUE;
+            break;
+        case BSIM4v7_IC:
             switch(value->v.numValue)
             {   case 3:
-                    here->BSIM4icVBS = *(value->v.vec.rVec+2);
-                    here->BSIM4icVBSGiven = TRUE;
+                    here->BSIM4v7icVBS = *(value->v.vec.rVec+2);
+                    here->BSIM4v7icVBSGiven = TRUE;
                 case 2:
-                    here->BSIM4icVGS = *(value->v.vec.rVec+1);
-                    here->BSIM4icVGSGiven = TRUE;
+                    here->BSIM4v7icVGS = *(value->v.vec.rVec+1);
+                    here->BSIM4v7icVGSGiven = TRUE;
                 case 1:
-                    here->BSIM4icVDS = *(value->v.vec.rVec);
-                    here->BSIM4icVDSGiven = TRUE;
+                    here->BSIM4v7icVDS = *(value->v.vec.rVec);
+                    here->BSIM4v7icVDSGiven = TRUE;
                     break;
                 default:
                     return Shim::E_BADPARM;
@@ -276,11 +261,7 @@ int BSIM4param(int param, Shim::IfValue *value, BSIM4v7Instance *here, Shim::IfV
         default:
             return Shim::E_BADPARM;
     }
-    return Shim::OK;
+    return 0;
 }
 
 } // namespace neospice::bsim4v7
-
-#undef IOP
-#undef IP
-#undef OP

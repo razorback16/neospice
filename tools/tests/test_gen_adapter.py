@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 import pytest
 
-from ngspice_migrate.gen_adapter import generate_adapter_cpp, generate_adapter_hpp
+from ngspice_migrate.gen_adapter import (
+    extract_tstalloc_fields,
+    generate_adapter_cpp,
+    generate_adapter_hpp,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -26,6 +30,20 @@ class StubGeomParam:
     field: str
     given: str
     default: str = ""
+    always_given: bool = False
+
+
+@dataclass
+class StubCleanupLinkedList:
+    field: str
+    next_field: str
+
+
+@dataclass
+class StubVersionStamp:
+    field: str
+    given_field: str
+    value: str
 
 
 @dataclass
@@ -53,6 +71,9 @@ class StubDescriptor:
         StubGeomParam(name="area", field="DIOarea", given="DIOareaGiven", default="1.0"),
     ])
     has_internal_nodes: bool = True
+    cleanup_linked_lists: List[StubCleanupLinkedList] = field(default_factory=list)
+    version_stamp: Optional[StubVersionStamp] = None
+    matrix_ptr_suffix: str = "Ptr"
 
 
 @pytest.fixture
@@ -216,7 +237,9 @@ class TestAdapterCpp:
 
     def test_forward_declaration(self, desc: StubDescriptor) -> None:
         cpp = generate_adapter_cpp(desc)
-        assert "int DIOload(DIOModel* model, Shim::Ckt* ckt);" in cpp
+        assert "int DIOsetup(Shim::Matrix*, DIOModel*, Shim::Ckt*, int*);" in cpp
+        assert "int DIOtemp(DIOModel*, Shim::Ckt*);" in cpp
+        assert "int DIOload(DIOModel*, Shim::Ckt*);" in cpp
 
     def test_model_card_destructor(self, desc: StubDescriptor) -> None:
         cpp = generate_adapter_cpp(desc)
@@ -362,3 +385,173 @@ class TestAdapterCpp:
         assert "BJTnextInstance" in cpp
         assert "BJTinstances" in cpp
         assert "BJTnextModel" in cpp
+
+
+# ---------------------------------------------------------------------------
+# TSTALLOC extraction tests
+# ---------------------------------------------------------------------------
+
+class TestExtractTstallocFields:
+    def test_extracts_field_names(self) -> None:
+        setup_src = """
+#define TSTALLOC(ptr,first,second) \\
+    do { (here)->ptr = mat.make_elt(here->first, here->second); } while(0)
+
+    TSTALLOC(DIOposPosPtr, DIOposNode, DIOposNode)
+    TSTALLOC(DIOposNegPtr, DIOposNode, DIOnegNode)
+    TSTALLOC(DIOnegPosPtr, DIOnegNode, DIOposNode)
+    TSTALLOC(DIOnegNegPtr, DIOnegNode, DIOnegNode)
+"""
+        fields = extract_tstalloc_fields(setup_src)
+        assert fields == [
+            "DIOposPosPtr", "DIOposNegPtr",
+            "DIOnegPosPtr", "DIOnegNegPtr",
+        ]
+
+    def test_skips_define_line(self) -> None:
+        setup_src = '#define TSTALLOC(ptr,first,second) stuff'
+        fields = extract_tstalloc_fields(setup_src)
+        assert fields == []
+
+    def test_deduplicates(self) -> None:
+        setup_src = """
+    TSTALLOC(DIOposPosPtr, DIOposNode, DIOposNode)
+    TSTALLOC(DIOposPosPtr, DIOposNode, DIOposNode)
+"""
+        fields = extract_tstalloc_fields(setup_src)
+        assert fields == ["DIOposPosPtr"]
+
+    def test_empty_source(self) -> None:
+        assert extract_tstalloc_fields("") == []
+
+    def test_custom_suffix(self) -> None:
+        setup_src = "    TSTALLOC(FooBarBinding, FooNode, BarNode)\n"
+        assert extract_tstalloc_fields(setup_src, "Binding") == ["FooBarBinding"]
+        assert extract_tstalloc_fields(setup_src, "Ptr") == []
+
+
+# ---------------------------------------------------------------------------
+# RESOLVE generation tests
+# ---------------------------------------------------------------------------
+
+class TestResolveGeneration:
+    def test_resolve_calls_from_setup_source(self) -> None:
+        desc = StubDescriptor()
+        setup_src = """
+    TSTALLOC(DIOposPosPtr, DIOposNode, DIOposNode)
+    TSTALLOC(DIOnegNegPtr, DIOnegNode, DIOnegNode)
+"""
+        cpp = generate_adapter_cpp(desc, setup_source=setup_src)
+        assert "RESOLVE(DIOposPosPtr);" in cpp
+        assert "RESOLVE(DIOnegNegPtr);" in cpp
+        assert "TODO" not in cpp
+
+    def test_todo_when_no_setup_source(self) -> None:
+        desc = StubDescriptor()
+        cpp = generate_adapter_cpp(desc, setup_source="")
+        assert "TODO" in cpp
+
+    def test_todo_when_setup_has_no_tstalloc(self) -> None:
+        desc = StubDescriptor()
+        cpp = generate_adapter_cpp(desc, setup_source="int main() { return 0; }")
+        assert "TODO" in cpp
+
+
+# ---------------------------------------------------------------------------
+# Destructor cleanup tests
+# ---------------------------------------------------------------------------
+
+class TestDestructorCleanup:
+    def test_default_destructor_no_cleanup(self, desc: StubDescriptor) -> None:
+        cpp = generate_adapter_cpp(desc)
+        assert "DIOModelCard::~DIOModelCard() = default;" in cpp
+        assert "std::free" not in cpp
+        assert "#include <cstdlib>" not in cpp
+
+    def test_destructor_with_cleanup(self) -> None:
+        desc = StubDescriptor(
+            cleanup_linked_lists=[
+                StubCleanupLinkedList(field="pKnot", next_field="pNext"),
+            ],
+        )
+        cpp = generate_adapter_cpp(desc)
+        assert "DIOModelCard::~DIOModelCard() {" in cpp
+        assert "auto* p = ucb.pKnot;" in cpp
+        assert "auto* next = p->pNext;" in cpp
+        assert "std::free(p);" in cpp
+        assert "ucb.pKnot = nullptr;" in cpp
+        assert "#include <cstdlib>" in cpp
+
+    def test_destructor_with_multiple_cleanup(self) -> None:
+        desc = StubDescriptor(
+            cleanup_linked_lists=[
+                StubCleanupLinkedList(field="listA", next_field="nextA"),
+                StubCleanupLinkedList(field="listB", next_field="nextB"),
+            ],
+        )
+        cpp = generate_adapter_cpp(desc)
+        assert "ucb.listA = nullptr;" in cpp
+        assert "ucb.listB = nullptr;" in cpp
+
+    def test_hpp_move_deleted_with_cleanup(self) -> None:
+        desc = StubDescriptor(
+            cleanup_linked_lists=[
+                StubCleanupLinkedList(field="pKnot", next_field="pNext"),
+            ],
+        )
+        hpp = generate_adapter_hpp(desc)
+        assert "DIOModelCard(DIOModelCard&&) noexcept = delete;" in hpp
+
+    def test_hpp_no_move_delete_without_cleanup(self, desc: StubDescriptor) -> None:
+        hpp = generate_adapter_hpp(desc)
+        assert "DIOModelCard(DIOModelCard&&)" not in hpp
+
+
+# ---------------------------------------------------------------------------
+# Version stamp tests
+# ---------------------------------------------------------------------------
+
+class TestVersionStamp:
+    def test_no_version_stamp(self, desc: StubDescriptor) -> None:
+        cpp = generate_adapter_cpp(desc)
+        assert "versionGiven" not in cpp
+
+    def test_version_stamp_generated(self) -> None:
+        desc = StubDescriptor(
+            version_stamp=StubVersionStamp(
+                field="DIOversion",
+                given_field="DIOversionGiven",
+                value="1.2.3",
+            ),
+        )
+        cpp = generate_adapter_cpp(desc)
+        assert 'shared_card.ucb.DIOversion = "1.2.3"' in cpp
+        assert "shared_card.ucb.DIOversionGiven = 1;" in cpp
+        assert "if (!shared_card.ucb.DIOversionGiven)" in cpp
+
+
+# ---------------------------------------------------------------------------
+# Geometry always_given tests
+# ---------------------------------------------------------------------------
+
+class TestGeometryGiven:
+    def test_always_given_sets_1(self) -> None:
+        desc = StubDescriptor(
+            geometry=[
+                StubGeomParam(name="W", field="W", given="WGiven",
+                              default="1e-6", always_given=True),
+            ],
+        )
+        cpp = generate_adapter_cpp(desc)
+        assert "inst.WGiven = 1;" in cpp
+        assert "!= 1e-6" not in cpp
+
+    def test_conditional_given_compares_default(self) -> None:
+        desc = StubDescriptor(
+            geometry=[
+                StubGeomParam(name="AD", field="AD", given="ADGiven",
+                              default="0.0", always_given=False),
+            ],
+        )
+        cpp = generate_adapter_cpp(desc)
+        assert "inst.ADGiven = (geom.AD != 0.0) ? 1 : 0;" in cpp
