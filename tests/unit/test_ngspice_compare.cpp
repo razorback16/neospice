@@ -122,7 +122,6 @@ TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
 // ---------------------------------------------------------------------------
 
 TEST_F(NgspiceCompareTest, NMOS_DC_IV) {
-    GTEST_SKIP() << "MOSFET kernel under rebuild (Phase 1b of UCB Z-port)";
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_iv.cir";
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
