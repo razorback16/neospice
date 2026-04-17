@@ -133,9 +133,7 @@ void BSIM4v7Device::declare_internal_nodes(Circuit& ckt) {
     };
 
     int states = 0;
-    int rc = BSIM4setup(&shim_matrix,
-                        const_cast<BSIM4v7Model*>(model_),
-                        &setup_ckt, &states);
+    int rc = BSIM4setup(&shim_matrix, model_, &setup_ckt, &states);
     if (rc != Shim::OK) {
         throw std::runtime_error("BSIM4setup failed with rc=" + std::to_string(rc));
     }
@@ -174,7 +172,7 @@ void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
 }
 
 // ---------------------------------------------------------------------------
-// assign_offsets — walk the journal we captured during stamp_pattern and
+// assign_offsets — walk the journal we captured during declare_internal_nodes and
 // rewrite every BSIM4*Ptr field.  The journal index used by BSIM4setup
 // became the initial value of the field; we replace it with the real
 // MatrixOffset from the finalized pattern.  Ground-touching reservations

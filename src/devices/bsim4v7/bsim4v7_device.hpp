@@ -74,15 +74,15 @@ public:
 private:
     explicit BSIM4v7Device(std::string name) : Device(std::move(name)) {}
 
-    // mutable: BSIM4setup writes through stamp_pattern (const) by design.
+    // mutable: BSIM4load writes instance state during evaluate().
     mutable bsim4v7::BSIM4v7Instance inst_{};
     bsim4v7::BSIM4v7Model*           model_ = nullptr;
 
     // Journal of (row, col) reservations in UCB-convention coords (0 =
-    // ground, >=1 = real).  Populated by stamp_pattern via a private
-    // Shim::Matrix wrapping the caller's SparsityBuilder; we also walk
-    // the journal in assign_offsets to rewrite each BSIM4*Ptr field.
-    mutable std::vector<std::pair<int,int>> journal_;
+    // ground, >=1 = real).  Populated by declare_internal_nodes (via
+    // BSIM4setup); replayed in stamp_pattern and walked in assign_offsets
+    // to rewrite each BSIM4*Ptr field.
+    std::vector<std::pair<int,int>> journal_;
 
     // State-ring ptrs cached by set_state_ptrs (rebound on rotate_state).
     double* state0_ = nullptr;

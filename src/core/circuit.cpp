@@ -2,6 +2,7 @@
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"  // complete BSIM4v7ModelCard for unique_ptr
+#include <cassert>
 #include <stdexcept>
 
 namespace neospice {
@@ -61,6 +62,8 @@ void Circuit::add_bsim4_model_card(std::unique_ptr<BSIM4v7ModelCard> card) {
 }
 
 void Circuit::finalize() {
+    assert(!pattern_ && "Circuit::finalize() called twice");
+
     // 0. Let devices declare internal nodes. These get allocated from
     //    next_node_ via the normal Circuit::node() path, so they appear
     //    before branch indices in the MNA variable numbering.
