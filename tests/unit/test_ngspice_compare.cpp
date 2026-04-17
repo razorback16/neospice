@@ -268,6 +268,7 @@ TEST_F(NgspiceCompareTest, RingOscillator5Stage) {
         /*period_relative=*/1e-2,
         /*amplitude_relative=*/2e-2,
         /*dc_absolute=*/5e-2,
+        /*mid_absolute=*/1e-1,
         /*min_periods=*/3};
     auto cmp = compare_transient_oscillator(*cs_result.transient, ng_result, tol);
     EXPECT_TRUE(cmp.passed)
