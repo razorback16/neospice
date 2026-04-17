@@ -50,11 +50,28 @@ using namespace Shim;
 #endif
 
 // DEVpnjlim / DEVlimvds / DEVfetlim are declared in bsim4v7_def.hpp and
-// implemented in bsim4v7_devsup.cpp. NIintegrate is UCB's implicit-integrator
-// hook; we stub it so this translation unit compiles as dead code. Task 7's
-// device adapter will replace the stub with the real Gear/BDF integration.
-static inline int NIintegrate(Shim::Ckt * /*ckt*/, double *geq, double *ceq,
+// implemented in bsim4v7_devsup.cpp.
+//
+// NIintegrate is UCB's implicit-integrator hook — it advances a stored
+// charge via BE/Gear using CKTag[0..1] and writes geq/ceq stamps.  Phase-1b
+// target is DC-only (op-point goldens), so this stub is exercised only when
+// MODETRAN is OFF.  The assert catches any transient wire-up that reaches
+// here before T10/T11 plumb in the real integrator.
+//
+// Reference for the real formula (geq = CKTag[0], ceq = state0 - CKTag[0]*xo
+// with xo derived from state1/CKTag[1]): ngspice src/frontend/niintegr.c
+// (function NIintegrate) and UCB bsim4 b4ld.c call sites.
+static inline int NIintegrate(Shim::Ckt *ckt, double *geq, double *ceq,
                               double /*cap*/, int /*qcap*/) {
+    // Phase-1b guard: we only support DC here. When the transient driver
+    // enables state storage (T10/T11) this stub must be replaced with the
+    // real integrator; see TODO above.
+    if (ckt && (ckt->CKTmode & MODETRAN)) {
+        Shim::report_error(Shim::ERR_FATAL,
+            "BSIM4v7 NIintegrate stub reached in transient mode — not yet "
+            "implemented (Phase-1b deferred to T10/T11).");
+        return -1;
+    }
     if (geq) *geq = 0.0;
     if (ceq) *ceq = 0.0;
     return 0;
@@ -98,13 +115,6 @@ register BSIM4v7Instance *here;
 // translated mat.add(...) calls resolve. The device adapter (Task 7) will
 // populate ckt->mat before each load.
 auto &mat = *ckt->mat;
-// Local stand-in for Ckt fields not yet on Shim::Ckt (CKTnoncon, CKTbypass).
-// Task 7's device adapter will fold these back into the real circuit state
-// after each load. References in the translated body were rewritten to
-// local_noncon / local_bypass by the Task-6 hand-fix pass (see commit body).
-int local_noncon = 0;
-int local_bypass = 0;
-(void)local_noncon; (void)local_bypass;
 
 double ceqgstot, dgstot_dvd, dgstot_dvg, dgstot_dvs, dgstot_dvb;
 double ceqgdtot, dgdtot_dvd, dgdtot_dvg, dgdtot_dvs, dgdtot_dvb;
@@ -510,7 +520,7 @@ for (; model != NULL; model = model->BSIM4nextModel)
                 * can't handle that all at once, so we split it into several
                 * successive IF's */
 
-               if ((!(ckt->CKTmode & MODEINITPRED)) && (local_bypass))
+               if ((!(ckt->CKTmode & MODEINITPRED)) && (ckt->CKTbypass))
                if ((FABS(delvds) < (ckt->CKTreltol * MAX(FABS(vds),
                    FABS(*(ckt->CKTstate0 + here->BSIM4vds))) + ckt->CKTvoltTol)))
                if ((FABS(delvgs) < (ckt->CKTreltol * MAX(FABS(vgs),
@@ -3987,7 +3997,7 @@ finished:
 
           if ((here->BSIM4off == 0) || (!(ckt->CKTmode & MODEINITFIX)))
 	  {   if (Check == 1)
-	      {   local_noncon++;
+	      {   ckt->CKTnoncon++;
 #ifndef NEWCONV
               } 
 	      else
@@ -4012,11 +4022,11 @@ finished:
                        + ckt->CKTabstol;
                   if ((FABS(cdhat - Idtot) >= tol0) || (FABS(cseshat - Isestot) >= tol1)
 		      || (FABS(cdedhat - Idedtot) >= tol2))
-                  {   local_noncon++;
+                  {   ckt->CKTnoncon++;
                   }
 		  else if ((FABS(cgshat - Igstot) >= tol3) || (FABS(cgdhat - Igdtot) >= tol4)
 		      || (FABS(cgbhat - Igbtot) >= tol5))
-                  {   local_noncon++;
+                  {   ckt->CKTnoncon++;
                   }
                   else
                   {   Ibtot = here->BSIM4cbs + here->BSIM4cbd
@@ -4024,7 +4034,7 @@ finished:
                       tol6 = ckt->CKTreltol * MAX(FABS(cbhat), FABS(Ibtot))
                           + ckt->CKTabstol;
                       if (FABS(cbhat - Ibtot) > tol6)
-		      {   local_noncon++;
+		      {   ckt->CKTnoncon++;
                       }
                   }
 #endif /* NEWCONV */

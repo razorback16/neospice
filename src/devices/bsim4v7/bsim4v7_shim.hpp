@@ -71,6 +71,15 @@ namespace Shim {
         int    CKTbadMos3    = 0;        // UCB convention: unused here
         int    CKTnumStates  = 0;        // running counter updated in BSIM4setup
 
+        // UCB's non-convergence hint counter. b4ld.c increments this when a
+        // bypass/convergence check fails; the Newton driver owns the field
+        // (it is *not* zeroed per load). For DC-only Phase-1b the adapter
+        // leaves it at 0; transient Newton may later read it.
+        int    CKTnoncon     = 0;
+        // UCB bypass-mode flag. 0 disables the bypass optimization in b4ld.c
+        // (the correct default for our DC/transient flows).
+        int    CKTbypass     = 0;
+
         // Transient integrator state
         double  CKTdelta        = 0.0;
         double  CKTdeltaOld[8]  = {};   // UCB uses indices [0..5]
@@ -142,6 +151,12 @@ namespace Shim {
         /// Reset the journal — useful if the same Shim::Matrix is reused across
         /// multiple stamp_pattern() calls (it is not, but leave the hook).
         void clear() { journal_.clear(); }
+
+        /// Read-only access to the reservation journal.  Used by the
+        /// BSIM4v7Device adapter which owns the shifted-coord convention
+        /// and needs to walk reservations itself.  Not intended for
+        /// production code outside the adapter.
+        const std::vector<std::pair<int,int>>& _debug_journal() const { return journal_; }
 
     private:
         neospice::SparsityBuilder &builder_;

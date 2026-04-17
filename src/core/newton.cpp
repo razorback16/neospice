@@ -24,6 +24,14 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         std::cerr << "\n";
     }
 
+    // CKTmode init-phase bits (mirrors ngspice cktdefs.h). After iter 0 the
+    // Newton driver must flip MODEINITJCT -> MODEINITFIX so state-storing
+    // devices (BSIM4v7) start reading CKTrhsOld instead of their hard-coded
+    // junction-initialisation branch.  This matches ngspice's NIiter.
+    constexpr int MODEINITJCT_BIT = 0x200;
+    constexpr int MODEINITFIX_BIT = 0x400;
+    const int saved_mode = ckt.integrator_ctx.mode;
+
     for (int iter = 0; iter < opts.max_iter; ++iter) {
         // Save old solution for convergence check
         std::vector<double> old_solution = solution;
@@ -32,7 +40,22 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         mat.clear();
         std::fill(rhs.begin(), rhs.end(), 0.0);
 
-        // Evaluate all devices at the current guess
+        // Post-iter-0 init-phase flip: JCT -> FIX.  Leaves other mode bits
+        // (MODEDC, MODETRAN, ...) untouched.
+        if (iter > 0 && (saved_mode & MODEINITJCT_BIT)) {
+            ckt.integrator_ctx.mode =
+                (saved_mode & ~MODEINITJCT_BIT) | MODEINITFIX_BIT;
+        }
+
+        // Evaluate all devices at the current guess.  Publish the
+        // Circuit's IntegratorCtx through a thread-local so state-storing
+        // devices (BSIM4v7) can read CKTmode/ag/delta/order without an
+        // extra parameter on the Device interface.  RAII guard clears the
+        // pointer even if a device throws.
+        struct IntegratorCtxGuard {
+            IntegratorCtxGuard(const IntegratorCtx& c) { tls_integrator_ctx = &c; }
+            ~IntegratorCtxGuard()                      { tls_integrator_ctx = nullptr; }
+        } guard(ckt.integrator_ctx);
         for (auto& dev : ckt.devices()) {
             dev->evaluate(solution, mat, rhs);
         }
@@ -113,6 +136,7 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         }
 
         if (converged) {
+            ckt.integrator_ctx.mode = saved_mode;
             return {true, iter + 1, solution};
         }
     }
@@ -120,6 +144,7 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
     if (opts.verbose)
         std::cerr << "[newton] NOT converged after " << opts.max_iter << " iter\n";
 
+    ckt.integrator_ctx.mode = saved_mode;
     return {false, opts.max_iter, solution};
 }
 

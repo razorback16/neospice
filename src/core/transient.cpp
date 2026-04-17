@@ -60,14 +60,25 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     KLUSolver solver;
     solver.symbolic(ckt.pattern());
 
+    // DC preamble — mirror dc.cpp's integrator_ctx.mode sequence so BSIM4v7
+    // (and any future state-storing device) sees MODEDC + MODEINITJCT/FIX
+    // at the same phases of gmin/source stepping.  See dc.cpp for the bit
+    // values and the ngspice cktdefs.h cross-reference.
+    constexpr int MODEDC_BITS     = 0x70;
+    constexpr int MODEINITJCT_BIT = 0x200;
+    constexpr int MODEINITFIX_BIT = 0x400;
+
+    ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
     } else {
+        ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
         } else {
+            ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
             result = source_stepping(ckt, solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;

@@ -66,6 +66,9 @@ public:
     IntegratorCtx integrator_ctx;
 
 private:
+    void rebind_device_states();  // re-invoke set_state_ptrs on every device
+
+
     std::vector<std::unique_ptr<Device>> devices_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
@@ -75,5 +78,11 @@ private:
     std::vector<double> state0_, state1_, state2_;
     std::unique_ptr<SparsityPattern> pattern_;
 };
+
+// Thread-local pointer to the active IntegratorCtx, set by newton_solve
+// around each stamp loop so state-storing devices (BSIM4v7) can read
+// CKTmode/ag/delta/order during evaluate() without threading another
+// parameter through the Device interface.  nullptr outside a Newton pass.
+extern thread_local const IntegratorCtx* tls_integrator_ctx;
 
 } // namespace neospice

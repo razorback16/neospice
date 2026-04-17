@@ -38,7 +38,9 @@ add_executable(neospice_tests
     unit/test_bsim4v7_shim_load_fields.cpp
     unit/test_device_state_interface.cpp
     unit/test_bsim4v7_shim_matrix.cpp
+    unit/test_bsim4v7_ucb_load.cpp
     unit/test_circuit_state_allocation.cpp
+    unit/test_circuit_state_rotation.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
     $<TARGET_OBJECTS:bsim4v7_obj>

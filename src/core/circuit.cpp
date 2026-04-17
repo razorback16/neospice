@@ -5,6 +5,11 @@
 
 namespace neospice {
 
+// Definition of the thread-local integrator-context pointer declared in
+// circuit.hpp.  newton_solve sets this before the per-device stamping
+// loop and clears it (via RAII) on the way out.
+thread_local const IntegratorCtx* tls_integrator_ctx = nullptr;
+
 int32_t Circuit::node(const std::string& name) {
     // Treat "0", "gnd", "GND" as ground
     if (name == "0" || name == "gnd" || name == "GND") {
@@ -81,22 +86,38 @@ void Circuit::finalize() {
     state1_.assign(num_states_, 0.0);
     state2_.assign(num_states_, 0.0);
 
+    rebind_device_states();
+}
+
+void Circuit::rebind_device_states() {
     int32_t base = 0;
     for (auto& dev : devices_) {
         int32_t n = dev->state_vars();
         if (n > 0) {
-            dev->set_state_ptrs(state0_.data(), state1_.data(), state2_.data(), base);
+            dev->set_state_ptrs(state0_.data(), state1_.data(),
+                                state2_.data(), base);
             base += n;
         }
     }
 }
 
 void Circuit::rotate_state() {
+    // Rotate state history: state2 <- state1 <- state0.
+    //
+    // We use swap(state2_, state1_) then value-copy state0_ into state1_.
+    // swap() leaves state2_ pointing at the buffer that used to back
+    // state1_ (the device's cached state1 pointer now aliases stale data);
+    // the value-copy into state1_ also keeps its backing buffer address
+    // stable but its CONTENTS change.
+    //
+    // Either way, any device that cached raw double* during set_state_ptrs
+    // must be re-bound so its cached state1/state2 pointers reflect the
+    // new ring contents.  rebind_device_states() walks every device and
+    // re-calls set_state_ptrs with fresh data() pointers from the (now
+    // rotated) vectors.
     state2_.swap(state1_);
     state1_ = state0_;   // value copy; same backing buffer
-    // Pointers to state0_/1/2_.data() are unchanged because swap() keeps the
-    // backing buffers and copy-assign on an already-sized vector reuses storage.
-    // Do NOT rebind devices.
+    rebind_device_states();
 }
 
 } // namespace neospice

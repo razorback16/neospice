@@ -97,6 +97,11 @@ void NumericMatrix::clear() {
 }
 
 void NumericMatrix::add(MatrixOffset offset, double val) {
+    // Negative offset is the project-wide sentinel for "ground-touching"
+    // stamps — see Device::stamp() in devices/device.hpp. Silently drop
+    // so raw mat.add() call sites (e.g. the translated UCB BSIM4v7 load)
+    // don't need to guard every one.
+    if (offset < 0) return;
     values_[offset] += val;
 }
 
