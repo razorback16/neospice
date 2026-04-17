@@ -4,3 +4,5 @@ build/
 *.a
 *.so
 tests/circuits/*.raw
+__pycache__/
+*.pyc
