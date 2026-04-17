@@ -27,6 +27,7 @@ add_executable(neospice_tests
     unit/test_convergence.cpp
     unit/test_tokenizer.cpp
     unit/test_parser.cpp
+    unit/test_parser_mosfet.cpp
     unit/test_transient.cpp
     unit/test_ac.cpp
     unit/test_ngspice_runner.cpp

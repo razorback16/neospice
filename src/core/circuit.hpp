@@ -9,6 +9,12 @@
 
 namespace neospice {
 
+// Forward declaration — Circuit owns BSIM4v7ModelCard instances on behalf of
+// BSIM4v7Device objects that hold non-owning pointers to their parsed .model.
+// Full definition lives in devices/bsim4v7/bsim4v7_device.hpp; we only need
+// the complete type in circuit.cpp (for unique_ptr destruction).
+struct BSIM4v7ModelCard;
+
 struct AnalysisCommand {
     enum Type { OP, TRAN, AC, DC_SWEEP };
     Type type;
@@ -46,6 +52,11 @@ public:
 
     void add_device(std::unique_ptr<Device> dev);
 
+    /// Take ownership of a BSIM4v7ModelCard so it outlives any BSIM4v7Device
+    /// that holds a non-owning pointer to it.  The parser calls this once per
+    /// distinct .model LEVEL=14 card after building all devices that share it.
+    void add_bsim4_model_card(std::unique_ptr<BSIM4v7ModelCard> card);
+
     /// Assign branch indices, build sparsity pattern, assign offsets.
     void finalize();
 
@@ -71,11 +82,23 @@ public:
 
     IntegratorCtx integrator_ctx;
 
+    // Default construct / destruct / move defined in .cpp so BSIM4v7ModelCard
+    // can remain an incomplete type at this header's inclusion sites.
+    Circuit();
+    ~Circuit();
+    Circuit(Circuit&&) noexcept;
+    Circuit& operator=(Circuit&&) noexcept;
+    Circuit(const Circuit&)            = delete;
+    Circuit& operator=(const Circuit&) = delete;
+
 private:
     void rebind_device_states();  // re-invoke set_state_ptrs on every device
 
 
     std::vector<std::unique_ptr<Device>> devices_;
+    // Owns BSIM4v7ModelCard instances for the lifetime of the Circuit so
+    // BSIM4v7Device's non-owning model_ pointer stays valid.
+    std::vector<std::unique_ptr<BSIM4v7ModelCard>> bsim4_model_cards_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     int32_t next_node_ = 0;

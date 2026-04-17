@@ -8,10 +8,12 @@
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include "devices/diode.hpp"
+#include "devices/bsim4v7/bsim4v7_device.hpp"
 #include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 
 namespace neospice {
 
@@ -164,6 +166,18 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int line_number;
     };
     std::vector<DeferredDiode> deferred_diodes;
+
+    // Deferred MOSFETs: parsed M-cards are resolved in a second pass once
+    // all .model cards are known.  node indices are already mapped (we have
+    // access to `ckt` when scanning element lines).
+    struct DeferredMosfet {
+        std::string name;
+        int32_t nd, ng, ns, nb;
+        std::string model_name;
+        BSIM4v7Device::Geom geom;
+        int line_number;
+    };
+    std::vector<DeferredMosfet> deferred_mosfets;
 
     // Pass 1: collect .model and .param cards
     for (const auto& line : lines) {
@@ -357,12 +371,42 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                        line.line_number});
 
         } else if (elem_type == 'm') {
-            // TODO(Phase-1b): MOSFET kernel under rebuild (UCB Z-port).
-            // M-card is parsed and silently skipped — no device is added to
-            // the circuit.  Tests that exercise M-cards are gated with
-            // GTEST_SKIP until the UCB kernel is wired in Task 3+.
-            fprintf(stderr, "M card '%s' skipped: MOSFET kernel under rebuild (Phase 1b)\n",
-                    tokens.empty() ? "?" : tokens[0].c_str());
+            // M name nd ng ns nb modelname [W=.. L=.. NF=.. AD=.. AS=.. PD=..
+            //                                PS=.. NRD=.. NRS=.. SA=.. SB=.. SD=..]
+            if (tokens.size() < 6) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": M card requires name, nd, ng, ns, nb, modelname");
+            }
+            DeferredMosfet m;
+            m.name        = tokens[0];
+            m.nd          = ckt.node(tokens[1]);
+            m.ng          = ckt.node(tokens[2]);
+            m.ns          = ckt.node(tokens[3]);
+            m.nb          = ckt.node(tokens[4]);
+            m.model_name  = tokens[5];
+            m.line_number = line.line_number;
+            for (size_t i = 6; i < tokens.size(); ++i) {
+                auto eq = tokens[i].find('=');
+                if (eq == std::string::npos) continue;
+                std::string key = to_lower(tokens[i].substr(0, eq));
+                double val = parse_spice_number(tokens[i].substr(eq + 1));
+                if      (key == "w")   m.geom.W   = val;
+                else if (key == "l")   m.geom.L   = val;
+                else if (key == "nf")  m.geom.NF  = val;
+                else if (key == "ad")  m.geom.AD  = val;
+                else if (key == "as")  m.geom.AS  = val;
+                else if (key == "pd")  m.geom.PD  = val;
+                else if (key == "ps")  m.geom.PS  = val;
+                else if (key == "nrd") m.geom.NRD = val;
+                else if (key == "nrs") m.geom.NRS = val;
+                else if (key == "sa")  m.geom.SA  = val;
+                else if (key == "sb")  m.geom.SB  = val;
+                else if (key == "sd")  m.geom.SD  = val;
+                // Silently ignore unknown M-card keys — UCB supports ~20 more
+                // (e.g., M=multiplier, TEMP, DTEMP, RBDB, RBSB, ...) that
+                // default cleanly in BSIM4setup.
+            }
+            deferred_mosfets.push_back(std::move(m));
 
         } else if (elem_type == 'e' || elem_type == 'f' || elem_type == 'g' ||
                    elem_type == 'h' || elem_type == 'b' || elem_type == 'x') {
@@ -383,6 +427,38 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int32_t na = ckt.node(dd.anode);
         int32_t nc = ckt.node(dd.cathode);
         ckt.add_device(std::make_unique<Diode>(dd.name, na, nc, dm));
+    }
+
+    // Resolve deferred MOSFETs.  A single BSIM4v7ModelCard is created per
+    // distinct .model name (N:1 instance→card) and retained so all instances
+    // that reference the same name share UCB's BSIM4instances linked list.
+    // Ownership is transferred to the Circuit after all devices are made,
+    // guaranteeing the cards outlive the BSIM4v7Device non-owning back-pointers.
+    std::unordered_map<std::string, std::unique_ptr<BSIM4v7ModelCard>> bsim4_cards;
+    for (const auto& m : deferred_mosfets) {
+        auto it = models.find(m.model_name);
+        if (it == models.end()) {
+            throw ParseError("Line " + std::to_string(m.line_number) +
+                             ": Unknown model '" + m.model_name + "'");
+        }
+        // Lazy-create BSIM4v7ModelCard — to_bsim4_card validates LEVEL=14
+        // and NMOS/PMOS type, throws ParseError otherwise.
+        auto card_it = bsim4_cards.find(m.model_name);
+        if (card_it == bsim4_cards.end()) {
+            try {
+                card_it = bsim4_cards.emplace(m.model_name,
+                                              to_bsim4_card(it->second)).first;
+            } catch (const ParseError& e) {
+                throw ParseError("Line " + std::to_string(m.line_number) +
+                                 ": " + e.what());
+            }
+        }
+        ckt.add_device(BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                           m.geom, *card_it->second));
+    }
+    // Transfer card ownership to the Circuit (cards must outlive the devices).
+    for (auto& [name, card] : bsim4_cards) {
+        ckt.add_bsim4_model_card(std::move(card));
     }
 
     ckt.finalize();

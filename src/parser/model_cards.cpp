@@ -1,6 +1,10 @@
 #include "parser/model_cards.hpp"
 #include "core/types.hpp"
+#include "devices/bsim4v7/bsim4v7_def.hpp"
+#include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <sstream>
 #include <cctype>
 
@@ -113,6 +117,111 @@ DiodeModel to_diode_model(const ModelCard& card) {
     return model;
 }
 
-// TODO(Phase-1b): to_bsim4v7_params removed — UCB kernel wired in Task 3+
+// ---------------------------------------------------------------------------
+// to_bsim4_card — parse a .model LEVEL=14 card into a BSIM4v7ModelCard via
+// the UCB BSIM4mParam dispatcher.
+//
+// Lifetime note: BSIM4mParam copies IfValue::iValue / rValue by value, so
+// we can safely stack-allocate IfValue per-parameter.  The only escape is
+// IF_STRING (version): UCB stores the char* by reference, so we hand it a
+// pointer into the parser's long-lived string literals table (there's
+// exactly one such key — "version" — and we set it to "4.7.0" unconditionally
+// from the adapter's make() path, so .model VERSION=... is unsupported here).
+// ---------------------------------------------------------------------------
+std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card) {
+    auto out = std::make_unique<BSIM4v7ModelCard>();
+    auto& ucb = out->ucb;
+
+    // Type check — .model TYPE field is lowercased at parse time.
+    if (card.type == "nmos") {
+        ucb.BSIM4type      = 1;
+        ucb.BSIM4typeGiven = 1;
+    } else if (card.type == "pmos") {
+        ucb.BSIM4type      = -1;
+        ucb.BSIM4typeGiven = 1;
+    } else {
+        throw ParseError(
+            "Model '" + card.name + "': unsupported MOS type '" + card.type +
+            "' (only NMOS/PMOS supported)");
+    }
+
+    // LEVEL check — LEVEL is a SPICE frontend parameter, not in BSIM4mPTable.
+    // Default to 14 when not specified (this matches the T8 plan semantics:
+    // the M-card parser only routes to BSIM4v7 when the .model card
+    // declares NMOS/PMOS, so a missing LEVEL is interpreted as "user
+    // intends BSIM4v7").
+    auto level_it = card.params.find("level");
+    int level = (level_it == card.params.end()) ? 14
+                                                : static_cast<int>(level_it->second);
+    if (level != 14) {
+        throw ParseError(
+            "Model '" + card.name +
+            "': only LEVEL=14 (BSIM4v7) is supported; got LEVEL=" +
+            std::to_string(level));
+    }
+
+    // Walk the BSIM4 model parameter table, dispatching each matching
+    // parsed key through BSIM4mParam.  Unknown keys are warned on stderr
+    // (BSIM4 has >300 params; parser permissiveness beats hard failure).
+    for (const auto& [lkey, val] : card.params) {
+        // LEVEL handled above; BSIM4 has no LEVEL entry in mPTable.
+        if (lkey == "level") continue;
+
+        // Linear search through BSIM4mPTable.  The table is ~500 entries;
+        // parser code runs once per circuit so this is not hot.
+        // mPTable keywords are stored lowercase — matches ModelCard::params.
+        const bsim4v7::Shim::IfParm* entry = nullptr;
+        for (int i = 0; i < bsim4v7::BSIM4mPTSize; ++i) {
+            if (std::strcmp(bsim4v7::BSIM4mPTable[i].keyword, lkey.c_str()) == 0) {
+                entry = &bsim4v7::BSIM4mPTable[i];
+                break;
+            }
+        }
+        if (entry == nullptr) {
+            std::fprintf(stderr,
+                "Warning: model '%s': unknown BSIM4 parameter '%s' (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        bsim4v7::Shim::IfValue v{};
+        // Mask the data-type bits so IF_SET/IF_ASK flags don't confuse us.
+        int dtype = entry->dataType & 0x1F;  // IF_REAL|INTEGER|STRING|FLAG|REALVEC
+        if (dtype & bsim4v7::Shim::IF_REAL) {
+            v.rValue = val;
+        } else if (dtype & bsim4v7::Shim::IF_INTEGER) {
+            v.iValue = static_cast<int>(val);
+        } else if (dtype & bsim4v7::Shim::IF_FLAG) {
+            // Parser got e.g. "NMOS=1" — flag is "present" when nonzero.
+            v.iValue = (val != 0.0) ? 1 : 0;
+        } else if (dtype & bsim4v7::Shim::IF_STRING) {
+            // ModelCard stores params as doubles; a string parameter (VERSION)
+            // cannot round-trip through that representation.  Skip it — the
+            // adapter stamps VERSION="4.7.0" in BSIM4v7Device::make() anyway.
+            std::fprintf(stderr,
+                "Warning: model '%s': string parameter '%s' not supported via .model; "
+                "using adapter default\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        } else if (dtype & bsim4v7::Shim::IF_REALVEC) {
+            throw ParseError(
+                "Model '" + card.name + "': real-vector parameter '" + lkey +
+                "' not supported in Phase-1b");
+        } else {
+            throw ParseError(
+                "Model '" + card.name + "': parameter '" + lkey +
+                "' has unrecognized data type in BSIM4mPTable");
+        }
+
+        int rc = bsim4v7::BSIM4mParam(entry->id, &v, &ucb);
+        if (rc != bsim4v7::Shim::OK) {
+            throw ParseError(
+                "Model '" + card.name + "': BSIM4mParam failed for '" +
+                lkey + "' (rc=" + std::to_string(rc) + ")");
+        }
+    }
+
+    return out;
+}
 
 } // namespace neospice

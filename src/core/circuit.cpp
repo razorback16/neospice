@@ -1,9 +1,16 @@
 #include "core/circuit.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
+#include "devices/bsim4v7/bsim4v7_device.hpp"  // complete BSIM4v7ModelCard for unique_ptr
 #include <stdexcept>
 
 namespace neospice {
+
+// Out-of-line special members so BSIM4v7ModelCard can be incomplete in the header.
+Circuit::Circuit() = default;
+Circuit::~Circuit() = default;
+Circuit::Circuit(Circuit&&) noexcept = default;
+Circuit& Circuit::operator=(Circuit&&) noexcept = default;
 
 // Definition of the thread-local integrator-context pointer declared in
 // circuit.hpp.  newton_solve sets this before the per-device stamping
@@ -47,6 +54,10 @@ int32_t Circuit::node_index(const std::string& name) const {
 
 void Circuit::add_device(std::unique_ptr<Device> dev) {
     devices_.push_back(std::move(dev));
+}
+
+void Circuit::add_bsim4_model_card(std::unique_ptr<BSIM4v7ModelCard> card) {
+    bsim4_model_cards_.push_back(std::move(card));
 }
 
 void Circuit::finalize() {
