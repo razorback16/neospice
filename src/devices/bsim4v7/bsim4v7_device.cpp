@@ -349,7 +349,29 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
         temp_done_ = true;
     }
 
+    // BSIM4load is the UCB per-circuit-step load routine — it iterates
+    // `model->BSIM4instances` and `model->BSIM4nextModel`, loading every
+    // MOSFET on the shared model card in a single call.  Neospice's Device
+    // interface calls evaluate() once per device, so we splice this device's
+    // instance out of the shared chain, splice it back as a one-element list
+    // head, suppress the next-model walk, call BSIM4load for just this
+    // instance, then restore the original links.  Without this, a 10-FET
+    // circuit (e.g. 5-stage ring oscillator) would cause each evaluate()
+    // to load all 10 instances into this device's ghost_rhs_, overflowing
+    // the ghost array sized to the caller's own nodes (ASan heap-buffer-
+    // overflow in bsim4v7_load.cpp at the CKTrhs +=/ -= statements).
+    BSIM4v7Instance* saved_head      = model_->BSIM4instances;
+    BSIM4v7Instance* saved_next_inst = inst_.BSIM4nextInstance;
+    BSIM4v7Model*    saved_next_mod  = model_->BSIM4nextModel;
+    model_->BSIM4instances  = &inst_;
+    inst_.BSIM4nextInstance = nullptr;
+    model_->BSIM4nextModel  = nullptr;
     int rc = BSIM4load(model_, &ckt);
+    // Restore chain links before throwing so downstream cleanup isn't
+    // confused by a partially-spliced model card.
+    model_->BSIM4instances  = saved_head;
+    inst_.BSIM4nextInstance = saved_next_inst;
+    model_->BSIM4nextModel  = saved_next_mod;
     if (rc != Shim::OK) {
         throw std::runtime_error(
             "BSIM4load failed with rc=" + std::to_string(rc));
