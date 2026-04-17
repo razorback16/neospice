@@ -28,8 +28,9 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
     // Newton driver must flip MODEINITJCT -> MODEINITFIX so state-storing
     // devices (BSIM4v7) start reading CKTrhsOld instead of their hard-coded
     // junction-initialisation branch.  This matches ngspice's NIiter.
-    constexpr int MODEINITJCT_BIT = 0x200;
-    constexpr int MODEINITFIX_BIT = 0x400;
+    constexpr int MODEINITJCT_BIT  = 0x200;
+    constexpr int MODEINITFIX_BIT  = 0x400;
+    constexpr int MODEINITTRAN_BIT = 0x1000;
     const int saved_mode = ckt.integrator_ctx.mode;
 
     for (int iter = 0; iter < opts.max_iter; ++iter) {
@@ -40,11 +41,15 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         mat.clear();
         std::fill(rhs.begin(), rhs.end(), 0.0);
 
-        // Post-iter-0 init-phase flip: JCT -> FIX.  Leaves other mode bits
-        // (MODEDC, MODETRAN, ...) untouched.
-        if (iter > 0 && (saved_mode & MODEINITJCT_BIT)) {
-            ckt.integrator_ctx.mode =
-                (saved_mode & ~MODEINITJCT_BIT) | MODEINITFIX_BIT;
+        // Post-iter-0 init-phase flip.  JCT -> FIX on first inner iteration,
+        // and clear MODEINITTRAN so BSIM4 stops reading state1 as the guess
+        // and honours the current Newton iterate instead.  Matches ngspice
+        // NIiter.  Leaves other mode bits (MODEDC, MODETRAN, ...) untouched.
+        if (iter > 0) {
+            int m = saved_mode;
+            if (m & MODEINITJCT_BIT) m = (m & ~MODEINITJCT_BIT) | MODEINITFIX_BIT;
+            m &= ~MODEINITTRAN_BIT;
+            ckt.integrator_ctx.mode = m;
         }
 
         // Evaluate all devices at the current guess.  Publish the

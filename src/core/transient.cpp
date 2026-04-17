@@ -154,7 +154,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             ind->set_transient(tstep);
             ind->set_integration_method(1);  // Gear
         }
-        // TODO(Phase-1b): MOSFET set_transient/set_integration_method wired in Task 3+
+        // BSIM4 uses the circuit state ring (rotate_state + set_state_ptrs)
+        // rather than these per-device hooks.
     }
 
     // ---------------------------------------------------------------
@@ -166,7 +167,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->init_dc_state(solution);
         }
-        // TODO(Phase-1b): MOSFET init_dc_state wired in Task 3+
+        // BSIM4 state1 is seeded by rotate_state() below.
     }
 
     // ---------------------------------------------------------------
@@ -222,7 +223,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
                 ind->set_transient(dt);
             }
-            // TODO(Phase-1b): MOSFET set_transient(dt) wired in Task 3+
+            // BSIM4 reads dt from integrator_ctx (CKTdelta).
         }
 
         // Update time on sources
@@ -292,7 +293,6 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                         cap->clear_transient();
                     else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
                         ind->clear_transient();
-                    // TODO(Phase-1b): MOSFET clear_transient wired in Task 3+
                 }
                 throw ConvergenceError("Transient failed to converge at t=" + std::to_string(t));
             }
@@ -339,7 +339,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
                 ind->accept_step_from_solution(solution);
             }
-            // TODO(Phase-1b): MOSFET accept_step_from_solution wired in Task 3+
+            // BSIM4 state advance happens via ckt.rotate_state() on the next step.
         }
 
         // Store output at tstep intervals (interpolate if we overshot)
@@ -379,7 +379,6 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             cap->clear_transient();
         else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
             ind->clear_transient();
-        // TODO(Phase-1b): MOSFET clear_transient wired in Task 3+
     }
 
     tran_result.rejected_steps = ctrl.rejected_count();
