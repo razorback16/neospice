@@ -50,6 +50,12 @@ public:
         return 1e30;  // no constraint by default
     }
 
+    /// Device-specific convergence check.  Called by Newton after node-voltage
+    /// convergence passes.  Returns true if the device considers itself
+    /// converged (e.g. all internal current checks pass).  The default is
+    /// true — only devices with their own convergence criteria override this.
+    virtual bool device_converged() const { return true; }
+
 protected:
     std::string name_;
 

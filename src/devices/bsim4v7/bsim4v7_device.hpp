@@ -57,6 +57,13 @@ public:
     void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
+    bool device_converged() const override;
+
+    /// Set initial condition voltages on the underlying UCB instance.
+    /// Called by the parser after make() when ic=VDS,VGS,VBS is present.
+    void set_ic(double vds, bool vds_given,
+                double vgs, bool vgs_given,
+                double vbs, bool vbs_given);
 
 private:
     explicit BSIM4v7Device(std::string name) : Device(std::move(name)) {}
@@ -72,6 +79,7 @@ private:
     int32_t state_base_ = -1;
 
     mutable bool temp_done_ = false;
+    mutable int last_noncon_ = 0;
 
     int32_t max_neo_node_ = -1;
 

@@ -331,10 +331,31 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
         throw std::runtime_error("BSIM4v7load failed with rc=" + std::to_string(rc));
     }
 
+    // Capture the UCB convergence flag for device_converged().
+    last_noncon_ = ckt.CKTnoncon;
+
     // Fold ghost rhs contributions back into the real rhs.
     for (int32_t k = 1; k <= max_neo_node_ + 1 && k < n_ghost; ++k) {
         if (k - 1 < n_real) rhs[k - 1] += ghost_rhs_[k];
     }
+}
+
+// ---------------------------------------------------------------------------
+// device_converged
+// ---------------------------------------------------------------------------
+bool BSIM4v7Device::device_converged() const {
+    return last_noncon_ == 0;
+}
+
+// ---------------------------------------------------------------------------
+// set_ic
+// ---------------------------------------------------------------------------
+void BSIM4v7Device::set_ic(double vds, bool vds_given,
+                            double vgs, bool vgs_given,
+                            double vbs, bool vbs_given) {
+    if (vds_given) { inst_.BSIM4v7icVDS = vds; inst_.BSIM4v7icVDSGiven = 1; }
+    if (vgs_given) { inst_.BSIM4v7icVGS = vgs; inst_.BSIM4v7icVGSGiven = 1; }
+    if (vbs_given) { inst_.BSIM4v7icVBS = vbs; inst_.BSIM4v7icVBSGiven = 1; }
 }
 
 // ---------------------------------------------------------------------------
