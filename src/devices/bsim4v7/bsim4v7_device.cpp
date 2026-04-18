@@ -976,7 +976,7 @@ double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
     double dt_min = 1e30;
 
     for (int i = 0; i < ncharges; ++i) {
-        const int qcap = charge_offsets[i];
+        const int qcap = state_base_ + charge_offsets[i];
         const int ccap = qcap + 1;  // derivative index
 
         // ---- 1. Tolerance (mirrors CKTterr) ----
@@ -993,10 +993,9 @@ double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
         double tol = std::max(volttol, chargetol);
 
         // ---- 2. Divided differences for order 2 ----
-        // For Gear-2 we need the 3rd divided difference from 3 state snapshots.
-        // diff[0] = state0[qcap], diff[1] = state1[qcap], diff[2] = state2[qcap]
-        // 1st DD: (diff[0]-diff[1])/h,  (diff[1]-diff[2])/h1
-        // 2nd DD: ((diff[0]-diff[1])/h - (diff[1]-diff[2])/h1) / (h + h1)
+        // 2nd divided difference from 3 state snapshots (state0/state1/state2).
+        // 1st DD: (q0-q1)/h,  (q1-q2)/h1
+        // 2nd DD: (dd1_0 - dd1_1) / (h + h1)
         const double qcap2 = state2_[qcap];
         double dd1_0 = (qcap0 - qcap1) / h;
         double dd1_1 = (qcap1 - qcap2) / h1;
