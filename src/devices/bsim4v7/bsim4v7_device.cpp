@@ -378,7 +378,7 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& voltages,
     const double cgbo  = pParam->BSIM4v7cgbo;
 
     // Derived source-side charge-conservation capacitances
-    const double Csd = -(inst.BSIM4v7cddb + inst.BSIM4v7cggb + inst.BSIM4v7cbdb);
+    const double Csd = -(inst.BSIM4v7cddb + inst.BSIM4v7cgdb + inst.BSIM4v7cbdb);
     const double Csg = -(inst.BSIM4v7cdgb + inst.BSIM4v7cggb + inst.BSIM4v7cbgb);
     const double Css = -(inst.BSIM4v7cdsb + inst.BSIM4v7cgsb + inst.BSIM4v7cbsb);
 
