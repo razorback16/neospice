@@ -8,6 +8,7 @@
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include "devices/diode.hpp"
+#include "devices/vcvs.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include <algorithm>
 #include <cctype>
@@ -429,7 +430,21 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             deferred_mosfets.push_back(std::move(m));
 
-        } else if (elem_type == 'e' || elem_type == 'f' || elem_type == 'g' ||
+        } else if (elem_type == 'e') {
+            // E name np nn nc+ nc- gain
+            if (tokens.size() < 6) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": VCVS requires name, np, nn, nc+, nc-, gain");
+            }
+            std::string name = tokens[0];
+            int32_t np  = ckt.node(tokens[1]);
+            int32_t nn  = ckt.node(tokens[2]);
+            int32_t ncp = ckt.node(tokens[3]);
+            int32_t ncn = ckt.node(tokens[4]);
+            double  gain = parse_spice_number(tokens[5]);
+            ckt.add_device(std::make_unique<VCVS>(name, np, nn, ncp, ncn, gain));
+
+        } else if (elem_type == 'f' || elem_type == 'g' ||
                    elem_type == 'h' || elem_type == 'b' || elem_type == 'x') {
             throw ParseError("Line " + std::to_string(line.line_number) +
                              ": Unsupported element type '" + std::string(1, elem_type) + "'");

@@ -1,6 +1,7 @@
 #include "core/circuit.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
+#include "devices/vcvs.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"  // complete BSIM4v7ModelCard for unique_ptr
 #include <cassert>
 #include <stdexcept>
@@ -83,6 +84,9 @@ void Circuit::finalize() {
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->set_branch_index(branch_idx);
             branch_idx += ind->extra_vars();
+        } else if (auto* vcvs = dynamic_cast<VCVS*>(dev.get())) {
+            vcvs->set_branch_index(branch_idx);
+            branch_idx += vcvs->extra_vars();
         }
     }
 
