@@ -400,7 +400,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     while (start < valstr.size()) {
                         size_t comma = valstr.find(',', start);
                         if (comma == std::string::npos) comma = valstr.size();
-                        icvals.push_back(parse_spice_number(valstr.substr(start, comma - start)));
+                        std::string field = valstr.substr(start, comma - start);
+                        if (!field.empty())
+                            icvals.push_back(parse_spice_number(field));
                         start = comma + 1;
                     }
                     if (icvals.size() >= 1) { m.ic_vds = icvals[0]; m.ic_vds_given = true; }
@@ -474,6 +476,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         }
         auto dev = BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                        m.geom, *card_it->second);
+        // Must happen before finalize() — setup() clears ic fields when !Given.
         if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
             dev->set_ic(m.ic_vds, m.ic_vds_given,
                         m.ic_vgs, m.ic_vgs_given,
