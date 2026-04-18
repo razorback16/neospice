@@ -951,6 +951,8 @@ double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
 
     const double h  = ctx.delta;
     const double h1 = ctx.delta_old[1];
+    if (h1 <= 0.0)
+        return 1e30;
 
     // Collect charge offsets to check.
     // Each charge q has its derivative (current) at q+1 in the state vector.
@@ -982,15 +984,17 @@ double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
         // ---- 1. Tolerance (mirrors CKTterr) ----
         const double ccap0 = state0_[ccap];
         const double ccap1 = state1_[ccap];
-        double volttol = opts.abstol + opts.reltol * std::max(std::abs(ccap0),
-                                                               std::abs(ccap1));
+        double diff_tol = opts.abstol + opts.reltol * std::max(std::abs(ccap0),
+                                                                std::abs(ccap1));
 
         const double qcap0 = state0_[qcap];
         const double qcap1 = state1_[qcap];
         double chargetol = opts.reltol * std::max({std::abs(qcap0),
                                                     std::abs(qcap1),
                                                     opts.chgtol}) / h;
-        double tol = std::max(volttol, chargetol);
+        double tol = std::max(diff_tol, chargetol);
+        if (tol <= 0.0)
+            continue;
 
         // ---- 2. Divided differences for order 2 ----
         // 2nd divided difference from 3 state snapshots (state0/state1/state2).

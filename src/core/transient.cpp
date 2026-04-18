@@ -324,7 +324,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             if (accepted && device_dt < dt * 0.9) {
                 if (dt > dt_min * 1.01) {
                     accepted = false;
-                    ctrl.set_dt(dt);  // for proposed_dt bookkeeping
+                    ctrl.record_rejection();
+                    ctrl.set_dt(dt);
                 }
             }
         }

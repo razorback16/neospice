@@ -27,6 +27,7 @@ public:
     double clamp_to_end(double proposed_dt) const;
 
     int rejected_count() const { return rejected_; }
+    void record_rejection() { ++rejected_; }
 
     /// Integration order: 1 = Backward Euler, 2 = Gear-2.
     /// Starts at 1; caller increments once a second accepted step is available.
