@@ -350,15 +350,14 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
 // are zero, which greatly simplifies the translation: only real-part stamps
 // go to G and the capacitance-derived stamps go to C.
 // ---------------------------------------------------------------------------
-void BSIM4v7Device::ac_stamp(const std::vector<double>& voltages,
+void BSIM4v7Device::ac_stamp(const std::vector<double>& /*voltages*/,
                               NumericMatrix& G, NumericMatrix& C) {
     auto& inst = inst_;
     auto* model = model_;
     auto* pParam = inst.pParam;
 
-    // NQS mode not supported with G/C split — warn and bail out.
     if (inst.BSIM4v7acnqsMod) {
-        static bool warned = false;
+        thread_local bool warned = false;
         if (!warned) {
             fprintf(stderr, "WARNING: BSIM4v7 acnqsMod != 0 (NQS) not supported "
                     "in AC analysis — results may be inaccurate for device '%s'\n",
@@ -396,7 +395,6 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& voltages,
     double Cgdr = inst.BSIM4v7cgdb;
     double Cggr = inst.BSIM4v7cggb;
     double Cgsr = inst.BSIM4v7cgsb;
-    double Cgbr = -(Cgdr + Cggr + Cgsr);
 
     // --- Conductance values ---
     const double gmr   = inst.BSIM4v7gm;
