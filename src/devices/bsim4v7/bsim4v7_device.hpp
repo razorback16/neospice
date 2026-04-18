@@ -50,6 +50,8 @@ public:
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
                   NumericMatrix& mat, std::vector<double>& rhs) override;
+    void ac_stamp(const std::vector<double>& voltages,
+                  NumericMatrix& G, NumericMatrix& C) override;
 
     int32_t state_vars() const override { return 29; }
     void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;

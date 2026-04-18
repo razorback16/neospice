@@ -335,4 +335,591 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
     }
 }
 
+// ---------------------------------------------------------------------------
+// ac_stamp — linearized small-signal AC stamp (QS path only)
+//
+// Translates the ngspice BSIM4v7acLoad() complex-matrix stamping into
+// separate G (conductance) and C (capacitance) matrices.  The AC solver
+// combines them as (G + jωC) at each frequency point.
+//
+// In the ngspice code:
+//   *(ptr)     += real_value  → stamp into G
+//   *(ptr + 1) += xcXXX       where xcXXX = cap * omega → stamp cap into C
+//
+// For QS mode all imaginary conductance terms (gmi, gmbsi, gdsi, Cdgi, etc.)
+// are zero, which greatly simplifies the translation: only real-part stamps
+// go to G and the capacitance-derived stamps go to C.
+// ---------------------------------------------------------------------------
+void BSIM4v7Device::ac_stamp(const std::vector<double>& voltages,
+                              NumericMatrix& G, NumericMatrix& C) {
+    auto& inst = inst_;
+    auto* model = model_;
+    auto* pParam = inst.pParam;
+
+    // NQS mode not supported with G/C split — warn and bail out.
+    if (inst.BSIM4v7acnqsMod) {
+        static bool warned = false;
+        if (!warned) {
+            fprintf(stderr, "WARNING: BSIM4v7 acnqsMod != 0 (NQS) not supported "
+                    "in AC analysis — results may be inaccurate for device '%s'\n",
+                    name_.c_str());
+            warned = true;
+        }
+        return;
+    }
+
+    const double m = inst.BSIM4v7m;
+
+    // --- Capacitance values from instance (QS path) ---
+    const double capbd = inst.BSIM4v7capbd;
+    const double capbs = inst.BSIM4v7capbs;
+    const double cgso  = inst.BSIM4v7cgso;
+    const double cgdo  = inst.BSIM4v7cgdo;
+    const double cgbo  = pParam->BSIM4v7cgbo;
+
+    // Derived source-side charge-conservation capacitances
+    const double Csd = -(inst.BSIM4v7cddb + inst.BSIM4v7cggb + inst.BSIM4v7cbdb);
+    const double Csg = -(inst.BSIM4v7cdgb + inst.BSIM4v7cggb + inst.BSIM4v7cbgb);
+    const double Css = -(inst.BSIM4v7cdsb + inst.BSIM4v7cgsb + inst.BSIM4v7cbsb);
+
+    // QS intrinsic capacitances
+    double Cddr = inst.BSIM4v7cddb;
+    double Cdgr = inst.BSIM4v7cdgb;
+    double Cdsr = inst.BSIM4v7cdsb;
+    double Cdbr = -(Cddr + Cdgr + Cdsr);
+
+    double Csdr = Csd;
+    double Csgr = Csg;
+    double Cssr = Css;
+    double Csbr = -(Csdr + Csgr + Cssr);
+
+    double Cgdr = inst.BSIM4v7cgdb;
+    double Cggr = inst.BSIM4v7cggb;
+    double Cgsr = inst.BSIM4v7cgsb;
+    double Cgbr = -(Cgdr + Cggr + Cgsr);
+
+    // --- Conductance values ---
+    const double gmr   = inst.BSIM4v7gm;
+    const double gmbsr = inst.BSIM4v7gmbs;
+    const double gdsr  = inst.BSIM4v7gds;
+
+    // --- Mode-dependent variables ---
+    double Gmr, Gmbsr, FwdSumr, RevSumr;
+    double gbbdp, gbbsp, gbdpg, gbdpdp, gbdpb, gbdpsp;
+    double gbspdp, gbspg, gbspb, gbspsp;
+    double gIstotg, gIstotd, gIstots, gIstotb;
+    double gIdtotg, gIdtotd, gIdtots, gIdtotb;
+    double gIbtotg, gIbtotd, gIbtots, gIbtotb;
+    double gIgtotg, gIgtotd, gIgtots, gIgtotb;
+    double gcrg, gcrgd, gcrgg, gcrgs, gcrgb;
+
+    // Capacitance stamps (without omega) for the C matrix
+    double C_GPgp, C_GPdp, C_GPsp, C_GPbp;
+    double C_DPdp, C_DPgp, C_DPsp, C_DPbp;
+    double C_SPdp, C_SPgp, C_SPsp, C_SPbp;
+    double C_BPdp, C_BPgp, C_BPsp, C_BPbp;
+
+    // rgateMod == 3 extra caps
+    double C_GMgm = 0, C_GMdp = 0, C_GMsp = 0, C_GMbp = 0;
+    double C_DPgm = 0, C_SPgm = 0, C_BPgm = 0;
+
+    // rbodyMod caps
+    double C_dbdb = 0.0;
+    double C_sbsb = 0.0;
+
+    if (inst.BSIM4v7mode >= 0) {
+        // Forward mode
+        Gmr = gmr;
+        Gmbsr = gmbsr;
+        FwdSumr = Gmr + Gmbsr;
+        RevSumr = 0.0;
+
+        gbbdp = -(inst.BSIM4v7gbds);
+        gbbsp = inst.BSIM4v7gbds + inst.BSIM4v7gbgs + inst.BSIM4v7gbbs;
+        gbdpg = inst.BSIM4v7gbgs;
+        gbdpdp = inst.BSIM4v7gbds;
+        gbdpb = inst.BSIM4v7gbbs;
+        gbdpsp = -(gbdpg + gbdpdp + gbdpb);
+
+        gbspdp = 0.0;
+        gbspg = 0.0;
+        gbspb = 0.0;
+        gbspsp = 0.0;
+
+        // igcMod
+        if (model->BSIM4v7igcMod) {
+            gIstotg = inst.BSIM4v7gIgsg + inst.BSIM4v7gIgcsg;
+            gIstotd = inst.BSIM4v7gIgcsd;
+            gIstots = inst.BSIM4v7gIgss + inst.BSIM4v7gIgcss;
+            gIstotb = inst.BSIM4v7gIgcsb;
+            gIdtotg = inst.BSIM4v7gIgdg + inst.BSIM4v7gIgcdg;
+            gIdtotd = inst.BSIM4v7gIgdd + inst.BSIM4v7gIgcdd;
+            gIdtots = inst.BSIM4v7gIgcds;
+            gIdtotb = inst.BSIM4v7gIgcdb;
+        } else {
+            gIstotg = gIstotd = gIstots = gIstotb = 0.0;
+            gIdtotg = gIdtotd = gIdtots = gIdtotb = 0.0;
+        }
+
+        // igbMod
+        if (model->BSIM4v7igbMod) {
+            gIbtotg = inst.BSIM4v7gIgbg;
+            gIbtotd = inst.BSIM4v7gIgbd;
+            gIbtots = inst.BSIM4v7gIgbs;
+            gIbtotb = inst.BSIM4v7gIgbb;
+        } else {
+            gIbtotg = gIbtotd = gIbtots = gIbtotb = 0.0;
+        }
+
+        if (model->BSIM4v7igcMod || model->BSIM4v7igbMod) {
+            gIgtotg = gIstotg + gIdtotg + gIbtotg;
+            gIgtotd = gIstotd + gIdtotd + gIbtotd;
+            gIgtots = gIstots + gIdtots + gIbtots;
+            gIgtotb = gIstotb + gIdtotb + gIbtotb;
+        } else {
+            gIgtotg = gIgtotd = gIgtots = gIgtotb = 0.0;
+        }
+
+        // gcrg (charge redistribution gate current) for rgateMod > 1
+        double T0 = 0.0;
+        if (inst.BSIM4v7rgateMod == 2)
+            T0 = state0_[inst.BSIM4v7vges - inst.BSIM4v7states]
+               - state0_[inst.BSIM4v7vgs - inst.BSIM4v7states];
+        else if (inst.BSIM4v7rgateMod == 3)
+            T0 = state0_[inst.BSIM4v7vgms - inst.BSIM4v7states]
+               - state0_[inst.BSIM4v7vgs - inst.BSIM4v7states];
+
+        if (inst.BSIM4v7rgateMod > 1) {
+            gcrgd = inst.BSIM4v7gcrgd * T0;
+            gcrgg = inst.BSIM4v7gcrgg * T0;
+            gcrgs = inst.BSIM4v7gcrgs * T0;
+            gcrgb = inst.BSIM4v7gcrgb * T0;
+            gcrgg -= inst.BSIM4v7gcrg;
+            gcrg = inst.BSIM4v7gcrg;
+        } else {
+            gcrg = gcrgd = gcrgg = gcrgs = gcrgb = 0.0;
+        }
+
+        // --- Build C matrix capacitance values (forward mode) ---
+        if (inst.BSIM4v7rgateMod == 3) {
+            C_GMgm = cgdo + cgso + cgbo;
+            C_GMdp = -cgdo;
+            C_GMsp = -cgso;
+            C_GMbp = -cgbo;
+            C_DPgm = -cgdo;  // xcdgmb = xcgmdb
+            C_SPgm = -cgso;  // xcsgmb = xcgmsb
+            C_BPgm = -cgbo;  // xcbgmb = xcgmbb
+
+            C_GPgp = Cggr;
+            C_GPdp = Cgdr;
+            C_GPsp = Cgsr;
+            C_GPbp = -(C_GPgp + C_GPdp + C_GPsp);
+
+            C_DPgp = Cdgr;
+            C_SPgp = Csgr;
+            C_BPgp = inst.BSIM4v7cbgb;
+        } else {
+            C_GPgp = Cggr + cgdo + cgso + cgbo;
+            C_GPdp = Cgdr - cgdo;
+            C_GPsp = Cgsr - cgso;
+            C_GPbp = -(C_GPgp + C_GPdp + C_GPsp);
+
+            C_DPgp = Cdgr - cgdo;
+            C_SPgp = Csgr - cgso;
+            C_BPgp = inst.BSIM4v7cbgb - cgbo;
+
+            C_DPgm = C_SPgm = C_BPgm = 0.0;
+        }
+
+        C_DPdp = Cddr + capbd + cgdo;
+        C_DPsp = Cdsr;
+        C_SPdp = Csdr;
+        C_SPsp = capbs + cgso + Cssr;
+
+        if (!inst.BSIM4v7rbodyMod) {
+            C_DPbp = -(C_DPgp + C_DPdp + C_DPsp + C_DPgm);
+            C_SPbp = -(C_SPgp + C_SPdp + C_SPsp + C_SPgm);
+            C_BPdp = inst.BSIM4v7cbdb - capbd;
+            C_BPsp = inst.BSIM4v7cbsb - capbs;
+            C_dbdb = 0.0;
+        } else {
+            C_DPbp = Cdbr;
+            C_SPbp = -(C_SPgp + C_SPdp + C_SPsp + C_SPgm) + capbs;
+            C_BPdp = inst.BSIM4v7cbdb;
+            C_BPsp = inst.BSIM4v7cbsb;
+            C_dbdb = -capbd;
+            C_sbsb = -capbs;
+        }
+        C_BPbp = -(C_BPdp + C_BPgp + C_BPsp + C_BPgm);
+
+    } else {
+        // Reverse mode
+        Gmr = -gmr;
+        Gmbsr = -gmbsr;
+        FwdSumr = 0.0;
+        RevSumr = -(Gmr + Gmbsr);
+
+        gbbsp = -(inst.BSIM4v7gbds);
+        gbbdp = inst.BSIM4v7gbds + inst.BSIM4v7gbgs + inst.BSIM4v7gbbs;
+
+        gbdpg = 0.0;
+        gbdpsp = 0.0;
+        gbdpb = 0.0;
+        gbdpdp = 0.0;
+
+        gbspg = inst.BSIM4v7gbgs;
+        gbspsp = inst.BSIM4v7gbds;
+        gbspb = inst.BSIM4v7gbbs;
+        gbspdp = -(gbspg + gbspsp + gbspb);
+
+        if (model->BSIM4v7igcMod) {
+            gIstotg = inst.BSIM4v7gIgsg + inst.BSIM4v7gIgcdg;
+            gIstotd = inst.BSIM4v7gIgcds;
+            gIstots = inst.BSIM4v7gIgss + inst.BSIM4v7gIgcdd;
+            gIstotb = inst.BSIM4v7gIgcdb;
+            gIdtotg = inst.BSIM4v7gIgdg + inst.BSIM4v7gIgcsg;
+            gIdtotd = inst.BSIM4v7gIgdd + inst.BSIM4v7gIgcss;
+            gIdtots = inst.BSIM4v7gIgcsd;
+            gIdtotb = inst.BSIM4v7gIgcsb;
+        } else {
+            gIstotg = gIstotd = gIstots = gIstotb = 0.0;
+            gIdtotg = gIdtotd = gIdtots = gIdtotb = 0.0;
+        }
+
+        if (model->BSIM4v7igbMod) {
+            gIbtotg = inst.BSIM4v7gIgbg;
+            gIbtotd = inst.BSIM4v7gIgbs;
+            gIbtots = inst.BSIM4v7gIgbd;
+            gIbtotb = inst.BSIM4v7gIgbb;
+        } else {
+            gIbtotg = gIbtotd = gIbtots = gIbtotb = 0.0;
+        }
+
+        if (model->BSIM4v7igcMod || model->BSIM4v7igbMod) {
+            gIgtotg = gIstotg + gIdtotg + gIbtotg;
+            gIgtotd = gIstotd + gIdtotd + gIbtotd;
+            gIgtots = gIstots + gIdtots + gIbtots;
+            gIgtotb = gIstotb + gIdtotb + gIbtotb;
+        } else {
+            gIgtotg = gIgtotd = gIgtots = gIgtotb = 0.0;
+        }
+
+        double T0 = 0.0;
+        if (inst.BSIM4v7rgateMod == 2)
+            T0 = state0_[inst.BSIM4v7vges - inst.BSIM4v7states]
+               - state0_[inst.BSIM4v7vgs - inst.BSIM4v7states];
+        else if (inst.BSIM4v7rgateMod == 3)
+            T0 = state0_[inst.BSIM4v7vgms - inst.BSIM4v7states]
+               - state0_[inst.BSIM4v7vgs - inst.BSIM4v7states];
+
+        if (inst.BSIM4v7rgateMod > 1) {
+            gcrgd = inst.BSIM4v7gcrgs * T0;  // swapped d<->s in reverse
+            gcrgg = inst.BSIM4v7gcrgg * T0;
+            gcrgs = inst.BSIM4v7gcrgd * T0;  // swapped d<->s in reverse
+            gcrgb = inst.BSIM4v7gcrgb * T0;
+            gcrgg -= inst.BSIM4v7gcrg;
+            gcrg = inst.BSIM4v7gcrg;
+        } else {
+            gcrg = gcrgd = gcrgg = gcrgs = gcrgb = 0.0;
+        }
+
+        // --- Build C matrix capacitance values (reverse mode) ---
+        if (inst.BSIM4v7rgateMod == 3) {
+            C_GMgm = cgdo + cgso + cgbo;
+            C_GMdp = -cgdo;
+            C_GMsp = -cgso;
+            C_GMbp = -cgbo;
+            C_DPgm = -cgdo;
+            C_SPgm = -cgso;
+            C_BPgm = -cgbo;
+
+            C_GPgp = Cggr;         // note: Cggr still from QS, same both modes
+            C_GPdp = Cgsr;         // swapped: d <-> s
+            C_GPsp = Cgdr;
+            C_GPbp = -(C_GPgp + C_GPdp + C_GPsp);
+
+            C_DPgp = Csgr;        // swapped
+            C_SPgp = Cdgr;
+            C_BPgp = inst.BSIM4v7cbgb;
+        } else {
+            C_GPgp = Cggr + cgdo + cgso + cgbo;
+            C_GPdp = Cgsr - cgdo;  // swapped
+            C_GPsp = Cgdr - cgso;
+            C_GPbp = -(C_GPgp + C_GPdp + C_GPsp);
+
+            C_DPgp = Csgr - cgdo;  // swapped
+            C_SPgp = Cdgr - cgso;
+            C_BPgp = inst.BSIM4v7cbgb - cgbo;
+
+            C_DPgm = C_SPgm = C_BPgm = 0.0;
+        }
+
+        C_DPdp = capbd + cgdo + Cssr;       // swapped: Cssr replaces Cddr
+        C_DPsp = Csdr;                       // swapped
+        C_SPdp = Cdsr;                       // swapped
+        C_SPsp = Cddr + capbs + cgso;        // swapped
+
+        if (!inst.BSIM4v7rbodyMod) {
+            C_DPbp = -(C_DPgp + C_DPdp + C_DPsp + C_DPgm);
+            C_SPbp = -(C_SPgp + C_SPdp + C_SPsp + C_SPgm);
+            C_BPdp = inst.BSIM4v7cbsb - capbd;  // swapped
+            C_BPsp = inst.BSIM4v7cbdb - capbs;   // swapped
+            C_dbdb = 0.0;
+        } else {
+            C_DPbp = -(C_DPgp + C_DPdp + C_DPsp + C_DPgm) + capbd;
+            C_SPbp = Cdbr;                       // swapped
+            C_BPdp = inst.BSIM4v7cbsb;           // swapped
+            C_BPsp = inst.BSIM4v7cbdb;           // swapped
+            C_dbdb = -capbd;
+            C_sbsb = -capbs;
+        }
+        C_BPbp = -(C_BPgp + C_BPdp + C_BPsp + C_BPgm);
+    }
+
+    // --- rdsMod ---
+    double gstot, gstotd, gstotg, gstots, gstotb;
+    double gdtot, gdtotd, gdtotg, gdtots, gdtotb;
+    if (model->BSIM4v7rdsMod == 1) {
+        gstot  = inst.BSIM4v7gstot;
+        gstotd = inst.BSIM4v7gstotd;
+        gstotg = inst.BSIM4v7gstotg;
+        gstots = inst.BSIM4v7gstots - gstot;
+        gstotb = inst.BSIM4v7gstotb;
+        gdtot  = inst.BSIM4v7gdtot;
+        gdtotd = inst.BSIM4v7gdtotd - gdtot;
+        gdtotg = inst.BSIM4v7gdtotg;
+        gdtots = inst.BSIM4v7gdtots;
+        gdtotb = inst.BSIM4v7gdtotb;
+    } else {
+        gstot = gstotd = gstotg = gstots = gstotb = 0.0;
+        gdtot = gdtotd = gdtotg = gdtots = gdtotb = 0.0;
+    }
+
+    // --- External resistance conductances ---
+    double gdpr, gspr;
+    if (!model->BSIM4v7rdsMod) {
+        gdpr = inst.BSIM4v7drainConductance;
+        gspr = inst.BSIM4v7sourceConductance;
+    } else {
+        gdpr = gspr = 0.0;
+    }
+
+    // --- Junction conductances ---
+    double gjbd, gjbs;
+    if (!inst.BSIM4v7rbodyMod) {
+        gjbd = inst.BSIM4v7gbd;
+        gjbs = inst.BSIM4v7gbs;
+    } else {
+        gjbd = gjbs = 0.0;
+    }
+
+    const double geltd = inst.BSIM4v7grgeltd;
+
+    // =====================================================================
+    // STAMP G and C matrices
+    // =====================================================================
+
+    // --- Gate network stamps (rgateMod variants) ---
+    if (inst.BSIM4v7rgateMod == 1) {
+        // GE-GP resistive path
+        G.add(inst.BSIM4v7GEgePtr, m * geltd);
+        G.add(inst.BSIM4v7GPgePtr, m * (-geltd));
+        G.add(inst.BSIM4v7GEgpPtr, m * (-geltd));
+
+        // GP row
+        C.add(inst.BSIM4v7GPgpPtr, m * C_GPgp);
+        G.add(inst.BSIM4v7GPgpPtr, m * (geltd + gIgtotg));
+        C.add(inst.BSIM4v7GPdpPtr, m * C_GPdp);
+        G.add(inst.BSIM4v7GPdpPtr, m * gIgtotd);
+        C.add(inst.BSIM4v7GPspPtr, m * C_GPsp);
+        G.add(inst.BSIM4v7GPspPtr, m * gIgtots);
+        C.add(inst.BSIM4v7GPbpPtr, m * C_GPbp);
+        G.add(inst.BSIM4v7GPbpPtr, m * gIgtotb);
+    } else if (inst.BSIM4v7rgateMod == 2) {
+        // GE row
+        G.add(inst.BSIM4v7GEgePtr, m * gcrg);
+        G.add(inst.BSIM4v7GEgpPtr, m * gcrgg);
+        G.add(inst.BSIM4v7GEdpPtr, m * gcrgd);
+        G.add(inst.BSIM4v7GEspPtr, m * gcrgs);
+        G.add(inst.BSIM4v7GEbpPtr, m * gcrgb);
+
+        // GP row
+        G.add(inst.BSIM4v7GPgePtr, m * (-gcrg));
+        C.add(inst.BSIM4v7GPgpPtr, m * C_GPgp);
+        G.add(inst.BSIM4v7GPgpPtr, m * (-(gcrgg - gIgtotg)));
+        C.add(inst.BSIM4v7GPdpPtr, m * C_GPdp);
+        G.add(inst.BSIM4v7GPdpPtr, m * (-(gcrgd - gIgtotd)));
+        C.add(inst.BSIM4v7GPspPtr, m * C_GPsp);
+        G.add(inst.BSIM4v7GPspPtr, m * (-(gcrgs - gIgtots)));
+        C.add(inst.BSIM4v7GPbpPtr, m * C_GPbp);
+        G.add(inst.BSIM4v7GPbpPtr, m * (-(gcrgb - gIgtotb)));
+    } else if (inst.BSIM4v7rgateMod == 3) {
+        // GE-GM resistive path
+        G.add(inst.BSIM4v7GEgePtr, m * geltd);
+        G.add(inst.BSIM4v7GEgmPtr, m * (-geltd));
+        G.add(inst.BSIM4v7GMgePtr, m * (-geltd));
+
+        // GM row
+        G.add(inst.BSIM4v7GMgmPtr, m * (geltd + gcrg));
+        C.add(inst.BSIM4v7GMgmPtr, m * C_GMgm);
+        G.add(inst.BSIM4v7GMdpPtr, m * gcrgd);
+        C.add(inst.BSIM4v7GMdpPtr, m * C_GMdp);
+        G.add(inst.BSIM4v7GMgpPtr, m * gcrgg);
+        G.add(inst.BSIM4v7GMspPtr, m * gcrgs);
+        C.add(inst.BSIM4v7GMspPtr, m * C_GMsp);
+        G.add(inst.BSIM4v7GMbpPtr, m * gcrgb);
+        C.add(inst.BSIM4v7GMbpPtr, m * C_GMbp);
+
+        // Cross-stamps from DP/SP/BP to GM and GP to GM
+        C.add(inst.BSIM4v7DPgmPtr, m * C_DPgm);
+        G.add(inst.BSIM4v7GPgmPtr, m * (-gcrg));
+        C.add(inst.BSIM4v7SPgmPtr, m * C_SPgm);
+        C.add(inst.BSIM4v7BPgmPtr, m * C_BPgm);
+
+        // GP row (rgateMod 3 path)
+        G.add(inst.BSIM4v7GPgpPtr, m * (-(gcrgg - gIgtotg)));
+        C.add(inst.BSIM4v7GPgpPtr, m * C_GPgp);
+        G.add(inst.BSIM4v7GPdpPtr, m * (-(gcrgd - gIgtotd)));
+        C.add(inst.BSIM4v7GPdpPtr, m * C_GPdp);
+        G.add(inst.BSIM4v7GPspPtr, m * (-(gcrgs - gIgtots)));
+        C.add(inst.BSIM4v7GPspPtr, m * C_GPsp);
+        G.add(inst.BSIM4v7GPbpPtr, m * (-(gcrgb - gIgtotb)));
+        C.add(inst.BSIM4v7GPbpPtr, m * C_GPbp);
+    } else {
+        // rgateMod == 0: no gate resistance
+        C.add(inst.BSIM4v7GPgpPtr, m * C_GPgp);
+        G.add(inst.BSIM4v7GPgpPtr, m * gIgtotg);
+        C.add(inst.BSIM4v7GPdpPtr, m * C_GPdp);
+        G.add(inst.BSIM4v7GPdpPtr, m * gIgtotd);
+        C.add(inst.BSIM4v7GPspPtr, m * C_GPsp);
+        G.add(inst.BSIM4v7GPspPtr, m * gIgtots);
+        C.add(inst.BSIM4v7GPbpPtr, m * C_GPbp);
+        G.add(inst.BSIM4v7GPbpPtr, m * gIgtotb);
+    }
+
+    // --- rdsMod stamps on D/S external nodes ---
+    if (model->BSIM4v7rdsMod) {
+        G.add(inst.BSIM4v7DgpPtr, m * gdtotg);
+        G.add(inst.BSIM4v7DspPtr, m * gdtots);
+        G.add(inst.BSIM4v7DbpPtr, m * gdtotb);
+        G.add(inst.BSIM4v7SdpPtr, m * gstotd);
+        G.add(inst.BSIM4v7SgpPtr, m * gstotg);
+        G.add(inst.BSIM4v7SbpPtr, m * gstotb);
+    }
+
+    // --- DP (drain prime) row ---
+    // In ngspice: *(ptr+1) += m * (xcddbr + gdsi + RevSumi)
+    // QS: gdsi = 0, RevSumi = 0 in forward; gdsi = 0, RevSumi = 0 in reverse
+    // So C stamp is just C_DPdp, and G stamp includes RevSumr (which is 0 fwd)
+    C.add(inst.BSIM4v7DPdpPtr, m * C_DPdp);
+    G.add(inst.BSIM4v7DPdpPtr, m * (gdpr + gdsr + inst.BSIM4v7gbd
+                - gdtotd + RevSumr + gbdpdp - gIdtotd));
+    G.add(inst.BSIM4v7DPdPtr, m * (-(gdpr + gdtot)));
+    C.add(inst.BSIM4v7DPgpPtr, m * C_DPgp);
+    G.add(inst.BSIM4v7DPgpPtr, m * (Gmr - gdtotg + gbdpg - gIdtotg));
+    C.add(inst.BSIM4v7DPspPtr, m * C_DPsp);
+    G.add(inst.BSIM4v7DPspPtr, m * (-(gdsr + FwdSumr + gdtots - gbdpsp + gIdtots)));
+    C.add(inst.BSIM4v7DPbpPtr, m * C_DPbp);
+    G.add(inst.BSIM4v7DPbpPtr, m * (-(gjbd + gdtotb - Gmbsr - gbdpb + gIdtotb)));
+
+    // --- D (drain external) row ---
+    G.add(inst.BSIM4v7DdpPtr, m * (-(gdpr - gdtotd)));
+    G.add(inst.BSIM4v7DdPtr, m * (gdpr + gdtot));
+
+    // --- SP (source prime) row ---
+    C.add(inst.BSIM4v7SPdpPtr, m * C_SPdp);
+    G.add(inst.BSIM4v7SPdpPtr, m * (-(gdsr + gstotd + RevSumr - gbspdp + gIstotd)));
+    C.add(inst.BSIM4v7SPgpPtr, m * C_SPgp);
+    G.add(inst.BSIM4v7SPgpPtr, m * (-(Gmr + gstotg - gbspg + gIstotg)));
+    C.add(inst.BSIM4v7SPspPtr, m * C_SPsp);
+    G.add(inst.BSIM4v7SPspPtr, m * (gspr + gdsr + inst.BSIM4v7gbs
+                - gstots + FwdSumr + gbspsp - gIstots));
+    G.add(inst.BSIM4v7SPsPtr, m * (-(gspr + gstot)));
+    C.add(inst.BSIM4v7SPbpPtr, m * C_SPbp);
+    G.add(inst.BSIM4v7SPbpPtr, m * (-(gjbs + gstotb + Gmbsr - gbspb + gIstotb)));
+
+    // --- S (source external) row ---
+    G.add(inst.BSIM4v7SspPtr, m * (-(gspr - gstots)));
+    G.add(inst.BSIM4v7SsPtr, m * (gspr + gstot));
+
+    // --- BP (bulk prime) row ---
+    C.add(inst.BSIM4v7BPdpPtr, m * C_BPdp);
+    G.add(inst.BSIM4v7BPdpPtr, m * (-(gjbd - gbbdp + gIbtotd)));
+    C.add(inst.BSIM4v7BPgpPtr, m * C_BPgp);
+    G.add(inst.BSIM4v7BPgpPtr, m * (-(inst.BSIM4v7gbgs + gIbtotg)));
+    C.add(inst.BSIM4v7BPspPtr, m * C_BPsp);
+    G.add(inst.BSIM4v7BPspPtr, m * (-(gjbs - gbbsp + gIbtots)));
+    C.add(inst.BSIM4v7BPbpPtr, m * C_BPbp);
+    G.add(inst.BSIM4v7BPbpPtr, m * (gjbd + gjbs - inst.BSIM4v7gbbs - gIbtotb));
+
+    // --- GIDL stamps (conductance only, into G matrix) ---
+    const double ggidld = inst.BSIM4v7ggidld;
+    const double ggidlg = inst.BSIM4v7ggidlg;
+    const double ggidlb = inst.BSIM4v7ggidlb;
+    const double ggislg = inst.BSIM4v7ggislg;
+    const double ggisls = inst.BSIM4v7ggisls;
+    const double ggislb = inst.BSIM4v7ggislb;
+
+    // stamp gidl
+    G.add(inst.BSIM4v7DPdpPtr, m * ggidld);
+    G.add(inst.BSIM4v7DPgpPtr, m * ggidlg);
+    G.add(inst.BSIM4v7DPspPtr, m * (-((ggidlg + ggidld) + ggidlb)));
+    G.add(inst.BSIM4v7DPbpPtr, m * ggidlb);
+    G.add(inst.BSIM4v7BPdpPtr, m * (-ggidld));
+    G.add(inst.BSIM4v7BPgpPtr, m * (-ggidlg));
+    G.add(inst.BSIM4v7BPspPtr, m * ((ggidlg + ggidld) + ggidlb));
+    G.add(inst.BSIM4v7BPbpPtr, m * (-ggidlb));
+
+    // stamp gisl
+    G.add(inst.BSIM4v7SPdpPtr, m * (-((ggisls + ggislg) + ggislb)));
+    G.add(inst.BSIM4v7SPgpPtr, m * ggislg);
+    G.add(inst.BSIM4v7SPspPtr, m * ggisls);
+    G.add(inst.BSIM4v7SPbpPtr, m * ggislb);
+    G.add(inst.BSIM4v7BPdpPtr, m * ((ggislg + ggisls) + ggislb));
+    G.add(inst.BSIM4v7BPgpPtr, m * (-ggislg));
+    G.add(inst.BSIM4v7BPspPtr, m * (-ggisls));
+    G.add(inst.BSIM4v7BPbpPtr, m * (-ggislb));
+
+    // --- rbodyMod stamps ---
+    if (inst.BSIM4v7rbodyMod) {
+        C.add(inst.BSIM4v7DPdbPtr, m * C_dbdb);
+        G.add(inst.BSIM4v7DPdbPtr, m * (-inst.BSIM4v7gbd));
+        C.add(inst.BSIM4v7SPsbPtr, m * C_sbsb);
+        G.add(inst.BSIM4v7SPsbPtr, m * (-inst.BSIM4v7gbs));
+
+        C.add(inst.BSIM4v7DBdpPtr, m * C_dbdb);
+        G.add(inst.BSIM4v7DBdpPtr, m * (-inst.BSIM4v7gbd));
+        C.add(inst.BSIM4v7DBdbPtr, m * (-C_dbdb));
+        G.add(inst.BSIM4v7DBdbPtr, m * (inst.BSIM4v7gbd + inst.BSIM4v7grbpd
+                                         + inst.BSIM4v7grbdb));
+        G.add(inst.BSIM4v7DBbpPtr, m * (-inst.BSIM4v7grbpd));
+        G.add(inst.BSIM4v7DBbPtr,  m * (-inst.BSIM4v7grbdb));
+
+        G.add(inst.BSIM4v7BPdbPtr, m * (-inst.BSIM4v7grbpd));
+        G.add(inst.BSIM4v7BPbPtr,  m * (-inst.BSIM4v7grbpb));
+        G.add(inst.BSIM4v7BPsbPtr, m * (-inst.BSIM4v7grbps));
+        G.add(inst.BSIM4v7BPbpPtr, m * (inst.BSIM4v7grbpd + inst.BSIM4v7grbps
+                                         + inst.BSIM4v7grbpb));
+
+        C.add(inst.BSIM4v7SBspPtr, m * C_sbsb);
+        G.add(inst.BSIM4v7SBspPtr, m * (-inst.BSIM4v7gbs));
+        G.add(inst.BSIM4v7SBbpPtr, m * (-inst.BSIM4v7grbps));
+        G.add(inst.BSIM4v7SBbPtr,  m * (-inst.BSIM4v7grbsb));
+        C.add(inst.BSIM4v7SBsbPtr, m * (-C_sbsb));
+        G.add(inst.BSIM4v7SBsbPtr, m * (inst.BSIM4v7gbs
+                                         + inst.BSIM4v7grbps + inst.BSIM4v7grbsb));
+
+        G.add(inst.BSIM4v7BdbPtr, m * (-inst.BSIM4v7grbdb));
+        G.add(inst.BSIM4v7BbpPtr, m * (-inst.BSIM4v7grbpb));
+        G.add(inst.BSIM4v7BsbPtr, m * (-inst.BSIM4v7grbsb));
+        G.add(inst.BSIM4v7BbPtr,  m * (inst.BSIM4v7grbsb + inst.BSIM4v7grbdb
+                                        + inst.BSIM4v7grbpb));
+    }
+
+    // --- trnqsMod: keep Q node non-singular ---
+    if (inst.BSIM4v7trnqsMod) {
+        G.add(inst.BSIM4v7QqPtr, m * 1.0);
+    }
+}
+
 } // namespace neospice
