@@ -1042,4 +1042,57 @@ double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
     return dt_min;
 }
 
+// ---------------------------------------------------------------------------
+// query_param — post-simulation parameter query (ask/mask)
+// ---------------------------------------------------------------------------
+static std::string str_tolower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return s;
+}
+
+std::optional<double>
+BSIM4v7Device::query_param(const std::string& name) const {
+    const std::string key = str_tolower(name);
+    const double m = inst_.BSIM4v7m;
+
+    // --- Operating-point parameters (scaled by multiplier m) ---
+    if (key == "gm")                        return inst_.BSIM4v7gm * m;
+    if (key == "gds")                       return inst_.BSIM4v7gds * m;
+    if (key == "gmbs")                      return inst_.BSIM4v7gmbs * m;
+    if (key == "vth" || key == "von")       return inst_.BSIM4v7von;
+    if (key == "vdsat")                     return inst_.BSIM4v7vdsat;
+    if (key == "id" || key == "cd")         return inst_.BSIM4v7cd * m;
+    if (key == "ibs" || key == "cbs")       return inst_.BSIM4v7cbs * m;
+    if (key == "ibd" || key == "cbd")       return inst_.BSIM4v7cbd * m;
+    if (key == "gbd")                       return inst_.BSIM4v7gbd * m;
+    if (key == "gbs")                       return inst_.BSIM4v7gbs * m;
+
+    // --- Capacitances ---
+    if (key == "cgg")                       return inst_.BSIM4v7cggb * m;
+    if (key == "cgd")                       return inst_.BSIM4v7cgdb * m;
+    if (key == "cgs")                       return inst_.BSIM4v7cgsb * m;
+    if (key == "cdg")                       return inst_.BSIM4v7cdgb * m;
+    if (key == "cdd")                       return inst_.BSIM4v7cddb * m;
+    if (key == "cds")                       return inst_.BSIM4v7cdsb * m;
+
+    // --- Charges ---
+    if (key == "qg")                        return inst_.BSIM4v7qgate * m;
+    if (key == "qd")                        return inst_.BSIM4v7qdrn * m;
+    if (key == "qb")                        return inst_.BSIM4v7qbulk * m;
+    if (key == "qs")                        return inst_.BSIM4v7qsrc * m;
+
+    // --- Junction capacitances ---
+    if (key == "capbd")                     return inst_.BSIM4v7capbd * m;
+    if (key == "capbs")                     return inst_.BSIM4v7capbs * m;
+
+    // --- Geometry (no multiplier) ---
+    if (key == "w")                         return inst_.BSIM4v7w;
+    if (key == "l")                         return inst_.BSIM4v7l;
+    if (key == "nf")                        return inst_.BSIM4v7nf;
+    if (key == "m")                         return inst_.BSIM4v7m;
+
+    return std::nullopt;  // unrecognized parameter
+}
+
 } // namespace neospice

@@ -1,6 +1,7 @@
 #pragma once
 #include "core/types.hpp"
 #include "core/matrix.hpp"
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,14 @@ public:
     /// converged (e.g. all internal current checks pass).  The default is
     /// true — only devices with their own convergence criteria override this.
     virtual bool device_converged() const { return true; }
+
+    /// Query a device operating-point or geometry parameter by name.
+    /// Returns the parameter value, or std::nullopt if the name is
+    /// unrecognized.  Case-insensitive.  Populated after a DC solve or
+    /// during transient evaluation.
+    virtual std::optional<double> query_param(const std::string& /*name*/) const {
+        return std::nullopt;
+    }
 
 protected:
     std::string name_;

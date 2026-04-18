@@ -5,6 +5,7 @@
 #include "devices/bsim4v7/bsim4v7_def.hpp"
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,7 @@ public:
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
     bool device_converged() const override;
+    std::optional<double> query_param(const std::string& name) const override;
 
     /// Set initial condition voltages on the underlying UCB instance.
     /// Called by the parser after make() when ic=VDS,VGS,VBS is present.
