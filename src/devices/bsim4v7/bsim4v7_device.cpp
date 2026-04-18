@@ -504,11 +504,11 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& /*voltages*/,
         // gcrg (charge redistribution gate current) for rgateMod > 1
         double T0 = 0.0;
         if (inst.BSIM4v7rgateMod == 2)
-            T0 = state0_[inst.BSIM4v7vges - inst.BSIM4v7states]
-               - state0_[inst.BSIM4v7vgs - inst.BSIM4v7states];
+            T0 = state0_[inst.BSIM4v7vges]
+               - state0_[inst.BSIM4v7vgs];
         else if (inst.BSIM4v7rgateMod == 3)
-            T0 = state0_[inst.BSIM4v7vgms - inst.BSIM4v7states]
-               - state0_[inst.BSIM4v7vgs - inst.BSIM4v7states];
+            T0 = state0_[inst.BSIM4v7vgms]
+               - state0_[inst.BSIM4v7vgs];
 
         if (inst.BSIM4v7rgateMod > 1) {
             gcrgd = inst.BSIM4v7gcrgd * T0;
@@ -627,11 +627,11 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& /*voltages*/,
 
         double T0 = 0.0;
         if (inst.BSIM4v7rgateMod == 2)
-            T0 = state0_[inst.BSIM4v7vges - inst.BSIM4v7states]
-               - state0_[inst.BSIM4v7vgs - inst.BSIM4v7states];
+            T0 = state0_[inst.BSIM4v7vges]
+               - state0_[inst.BSIM4v7vgs];
         else if (inst.BSIM4v7rgateMod == 3)
-            T0 = state0_[inst.BSIM4v7vgms - inst.BSIM4v7states]
-               - state0_[inst.BSIM4v7vgs - inst.BSIM4v7states];
+            T0 = state0_[inst.BSIM4v7vgms]
+               - state0_[inst.BSIM4v7vgs];
 
         if (inst.BSIM4v7rgateMod > 1) {
             gcrgd = inst.BSIM4v7gcrgs * T0;  // swapped d<->s in reverse
