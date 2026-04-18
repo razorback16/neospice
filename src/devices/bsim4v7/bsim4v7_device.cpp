@@ -1086,6 +1086,14 @@ BSIM4v7Device::query_param(const std::string& name) const {
     if (key == "capbd")                     return inst_.BSIM4v7capbd * m;
     if (key == "capbs")                     return inst_.BSIM4v7capbs * m;
 
+    // --- Terminal voltages from state vector (offsets 0-3) ---
+    if (state0_ && state_base_ >= 0) {
+        if (key == "vbd")                   return state0_[state_base_ + 0];
+        if (key == "vbs")                   return state0_[state_base_ + 1];
+        if (key == "vgs")                   return state0_[state_base_ + 2];
+        if (key == "vds")                   return state0_[state_base_ + 3];
+    }
+
     // --- Geometry (no multiplier) ---
     if (key == "w")                         return inst_.BSIM4v7w;
     if (key == "l")                         return inst_.BSIM4v7l;

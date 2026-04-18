@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include "core/dc.hpp"
+#include "core/transient.hpp"
 #include "core/types.hpp"
 #include "devices/device.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
@@ -298,4 +299,43 @@ CL out 0 10f
     ASSERT_TRUE(von0.has_value());
     ASSERT_TRUE(von1.has_value());
     EXPECT_NE(*von0, *von1);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Terminal voltages (vds, vgs, vbs, vbd) from state vector
+// ---------------------------------------------------------------------------
+TEST(BSIM4v7Query, TerminalVoltages) {
+    std::string netlist = R"(
+NMOS terminal voltage query
+VDD d 0 1.0
+VGS g 0 0.8
+M1 d g 0 0 NMOD W=1u L=100n
+.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
+.tran 1n 10n
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    auto result = solve_transient(ckt, 1e-9, 10e-9);
+    ASSERT_FALSE(result.time.empty());
+
+    auto* m1 = find_bsim4(ckt);
+    ASSERT_NE(m1, nullptr);
+
+    auto vds = m1->query_param("vds");
+    auto vgs = m1->query_param("vgs");
+    auto vbs = m1->query_param("vbs");
+    auto vbd = m1->query_param("vbd");
+    ASSERT_TRUE(vds.has_value());
+    ASSERT_TRUE(vgs.has_value());
+    ASSERT_TRUE(vbs.has_value());
+    ASSERT_TRUE(vbd.has_value());
+
+    // Vds should be close to VDD minus Rd*Id drop (< 1.0V)
+    EXPECT_GT(*vds, 0.0);
+    EXPECT_LT(*vds, 1.1);
+    // Vgs should be close to 0.8V
+    EXPECT_NEAR(*vgs, 0.8, 0.1);
+    // Vbs should be ~0 (source and body both at ground)
+    EXPECT_NEAR(*vbs, 0.0, 0.01);
 }
