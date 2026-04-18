@@ -55,6 +55,8 @@ public:
 
     int32_t state_vars() const override { return 29; }
     void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
+    double compute_trunc(const IntegratorCtx& ctx,
+                         const SimOptions& opts) const override;
 
 private:
     explicit BSIM4v7Device(std::string name) : Device(std::move(name)) {}

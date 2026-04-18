@@ -311,10 +311,32 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             }
         }
 
+        // Device-specific LTE — compute minimum suggested dt from charge
+        // truncation error across all devices (BSIM4v7 MOSFETs, etc.).
+        // This mirrors ngspice's CKTtrunc / BSIM4v7trunc path.
+        double device_dt = 1e30;
+        if (step_count >= 2) {
+            for (const auto& dev : ckt.devices()) {
+                device_dt = std::min(device_dt,
+                    dev->compute_trunc(ckt.integrator_ctx, ckt.options));
+            }
+            // If device LTE suggests significantly smaller step, reject
+            if (accepted && device_dt < dt * 0.9) {
+                if (dt > dt_min * 1.01) {
+                    accepted = false;
+                    ctrl.set_dt(dt);  // for proposed_dt bookkeeping
+                }
+            }
+        }
+
         if (!accepted) {
             // Reject: restore solution and retry with smaller dt
             solution = sol_prev;
-            dt = std::max(ctrl.proposed_dt(), dt_min);
+            double proposed = ctrl.proposed_dt();
+            // If device LTE gave a tighter bound, use it
+            if (device_dt < proposed)
+                proposed = device_dt;
+            dt = std::max(proposed, dt_min);
             continue;
         }
 
@@ -364,9 +386,12 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         sol_prev2 = sol_prev;
         sol_prev = solution;
 
-        // Propose next dt
+        // Propose next dt (constrained by device LTE if applicable)
         if (step_count >= 2) {
-            dt = std::max(ctrl.proposed_dt(), dt_min);
+            double proposed = ctrl.proposed_dt();
+            if (device_dt < proposed)
+                proposed = device_dt;
+            dt = std::max(proposed, dt_min);
         }
         // else keep dt = tstep for the first few steps
     }

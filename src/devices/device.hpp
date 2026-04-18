@@ -42,6 +42,14 @@ public:
     virtual void set_state_ptrs(double* /*state0*/, double* /*state1*/,
                                 double* /*state2*/, int32_t /*base*/) {}
 
+    /// Compute device-specific timestep limit from local truncation error.
+    /// Returns suggested maximum timestep (or a very large value if no
+    /// constraint).  Called after Newton convergence during transient analysis.
+    virtual double compute_trunc(const IntegratorCtx& /*ctx*/,
+                                 const SimOptions& /*opts*/) const {
+        return 1e30;  // no constraint by default
+    }
+
 protected:
     std::string name_;
 

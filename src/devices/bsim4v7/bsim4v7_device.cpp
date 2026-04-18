@@ -3,6 +3,8 @@
 #include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
@@ -918,6 +920,102 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& /*voltages*/,
     if (inst.BSIM4v7trnqsMod) {
         G.add(inst.BSIM4v7QqPtr, m * 1.0);
     }
+}
+
+// ---------------------------------------------------------------------------
+// compute_trunc — device-specific local truncation error for time stepping
+//
+// Mirrors ngspice's CKTterr() called from BSIM4v7trunc().  For each charge
+// state variable we:
+//   1. Compute a tolerance from the derivative (ccap = qcap+1) and the charge.
+//   2. Build divided differences from the state ring buffer.
+//   3. Estimate a suggested timestep using the LTE bound.
+//   4. Return the minimum across all charge variables.
+// ---------------------------------------------------------------------------
+double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
+                                     const SimOptions& opts) const {
+    // Only meaningful for order >= 2 with valid state history.
+    if (ctx.order < 2 || ctx.delta <= 0.0)
+        return 1e30;
+
+    if (!state0_ || !state1_ || !state2_)
+        return 1e30;
+
+    // Gear-2 LTE coefficient:  for BDF2, the leading error term is
+    // (2/9) * h^3 * y'''  ≈  factor * dd[0]  where dd[0] is the 3rd
+    // divided difference scaled by step sizes.  ngspice uses:
+    //   gearCoeff = {0.5, 2.0/9.0}   (indices 0,1 for order 1,2)
+    //   trapCoeff = {0.5, 1.0/12.0}
+    // We use Gear-2 (the simulator's method after 2 steps).
+    const double lte_coeff = 2.0 / 9.0;
+
+    const double h  = ctx.delta;
+    const double h1 = ctx.delta_old[1];
+
+    // Collect charge offsets to check.
+    // Each charge q has its derivative (current) at q+1 in the state vector.
+    // Offsets are relative to instance base (BSIM4v7states).
+    int charge_offsets[7];
+    int ncharges = 0;
+
+    // Always check: qb(11), qg(13), qd(15)
+    charge_offsets[ncharges++] = 11;  // qb
+    charge_offsets[ncharges++] = 13;  // qg
+    charge_offsets[ncharges++] = 15;  // qd
+
+    // Conditional charges
+    if (inst_.BSIM4v7rgateMod == 3)
+        charge_offsets[ncharges++] = 17;  // qgmid
+    if (inst_.BSIM4v7rbodyMod) {
+        charge_offsets[ncharges++] = 19;  // qbs
+        charge_offsets[ncharges++] = 21;  // qbd
+    }
+    if (inst_.BSIM4v7trnqsMod)
+        charge_offsets[ncharges++] = 25;  // qcdump
+
+    double dt_min = 1e30;
+
+    for (int i = 0; i < ncharges; ++i) {
+        const int qcap = charge_offsets[i];
+        const int ccap = qcap + 1;  // derivative index
+
+        // ---- 1. Tolerance (mirrors CKTterr) ----
+        const double ccap0 = state0_[ccap];
+        const double ccap1 = state1_[ccap];
+        double volttol = opts.abstol + opts.reltol * std::max(std::abs(ccap0),
+                                                               std::abs(ccap1));
+
+        const double qcap0 = state0_[qcap];
+        const double qcap1 = state1_[qcap];
+        double chargetol = opts.reltol * std::max({std::abs(qcap0),
+                                                    std::abs(qcap1),
+                                                    opts.chgtol}) / h;
+        double tol = std::max(volttol, chargetol);
+
+        // ---- 2. Divided differences for order 2 ----
+        // For Gear-2 we need the 3rd divided difference from 3 state snapshots.
+        // diff[0] = state0[qcap], diff[1] = state1[qcap], diff[2] = state2[qcap]
+        // 1st DD: (diff[0]-diff[1])/h,  (diff[1]-diff[2])/h1
+        // 2nd DD: ((diff[0]-diff[1])/h - (diff[1]-diff[2])/h1) / (h + h1)
+        const double qcap2 = state2_[qcap];
+        double dd1_0 = (qcap0 - qcap1) / h;
+        double dd1_1 = (qcap1 - qcap2) / h1;
+        double dd2 = (dd1_0 - dd1_1) / (h + h1);
+
+        // ---- 3. Compute suggested timestep ----
+        double lte_est = lte_coeff * std::abs(dd2);
+        if (lte_est <= opts.abstol)
+            continue;  // negligible error — no constraint from this charge
+
+        // del = trtol * tol / lte_est;  for order 2: del = sqrt(del)
+        double del = opts.trtol * tol / lte_est;
+        del = std::sqrt(del);
+
+        if (del < dt_min)
+            dt_min = del;
+    }
+
+    return dt_min;
 }
 
 } // namespace neospice

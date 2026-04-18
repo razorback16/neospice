@@ -48,6 +48,7 @@ add_executable(neospice_tests
     unit/test_sim_options_temp_plumbing.cpp
     unit/test_internal_nodes.cpp
     unit/test_bsim4v7_ac.cpp
+    unit/test_bsim4v7_trunc.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )

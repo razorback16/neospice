@@ -26,10 +26,27 @@ struct SimOptions {
     double reltol = 1e-3;
     double vntol  = 1e-6;
     double trtol  = 7.0;
+    double chgtol = 1e-14;   // charge tolerance for device LTE (ngspice default)
     double gmin   = 1e-12;
     double temp   = T_NOMINAL;
     int max_iter  = 100;
     bool verbose  = false;
+};
+
+/// Populated by the transient/DC driver before each Newton load, read by
+/// state-storing devices (BSIM4v7). DC leaves mode=MODEDC|MODEDCOP|MODEINITJCT/FIX.
+struct IntegratorCtx {
+    int    mode  = 0;       // Shim-style CKTmode bitfield
+    double ag[8] = {};      // UCB integrator coeffs (BE/Trap/Gear2)
+    double delta = 0.0;
+    double delta_old[8] = {};
+    int    order = 1;
+
+    // Published by the analysis driver (dc.cpp / transient.cpp) before the
+    // Newton stamp loop so state-storing devices can read user-configured
+    // temperature / tolerances without threading them through the Device
+    // interface. Lifetime: the Circuit::options field (never dangling).
+    const SimOptions* options = nullptr;
 };
 
 class ParseError : public std::runtime_error {
