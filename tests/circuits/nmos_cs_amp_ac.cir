@@ -1,0 +1,14 @@
+NMOS Common-Source Amplifier AC Analysis
+* VDD supply
+VDD vdd 0 DC 1.8
+* Gate bias
+VG gate 0 DC 0.9 AC 1
+* Drain resistor load
+RD vdd drain 5k
+* NMOS transistor
+M1 drain gate 0 0 NMOD W=10u L=100n
+* Model
+.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
+* AC analysis: 10 points per decade, 1kHz to 100GHz
+.ac dec 10 1k 100g
+.end

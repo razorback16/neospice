@@ -176,6 +176,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         std::string model_name;
         BSIM4v7Device::Geom geom;
         int line_number;
+        // Instance initial conditions from ic=VDS,VGS,VBS
+        double ic_vds = 0.0, ic_vgs = 0.0, ic_vbs = 0.0;
+        bool ic_vds_given = false, ic_vgs_given = false, ic_vbs_given = false;
     };
     std::vector<DeferredMosfet> deferred_mosfets;
 
@@ -389,6 +392,24 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 auto eq = tokens[i].find('=');
                 if (eq == std::string::npos) continue;
                 std::string key = to_lower(tokens[i].substr(0, eq));
+                if (key == "ic") {
+                    // ic=VDS,VGS,VBS  or  ic=VDS,VGS  or  ic=VDS
+                    std::string valstr = tokens[i].substr(eq + 1);
+                    std::vector<double> icvals;
+                    size_t start = 0;
+                    while (start < valstr.size()) {
+                        size_t comma = valstr.find(',', start);
+                        if (comma == std::string::npos) comma = valstr.size();
+                        std::string field = valstr.substr(start, comma - start);
+                        if (!field.empty())
+                            icvals.push_back(parse_spice_number(field));
+                        start = comma + 1;
+                    }
+                    if (icvals.size() >= 1) { m.ic_vds = icvals[0]; m.ic_vds_given = true; }
+                    if (icvals.size() >= 2) { m.ic_vgs = icvals[1]; m.ic_vgs_given = true; }
+                    if (icvals.size() >= 3) { m.ic_vbs = icvals[2]; m.ic_vbs_given = true; }
+                    continue;
+                }
                 double val = parse_spice_number(tokens[i].substr(eq + 1));
                 if      (key == "w")   m.geom.W   = val;
                 else if (key == "l")   m.geom.L   = val;
@@ -453,8 +474,15 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": " + e.what());
             }
         }
-        ckt.add_device(BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
-                                           m.geom, *card_it->second));
+        auto dev = BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                       m.geom, *card_it->second);
+        // Must happen before finalize() — setup() clears ic fields when !Given.
+        if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+            dev->set_ic(m.ic_vds, m.ic_vds_given,
+                        m.ic_vgs, m.ic_vgs_given,
+                        m.ic_vbs, m.ic_vbs_given);
+        }
+        ckt.add_device(std::move(dev));
     }
     // Transfer card ownership to the Circuit (cards must outlive the devices).
     for (auto& [name, card] : bsim4_cards) {

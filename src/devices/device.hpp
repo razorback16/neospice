@@ -1,6 +1,7 @@
 #pragma once
 #include "core/types.hpp"
 #include "core/matrix.hpp"
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,28 @@ public:
     /// (for PREDICTOR and integrator history). Default is a no-op.
     virtual void set_state_ptrs(double* /*state0*/, double* /*state1*/,
                                 double* /*state2*/, int32_t /*base*/) {}
+
+    /// Compute device-specific timestep limit from local truncation error.
+    /// Returns suggested maximum timestep (or a very large value if no
+    /// constraint).  Called after Newton convergence during transient analysis.
+    virtual double compute_trunc(const IntegratorCtx& /*ctx*/,
+                                 const SimOptions& /*opts*/) const {
+        return 1e30;  // no constraint by default
+    }
+
+    /// Device-specific convergence check.  Called by Newton after node-voltage
+    /// convergence passes.  Returns true if the device considers itself
+    /// converged (e.g. all internal current checks pass).  The default is
+    /// true — only devices with their own convergence criteria override this.
+    virtual bool device_converged() const { return true; }
+
+    /// Query a device operating-point or geometry parameter by name.
+    /// Returns the parameter value, or std::nullopt if the name is
+    /// unrecognized.  Case-insensitive.  Populated after a DC solve or
+    /// during transient evaluation.
+    virtual std::optional<double> query_param(const std::string& /*name*/) const {
+        return std::nullopt;
+    }
 
 protected:
     std::string name_;

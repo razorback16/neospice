@@ -5,6 +5,7 @@
 #include "devices/bsim4v7/bsim4v7_def.hpp"
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -50,9 +51,21 @@ public:
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
                   NumericMatrix& mat, std::vector<double>& rhs) override;
+    void ac_stamp(const std::vector<double>& voltages,
+                  NumericMatrix& G, NumericMatrix& C) override;
 
     int32_t state_vars() const override { return 29; }
     void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
+    double compute_trunc(const IntegratorCtx& ctx,
+                         const SimOptions& opts) const override;
+    bool device_converged() const override;
+    std::optional<double> query_param(const std::string& name) const override;
+
+    /// Set initial condition voltages on the underlying UCB instance.
+    /// Called by the parser after make() when ic=VDS,VGS,VBS is present.
+    void set_ic(double vds, bool vds_given,
+                double vgs, bool vgs_given,
+                double vbs, bool vbs_given);
 
 private:
     explicit BSIM4v7Device(std::string name) : Device(std::move(name)) {}
@@ -68,6 +81,7 @@ private:
     int32_t state_base_ = -1;
 
     mutable bool temp_done_ = false;
+    mutable int last_noncon_ = 0;
 
     int32_t max_neo_node_ = -1;
 

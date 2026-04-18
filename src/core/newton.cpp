@@ -140,6 +140,21 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
                       << "\n";
         }
 
+        // Device-specific convergence check (e.g. BSIM4v7 current-based
+        // convergence).  Only evaluated when node/branch convergence passed,
+        // so it is purely additive — both must pass.
+        if (converged) {
+            for (const auto& dev : ckt.devices()) {
+                if (!dev->device_converged()) {
+                    converged = false;
+                    if (opts.verbose)
+                        std::cerr << "[newton] device '" << dev->name()
+                                  << "' reports non-convergence\n";
+                    break;
+                }
+            }
+        }
+
         if (converged) {
             ckt.integrator_ctx.mode = saved_mode;
             return {true, iter + 1, solution};
