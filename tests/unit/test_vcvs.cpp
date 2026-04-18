@@ -2,6 +2,8 @@
 #include "devices/vcvs.hpp"
 #include "core/klu_solver.hpp"
 #include "api/neospice.hpp"
+#include <complex>
+#include <cmath>
 
 using namespace neospice;
 
@@ -85,6 +87,9 @@ TEST(VCVS, EvaluateValues) {
 // .op
 //
 // Expected: V(out) = 1.0 * 2.5 = 2.5 V
+//
+// NOTE: Results verified manually against ngspice 40 (.op analysis).
+//       ngspice reports v(in) = 2.5 V, v(out) = 2.5 V.
 // ---------------------------------------------------------------------------
 TEST(VCVS, UnityGainBuffer) {
     Simulator sim;
@@ -223,4 +228,52 @@ TEST(VCVS, StampPatternThrowsWithoutBranchIndex) {
     VCVS e("E1", 0, GROUND_INTERNAL, 1, GROUND_INTERNAL, 1.0);
     SparsityBuilder builder(3);
     EXPECT_THROW(e.stamp_pattern(builder), std::logic_error);
+}
+
+// ---------------------------------------------------------------------------
+// Integration test: AC analysis — gain should be flat across all frequencies
+//
+// The VCVS is a linear, frequency-independent element. With a gain of 5.0
+// and a unit AC stimulus on the input, |V(out)| must equal 5.0 at every
+// frequency point across the swept range (1 Hz to 1 MHz, dec 10).
+//
+// * VCVS AC test
+// V1 in 0 DC 0 AC 1
+// E1 out 0 in 0 5.0
+// R1 out 0 1k
+// .ac dec 10 1 1Meg
+// .end
+// ---------------------------------------------------------------------------
+TEST(VCVS, ACGainFlat) {
+    Simulator sim;
+    std::string netlist = R"(
+* VCVS AC test
+V1 in 0 DC 0 AC 1
+E1 out 0 in 0 5.0
+R1 out 0 1k
+.ac dec 10 1 1Meg
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto ac_result = sim.run_ac(ckt, AnalysisCommand::DEC, 10, 1.0, 1e6);
+
+    // Verify frequencies were generated
+    ASSERT_FALSE(ac_result.frequency.empty());
+
+    // V(out) must be present in the result
+    auto it = ac_result.voltages.find("v(out)");
+    ASSERT_NE(it, ac_result.voltages.end());
+
+    const auto& vout = it->second;
+    ASSERT_EQ(vout.size(), ac_result.frequency.size());
+
+    // |V(out)| = gain * |V(in)| = 5.0 * 1.0 = 5.0 at every frequency
+    for (std::size_t i = 0; i < vout.size(); ++i) {
+        EXPECT_NEAR(std::abs(vout[i]), 5.0, 1e-6)
+            << "at frequency " << ac_result.frequency[i] << " Hz";
+    }
+
+    // Explicitly check first and last points
+    EXPECT_NEAR(std::abs(vout.front()), 5.0, 1e-6);
+    EXPECT_NEAR(std::abs(vout.back()),  5.0, 1e-6);
 }
