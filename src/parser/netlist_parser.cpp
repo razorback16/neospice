@@ -17,7 +17,9 @@
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <unordered_map>
 
@@ -831,6 +833,116 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     return ckt;
 }
 
+std::string NetlistParser::resolve_includes(const std::string& content,
+                                             const std::string& base_dir,
+                                             std::set<std::string>& include_stack) {
+    std::ostringstream result;
+    std::istringstream input(content);
+    std::string line;
+
+    while (std::getline(input, line)) {
+        // Check if this line is a .include directive (case-insensitive)
+        // Strip leading whitespace to find the directive keyword
+        size_t start = 0;
+        while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start])))
+            ++start;
+
+        // Convert just the keyword portion to lowercase for comparison
+        std::string lower_line = line.substr(start);
+        std::transform(lower_line.begin(), lower_line.end(), lower_line.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        bool is_include = false;
+        size_t filename_start = 0;
+        if (lower_line.size() >= 8 && lower_line.substr(0, 8) == ".include") {
+            // Verify character after ".include" is whitespace or end-of-string
+            if (lower_line.size() == 8 || std::isspace(static_cast<unsigned char>(lower_line[8]))) {
+                is_include = true;
+                filename_start = start + 8; // position in original line after ".include"
+            }
+        }
+
+        if (!is_include) {
+            result << line << '\n';
+            continue;
+        }
+
+        // Extract the filename from the rest of the line
+        // Skip whitespace after ".include"
+        size_t pos = filename_start;
+        while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos])))
+            ++pos;
+
+        if (pos >= line.size()) {
+            throw ParseError(".include directive missing filename");
+        }
+
+        std::string filename;
+        char quote_char = line[pos];
+        if (quote_char == '"' || quote_char == '\'') {
+            // Quoted filename — find matching closing quote
+            ++pos;
+            size_t end = line.find(quote_char, pos);
+            if (end == std::string::npos) {
+                throw ParseError(".include: unterminated quoted filename");
+            }
+            filename = line.substr(pos, end - pos);
+        } else {
+            // Unquoted filename — read to next whitespace or end of line
+            size_t end = pos;
+            while (end < line.size() && !std::isspace(static_cast<unsigned char>(line[end])))
+                ++end;
+            filename = line.substr(pos, end - pos);
+        }
+
+        if (filename.empty()) {
+            throw ParseError(".include directive has empty filename");
+        }
+
+        // Resolve path: if relative, prepend base_dir
+        std::filesystem::path fpath(filename);
+        if (fpath.is_relative()) {
+            fpath = std::filesystem::path(base_dir) / fpath;
+        }
+
+        // Canonicalize for circular-include detection
+        std::filesystem::path canonical_path;
+        try {
+            canonical_path = std::filesystem::canonical(fpath);
+        } catch (const std::filesystem::filesystem_error&) {
+            throw ParseError(".include: cannot open file: " + fpath.string());
+        }
+
+        std::string canonical_str = canonical_path.string();
+        if (include_stack.count(canonical_str)) {
+            throw ParseError(".include: circular include detected for file: " + canonical_str);
+        }
+
+        // Read the included file
+        std::ifstream ifs(canonical_path);
+        if (!ifs.is_open()) {
+            throw ParseError(".include: cannot open file: " + canonical_path.string());
+        }
+        std::ostringstream file_content;
+        file_content << ifs.rdbuf();
+
+        // Recursively resolve includes in the included file
+        include_stack.insert(canonical_str);
+        std::string included_base_dir = canonical_path.parent_path().string();
+        std::string expanded = resolve_includes(file_content.str(), included_base_dir, include_stack);
+        include_stack.erase(canonical_str);
+
+        // Append the expanded content (without adding extra newline if already ends with one)
+        result << expanded;
+        // Ensure a newline separator after included content
+        if (!expanded.empty() && expanded.back() != '\n') {
+            result << '\n';
+        }
+    }
+
+    return result.str();
+}
+
 Circuit NetlistParser::parse_file(const std::string& filepath) {
     std::ifstream ifs(filepath);
     if (!ifs.is_open()) {
@@ -838,7 +950,23 @@ Circuit NetlistParser::parse_file(const std::string& filepath) {
     }
     std::ostringstream oss;
     oss << ifs.rdbuf();
-    return parse(oss.str());
+
+    // Resolve .include directives relative to the file's directory
+    std::string base_dir = std::filesystem::path(filepath).parent_path().string();
+    if (base_dir.empty()) {
+        base_dir = ".";
+    }
+    std::set<std::string> include_stack;
+    // Add the top-level file to the include stack to detect self-includes
+    try {
+        include_stack.insert(std::filesystem::canonical(filepath).string());
+    } catch (const std::filesystem::filesystem_error&) {
+        // If canonical fails (shouldn't happen since we already opened the file), just proceed
+        include_stack.insert(std::filesystem::absolute(filepath).string());
+    }
+    std::string expanded = resolve_includes(oss.str(), base_dir, include_stack);
+
+    return parse(expanded);
 }
 
 } // namespace neospice

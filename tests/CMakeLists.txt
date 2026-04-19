@@ -60,6 +60,7 @@ add_executable(neospice_tests
     unit/test_expression.cpp
     unit/test_subcircuit.cpp
     unit/test_subcircuit_expand.cpp
+    unit/test_include.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
