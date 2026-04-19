@@ -247,9 +247,11 @@ Shim::IfValue *select)
             {   case 3:
                     here->BSIM4v7icVBS = *(value->v.vec.rVec+2);
                     here->BSIM4v7icVBSGiven = TRUE;
+                    [[fallthrough]];
                 case 2:
                     here->BSIM4v7icVGS = *(value->v.vec.rVec+1);
                     here->BSIM4v7icVGSGiven = TRUE;
+                    [[fallthrough]];
                 case 1:
                     here->BSIM4v7icVDS = *(value->v.vec.rVec);
                     here->BSIM4v7icVDSGiven = TRUE;

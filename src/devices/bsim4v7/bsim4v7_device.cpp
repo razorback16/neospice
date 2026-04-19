@@ -414,6 +414,7 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& /*voltages*/,
     double Csgr = Csg;
     double Cssr = Css;
     double Csbr = -(Csdr + Csgr + Cssr);
+    (void)Csbr;
 
     double Cgdr = inst.BSIM4v7cgdb;
     double Cggr = inst.BSIM4v7cggb;

@@ -16,7 +16,6 @@ SparsityPattern::SparsityPattern(int32_t n,
 
 MatrixOffset SparsityPattern::offset(int32_t row, int32_t col) const {
     // entries_ is sorted by (col, row) — binary search on (col, row)
-    auto target = std::make_pair(col, row);
     // We need to search by (col, row) but entries_ stores (row, col)
     // So we search for the entry where entry.second == col and entry.first == row
     // Equivalently: find entry == {row, col} in the (col, row)-sorted list.

@@ -278,8 +278,8 @@ double Rtot, DMCGeff, DMCIeff, DMDGeff;
         if (!model->BSIM4v7cdscGiven)
             model->BSIM4v7cdsc = 2.4e-4;   /* unit Q/V/m^2  */
         if (!model->BSIM4v7cdscbGiven)
-            model->BSIM4v7cdscb = 0.0;   /* unit Q/V/m^2  */    
-            if (!model->BSIM4v7cdscdGiven)
+            model->BSIM4v7cdscb = 0.0;   /* unit Q/V/m^2  */
+        if (!model->BSIM4v7cdscdGiven)
             model->BSIM4v7cdscd = 0.0;   /* unit Q/V/m^2  */
         if (!model->BSIM4v7citGiven)
             model->BSIM4v7cit = 0.0;   /* unit Q/V/m^2  */
@@ -789,7 +789,7 @@ double Rtot, DMCGeff, DMCIeff, DMDGeff;
             model->BSIM4v7lcdsc = 0.0;
         if (!model->BSIM4v7lcdscbGiven)
             model->BSIM4v7lcdscb = 0.0;
-            if (!model->BSIM4v7lcdscdGiven) 
+        if (!model->BSIM4v7lcdscdGiven)
             model->BSIM4v7lcdscd = 0.0;
         if (!model->BSIM4v7lcitGiven)
             model->BSIM4v7lcit = 0.0;
@@ -1145,8 +1145,8 @@ double Rtot, DMCGeff, DMCIeff, DMDGeff;
         if (!model->BSIM4v7wcdscGiven)
             model->BSIM4v7wcdsc = 0.0;
         if (!model->BSIM4v7wcdscbGiven)
-            model->BSIM4v7wcdscb = 0.0;  
-            if (!model->BSIM4v7wcdscdGiven)
+            model->BSIM4v7wcdscb = 0.0;
+        if (!model->BSIM4v7wcdscdGiven)
             model->BSIM4v7wcdscd = 0.0;
         if (!model->BSIM4v7wcitGiven)
             model->BSIM4v7wcit = 0.0;
@@ -1449,7 +1449,7 @@ double Rtot, DMCGeff, DMCIeff, DMDGeff;
             model->BSIM4v7wxrcrg2 = 0.0;
         if (!model->BSIM4v7weuGiven)
             model->BSIM4v7weu = 0.0;
-            if (!model->BSIM4v7wucsGiven)
+        if (!model->BSIM4v7wucsGiven)
             model->BSIM4v7wucs = 0.0;
         if (!model->BSIM4v7wvfbGiven)
             model->BSIM4v7wvfb = 0.0;
@@ -1501,8 +1501,8 @@ double Rtot, DMCGeff, DMCIeff, DMDGeff;
         if (!model->BSIM4v7pcdscGiven)
             model->BSIM4v7pcdsc = 0.0;
         if (!model->BSIM4v7pcdscbGiven)
-            model->BSIM4v7pcdscb = 0.0;   
-            if (!model->BSIM4v7pcdscdGiven)
+            model->BSIM4v7pcdscb = 0.0;
+        if (!model->BSIM4v7pcdscdGiven)
             model->BSIM4v7pcdscd = 0.0;
         if (!model->BSIM4v7pcitGiven)
             model->BSIM4v7pcit = 0.0;

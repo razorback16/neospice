@@ -54,7 +54,6 @@ std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
 
     // Advance idx past the token containing ')'
     size_t chars_consumed = 0;
-    size_t orig_idx = idx;
     for (size_t i = idx; i < tokens.size(); ++i) {
         chars_consumed += tokens[i].size();
         if (i > idx) chars_consumed += 1; // space

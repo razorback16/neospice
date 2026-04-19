@@ -44,6 +44,7 @@ int CKTmkVolt(Ckt *ckt, CKTnode **node_out,
 int NIintegrate(Ckt *ckt, double *geq, double *ceq,
                 double cap, int qcap) {
     const int ccap = qcap + 1;
+    (void)ccap;
     double *s0 = ckt->CKTstate0 + qcap;
     double *s1 = ckt->CKTstate1 + qcap;
     double *s2 = ckt->CKTstate2 + qcap;

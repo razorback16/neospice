@@ -455,6 +455,7 @@ for (; model != NULL; model = model->BSIM4v7nextModel)
                delvgd = vgd - vgdo;
                delvged = vged - vgedo;
                delvgmd = vgmd - vgmdo;
+               (void)delvged; (void)delvgmd; /* NQS mode — reserved for future use */
 
                delvds = vds - *(ckt->CKTstate0 + here->BSIM4v7vds);
                delvgs = vgs - *(ckt->CKTstate0 + here->BSIM4v7vgs);
@@ -1047,7 +1048,7 @@ for (; model != NULL; model = model->BSIM4v7nextModel)
               Vbs = vbd;
               Vdb = -vbs;
           }
-
+          (void)Vdb; (void)Vgs; /* GIDL/noise — reserved for future use */
 
          /* dunga */
          if(model->BSIM4v7mtrlMod)
@@ -2989,7 +2990,8 @@ for (; model != NULL; model = model->BSIM4v7nextModel)
               Vgst = Vgs_eff - Vth;
               dVth_dVb = pParam->BSIM4v7k1ox * dsqrtPhis_dVb *dVbseff_dVb; /*4.6.2*/
               dVgst_dVb = -dVth_dVb;
-              dVgst_dVg = dVgs_eff_dVg; 
+              dVgst_dVg = dVgs_eff_dVg;
+              (void)dVgst_dVb; (void)dVgst_dVg; /* NQS charge model — reserved for future use */
 
               CoxWL = model->BSIM4v7coxe * pParam->BSIM4v7weffCV
                     * pParam->BSIM4v7leffCV * here->BSIM4v7nf;

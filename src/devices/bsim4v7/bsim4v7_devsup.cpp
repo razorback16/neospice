@@ -1105,7 +1105,7 @@ IP( "nmos", BSIM4v7_MOD_NMOS,  IF_FLAG, "Flag to indicate NMOS"),
 IP( "pmos", BSIM4v7_MOD_PMOS,  IF_FLAG, "Flag to indicate PMOS"),
 };
 
-char *BSIM4v7names[] = {
+const char *BSIM4v7names[] = {
    "Drain",
    "Gate",
    "Source",

@@ -163,10 +163,10 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
         ac_result.voltages[key].resize(freqs.size());
     }
     for (auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
+        if (dynamic_cast<VSource*>(dev.get())) {
             std::string key = "i(" + to_lower(dev->name()) + ")";
             ac_result.currents[key].resize(freqs.size());
-        } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
+        } else if (dynamic_cast<Inductor*>(dev.get())) {
             std::string key = "i(" + to_lower(dev->name()) + ")";
             ac_result.currents[key].resize(freqs.size());
         }

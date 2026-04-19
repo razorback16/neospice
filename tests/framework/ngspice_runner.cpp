@@ -38,7 +38,7 @@ std::string NgspiceRunner::run_batch(const std::string& cir_path) {
         output += buffer;
     }
 
-    int status = pclose(pipe);
+    (void)pclose(pipe);
     if (!std::filesystem::exists(raw_path)) {
         throw std::runtime_error("ngspice did not produce output .raw file. Output:\n" + output);
     }

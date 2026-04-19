@@ -28,8 +28,8 @@ public:
                           NumericMatrix& mat, std::vector<double>& rhs) = 0;
     virtual void limit_voltages(const std::vector<double>& /*old_v*/,
                                 std::vector<double>& /*new_v*/) {}
-    virtual void ac_stamp(const std::vector<double>& voltages,
-                          NumericMatrix& G, NumericMatrix& C) {}
+    virtual void ac_stamp(const std::vector<double>& /*voltages*/,
+                          NumericMatrix& /*G*/, NumericMatrix& /*C*/) {}
     virtual int32_t extra_vars() const { return 0; }
 
     /// Assign the branch (extra MNA variable) index during finalize().
