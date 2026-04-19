@@ -21,6 +21,7 @@ add_library(neospice_lib
     devices/cccs.cpp
     devices/capacitor.cpp
     devices/inductor.cpp
+    devices/coupled_inductor.cpp
     devices/diode.cpp
     parser/tokenizer.cpp
     parser/expression.cpp

@@ -7,6 +7,7 @@
 #include "devices/isource.hpp"
 #include "devices/capacitor.hpp"
 #include "devices/inductor.hpp"
+#include "devices/coupled_inductor.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -153,6 +154,9 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->set_transient(tstep);
             ind->set_integration_method(1);  // Gear
+        } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
+            ki->set_transient(tstep);
+            ki->set_integration_method(1);  // Gear
         }
         // BSIM4 uses the circuit state ring (rotate_state + set_state_ptrs)
         // rather than these per-device hooks.
@@ -166,6 +170,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             cap->init_dc_state(solution);
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->init_dc_state(solution);
+        } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
+            ki->init_dc_state(solution);
         }
         // BSIM4 state1 is seeded by rotate_state() below.
     }
@@ -222,6 +228,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                 cap->set_transient(dt);
             } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
                 ind->set_transient(dt);
+            } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
+                ki->set_transient(dt);
             }
             // BSIM4 reads dt from integrator_ctx (CKTdelta).
         }
@@ -293,6 +301,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                         cap->clear_transient();
                     else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
                         ind->clear_transient();
+                    else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get()))
+                        ki->clear_transient();
                 }
                 throw ConvergenceError("Transient failed to converge at t=" + std::to_string(t));
             }
@@ -361,6 +371,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                 cap->accept_step_from_solution(solution);
             } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
                 ind->accept_step_from_solution(solution);
+            } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
+                ki->accept_step_from_solution(solution);
             }
             // BSIM4 state advance happens via ckt.rotate_state() on the next step.
         }
@@ -405,6 +417,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             cap->clear_transient();
         else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
             ind->clear_transient();
+        else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get()))
+            ki->clear_transient();
     }
 
     tran_result.rejected_steps = ctrl.rejected_count();

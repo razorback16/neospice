@@ -7,6 +7,7 @@
 #include "devices/resistor.hpp"
 #include "devices/capacitor.hpp"
 #include "devices/inductor.hpp"
+#include "devices/coupled_inductor.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include "devices/diode.hpp"
@@ -465,6 +466,17 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     };
     std::vector<DeferredMosfet> deferred_mosfets;
 
+    // Deferred coupled inductors (K elements): resolved after all Inductor
+    // devices exist so we can locate them by name and pass pointers.
+    struct DeferredCoupledInductor {
+        std::string name;
+        std::string l1_name;
+        std::string l2_name;
+        double coupling;
+        int line_number;
+    };
+    std::vector<DeferredCoupledInductor> deferred_coupled_inductors;
+
     // Deferred BJTs: parsed Q-cards are resolved in a second pass once
     // all .model cards are known.
     struct DeferredBJT {
@@ -918,6 +930,20 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             deferred_bjts.push_back(std::move(q));
 
+        } else if (elem_type == 'k') {
+            // K name L1 L2 coupling_coefficient
+            if (tokens.size() < 4) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": K element requires name, L1, L2, coupling_coefficient");
+            }
+            DeferredCoupledInductor kd;
+            kd.name = tokens[0];
+            kd.l1_name = tokens[1];
+            kd.l2_name = tokens[2];
+            kd.coupling = parse_spice_number(tokens[3]);
+            kd.line_number = line.line_number;
+            deferred_coupled_inductors.push_back(std::move(kd));
+
         } else if (elem_type == 'b') {
             throw ParseError("Line " + std::to_string(line.line_number) +
                              ": Unsupported element type '" + std::string(1, elem_type) + "'");
@@ -1053,6 +1079,32 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     }
     for (auto& [name, card] : bjt_cards) {
         ckt.add_bjt_model_card(std::move(card));
+    }
+
+    // Resolve deferred coupled inductors (K elements) — find inductor devices by name.
+    for (const auto& kd : deferred_coupled_inductors) {
+        Inductor* l1 = nullptr;
+        Inductor* l2 = nullptr;
+        for (auto& dev : ckt.devices()) {
+            if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
+                if (to_lower(ind->name()) == to_lower(kd.l1_name)) {
+                    l1 = ind;
+                } else if (to_lower(ind->name()) == to_lower(kd.l2_name)) {
+                    l2 = ind;
+                }
+            }
+        }
+        if (!l1) {
+            throw ParseError("Line " + std::to_string(kd.line_number) +
+                             ": K element '" + kd.name + "' references unknown inductor '" +
+                             kd.l1_name + "'");
+        }
+        if (!l2) {
+            throw ParseError("Line " + std::to_string(kd.line_number) +
+                             ": K element '" + kd.name + "' references unknown inductor '" +
+                             kd.l2_name + "'");
+        }
+        ckt.add_device(std::make_unique<CoupledInductor>(kd.name, l1, l2, kd.coupling));
     }
 
     ckt.finalize();
