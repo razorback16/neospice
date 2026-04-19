@@ -1,0 +1,6 @@
+Resistor divider noise
+V1 in 0 DC 1 AC 1
+R1 in out 10k
+R2 out 0 10k
+.noise V(out) V1 dec 10 1 1meg
+.end

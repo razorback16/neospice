@@ -2,6 +2,8 @@
 #include "core/transient.hpp"
 #include "core/dc.hpp"
 #include "core/ac.hpp"
+#include "core/noise.hpp"
+#include "framework/ngspice_runner.hpp"
 #include <string>
 
 namespace neospice {
@@ -41,5 +43,10 @@ CompareResult compare_transient_oscillator(
     const TransientResult& expected,
     const TransientResult& actual,
     OscillatorTolerance tol = {});
+
+/// Compare noise results. neospice stores V^2/Hz; ngspice stores V/sqrt(Hz).
+/// The comparator converts neospice to V/sqrt(Hz) before comparing.
+CompareResult compare_noise(const NgspiceNoiseResult& expected,
+                            const NoiseResult& actual, Tolerance tol = {});
 
 } // namespace neospice

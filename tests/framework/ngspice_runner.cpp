@@ -204,4 +204,35 @@ ACResult NgspiceRunner::run_ac(const std::string& cir_path) {
     return result;
 }
 
+NgspiceNoiseResult NgspiceRunner::run_noise(const std::string& cir_path) {
+    std::string raw_path = run_batch(cir_path);
+
+    // Noise RAW files contain two plots:
+    //   Plot 0: "Noise Spectral Density Curves" — frequency, onoise_spectrum, inoise_spectrum
+    //   Plot 1: "Integrated Noise" — single-point integrated values
+    // We only need Plot 0.
+    RawData raw = parse_raw(raw_path);
+    std::filesystem::remove(raw_path);
+    std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
+
+    NgspiceNoiseResult result;
+
+    int freq_idx = -1, onoise_idx = -1, inoise_idx = -1;
+    for (int v = 0; v < raw.num_vars; ++v) {
+        if (raw.var_names[v] == "frequency") freq_idx = v;
+        else if (raw.var_names[v] == "onoise_spectrum") onoise_idx = v;
+        else if (raw.var_names[v] == "inoise_spectrum") inoise_idx = v;
+    }
+
+    if (freq_idx < 0 || onoise_idx < 0 || inoise_idx < 0) {
+        throw std::runtime_error("Noise RAW file missing expected variables");
+    }
+
+    result.frequency = raw.real_data[freq_idx];
+    result.onoise_spectrum = raw.real_data[onoise_idx];
+    result.inoise_spectrum = raw.real_data[inoise_idx];
+
+    return result;
+}
+
 } // namespace neospice

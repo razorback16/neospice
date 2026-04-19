@@ -274,3 +274,49 @@ TEST_F(NgspiceCompareTest, RingOscillator5Stage) {
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
+
+// ---------------------------------------------------------------------------
+// Noise analysis tests — compare noise spectral density against ngspice.
+// neospice stores V^2/Hz; ngspice stores V/sqrt(Hz). The comparator handles
+// the unit conversion (sqrt).
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, ResistorDividerNoise) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/resistor_divider_noise.cir";
+    auto ng_result = ngspice_->run_noise(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.noise.has_value());
+    ASSERT_EQ(ng_result.frequency.size(), cs_result.noise->frequency.size());
+    auto cmp = compare_noise(ng_result, *cs_result.noise, {1e-3, 1e-15});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+TEST_F(NgspiceCompareTest, RCLowpassNoise) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/rc_lowpass_noise.cir";
+    auto ng_result = ngspice_->run_noise(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.noise.has_value());
+    ASSERT_EQ(ng_result.frequency.size(), cs_result.noise->frequency.size());
+    // RC lowpass rolls off noise — input-referred stays flat, output follows |H(f)|
+    auto cmp = compare_noise(ng_result, *cs_result.noise, {1e-2, 1e-15});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+TEST_F(NgspiceCompareTest, DiodeNoise) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/diode_noise.cir";
+    auto ng_result = ngspice_->run_noise(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.noise.has_value());
+    ASSERT_EQ(ng_result.frequency.size(), cs_result.noise->frequency.size());
+    // Diode shot noise + resistor thermal noise; both white (flat)
+    // Tolerance wider than resistor-only because ngspice includes Rs thermal
+    // noise and flicker noise that our simplified model omits.
+    auto cmp = compare_noise(ng_result, *cs_result.noise, {5e-2, 1e-15});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}

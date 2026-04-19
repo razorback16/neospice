@@ -8,12 +8,19 @@
 
 namespace neospice {
 
+struct NgspiceNoiseResult {
+    std::vector<double> frequency;
+    std::vector<double> onoise_spectrum;  // V/sqrt(Hz)
+    std::vector<double> inoise_spectrum;  // V/sqrt(Hz)
+};
+
 class NgspiceRunner {
 public:
     explicit NgspiceRunner(const std::string& binary_path);
     DCResult run_dc(const std::string& cir_path);
     TransientResult run_transient(const std::string& cir_path);
     ACResult run_ac(const std::string& cir_path);
+    NgspiceNoiseResult run_noise(const std::string& cir_path);
 
 private:
     std::string binary_;

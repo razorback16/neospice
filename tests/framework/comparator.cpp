@@ -399,4 +399,48 @@ CompareResult compare_ac(const ACResult& expected, const ACResult& actual, Toler
     return result;
 }
 
+CompareResult compare_noise(const NgspiceNoiseResult& expected,
+                            const NoiseResult& actual, Tolerance tol) {
+    CompareResult result{true, "", 0.0, 0};
+
+    size_t n = std::min(expected.frequency.size(), actual.frequency.size());
+    if (n == 0) {
+        result.passed = false;
+        result.worst_signal = "frequency (empty)";
+        result.worst_error = std::numeric_limits<double>::infinity();
+        return result;
+    }
+
+    for (size_t i = 0; i < n; ++i) {
+        // neospice: V^2/Hz -> convert to V/sqrt(Hz) for comparison
+        double neo_onoise = std::sqrt(actual.output_noise_density[i]);
+        double neo_inoise = std::sqrt(actual.input_noise_density[i]);
+
+        double ng_onoise = expected.onoise_spectrum[i];
+        double ng_inoise = expected.inoise_spectrum[i];
+
+        double oerr = relative_error(ng_onoise, neo_onoise, tol.absolute);
+        result.num_points_compared++;
+        if (oerr > result.worst_error) {
+            result.worst_error = oerr;
+            result.worst_signal = "onoise_spectrum";
+        }
+        if (oerr > tol.relative) {
+            result.passed = false;
+        }
+
+        double ierr = relative_error(ng_inoise, neo_inoise, tol.absolute);
+        result.num_points_compared++;
+        if (ierr > result.worst_error) {
+            result.worst_error = ierr;
+            result.worst_signal = "inoise_spectrum";
+        }
+        if (ierr > tol.relative) {
+            result.passed = false;
+        }
+    }
+
+    return result;
+}
+
 } // namespace neospice

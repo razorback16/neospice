@@ -4,7 +4,7 @@
 
 **Goal:** Build a modern, correct, GPU-acceleratable SPICE simulator with the device library, analysis modes, and netlist features needed for practical analog/mixed-signal design.
 
-**What's done:** Milestones 1–8 delivered a working CPU simulator with R/C/L/V/I/Diode/BSIM4v7 (full: DC/transient/AC/trunc/convergence/IC/query), BJT (Gummel-Poon NPN/PNP), JFET (Shockley NJF/PJF), coupled inductors (K element), E/G/H/F controlled sources, DC/transient/AC/DC-sweep analysis, adaptive time stepping, convergence aids, ngspice comparison framework, auto-migration tool, subcircuits (`.subckt`/`X` with hierarchical flattening), full `.param` expression evaluator, `.include`/`.lib` support, and `.save` filtering. 416 C++ tests passing.
+**What's done:** Milestones 1–9 delivered a working CPU simulator with R/C/L/V/I/Diode/BSIM4v7 (full: DC/transient/AC/trunc/convergence/IC/query), BJT (Gummel-Poon NPN/PNP), JFET (Shockley NJF/PJF), coupled inductors (K element), E/G/H/F controlled sources, DC/transient/AC/DC-sweep/noise analysis, adaptive time stepping, convergence aids, ngspice comparison framework, auto-migration tool, subcircuits (`.subckt`/`X` with hierarchical flattening), full `.param` expression evaluator, `.include`/`.lib` support, `.save` filtering, `.measure` post-processing, and `.print`/`.plot` output formatting. 470 C++ tests passing.
 
 **Architecture principle:** Each phase is self-contained — it ships a testable increment, validated against ngspice, before the next phase begins. Phases are ordered by user impact (what unlocks the most real circuits).
 
@@ -29,9 +29,18 @@
 | BJT (Gummel-Poon) | **Done** — NPN/PNP, DC/transient/AC/trunc/convergence/IC/query | ~~Phase 8~~ Done |
 | JFET (Shockley) | **Done** — NJF/PJF, DC/transient/AC/trunc/convergence/IC/query | ~~Phase 8~~ Done |
 | Coupled inductors (K element) | **Done** — mutual inductance, transformer support | ~~Phase 8~~ Done |
+| Noise analysis | **Done** — adjoint method, resistor/diode/BSIM4v7 noise, ngspice-validated | ~~Phase 9~~ Done |
+| `.measure` | **Done** — TRIG/TARG, FIND/WHEN, AVG/RMS/MIN/MAX/PP/INTEG, PARAM | ~~Phase 9~~ Done |
+| `.print`/`.plot` | **Done** — tabular ASCII output, ASCII waveform plots | ~~Phase 9~~ Done |
+| Flicker (1/f) noise | Not started — no devices have flicker noise | Phase 9.5 |
+| Full BSIM4v7 noise | Simplified (channel thermal only) — full b4v7noi.c not migrated | Phase 9.5 |
+| BJT/JFET noise | Not started — no noise models for Q/J devices | Phase 9.5 |
+| `.options` parsing | Not started — uses hardcoded defaults | Phase 9.5 |
+| `.four` (Fourier) | Not started | Phase 9.5 |
+| Switches (SW/CSW) | Not started | Phase 9.5 |
+| Nonlinear controlled sources | Not started — only linear E/G/H/F | Phase 9.5 |
+| Transmission lines (T/LTRA) | Not started | Phase 9.5 |
 | GPU acceleration (CUDA) | Not started (design doc M2/M3) | Phase 10 |
-| Noise analysis | Not started | Phase 9 |
-| `.measure` | Parsed, not executed | Phase 9 |
 
 ---
 
@@ -271,48 +280,180 @@
 
 ---
 
-## Phase 9: Noise Analysis + Measurement
+## Phase 9: Noise Analysis + Measurement ✅ COMPLETE
+
+**Status:** All tasks completed and merged to `main`. 470 C++ tests passing (54 new).
 
 **Goal:** Add `.noise` frequency-domain noise analysis and `.measure` post-processing. Noise is critical for analog design (LNA, oscillator phase noise, sensor front-ends). `.measure` is critical for automation.
 
-### Task 9.1: Noise Analysis Framework
+**Approach:** Noise uses the adjoint method (solve Y^T * adj = e_out, then accumulate S * |adj[i]-adj[j]|^2). Device noise models: resistor thermal (4kT/R), diode shot (2qI), BSIM4v7 simplified channel thermal (4kT*2/3*gm). Measure supports all standard SPICE forms. All noise results validated against ngspice.
 
-- [ ] Parser: `.noise V(out) Vin dec 10 1 1e9` — output node, input source, sweep
-- [ ] Implement `solve_noise()` in `src/core/noise.cpp`
-- [ ] Framework: at each frequency point, sum noise contributions from all devices
-- [ ] Noise result: input-referred and output-referred noise spectral density
+**Files delivered:**
+- Noise: `src/core/noise.hpp/cpp` — adjoint noise solver with 2n×2n real encoding
+- Device noise: `resistor.cpp`, `diode.cpp`, `bsim4v7_device.cpp` — `noise_sources()` overrides
+- Measure: `src/core/measure.hpp/cpp` — TRIG/TARG, FIND/WHEN, statistics, PARAM
+- Output: `src/output/output.hpp/cpp` — `.print`/`.plot` formatting with AC variants
+- Parser: `.noise`, `.meas`/`.measure`, `.print`/`.plot` in `netlist_parser.cpp`
+- Tests: `test_noise.cpp` (17), `test_measure.cpp` (21), `test_output.cpp` (9), ngspice noise comparison (3)
+- Fixes: K-in-subcircuit inductor prefixing, reset_temp() for multi-temperature reuse
 
-**Subagent:** `general-purpose`
+**Known limitations (to be addressed in Phase 9.5):**
+- No flicker (1/f) noise for any device
+- BSIM4v7 noise simplified (channel thermal only, not full b4v7noi.c)
+- BJT and JFET have no noise models
+- Resistor/BSIM4v7 noise uses hardcoded T_NOMINAL, not simulation temperature
+- Duplicated `generate_frequencies()` between ac.cpp and noise.cpp
 
-### Task 9.2: Device Noise Models
+### Task 9.1: Noise Analysis Framework ✅
 
-- [ ] Resistor: thermal noise `4kTR`
-- [ ] Diode: shot noise `2qI`, flicker noise
-- [ ] BSIM4v7: migrate `b4v7noi.c` (channel thermal, flicker, gate-induced noise)
-- [ ] Test: resistor divider noise floor
-- [ ] Test: common-source amplifier noise figure vs ngspice
+- [x] Parser: `.noise V(out) Vin dec 10 1 1e9` — output node, input source, sweep
+- [x] Implement `solve_noise()` in `src/core/noise.cpp` (adjoint method)
+- [x] Framework: at each frequency point, sum noise contributions from all devices
+- [x] Noise result: input-referred and output-referred noise spectral density
+- [x] 2n×2n real encoding with separate Y and Y^T matrices
+- [x] 10 tests
 
-**Subagent:** `general-purpose`
+### Task 9.2: Device Noise Models ✅
 
-### Task 9.3: `.measure` Implementation
+- [x] Resistor: thermal noise `4kT/R` (white, frequency-independent)
+- [x] Diode: shot noise `2qI` (series resistance thermal omitted — no Rs in model)
+- [x] BSIM4v7: simplified channel thermal `4kT*(2/3)*gm*m`
+- [x] Test: resistor divider noise floor, RC rolloff, diode noise
+- [x] Test: MOSFET channel noise order-of-magnitude check
+- [x] ngspice comparison: resistor divider, RC lowpass, diode noise (3 tests)
+- [x] 7 tests
 
-- [ ] Parser: `.meas tran|ac|dc result_name TRIG ... TARG ...` and simpler forms
-- [ ] Supported measures: `TRIG/TARG` (delay), `FIND/WHEN` (threshold crossing), `AVG`, `RMS`, `MIN`, `MAX`, `PP`, `INTEG`
-- [ ] Execute after simulation completes, operate on result vectors
-- [ ] Output: print measured values to stdout and include in result struct
-- [ ] Test: measure rise time, delay, overshoot on pulse response
-- [ ] Test: measure -3dB bandwidth on AC sweep
+### Task 9.3: `.measure` Implementation ✅
 
-**Subagent:** `general-purpose`
+- [x] Parser: `.meas tran|ac|dc result_name TRIG ... TARG ...` and simpler forms
+- [x] Supported measures: `TRIG/TARG` (delay), `FIND/WHEN` (threshold crossing), `AVG`, `RMS`, `MIN`, `MAX`, `PP`, `INTEG`, `PARAM`
+- [x] Execute after simulation completes, operate on result vectors
+- [x] Output: print measured values to stdout and include in result struct
+- [x] 21 tests
 
-### Task 9.4: `.print` / `.plot` Output Formatting
+### Task 9.4: `.print` / `.plot` Output Formatting ✅
 
-- [ ] `.print tran V(out) I(V1)` — tabular ASCII output
-- [ ] `.plot tran V(out)` — ASCII waveform plot (like ngspice)
-- [ ] Wire into simulation run loop
-- [ ] Test: verify output format matches ngspice
+- [x] `.print tran V(out) I(V1)` — tabular ASCII output (tab-separated, %.6e)
+- [x] `.plot tran V(out)` — ASCII waveform plot (50-char width, min/max scale)
+- [x] AC signal variants: VM/VP/VDB/VR/VI
+- [x] Wire into simulation run loop
+- [x] 9 tests
 
-**Subagent:** `general-purpose` (low complexity)
+---
+
+## Phase 9.5: ngspice Feature Parity
+
+**Goal:** Close remaining gaps between neospice and ngspice for the feature set that real-world analog designers expect. After this phase, neospice should handle any netlist that uses only the devices and analyses ngspice supports in its "standard" (non-XSPICE) mode.
+
+**Why before GPU:** GPU acceleration is a performance multiplier on an already-correct simulator. Shipping it before feature parity means users hit missing-feature walls that no amount of speed can fix. This phase ensures the simulator is functionally complete for practical use.
+
+**Prerequisites:** Phases 5–9 complete.
+
+### Task 9.5.1: `.options` Parsing
+
+- [ ] Parser: `.options reltol=1e-4 abstol=1e-12 vntol=1e-6 trtol=7 ...`
+- [ ] Wire parsed values into `SimOptions` struct (currently hardcoded)
+- [ ] Support key options: `reltol`, `abstol`, `vntol`, `chgtol`, `trtol`, `itl1`–`itl6`, `gmin`, `temp`, `tnom`, `method` (trap/gear)
+- [ ] Test: verify option values affect simulation behavior (e.g., tighter reltol → more iterations)
+- [ ] Test: `.options temp=85` changes device operating points vs default 27C
+
+**Subagent:** `sonnet` (parser + wiring, straightforward)
+
+### Task 9.5.2: Temperature-Aware Noise
+
+- [ ] Use simulation temperature (from `.options temp` or default 27C) in noise calculations
+- [ ] Fix hardcoded `T_NOMINAL` in `resistor.cpp` and `bsim4v7_device.cpp` noise
+- [ ] Verify: noise at T=100C > noise at T=27C for resistor (4kT scales with T)
+- [ ] Test: ngspice comparison at non-default temperature
+
+**Subagent:** `sonnet` (small, targeted fix)
+
+### Task 9.5.3: Full BSIM4v7 Noise Model
+
+- [ ] Migrate `b4v7noi.c` — channel thermal noise (multiple models: `noiMod`), flicker noise, gate-induced noise
+- [ ] Handle noise model selection (`noiMod=1` to `noiMod=5`)
+- [ ] Implement correlated gate noise (gate-induced noise model)
+- [ ] Test: ngspice comparison for NMOS common-source amplifier noise
+- [ ] Test: flicker noise corner frequency detection
+
+**Subagent:** `opus` (complex migration, multiple noise models)
+
+### Task 9.5.4: BJT + JFET Noise Models
+
+- [ ] BJT: shot noise (Ic, Ib), thermal noise (Rb, Rc, Re), flicker noise (Ib)
+- [ ] Migrate noise from ngspice `bjtnoise.c`
+- [ ] JFET: channel thermal noise (`4kT * 2/3 * gm`), flicker noise (Id)
+- [ ] Migrate noise from ngspice `jfetnoi.c`
+- [ ] Test: BJT common-emitter amplifier noise vs ngspice
+- [ ] Test: JFET source follower noise vs ngspice
+
+**Subagent:** `sonnet` (pattern established by diode/BSIM4v7 noise)
+
+### Task 9.5.5: Flicker (1/f) Noise Framework
+
+- [ ] Extend `NoiseSource` struct with frequency-dependent spectral density
+- [ ] Or: pass frequency to `noise_sources()` (already in signature) and compute S(f) = Kf * I^Af / f^Ef
+- [ ] Resistor: `4kT/R + Kf/(f * R^2)` (if flicker parameters given in model)
+- [ ] Diode: `2qI + Kf * I^Af / f^Ef`
+- [ ] Verify: noise spectrum shows 1/f slope at low frequencies, flattens at high frequencies
+- [ ] Test: identify flicker corner frequency from noise spectrum
+
+**Subagent:** `sonnet` (framework extension, devices follow pattern)
+
+### Task 9.5.6: Voltage-Controlled / Current-Controlled Switches (SW/CSW)
+
+- [ ] `src/devices/switch.hpp/cpp` — SW (voltage-controlled) and CSW (current-controlled)
+- [ ] Smooth transition model: `R = Roff + (Ron - Roff) * f(V_control)` with hysteresis
+- [ ] `.model name SW(Vt=0 Vh=0 Ron=1 Roff=1e12)` and `.model name CSW(It=0 Ih=0 Ron=1 Roff=1e12)`
+- [ ] Parser: `S` element (SW) and `W` element (CSW)
+- [ ] Test: relay driver circuit, sample-and-hold
+- [ ] Test: ngspice comparison
+
+**Subagent:** `sonnet` (self-contained device)
+
+### Task 9.5.7: Nonlinear Controlled Sources
+
+- [ ] Polynomial form: `E1 out 0 POLY(1) in 0 0 0 1 0.5` (quadratic VCVS)
+- [ ] Multi-dimensional POLY: `E1 out 0 POLY(2) in1 0 in2 0 0 1 1` (sum of inputs)
+- [ ] Table form: `E1 out 0 TABLE {V(in)} = (0,0) (1,5) (2,5)` (piecewise-linear)
+- [ ] Support for E, G, H, F polynomial and table forms
+- [ ] Parser: detect POLY/TABLE keyword after control nodes
+- [ ] Test: diode behavioral model using polynomial E source
+- [ ] Test: ngspice comparison for POLY and TABLE forms
+
+**Subagent:** `opus` (parser complexity, multiple forms)
+
+### Task 9.5.8: `.four` Fourier Analysis
+
+- [ ] Parser: `.four freq V(out) [V(out2) ...]`
+- [ ] Compute FFT (or DFT) on last period of transient data
+- [ ] Output: DC component, fundamental, harmonics (up to 9th), THD
+- [ ] Format matches ngspice output
+- [ ] Test: sine wave THD ≈ 0%, clipped sine has significant harmonics
+- [ ] Test: ngspice comparison
+
+**Subagent:** `sonnet` (algorithm is standard DFT)
+
+### Task 9.5.9: Transmission Lines
+
+- [ ] Lossless transmission line (T element): `T1 in 0 out 0 Z0=50 TD=1n`
+- [ ] Companion model: delay + characteristic impedance
+- [ ] Parser: `T` element with Z0, TD (or F, NL) parameters
+- [ ] Test: pulse reflection on mismatched line
+- [ ] Test: ngspice comparison for lossless TL
+- [ ] (Stretch) Lossy transmission line (LTRA) — may defer to Phase 10
+
+**Subagent:** `opus` (companion model for delay requires state management)
+
+### Task 9.5.10: Code Quality + Deduplication
+
+- [ ] Extract shared `generate_frequencies()` from `ac.cpp` and `noise.cpp` into common utility
+- [ ] Ensure all `Device::noise_sources()` implementations use simulation temperature, not T_NOMINAL
+- [ ] Review and tighten ngspice comparison tolerances where possible
+- [ ] Audit all TODO/FIXME comments in codebase
+- [ ] Test: full regression suite passes
+
+**Subagent:** `sonnet` (cleanup, no new features)
 
 ---
 
@@ -320,7 +461,7 @@
 
 **Goal:** Port the hot path (BSIM4v7 device evaluation) to CUDA. This is the original design doc vision (M2 GPU Phase 1). Only pursue after profiling confirms device eval is the bottleneck on representative circuits.
 
-**Prerequisites:** Phases 5–8 complete. A diverse circuit test suite exists. Profiling data shows device evaluation dominates wall time for circuits with 500+ MOSFETs.
+**Prerequisites:** Phases 5–9.5 complete. A diverse circuit test suite exists. Profiling data shows device evaluation dominates wall time for circuits with 500+ MOSFETs.
 
 ### Task 10.1: Profiling + Bottleneck Identification
 
@@ -379,10 +520,13 @@ Phase 7 (subcircuits + expressions)  ← biggest unlock for real netlists
     +-----> Phase 9 (noise + measure)
     |
     v
-Phase 10 (GPU)  ← requires diverse circuit suite from 5-9
+Phase 9.5 (ngspice parity)  ← complete feature set before GPU
+    |
+    v
+Phase 10 (GPU)  ← requires diverse circuit suite from 5-9.5
 ```
 
-Phases 8 and 9 can run **in parallel** after Phase 7 is complete. Phase 10 is independent but benefits from the full device/analysis suite for profiling.
+Phases 8 and 9 can run **in parallel** after Phase 7 is complete. Phase 9.5 requires both 8 and 9. Phase 10 benefits from the full device/analysis suite for profiling.
 
 ---
 
@@ -390,14 +534,26 @@ Phases 8 and 9 can run **in parallel** after Phase 7 is complete. Phase 10 is in
 
 | Phase | Recommended model | Parallelism | Rationale |
 |-------|------------------|-------------|-----------|
-| 5 (BSIM4v7 AC/trunc) | opus | Sequential tasks (each builds on prior) | Migration tool integration, Device interface changes |
-| 6.1–6.4 (E/G/H/F) | sonnet | **Parallel** — 4 independent device implementations | Each controlled source is self-contained |
-| 6.5 (DC sweep) | sonnet | Sequential (after 6.1–6.4 for testing) | Analysis driver, straightforward |
-| 7.1–7.3 (subcircuit core) | opus | Sequential — parser changes are coupled | Complex parser refactoring |
-| 7.4–7.6 (lib/include/test) | sonnet | Can parallelize some | File handling, less coupled |
-| 8.1–8.3 (BJT) | sonnet | Sequential | Migration tool + validation |
-| 9.1–9.3 (noise + measure) | opus for noise framework, sonnet for measure | Noise sequential, measure independent | Noise requires new analysis type |
-| 10.x (GPU) | opus | Sequential | CUDA integration, architecture decisions |
+| ~~5 (BSIM4v7 AC/trunc)~~ | ~~opus~~ | ~~Done~~ | — |
+| ~~6.1–6.4 (E/G/H/F)~~ | ~~sonnet~~ | ~~Done~~ | — |
+| ~~6.5 (DC sweep)~~ | ~~sonnet~~ | ~~Done~~ | — |
+| ~~7.1–7.3 (subcircuit core)~~ | ~~opus~~ | ~~Done~~ | — |
+| ~~7.4–7.6 (lib/include/test)~~ | ~~sonnet~~ | ~~Done~~ | — |
+| ~~8.1–8.5 (BJT/JFET/K)~~ | ~~sonnet~~ | ~~Done~~ | — |
+| ~~9.1–9.4 (noise/measure/output)~~ | ~~opus + sonnet~~ | ~~Done~~ | — |
+| 9.5.1 (.options) | sonnet | Independent | Parser + wiring |
+| 9.5.2 (temp noise) | sonnet | After 9.5.1 (needs .options temp) | Small fix |
+| 9.5.3 (BSIM4v7 noise) | opus | After 9.5.5 (needs 1/f framework) | Complex migration |
+| 9.5.4 (BJT/JFET noise) | sonnet | After 9.5.5 | Pattern-follow |
+| 9.5.5 (1/f framework) | sonnet | Independent | Framework extension |
+| 9.5.6 (switches) | sonnet | Independent | Self-contained |
+| 9.5.7 (nonlinear sources) | opus | Independent | Parser complexity |
+| 9.5.8 (.four) | sonnet | Independent | Standard algorithm |
+| 9.5.9 (transmission lines) | opus | Independent | State management |
+| 9.5.10 (cleanup) | sonnet | After all 9.5.x | Sweep cleanup |
+| 10.x (GPU) | opus | Sequential | CUDA integration |
+
+**Parallelism within 9.5:** Tasks 9.5.1, 9.5.5, 9.5.6, 9.5.7, 9.5.8, 9.5.9 are independent and can run in parallel. Tasks 9.5.2–9.5.4 depend on 9.5.1 and 9.5.5. Task 9.5.10 runs last.
 
 **Key principle:** Use `isolation: "worktree"` for each subagent to prevent conflicts. Merge each task's worktree after review passes.
 
@@ -411,22 +567,25 @@ Phases 8 and 9 can run **in parallel** after Phase 7 is complete. Phase 10 is in
 | ~~6~~ | ~~6~~ | ~~Done~~ | 229 |
 | ~~7~~ | ~~6~~ | ~~Done~~ | 363 |
 | ~~8~~ | ~~5~~ | ~~Done~~ | 416 |
-| 9 | 4 | 3–4 | ~460 |
-| 10 | 4 | 4–6 | ~475 |
+| ~~9~~ | ~~4~~ | ~~Done~~ | 470 |
+| 9.5 | 10 | 5–8 | ~540 |
+| 10 | 4 | 4–6 | ~560 |
 
-Total: ~20–27 sessions across all phases.
+Total: ~25–35 sessions across all phases.
 
 ---
 
 ## Success Criteria
 
-At the end of Phase 9, NEOSPICE should be able to:
+At the end of Phase 9.5, NEOSPICE should be able to:
 
-1. **Simulate any flat netlist** using R, C, L, V, I, D, M (BSIM4v7), Q (BJT), E, G, F, H, K
+1. **Simulate any flat netlist** using R, C, L, V, I, D, M (BSIM4v7), Q (BJT), J (JFET), E, G, F, H, K, S (SW), W (CSW), T (transmission line)
 2. **Simulate hierarchical netlists** with `.subckt`/`X` and parameter expressions
-3. **Run all analysis types:** `.op`, `.dc`, `.tran`, `.ac`, `.noise`
-4. **Post-process:** `.measure` for automated characterization
-5. **Match ngspice** within documented tolerances for all supported features
-6. **Handle PDK-style netlists** with `.lib` section selection and `.include` paths
+3. **Run all analysis types:** `.op`, `.dc`, `.tran`, `.ac`, `.noise`, `.four`
+4. **Post-process:** `.measure` for automated characterization, `.print`/`.plot` output
+5. **Match ngspice** within 1% for all supported features including noise (with flicker, full device models)
+6. **Handle PDK-style netlists** with `.lib` section selection, `.include` paths, `.options`
+7. **Support nonlinear controlled sources** (POLY, TABLE forms)
+8. **Configurable simulation parameters** via `.options`
 
 Phase 10 adds GPU acceleration for large circuits as a performance multiplier.
