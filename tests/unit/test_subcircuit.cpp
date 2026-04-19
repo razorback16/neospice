@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include "parser/netlist_parser.hpp"
 #include "parser/subcircuit.hpp"
+#include "devices/coupled_inductor.hpp"
+#include "core/ac.hpp"
+#include <cmath>
 
 using namespace neospice;
 
@@ -351,4 +354,100 @@ R1 a b 100
     EXPECT_EQ(ckt.devices().size(), 0u);
     ASSERT_EQ(ckt.analyses.size(), 1u);
     EXPECT_EQ(ckt.analyses[0].type, AnalysisCommand::OP);
+}
+
+// -----------------------------------------------------------------------
+// 15. K element inside subcircuit — inductor names get prefixed
+// -----------------------------------------------------------------------
+TEST(Subcircuit, KElementInductorNamesPrefixed) {
+    // After expansion, the K element inside the subcircuit should reference
+    // "xinv.l1" and "xinv.l2" — not the bare "l1"/"l2".
+    std::string netlist = wrap(R"(
+.subckt xfmr pri sec
+L1 pri 0 1mH
+L2 sec 0 4mH
+K1 L1 L2 0.99
+.ends xfmr
+
+Xinv pri sec xfmr
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    // Find the CoupledInductor device
+    const CoupledInductor* ki = nullptr;
+    for (const auto& dev : ckt.devices()) {
+        if (const auto* k = dynamic_cast<const CoupledInductor*>(dev.get())) {
+            ki = k;
+            break;
+        }
+    }
+    ASSERT_NE(ki, nullptr) << "No CoupledInductor found after subcircuit expansion";
+
+    // The K element references the expanded inductor names
+    ASSERT_NE(ki->inductor1(), nullptr);
+    ASSERT_NE(ki->inductor2(), nullptr);
+
+    // Inductor names should carry the instance prefix "xinv."
+    std::string l1_name = ki->inductor1()->name();
+    std::string l2_name = ki->inductor2()->name();
+    // Names are stored as-parsed; verify they contain the hierarchy prefix
+    EXPECT_NE(l1_name.find("xinv"), std::string::npos)
+        << "L1 name '" << l1_name << "' missing 'xinv' prefix";
+    EXPECT_NE(l2_name.find("xinv"), std::string::npos)
+        << "L2 name '" << l2_name << "' missing 'xinv' prefix";
+
+    EXPECT_DOUBLE_EQ(ki->coupling(), 0.99);
+}
+
+// -----------------------------------------------------------------------
+// 16. K element in subcircuit — integration: transformer AC simulation
+// -----------------------------------------------------------------------
+TEST(Subcircuit, KElementInSubcircuitACTransformer) {
+    // A transformer (L1, L2, K1) wrapped in a subcircuit should produce the
+    // same AC voltage-ratio behaviour as a flat (non-subcircuit) equivalent.
+    //
+    //   .subckt xfmr pri sec
+    //   L1 pri 0 1mH
+    //   L2 sec 0 4mH
+    //   K1 L1 L2 0.999
+    //   .ends xfmr
+    //
+    //   V1 in 0 AC 1
+    //   R1 in pri 1
+    //   Xtr pri sec xfmr      ; expands to xinv.l1, xinv.l2, coupling k
+    //   R2 sec 0 1k
+    //   .ac dec 1 1k 1k
+    //
+    // Expected: V(sec) ~ 2 * V(pri) (sqrt(L2/L1) = 2) at 1 kHz with k~1.
+    std::string netlist = wrap(R"(
+.subckt xfmr pri sec
+L1 pri 0 1mH
+L2 sec 0 4mH
+K1 L1 L2 0.999
+.ends xfmr
+
+V1 in 0 DC 0 AC 1
+R1 in pri 1
+Xtr pri sec xfmr
+R2 sec 0 1k
+.ac dec 1 1k 1k
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    auto result = solve_ac(ckt, AnalysisCommand::DEC, 1, 1e3, 1e3);
+    ASSERT_EQ(result.frequency.size(), 1u);
+
+    auto it_sec = result.voltages.find("v(sec)");
+    ASSERT_NE(it_sec, result.voltages.end())
+        << "v(sec) not found in AC result (keys: check node names after expansion)";
+
+    double v_sec_mag = std::abs(it_sec->second[0]);
+    // Allow ±0.5 deviation — same tolerance as the flat-circuit AC test
+    EXPECT_NEAR(v_sec_mag, 2.0, 0.5)
+        << "Transformer gain is " << v_sec_mag << "; expected ~2 (sqrt(L2/L1))";
 }
