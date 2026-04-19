@@ -39,6 +39,9 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 
+    std::vector<NoiseSource> noise_sources(
+        double freq, const std::vector<double>& dc_solution) const override;
+
     std::vector<std::string> output_currents() const override;
 
     void set_temp(double temp);
@@ -52,6 +55,7 @@ private:
 
     double last_gd_ = 0.0;     // cached small-signal conductance for AC
     double last_cd_ = 0.0;     // cached small-signal capacitance for AC
+    double last_id_ = 0.0;     // cached DC current for noise analysis
 };
 
 } // namespace neospice
