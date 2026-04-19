@@ -46,88 +46,95 @@ std::string NgspiceRunner::run_batch(const std::string& cir_path) {
     return raw_path;
 }
 
-NgspiceRunner::RawData NgspiceRunner::parse_raw(const std::string& raw_path) {
+NgspiceRunner::RawData NgspiceRunner::parse_raw(const std::string& raw_path,
+                                                const std::string& plot_filter) {
     RawData data;
     std::ifstream file(raw_path, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open raw file: " + raw_path);
     }
 
-    std::string line;
-    bool in_variables = false;
-    int var_index = 0;
+    auto parse_one_plot = [&]() -> bool {
+        std::string line;
+        bool in_variables = false;
+        RawData plot;
 
-    // Parse header
-    while (std::getline(file, line)) {
-        // Remove trailing \r if present
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
+        while (std::getline(file, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
 
-        if (line.find("Plotname:") == 0) {
-            data.plot_type = line.substr(10);
-        } else if (line.find("Flags:") == 0) {
-            std::string flags = line.substr(7);
-            std::transform(flags.begin(), flags.end(), flags.begin(), ::tolower);
-            data.is_complex = (flags.find("complex") != std::string::npos);
-        } else if (line.find("No. Variables:") == 0) {
-            data.num_vars = std::stoi(line.substr(15));
-        } else if (line.find("No. Points:") == 0) {
-            data.num_points = std::stoi(line.substr(12));
-        } else if (line.find("Variables:") == 0) {
-            in_variables = true;
-            continue;
-        } else if (line.find("Binary:") == 0) {
-            break; // Binary data follows immediately
-        }
+            if (line.find("Plotname:") == 0) {
+                plot.plot_type = line.substr(10);
+            } else if (line.find("Flags:") == 0) {
+                std::string flags = line.substr(7);
+                std::transform(flags.begin(), flags.end(), flags.begin(), ::tolower);
+                plot.is_complex = (flags.find("complex") != std::string::npos);
+            } else if (line.find("No. Variables:") == 0) {
+                plot.num_vars = std::stoi(line.substr(15));
+            } else if (line.find("No. Points:") == 0) {
+                plot.num_points = std::stoi(line.substr(12));
+            } else if (line.find("Variables:") == 0) {
+                in_variables = true;
+                continue;
+            } else if (line.find("Binary:") == 0) {
+                break;
+            }
 
-        if (in_variables && !line.empty() && (line[0] == '\t' || line[0] == ' ')) {
-            // Parse variable line: <index> <name> <type>
-            std::istringstream iss(line);
-            int idx;
-            std::string name, type;
-            iss >> idx >> name >> type;
-            // Lowercase the name for consistent lookup
-            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-            data.var_names.push_back(name);
-            var_index++;
-        }
-    }
-
-    // Read binary data
-    if (data.is_complex) {
-        data.complex_data.resize(data.num_vars);
-        for (auto& v : data.complex_data) {
-            v.resize(data.num_points);
-        }
-        for (int p = 0; p < data.num_points; ++p) {
-            for (int v = 0; v < data.num_vars; ++v) {
-                double re, im;
-                file.read(reinterpret_cast<char*>(&re), sizeof(double));
-                file.read(reinterpret_cast<char*>(&im), sizeof(double));
-                data.complex_data[v][p] = std::complex<double>(re, im);
+            if (in_variables && !line.empty() && (line[0] == '\t' || line[0] == ' ')) {
+                std::istringstream iss(line);
+                int idx;
+                std::string name, type;
+                iss >> idx >> name >> type;
+                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                plot.var_names.push_back(name);
             }
         }
-    } else {
-        data.real_data.resize(data.num_vars);
-        for (auto& v : data.real_data) {
-            v.resize(data.num_points);
-        }
-        for (int p = 0; p < data.num_points; ++p) {
-            for (int v = 0; v < data.num_vars; ++v) {
-                double val;
-                file.read(reinterpret_cast<char*>(&val), sizeof(double));
-                data.real_data[v][p] = val;
+
+        if (plot.num_vars == 0) return false;
+
+        if (plot.is_complex) {
+            plot.complex_data.resize(plot.num_vars);
+            for (auto& v : plot.complex_data) v.resize(plot.num_points);
+            for (int p = 0; p < plot.num_points; ++p) {
+                for (int v = 0; v < plot.num_vars; ++v) {
+                    double re, im;
+                    file.read(reinterpret_cast<char*>(&re), sizeof(double));
+                    file.read(reinterpret_cast<char*>(&im), sizeof(double));
+                    plot.complex_data[v][p] = std::complex<double>(re, im);
+                }
+            }
+        } else {
+            plot.real_data.resize(plot.num_vars);
+            for (auto& v : plot.real_data) v.resize(plot.num_points);
+            for (int p = 0; p < plot.num_points; ++p) {
+                for (int v = 0; v < plot.num_vars; ++v) {
+                    double val;
+                    file.read(reinterpret_cast<char*>(&val), sizeof(double));
+                    plot.real_data[v][p] = val;
+                }
             }
         }
-    }
+
+        std::string pt_lower = plot.plot_type;
+        std::transform(pt_lower.begin(), pt_lower.end(), pt_lower.begin(), ::tolower);
+        if (plot_filter.empty()) {
+            // No filter: return the first plot (backward compatible)
+            data = std::move(plot);
+            return false;  // stop parsing
+        }
+        if (pt_lower.find(plot_filter) != std::string::npos) {
+            data = std::move(plot);
+        }
+        return true;
+    };
+
+    while (parse_one_plot()) {}
 
     return data;
 }
 
 DCResult NgspiceRunner::run_dc(const std::string& cir_path) {
     std::string raw_path = run_batch(cir_path);
-    RawData raw = parse_raw(raw_path);
+    RawData raw = parse_raw(raw_path, "operating point");
     std::filesystem::remove(raw_path);
     std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
 
@@ -204,7 +211,7 @@ TransientResult NgspiceRunner::run_transient(const std::string& cir_path) {
 
 ACResult NgspiceRunner::run_ac(const std::string& cir_path) {
     std::string raw_path = run_batch(cir_path);
-    RawData raw = parse_raw(raw_path);
+    RawData raw = parse_raw(raw_path, "ac analysis");
     std::filesystem::remove(raw_path);
     std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
 

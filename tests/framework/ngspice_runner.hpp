@@ -36,7 +36,7 @@ private:
         std::vector<std::vector<std::complex<double>>> complex_data;
         bool is_complex = false;
     };
-    RawData parse_raw(const std::string& raw_path);
+    RawData parse_raw(const std::string& raw_path, const std::string& plot_filter = "");
 };
 
 } // namespace neospice
