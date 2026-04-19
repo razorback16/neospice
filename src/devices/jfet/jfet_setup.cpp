@@ -221,8 +221,6 @@ JFETsetup(Shim::Matrix *matrix, JFETModel *inModel, Shim::Ckt *ckt, int *states)
 #define TSTALLOC(ptr,first,second) \
 { here->ptr = matrix->make_elt(here->first, here->second); }
 
-            /* TODO(translator): TSTALLOC macro kept as-is; needs manual rewrite. */
-
             TSTALLOC(JFETdrainDrainPrimePtr,JFETdrainNode,JFETdrainPrimeNode);
             TSTALLOC(JFETgateDrainPrimePtr,JFETgateNode,JFETdrainPrimeNode);
             TSTALLOC(JFETgateSourcePrimePtr,JFETgateNode,JFETsourcePrimeNode);

@@ -1,5 +1,6 @@
 #include "devices/resistor.hpp"
 #include "core/types.hpp"
+#include "core/circuit.hpp"
 
 namespace neospice {
 
@@ -23,6 +24,11 @@ void Resistor::assign_offsets(const SparsityPattern& pattern) {
 
 void Resistor::evaluate(const std::vector<double>& /*voltages*/,
                         NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+    // Cache simulation temperature for use in noise_sources().
+    if (const IntegratorCtx* ic = tls_integrator_ctx) {
+        if (ic->options) sim_temp_ = ic->options->temp;
+    }
+
     const double g = 1.0 / resistance_;
     add_if_valid(mat, off_pp_,  g);
     add_if_valid(mat, off_pn_, -g);
@@ -43,9 +49,10 @@ void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
 std::vector<Device::NoiseSource> Resistor::noise_sources(
     double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
     // Thermal noise: i²_noise = 4kT * G = 4kT / R  (A²/Hz)
-    // Temperature: use nominal 300.15 K (27°C).  Future: pass from SimOptions.
+    // Use sim_temp_ cached from the last evaluate() call so the noise
+    // reflects the actual simulation temperature rather than T_NOMINAL.
     const double G = 1.0 / resistance_;
-    const double spectral_density = 4.0 * BOLTZMANN * T_NOMINAL * G;
+    const double spectral_density = 4.0 * BOLTZMANN * sim_temp_ * G;
     return {{np_, nn_, spectral_density}};
 }
 

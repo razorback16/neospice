@@ -2517,8 +2517,6 @@ double Rtot, DMCGeff, DMCIeff, DMDGeff;
 #define TSTALLOC(ptr,first,second) \
 { here->ptr = matrix->make_elt(here->first, here->second); }
 
-            /* TODO(translator): TSTALLOC macro kept as-is; needs manual rewrite. */
-
             TSTALLOC(BSIM4v7DPbpPtr, BSIM4v7dNodePrime, BSIM4v7bNodePrime);
             TSTALLOC(BSIM4v7GPbpPtr, BSIM4v7gNodePrime, BSIM4v7bNodePrime);
             TSTALLOC(BSIM4v7SPbpPtr, BSIM4v7sNodePrime, BSIM4v7bNodePrime);

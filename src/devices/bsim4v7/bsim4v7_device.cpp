@@ -297,6 +297,9 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
     ckt.CKTbypass  = 0;
     ckt.CKTnoncon  = 0;
 
+    // Cache simulation temperature for noise_sources().
+    sim_temp_ = sim_opts->temp;
+
     // State ring.
     ckt.CKTstate0 = state0_;
     ckt.CKTstate1 = state1_;
@@ -1119,7 +1122,9 @@ static inline int32_t ucb_to_neo(int ucb_node) {
 std::vector<Device::NoiseSource>
 BSIM4v7Device::noise_sources(double /*freq*/,
                               const std::vector<double>& /*dc_solution*/) const {
-    const double kT = BOLTZMANN * T_NOMINAL;
+    // Use sim_temp_ cached from the last evaluate() call so noise reflects
+    // the actual simulation temperature rather than T_NOMINAL.
+    const double kT = BOLTZMANN * sim_temp_;
     const double gm = std::abs(inst_.BSIM4v7gm);
     const double m  = inst_.BSIM4v7m;
 
