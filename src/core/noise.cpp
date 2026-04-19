@@ -66,9 +66,14 @@ NoiseResult solve_noise(Circuit& ckt,
     // ---------------------------------------------------------------
     // 1. Find the output node index
     // ---------------------------------------------------------------
-    int32_t out_idx = ckt.node_index(to_lower(output_node));
-    if (out_idx < 0) {
+    int32_t out_idx;
+    try {
+        out_idx = ckt.node_index(to_lower(output_node));
+    } catch (const std::out_of_range&) {
         throw std::runtime_error("Noise analysis: output node '" + output_node + "' not found");
+    }
+    if (out_idx < 0) {
+        throw std::runtime_error("Noise analysis: output node cannot be ground");
     }
 
     // ---------------------------------------------------------------

@@ -327,3 +327,58 @@ R2 out 0 1k
     }
     EXPECT_TRUE(found_noise);
 }
+
+// ---------------------------------------------------------------------------
+// RC low-pass filter noise — exercises reactive (C != 0) path
+// ---------------------------------------------------------------------------
+// Circuit: V1 -> R1(1k) -> out -> C1(100nF) -> GND
+// Resistor R1 generates thermal noise. The RC filter rolls off at fc = 1/(2*pi*R*C).
+// At low freq: output noise PSD = 4kT*R (full resistor noise passes through)
+// At high freq: output noise PSD drops as 1/(1 + (f/fc)^2)
+TEST(Noise, RCLowPassFilterRolloff) {
+    const char* netlist = R"(
+RC Low-Pass Noise Test
+V1 in 0 DC 0 AC 1
+R1 in out 1k
+C1 out 0 100n
+.noise v(out) v1 dec 10 10 1e6
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    auto result = solve_noise(ckt, "out", "v1",
+                              AnalysisCommand::DEC, 10, 10.0, 1e6);
+
+    ASSERT_GT(result.frequency.size(), 10u);
+
+    double R = 1e3;
+    double C = 100e-9;
+    double fc = 1.0 / (2.0 * M_PI * R * C);  // ~1592 Hz
+
+    // At low frequency (well below fc), output noise should be ~4kTR
+    double kT = BOLTZMANN * T_NOMINAL;
+    double expected_low = 4.0 * kT * R;  // V^2/Hz
+
+    // Find a frequency well below fc (e.g., 10 Hz)
+    double low_freq_noise = result.output_noise_density[0];
+    EXPECT_NEAR(low_freq_noise, expected_low, expected_low * 0.05)
+        << "Low-frequency noise should be ~4kTR";
+
+    // Find a frequency well above fc (e.g., last point at 1 MHz)
+    size_t last = result.frequency.size() - 1;
+    double high_freq = result.frequency[last];
+    double high_freq_noise = result.output_noise_density[last];
+    double expected_high = expected_low / (1.0 + std::pow(high_freq / fc, 2));
+
+    EXPECT_NEAR(high_freq_noise, expected_high, expected_high * 0.1)
+        << "High-frequency noise should roll off as 1/(1+(f/fc)^2)";
+
+    // Verify monotonic decrease (noise should decrease with frequency)
+    for (size_t i = 1; i < result.frequency.size(); ++i) {
+        EXPECT_LE(result.output_noise_density[i],
+                  result.output_noise_density[i-1] * 1.01)
+            << "Noise should decrease monotonically (or stay flat) at freq="
+            << result.frequency[i];
+    }
+}
