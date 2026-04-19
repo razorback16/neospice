@@ -942,6 +942,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             kd.l2_name = tokens[2];
             kd.coupling = parse_spice_number(tokens[3]);
             kd.line_number = line.line_number;
+            if (to_lower(kd.l1_name) == to_lower(kd.l2_name)) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": K element cannot couple an inductor to itself");
+            }
             deferred_coupled_inductors.push_back(std::move(kd));
 
         } else if (elem_type == 'b') {

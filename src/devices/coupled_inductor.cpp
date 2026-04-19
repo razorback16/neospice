@@ -6,12 +6,14 @@ namespace neospice {
 
 CoupledInductor::CoupledInductor(std::string name, Inductor* l1, Inductor* l2, double coupling)
     : Device(std::move(name)), l1_(l1), l2_(l2), coupling_(coupling),
-      mutual_(coupling * std::sqrt(l1->inductance() * l2->inductance()))
-{
-    if (coupling < -1.0 || coupling > 1.0) {
-        throw std::invalid_argument("CoupledInductor: coupling coefficient must be in [-1, 1]");
-    }
-}
+      mutual_([&]{
+          if (!l1 || !l2)
+              throw std::invalid_argument("CoupledInductor: null inductor pointer");
+          if (coupling < -1.0 || coupling > 1.0)
+              throw std::invalid_argument("CoupledInductor: coupling coefficient must be in [-1, 1]");
+          return coupling * std::sqrt(l1->inductance() * l2->inductance());
+      }())
+{}
 
 void CoupledInductor::stamp_pattern(SparsityBuilder& builder) const {
     int32_t br1 = l1_->branch_index();
