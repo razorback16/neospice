@@ -116,6 +116,10 @@ DiodeModel to_diode_model(const ModelCard& card) {
         else if (key == "tt")  model.Tt  = val;
         else if (key == "bv")  model.Bv  = val;
         else if (key == "ibv") model.Ibv = val;
+        // Flicker (1/f) noise parameters
+        else if (key == "kf")  model.Kf  = val;
+        else if (key == "af")  model.Af  = val;
+        else if (key == "ef")  model.Ef  = val;
     }
 
     return model;
