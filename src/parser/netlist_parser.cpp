@@ -1,5 +1,7 @@
 #include "parser/netlist_parser.hpp"
 #include "parser/tokenizer.hpp"
+#include "parser/subcircuit.hpp"
+#include "parser/subcircuit_expand.hpp"
 #include "parser/expression.hpp"
 #include "parser/model_cards.hpp"
 #include "devices/resistor.hpp"
@@ -15,7 +17,9 @@
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <unordered_map>
 
@@ -144,6 +148,101 @@ SourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t star
     return spec;
 }
 
+// ---------------------------------------------------------------------------
+// extract_lib_section
+// ---------------------------------------------------------------------------
+// Given the text content of a library file and a section name, return the
+// lines that appear between ".lib section_name" and ".endl [section_name]".
+// Section name comparison is case-insensitive.
+// Throws ParseError if the named section is not found.
+// If multiple matching sections exist, the first one is returned.
+// A bare ".endl" (no section name) also terminates the current section.
+static std::string extract_lib_section(const std::string& content,
+                                       const std::string& section) {
+    std::string section_lower = to_lower(section);
+
+    std::istringstream input(content);
+    std::string line;
+    bool in_section = false;
+    std::ostringstream result;
+    bool found = false;
+
+    while (std::getline(input, line)) {
+        // Tokenize the line minimally: split on whitespace
+        std::string stripped = line;
+        // Find first non-space position
+        size_t start = 0;
+        while (start < stripped.size() &&
+               std::isspace(static_cast<unsigned char>(stripped[start])))
+            ++start;
+
+        // Build lowercase version from start
+        std::string lower_stripped = stripped.substr(start);
+        std::transform(lower_stripped.begin(), lower_stripped.end(),
+                       lower_stripped.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        // Tokenize by whitespace to get keyword and args
+        std::vector<std::string> toks;
+        {
+            std::istringstream ss(lower_stripped);
+            std::string tok;
+            while (ss >> tok) toks.push_back(tok);
+        }
+
+        if (toks.empty()) {
+            if (in_section) result << line << '\n';
+            continue;
+        }
+
+        if (toks[0] == ".lib") {
+            // ".lib section_name" — section start delimiter (2 tokens)
+            if (toks.size() == 2 && toks[1] == section_lower) {
+                if (!in_section) {
+                    in_section = true;
+                    found = true;
+                }
+                // Skip the delimiter line itself
+                continue;
+            } else if (toks.size() == 2 && in_section) {
+                // A different section start inside our section — treat as content
+                // (shouldn't normally happen, but be defensive)
+                result << line << '\n';
+                continue;
+            }
+            // Any other .lib form (3+ tokens) while in_section — treat as content
+            if (in_section) result << line << '\n';
+            continue;
+        }
+
+        if (toks[0] == ".endl") {
+            if (in_section) {
+                // ".endl" with no name, or ".endl section_name" matching ours
+                if (toks.size() == 1 ||
+                    (toks.size() >= 2 && toks[1] == section_lower)) {
+                    // End of our section
+                    in_section = false;
+                    break; // stop after the first matching section
+                } else {
+                    // .endl for a different section name — treat as content
+                    result << line << '\n';
+                }
+            }
+            continue;
+        }
+
+        if (in_section) {
+            result << line << '\n';
+        }
+    }
+
+    if (!found) {
+        throw ParseError(".lib: section '" + section + "' not found in library file");
+    }
+
+    return result.str();
+}
+
 } // anonymous namespace
 
 Circuit NetlistParser::parse(const std::string& netlist) {
@@ -156,6 +255,164 @@ Circuit NetlistParser::parse(const std::string& netlist) {
            std::isspace(static_cast<unsigned char>(netlist[start])))
         ++start;
     auto lines = tokenize(netlist.substr(start));
+
+    // Pass 0: extract .subckt/.ends blocks into subcircuit_defs_
+    // This must run before Pass 1 and Pass 2 so subcircuit body lines are
+    // not processed as top-level elements.
+    {
+        subcircuit_defs_.clear();
+        std::vector<TokenizedLine> remaining_lines;
+        remaining_lines.reserve(lines.size());
+
+        int depth = 0;
+        SubcircuitDef current_def;
+        // Stack of outer defs when nesting deeper than 1
+        std::vector<SubcircuitDef> def_stack;
+
+        for (const auto& line : lines) {
+            if (line.tokens.empty()) {
+                if (depth > 0) {
+                    current_def.body.push_back(line);
+                } else {
+                    remaining_lines.push_back(line);
+                }
+                continue;
+            }
+
+            std::string first = to_lower(line.tokens[0]);
+
+            if (first == ".subckt") {
+                if (line.tokens.size() < 2) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .subckt requires a subcircuit name");
+                }
+
+                if (depth > 0) {
+                    // Nested .subckt — push current onto the stack and start a new one
+                    def_stack.push_back(std::move(current_def));
+                    current_def = SubcircuitDef{};
+                }
+
+                // Parse the .subckt header: .subckt name [port...] [key=val ...]
+                current_def.name = to_lower(line.tokens[1]);
+                current_def.ports.clear();
+                current_def.default_params.clear();
+                current_def.body.clear();
+                current_def.source_line = line.line_number;
+
+                bool seen_param = false;
+                for (size_t i = 2; i < line.tokens.size(); ++i) {
+                    const std::string& tok = line.tokens[i];
+                    auto eq_pos = tok.find('=');
+                    if (eq_pos != std::string::npos) {
+                        // key=value => parameter default
+                        std::string key = to_lower(tok.substr(0, eq_pos));
+                        std::string val = tok.substr(eq_pos + 1);
+                        current_def.default_params.emplace_back(key, val);
+                        seen_param = true;
+                    } else {
+                        // No '=' => port name; error if params already seen
+                        if (seen_param) {
+                            throw ParseError("Line " + std::to_string(line.line_number) +
+                                             ": port '" + tok +
+                                             "' appears after parameter defaults in .subckt header");
+                        }
+                        current_def.ports.push_back(to_lower(tok));
+                    }
+                }
+
+                depth++;
+
+            } else if (first == ".ends") {
+                if (depth == 0) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .ends without matching .subckt");
+                }
+
+                depth--;
+
+                if (depth == 0) {
+                    // Finished the outermost subcircuit definition
+                    subcircuit_defs_[current_def.name] = std::move(current_def);
+                    current_def = SubcircuitDef{};
+                } else {
+                    // End of a nested subcircuit. Collect the inner def, pop the
+                    // outer context from the stack, and store the inner subcircuit
+                    // as raw lines in the outer def's body (Task 7.2 will parse them
+                    // during expansion).
+                    SubcircuitDef inner_def = std::move(current_def);
+                    current_def = std::move(def_stack.back());
+                    def_stack.pop_back();
+
+                    // Reconstruct the .subckt header token line for the inner def
+                    // so the outer body contains a complete, self-contained block.
+                    TokenizedLine subckt_hdr;
+                    subckt_hdr.line_number = inner_def.source_line;
+                    subckt_hdr.tokens.push_back(".subckt");
+                    subckt_hdr.tokens.push_back(inner_def.name);
+                    for (const auto& port : inner_def.ports) {
+                        subckt_hdr.tokens.push_back(port);
+                    }
+                    for (const auto& [key, val] : inner_def.default_params) {
+                        subckt_hdr.tokens.push_back(key + "=" + val);
+                    }
+                    current_def.body.push_back(subckt_hdr);
+
+                    // Add inner body lines to outer body
+                    for (const auto& bl : inner_def.body) {
+                        current_def.body.push_back(bl);
+                    }
+
+                    // Add the .ends line to the outer body
+                    current_def.body.push_back(line);
+                }
+
+            } else {
+                // Regular line
+                if (depth > 0) {
+                    current_def.body.push_back(line);
+                } else {
+                    remaining_lines.push_back(line);
+                }
+            }
+        }
+
+        if (depth > 0) {
+            throw ParseError("Unterminated .subckt '" + current_def.name + "': missing .ends");
+        }
+
+        lines = std::move(remaining_lines);
+    }
+
+    // Pass 0.25: Pre-collect top-level .param entries so that expansion
+    // (Pass 0.5) can resolve parameter expressions like R={myR}.
+    std::unordered_map<std::string, double> global_params;
+    {
+        std::vector<std::pair<std::string, std::string>> pre_raw_params;
+        for (const auto& line : lines) {
+            if (line.tokens.empty()) continue;
+            std::string first = to_lower(line.tokens[0]);
+            if (first == ".param") {
+                for (size_t i = 1; i < line.tokens.size(); ++i) {
+                    auto eq_pos = line.tokens[i].find('=');
+                    if (eq_pos != std::string::npos) {
+                        std::string key = to_lower(line.tokens[i].substr(0, eq_pos));
+                        std::string val_str = line.tokens[i].substr(eq_pos + 1);
+                        pre_raw_params.emplace_back(key, val_str);
+                    }
+                }
+            }
+        }
+        if (!pre_raw_params.empty()) {
+            global_params = resolve_params(pre_raw_params);
+        }
+    }
+
+    // Pass 0.5: Expand X instances into primitive element lines.
+    // After this step, `lines` contains no X elements.
+    // Always call — even when subcircuit_defs_ is empty — so that X lines
+    // referencing undefined subcircuits produce a proper ParseError.
+    lines = expand_all_instances(lines, subcircuit_defs_, global_params);
 
     // Storage for params and models
     std::unordered_map<std::string, double> params;
@@ -209,6 +466,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     std::vector<DeferredMosfet> deferred_mosfets;
 
     // Pass 1: collect .model and .param cards
+    std::vector<std::pair<std::string, std::string>> raw_params;
     for (const auto& line : lines) {
         if (line.tokens.empty()) continue;
         std::string first = to_lower(line.tokens[0]);
@@ -217,16 +475,21 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             auto card = parse_model_card(line.tokens);
             models[card.name] = card;
         } else if (first == ".param") {
-            // .param key=value ...
+            // .param key=value  or  .param key={expr}
+            // Collect raw (name, expression) pairs; resolve later in dependency order.
             for (size_t i = 1; i < line.tokens.size(); ++i) {
                 auto eq_pos = line.tokens[i].find('=');
                 if (eq_pos != std::string::npos) {
                     std::string key = line.tokens[i].substr(0, eq_pos);
                     std::string val_str = line.tokens[i].substr(eq_pos + 1);
-                    params[key] = eval_expression(val_str, params);
+                    raw_params.emplace_back(key, val_str);
                 }
             }
         }
+    }
+    // Resolve all .param definitions in dependency order (handles forward references)
+    if (!raw_params.empty()) {
+        params = resolve_params(raw_params);
     }
 
     // Pass 2: parse element lines and dot commands
@@ -356,8 +619,18 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             continue;
         }
 
-        // Element lines — dispatch by first character
-        char elem_type = std::tolower(static_cast<unsigned char>(first[0]));
+        // Element lines — dispatch by first character of the device name.
+        // For hierarchical names from subcircuit expansion (e.g., "x1.r1"),
+        // extract the element type from the leaf component (after last '.').
+        char elem_type;
+        {
+            auto dot_pos = first.rfind('.');
+            if (dot_pos != std::string::npos && dot_pos + 1 < first.size()) {
+                elem_type = first[dot_pos + 1];
+            } else {
+                elem_type = std::tolower(static_cast<unsigned char>(first[0]));
+            }
+        }
 
         if (elem_type == 'r') {
             // R name n+ n- value
@@ -553,7 +826,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             fd.line_number = line.line_number;
             deferred_cccs.push_back(std::move(fd));
 
-        } else if (elem_type == 'b' || elem_type == 'x') {
+        } else if (elem_type == 'b') {
             throw ParseError("Line " + std::to_string(line.line_number) +
                              ": Unsupported element type '" + std::string(1, elem_type) + "'");
         }
@@ -655,6 +928,212 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     return ckt;
 }
 
+// Helper: resolve a filename token (possibly quoted) from a line.
+// pos points to the start of the filename token in `line`.
+// Returns the unquoted filename and advances pos past it.
+static std::string parse_filename_token(const std::string& line, size_t& pos) {
+    if (pos >= line.size()) return "";
+    char quote_char = line[pos];
+    std::string filename;
+    if (quote_char == '"' || quote_char == '\'') {
+        ++pos;
+        size_t end = line.find(quote_char, pos);
+        if (end == std::string::npos) {
+            throw ParseError("Unterminated quoted filename");
+        }
+        filename = line.substr(pos, end - pos);
+        pos = end + 1;
+    } else {
+        size_t end = pos;
+        while (end < line.size() && !std::isspace(static_cast<unsigned char>(line[end])))
+            ++end;
+        filename = line.substr(pos, end - pos);
+        pos = end;
+    }
+    return filename;
+}
+
+// Helper: open, canonicalise and read a library/include file.
+// Returns {canonical_path, file_content}.
+static std::pair<std::filesystem::path, std::string>
+open_lib_file(const std::string& filename,
+              const std::string& base_dir,
+              const std::string& directive_label) {
+    std::filesystem::path fpath(filename);
+    if (fpath.is_relative()) {
+        fpath = std::filesystem::path(base_dir) / fpath;
+    }
+    std::filesystem::path canonical_path;
+    try {
+        canonical_path = std::filesystem::canonical(fpath);
+    } catch (const std::filesystem::filesystem_error&) {
+        throw ParseError(directive_label + ": cannot open file: " + fpath.string());
+    }
+    std::ifstream ifs(canonical_path);
+    if (!ifs.is_open()) {
+        throw ParseError(directive_label + ": cannot open file: " + canonical_path.string());
+    }
+    std::ostringstream oss;
+    oss << ifs.rdbuf();
+    return {canonical_path, oss.str()};
+}
+
+std::string NetlistParser::resolve_includes(const std::string& content,
+                                             const std::string& base_dir,
+                                             std::set<std::string>& include_stack) {
+    std::ostringstream result;
+    std::istringstream input(content);
+    std::string line;
+
+    while (std::getline(input, line)) {
+        // Strip leading whitespace to find the directive keyword
+        size_t start = 0;
+        while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start])))
+            ++start;
+
+        // Build lowercase version from the non-whitespace start
+        std::string lower_line = line.substr(start);
+        std::transform(lower_line.begin(), lower_line.end(), lower_line.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        // ----------------------------------------------------------------
+        // .include filename
+        // ----------------------------------------------------------------
+        bool is_include = false;
+        size_t filename_start = 0;
+        if (lower_line.size() >= 8 && lower_line.substr(0, 8) == ".include") {
+            if (lower_line.size() == 8 || std::isspace(static_cast<unsigned char>(lower_line[8]))) {
+                is_include = true;
+                filename_start = start + 8; // position in original line after ".include"
+            }
+        }
+
+        if (is_include) {
+            // Skip whitespace after ".include"
+            size_t pos = filename_start;
+            while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos])))
+                ++pos;
+
+            if (pos >= line.size()) {
+                throw ParseError(".include directive missing filename");
+            }
+
+            std::string filename = parse_filename_token(line, pos);
+            if (filename.empty()) {
+                throw ParseError(".include directive has empty filename");
+            }
+
+            auto [canonical_path, file_content] = open_lib_file(filename, base_dir, ".include");
+            std::string canonical_str = canonical_path.string();
+            if (include_stack.count(canonical_str)) {
+                throw ParseError(".include: circular include detected for file: " + canonical_str);
+            }
+
+            include_stack.insert(canonical_str);
+            std::string included_base_dir = canonical_path.parent_path().string();
+            std::string expanded = resolve_includes(file_content, included_base_dir, include_stack);
+            include_stack.erase(canonical_str);
+
+            result << expanded;
+            if (!expanded.empty() && expanded.back() != '\n') result << '\n';
+            continue;
+        }
+
+        // ----------------------------------------------------------------
+        // .lib  — two forms:
+        //   3+ tokens: .lib filename section  => library call (include section)
+        //   2 tokens:  .lib section_name      => section start delimiter (skip at top level)
+        // Also skip bare .endl lines at top level.
+        // ----------------------------------------------------------------
+        bool is_lib = false;
+        size_t lib_rest_start = 0;
+        if (lower_line.size() >= 4 && lower_line.substr(0, 4) == ".lib") {
+            if (lower_line.size() == 4 || std::isspace(static_cast<unsigned char>(lower_line[4]))) {
+                is_lib = true;
+                lib_rest_start = start + 4; // position in original line after ".lib"
+            }
+        }
+
+        if (is_lib) {
+            // Collect whitespace-separated tokens from rest of line
+            std::string rest = line.substr(lib_rest_start);
+            std::vector<std::string> toks;
+            {
+                std::istringstream ss(rest);
+                std::string tok;
+                while (ss >> tok) toks.push_back(tok);
+            }
+
+            if (toks.size() >= 2) {
+                // .lib filename section — library call
+                std::string filename_tok = toks[0];
+                // The filename token may be quoted; parse it properly from the rest string
+                size_t pos2 = 0;
+                // Skip leading whitespace in rest
+                while (pos2 < rest.size() && std::isspace(static_cast<unsigned char>(rest[pos2])))
+                    ++pos2;
+                std::string filename = parse_filename_token(rest, pos2);
+
+                // The section name is the next non-whitespace token after the filename
+                while (pos2 < rest.size() && std::isspace(static_cast<unsigned char>(rest[pos2])))
+                    ++pos2;
+                if (pos2 >= rest.size()) {
+                    // Only one token after .lib => section delimiter, skip it
+                    continue;
+                }
+                size_t sec_end = pos2;
+                while (sec_end < rest.size() && !std::isspace(static_cast<unsigned char>(rest[sec_end])))
+                    ++sec_end;
+                std::string section = rest.substr(pos2, sec_end - pos2);
+
+                if (section.empty()) {
+                    // Treated as a section delimiter (only filename given) — skip
+                    continue;
+                }
+
+                // Resolve the library file
+                auto [canonical_path, file_content] = open_lib_file(filename, base_dir, ".lib");
+                std::string canonical_str = canonical_path.string();
+                if (include_stack.count(canonical_str)) {
+                    throw ParseError(".lib: circular include detected for file: " + canonical_str);
+                }
+
+                // Extract the named section from the library file
+                std::string section_content = extract_lib_section(file_content, section);
+
+                // Recursively resolve includes/libs within the extracted section
+                include_stack.insert(canonical_str);
+                std::string lib_base_dir = canonical_path.parent_path().string();
+                std::string expanded = resolve_includes(section_content, lib_base_dir, include_stack);
+                include_stack.erase(canonical_str);
+
+                result << expanded;
+                if (!expanded.empty() && expanded.back() != '\n') result << '\n';
+            }
+            // 0 or 1 tokens after .lib => bare ".lib" or ".lib section_name" delimiter — skip
+            continue;
+        }
+
+        // ----------------------------------------------------------------
+        // .endl — section end delimiter; skip at top level
+        // ----------------------------------------------------------------
+        bool is_endl = false;
+        if (lower_line.size() >= 5 && lower_line.substr(0, 5) == ".endl") {
+            if (lower_line.size() == 5 || std::isspace(static_cast<unsigned char>(lower_line[5]))) {
+                is_endl = true;
+            }
+        }
+        if (is_endl) {
+            // Skip .endl lines that appear at the top-level (outside a lib section context)
+            continue;
+        }
+
+        result << line << '\n';
+    }
+
+    return result.str();
+}
+
 Circuit NetlistParser::parse_file(const std::string& filepath) {
     std::ifstream ifs(filepath);
     if (!ifs.is_open()) {
@@ -662,7 +1141,23 @@ Circuit NetlistParser::parse_file(const std::string& filepath) {
     }
     std::ostringstream oss;
     oss << ifs.rdbuf();
-    return parse(oss.str());
+
+    // Resolve .include directives relative to the file's directory
+    std::string base_dir = std::filesystem::path(filepath).parent_path().string();
+    if (base_dir.empty()) {
+        base_dir = ".";
+    }
+    std::set<std::string> include_stack;
+    // Add the top-level file to the include stack to detect self-includes
+    try {
+        include_stack.insert(std::filesystem::canonical(filepath).string());
+    } catch (const std::filesystem::filesystem_error&) {
+        // If canonical fails (shouldn't happen since we already opened the file), just proceed
+        include_stack.insert(std::filesystem::absolute(filepath).string());
+    }
+    std::string expanded = resolve_includes(oss.str(), base_dir, include_stack);
+
+    return parse(expanded);
 }
 
 } // namespace neospice

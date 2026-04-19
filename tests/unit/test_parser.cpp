@@ -70,10 +70,11 @@ D1 out 0 MYDIODE
 }
 
 TEST(Parser, UnsupportedElement) {
-    // 'x' (subcircuit) is still unsupported
+    // 'b' (behavioural) is unsupported; 'x' (subcircuit instances) are
+    // silently ignored at this stage — they will be expanded in Task 7.2.
     std::string netlist = R"(
 Bad Circuit
-X1 out 0 in 0 10
+B1 out 0 V=5
 .end
 )";
     NetlistParser parser;
