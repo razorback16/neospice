@@ -70,6 +70,7 @@ add_executable(neospice_tests
     unit/test_noise.cpp
     unit/test_measure.cpp
     unit/test_output.cpp
+    unit/test_options.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )

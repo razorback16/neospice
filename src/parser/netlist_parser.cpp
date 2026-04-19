@@ -640,13 +640,30 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     auto eq_pos = tokens[i].find('=');
                     if (eq_pos == std::string::npos) continue;
                     std::string key = to_lower(tokens[i].substr(0, eq_pos));
-                    double val = parse_spice_number(tokens[i].substr(eq_pos + 1));
-                    if (key == "reltol") ckt.options.reltol = val;
-                    else if (key == "abstol") ckt.options.abstol = val;
-                    else if (key == "vntol") ckt.options.vntol = val;
-                    else if (key == "gmin") ckt.options.gmin = val;
-                    else if (key == "trtol") ckt.options.trtol = val;
-                    else if (key == "temp") ckt.options.temp = val + 273.15;
+                    std::string val_str = tokens[i].substr(eq_pos + 1);
+                    // method is a string option; all others are numeric
+                    if (key == "method") {
+                        ckt.options.method = to_lower(val_str);
+                    } else {
+                        double val = parse_spice_number(val_str);
+                        if      (key == "reltol") ckt.options.reltol = val;
+                        else if (key == "abstol") ckt.options.abstol = val;
+                        else if (key == "vntol")  ckt.options.vntol  = val;
+                        else if (key == "gmin")   ckt.options.gmin   = val;
+                        else if (key == "trtol")  ckt.options.trtol  = val;
+                        else if (key == "chgtol") ckt.options.chgtol = val;
+                        else if (key == "temp") {
+                            ckt.options.temp = val + 273.15;
+                        } else if (key == "tnom") {
+                            ckt.options.tnom = val + 273.15;
+                        } else if (key == "itl1") {
+                            ckt.options.itl1 = static_cast<int>(val);
+                            ckt.options.max_iter = ckt.options.itl1;
+                        } else if (key == "itl4") {
+                            ckt.options.itl4 = static_cast<int>(val);
+                        }
+                        // Silently ignore unrecognised option keys
+                    }
                 }
             } else if (first == ".ic") {
                 // .ic V(node)=value ...

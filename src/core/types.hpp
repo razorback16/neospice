@@ -29,7 +29,11 @@ struct SimOptions {
     double chgtol = 1e-14;   // charge tolerance for device LTE (ngspice default)
     double gmin   = 1e-12;
     double temp   = T_NOMINAL;
+    double tnom   = T_NOMINAL; // nominal temperature for model parameters (default 27°C = 300.15K)
     int max_iter  = 100;
+    int itl1      = 100;    // DC iteration limit (alias for max_iter)
+    int itl4      = 50;     // transient iteration limit per timepoint
+    std::string method = "trap"; // integration method: "trap" or "gear"
     bool verbose  = false;
 };
 
