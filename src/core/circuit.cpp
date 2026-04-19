@@ -33,6 +33,7 @@ int32_t Circuit::node(const std::string& name) {
     int32_t idx = next_node_++;
     node_map_[name] = idx;
     node_names_.push_back(name);
+    internal_nodes_.push_back(false);
     return idx;
 }
 
@@ -41,6 +42,17 @@ std::string Circuit::node_name(int32_t idx) const {
         throw std::out_of_range("Circuit::node_name: index out of range");
     }
     return node_names_[idx];
+}
+
+void Circuit::mark_internal_node(int32_t idx) {
+    if (idx >= 0 && idx < static_cast<int32_t>(internal_nodes_.size()))
+        internal_nodes_[idx] = true;
+}
+
+bool Circuit::is_internal_node(int32_t idx) const {
+    if (idx < 0 || idx >= static_cast<int32_t>(internal_nodes_.size()))
+        return false;
+    return internal_nodes_[idx];
 }
 
 int32_t Circuit::node_index(const std::string& name) const {

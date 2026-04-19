@@ -123,6 +123,9 @@ public:
     std::string node_name(int32_t idx) const;
     int32_t     node_index(const std::string& name) const;
 
+    void mark_internal_node(int32_t idx);
+    bool is_internal_node(int32_t idx) const;
+
     SimOptions                          options;
     std::vector<AnalysisCommand>        analyses;
     std::unordered_map<int32_t, double> ic;       // .ic
@@ -156,6 +159,7 @@ private:
     std::vector<std::unique_ptr<DIOModelCard>> dio_model_cards_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
+    std::vector<bool>                        internal_nodes_;
     int32_t next_node_ = 0;
     int32_t num_vars_  = 0;
     int32_t num_states_ = 0;

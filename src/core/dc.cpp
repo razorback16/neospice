@@ -4,6 +4,9 @@
 #include "core/klu_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
+#include "devices/vcvs.hpp"
+#include "devices/ccvs.hpp"
+#include "devices/vcvs_nonlinear.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -82,27 +85,31 @@ DCResult solve_dc(Circuit& ckt) {
     // 7. Build DCResult
     DCResult dc_result;
 
-    // Node voltages
+    // Node voltages (skip device-internal nodes)
     for (int32_t i = 0; i < num_nodes; ++i) {
+        if (ckt.is_internal_node(i)) continue;
         std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
         dc_result.node_voltages[key] = solution[i];
     }
 
-    // Branch currents for VSource and Inductor devices
+    // Branch currents for all devices with MNA branch variables
+    auto add_dc_current = [&](int32_t br, const std::string& dname) {
+        if (br >= 0 && br < n)
+            dc_result.branch_currents["i(" + to_lower(dname) + ")"] = solution[br];
+    };
     for (const auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<const VSource*>(dev.get())) {
-            int32_t br = vs->branch_index();
-            if (br >= 0 && br < n) {
-                std::string key = "i(" + to_lower(dev->name()) + ")";
-                dc_result.branch_currents[key] = solution[br];
-            }
-        } else if (auto* ind = dynamic_cast<const Inductor*>(dev.get())) {
-            int32_t br = ind->branch_index();
-            if (br >= 0 && br < n) {
-                std::string key = "i(" + to_lower(dev->name()) + ")";
-                dc_result.branch_currents[key] = solution[br];
-            }
-        }
+        if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
+            add_dc_current(vs->branch_index(), dev->name());
+        else if (auto* ind = dynamic_cast<const Inductor*>(dev.get()))
+            add_dc_current(ind->branch_index(), dev->name());
+        else if (auto* e = dynamic_cast<const VCVS*>(dev.get()))
+            add_dc_current(e->branch_index(), dev->name());
+        else if (auto* h = dynamic_cast<const CCVS*>(dev.get()))
+            add_dc_current(h->branch_index(), dev->name());
+        else if (auto* enl = dynamic_cast<const NonlinearVCVS*>(dev.get()))
+            add_dc_current(enl->branch_index(), dev->name());
+        else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
+            add_dc_current(etbl->branch_index(), dev->name());
     }
 
     return dc_result;
@@ -218,23 +225,27 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         sweep_result.sweep_values.push_back(sweep_x);
 
         for (int32_t i = 0; i < num_nodes; ++i) {
+            if (ckt.is_internal_node(i)) continue;
             std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
             sweep_result.voltages[key].push_back(solution[i]);
         }
+        auto add_sweep_current = [&](int32_t br, const std::string& dname) {
+            if (br >= 0 && br < n)
+                sweep_result.currents["i(" + to_lower(dname) + ")"].push_back(solution[br]);
+        };
         for (const auto& dev : ckt.devices()) {
-            if (auto* vs = dynamic_cast<const VSource*>(dev.get())) {
-                int32_t br = vs->branch_index();
-                if (br >= 0 && br < n) {
-                    std::string key = "i(" + to_lower(dev->name()) + ")";
-                    sweep_result.currents[key].push_back(solution[br]);
-                }
-            } else if (auto* ind = dynamic_cast<const Inductor*>(dev.get())) {
-                int32_t br = ind->branch_index();
-                if (br >= 0 && br < n) {
-                    std::string key = "i(" + to_lower(dev->name()) + ")";
-                    sweep_result.currents[key].push_back(solution[br]);
-                }
-            }
+            if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
+                add_sweep_current(vs->branch_index(), dev->name());
+            else if (auto* ind = dynamic_cast<const Inductor*>(dev.get()))
+                add_sweep_current(ind->branch_index(), dev->name());
+            else if (auto* e = dynamic_cast<const VCVS*>(dev.get()))
+                add_sweep_current(e->branch_index(), dev->name());
+            else if (auto* h = dynamic_cast<const CCVS*>(dev.get()))
+                add_sweep_current(h->branch_index(), dev->name());
+            else if (auto* enl = dynamic_cast<const NonlinearVCVS*>(dev.get()))
+                add_sweep_current(enl->branch_index(), dev->name());
+            else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
+                add_sweep_current(etbl->branch_index(), dev->name());
         }
     };
 

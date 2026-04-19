@@ -5,6 +5,9 @@
 #include "core/klu_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
+#include "devices/vcvs.hpp"
+#include "devices/ccvs.hpp"
+#include "devices/vcvs_nonlinear.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -149,21 +152,27 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     std::vector<VoltageSlot> voltage_slots;
     voltage_slots.reserve(num_nodes);
     for (int32_t i = 0; i < num_nodes; ++i) {
+        if (ckt.is_internal_node(i)) continue;
         voltage_slots.push_back({"v(" + to_lower(ckt.node_name(i)) + ")", i});
     }
     std::vector<CurrentSlot> current_slots;
+    auto add_current = [&](int32_t br, const std::string& dname) {
+        if (br >= 0 && br < n)
+            current_slots.push_back({"i(" + to_lower(dname) + ")", br});
+    };
     for (auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-            int32_t br = vs->branch_index();
-            if (br >= 0 && br < n) {
-                current_slots.push_back({"i(" + to_lower(dev->name()) + ")", br});
-            }
-        } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
-            int32_t br = ind->branch_index();
-            if (br >= 0 && br < n) {
-                current_slots.push_back({"i(" + to_lower(dev->name()) + ")", br});
-            }
-        }
+        if (auto* vs = dynamic_cast<VSource*>(dev.get()))
+            add_current(vs->branch_index(), dev->name());
+        else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
+            add_current(ind->branch_index(), dev->name());
+        else if (auto* e = dynamic_cast<VCVS*>(dev.get()))
+            add_current(e->branch_index(), dev->name());
+        else if (auto* h = dynamic_cast<CCVS*>(dev.get()))
+            add_current(h->branch_index(), dev->name());
+        else if (auto* enl = dynamic_cast<NonlinearVCVS*>(dev.get()))
+            add_current(enl->branch_index(), dev->name());
+        else if (auto* etbl = dynamic_cast<TableVCVS*>(dev.get()))
+            add_current(etbl->branch_index(), dev->name());
     }
 
     // Prepare result

@@ -29,16 +29,32 @@ int main(int argc, char* argv[]) {
         auto ckt = sim.load(input_path);
         auto result = sim.run(ckt);
 
+        int written = 0;
+        if (result.dc) {
+            auto dc_path = output_path;
+            if (result.ac || result.transient)
+                dc_path = std::filesystem::path(output_path).replace_extension(".dc.raw").string();
+            neospice::write_raw(dc_path, *result.dc);
+            std::cout << "DC results written to " << dc_path << "\n";
+            ++written;
+        }
+        if (result.ac) {
+            auto ac_path = output_path;
+            if (result.dc || result.transient)
+                ac_path = std::filesystem::path(output_path).replace_extension(".ac.raw").string();
+            neospice::write_raw(ac_path, *result.ac);
+            std::cout << "AC results written to " << ac_path << "\n";
+            ++written;
+        }
         if (result.transient) {
-            neospice::write_raw(output_path, *result.transient);
-            std::cout << "Transient results written to " << output_path << "\n";
-        } else if (result.dc) {
-            neospice::write_raw(output_path, *result.dc);
-            std::cout << "DC results written to " << output_path << "\n";
-        } else if (result.ac) {
-            neospice::write_raw(output_path, *result.ac);
-            std::cout << "AC results written to " << output_path << "\n";
-        } else {
+            auto tran_path = output_path;
+            if (result.dc || result.ac)
+                tran_path = std::filesystem::path(output_path).replace_extension(".tran.raw").string();
+            neospice::write_raw(tran_path, *result.transient);
+            std::cout << "Transient results written to " << tran_path << "\n";
+            ++written;
+        }
+        if (written == 0) {
             std::cerr << "No analysis commands found in netlist\n";
             return 1;
         }

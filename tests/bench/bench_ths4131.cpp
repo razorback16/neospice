@@ -210,5 +210,98 @@ int main() {
     std::printf("\n  Note: ngspice timing includes process fork/exec + .raw file I/O.\n");
     std::printf("        Both include netlist parsing and subcircuit expansion.\n");
 
+    // =====================================================================
+    // Multi-density sweep comparison
+    // =====================================================================
+    std::printf("\n=== Multi-Density AC Sweep Comparison ===\n\n");
+
+    struct SweepConfig {
+        int npoints;
+        double fstart;
+        double fstop;
+        const char* label;
+        int freq_count;
+        int runs;
+    };
+    SweepConfig sweeps[] = {
+        {10,   1.0, 100e6,  "DEC 10,   1 Hz - 100 MHz",    81, 50},
+        {100,  1.0, 100e6,  "DEC 100,  1 Hz - 100 MHz",   801, 50},
+        {1000, 1.0, 100e6,  "DEC 1000, 1 Hz - 100 MHz",  8001, 20},
+    };
+
+    const char* ng_circuits[] = {
+        "/ths4131_diff_amp.cir",
+        "/ths4131_bench_medium.cir",
+        "/ths4131_bench_large.cir",
+    };
+
+    std::printf("  %-36s %12s %12s %8s %12s %12s\n",
+                "Sweep", "neospice", "ngspice", "Speedup", "neo/pt", "ng/pt");
+    std::printf("  %-36s %12s %12s %8s %12s %12s\n",
+                "-----", "--------", "-------", "-------", "------", "-----");
+
+    for (int si = 0; si < 3; ++si) {
+        auto& sw = sweeps[si];
+
+        // --- neospice end-to-end (parse + DC + AC) ---
+        {
+            Simulator sim;
+            std::vector<double> times;
+            for (int i = 0; i < WARMUP; ++i) {
+                auto ckt = sim.load(cir_path);
+                sim.run_dc(ckt);
+                sim.run_ac(ckt, AnalysisCommand::DEC, sw.npoints, sw.fstart, sw.fstop);
+            }
+            for (int i = 0; i < sw.runs; ++i) {
+                auto t0 = Clock::now();
+                auto ckt = sim.load(cir_path);
+                sim.run_dc(ckt);
+                sim.run_ac(ckt, AnalysisCommand::DEC, sw.npoints, sw.fstart, sw.fstop);
+                auto t1 = Clock::now();
+                times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+            }
+            auto neo_s = compute_stats(times);
+
+            // --- ngspice end-to-end (fork + parse + sim + raw) ---
+            double ng_median = 0;
+            bool ng_ok = false;
+            if (ng_circuits[si]) {
+                std::string ng_cir = std::string(TEST_CIRCUITS_DIR) + ng_circuits[si];
+                NgspiceRunner ng(NGSPICE_BINARY);
+                std::vector<double> ng_times;
+                for (int i = 0; i < WARMUP; ++i) {
+                    try { ng.run_dc(ng_cir); } catch (...) {}
+                }
+                for (int i = 0; i < sw.runs; ++i) {
+                    auto t0 = Clock::now();
+                    try { ng.run_dc(ng_cir); } catch (...) { continue; }
+                    auto t1 = Clock::now();
+                    ng_times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+                }
+                if (!ng_times.empty()) {
+                    auto ng_s = compute_stats(ng_times);
+                    ng_median = ng_s.median_us;
+                    ng_ok = true;
+                }
+            }
+
+            double neo_ms = neo_s.median_us / 1000.0;
+            double neo_per_pt = neo_s.median_us / sw.freq_count;
+
+            if (ng_ok) {
+                double ng_ms = ng_median / 1000.0;
+                double ng_per_pt = ng_median / sw.freq_count;
+                double speedup = ng_median / neo_s.median_us;
+                std::printf("  %-36s %9.2f ms %9.2f ms %7.1fx %9.1f µs %9.1f µs\n",
+                            sw.label, neo_ms, ng_ms, speedup, neo_per_pt, ng_per_pt);
+            } else {
+                std::printf("  %-36s %9.2f ms %12s %8s %9.1f µs %12s\n",
+                            sw.label, neo_ms, "N/A", "N/A", neo_per_pt, "N/A");
+            }
+        }
+    }
+
+    std::printf("\n  Note: neospice = in-process (parse+DC+AC). ngspice = subprocess (fork+parse+sim+RAW I/O).\n");
+
     return 0;
 }
