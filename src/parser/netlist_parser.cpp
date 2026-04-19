@@ -11,6 +11,7 @@
 #include "devices/vcvs.hpp"
 #include "devices/vccs.hpp"
 #include "devices/ccvs.hpp"
+#include "devices/cccs.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include <algorithm>
 #include <cctype>
@@ -180,6 +181,17 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int line_number;
     };
     std::vector<DeferredCCVS> deferred_ccvs;
+
+    // Deferred CCCS (F elements): resolved after all VSource devices exist so
+    // we can locate the sensing VSource by name and pass a pointer to CCCS.
+    struct DeferredCCCS {
+        std::string name;
+        int32_t np, nn;
+        std::string vsense_name;
+        double gain;
+        int line_number;
+    };
+    std::vector<DeferredCCCS> deferred_cccs;
 
     // Deferred MOSFETs: parsed M-cards are resolved in a second pass once
     // all .model cards are known.  node indices are already mapped (we have
@@ -486,8 +498,22 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             hd.line_number = line.line_number;
             deferred_ccvs.push_back(std::move(hd));
 
-        } else if (elem_type == 'f' ||
-                   elem_type == 'b' || elem_type == 'x') {
+        } else if (elem_type == 'f') {
+            // F name np nn Vsense gain
+            if (tokens.size() < 5) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": CCCS requires name, np, nn, Vsense, gain");
+            }
+            DeferredCCCS fd;
+            fd.name        = tokens[0];
+            fd.np          = ckt.node(tokens[1]);
+            fd.nn          = ckt.node(tokens[2]);
+            fd.vsense_name = tokens[3];
+            fd.gain        = parse_spice_number(tokens[4]);
+            fd.line_number = line.line_number;
+            deferred_cccs.push_back(std::move(fd));
+
+        } else if (elem_type == 'b' || elem_type == 'x') {
             throw ParseError("Line " + std::to_string(line.line_number) +
                              ": Unsupported element type '" + std::string(1, elem_type) + "'");
         }
@@ -512,6 +538,25 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                              hd.vsense_name + "'");
         }
         ckt.add_device(std::make_unique<CCVS>(hd.name, hd.np, hd.nn, hd.rm, vs));
+    }
+
+    // Resolve deferred CCCS (F elements) — find sensing VSource by name.
+    for (const auto& fd : deferred_cccs) {
+        const VSource* vs = nullptr;
+        for (const auto& dev : ckt.devices()) {
+            if (auto* v = dynamic_cast<const VSource*>(dev.get())) {
+                if (to_lower(v->name()) == to_lower(fd.vsense_name)) {
+                    vs = v;
+                    break;
+                }
+            }
+        }
+        if (!vs) {
+            throw ParseError("Line " + std::to_string(fd.line_number) +
+                             ": CCCS '" + fd.name + "' references unknown voltage source '" +
+                             fd.vsense_name + "'");
+        }
+        ckt.add_device(std::make_unique<CCCS>(fd.name, fd.np, fd.nn, fd.gain, vs));
     }
 
     // Resolve deferred diodes

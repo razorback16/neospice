@@ -54,6 +54,7 @@ add_executable(neospice_tests
     unit/test_vcvs.cpp
     unit/test_vccs.cpp
     unit/test_ccvs.cpp
+    unit/test_cccs.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
