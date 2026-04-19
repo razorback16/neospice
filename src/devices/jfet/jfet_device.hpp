@@ -57,6 +57,9 @@ public:
     /// Called by the parser after make() when ic=VDS,VGS is present.
     void set_ic(double vds, bool vds_given, double vgs, bool vgs_given);
 
+    std::vector<NoiseSource> noise_sources(
+        double freq, const std::vector<double>& dc_solution) const override;
+
 private:
     explicit JFETDevice(std::string name) : Device(std::move(name)) {}
 
