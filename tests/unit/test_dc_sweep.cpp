@@ -4,7 +4,6 @@
 #include "parser/netlist_parser.hpp"
 #include "devices/vsource.hpp"
 #include "devices/resistor.hpp"
-#include "devices/diode.hpp"
 #include "output/raw_writer.hpp"
 #include <cmath>
 #include <filesystem>
@@ -77,44 +76,38 @@ TEST(DCSweep, ResistorDividerViaSimulator) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3.  Diode IV sweep
+// 3.  Diode IV sweep (UCB DIODevice via netlist parser)
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(DCSweep, DiodeIV) {
-    // V1 anode 0 DC 0; D1 anode cathode; R1 cathode 0 1 ohm
-    Circuit ckt;
-    auto n_anode   = ckt.node("anode");
-    auto n_cathode = ckt.node("cathode");
-    ckt.add_device(make_unique<VSource>("V1", n_anode, GROUND_INTERNAL, 0.0));
-    DiodeModel dm;
-    dm.Is = 1e-14;
-    dm.N  = 1.0;
-    ckt.add_device(make_unique<Diode>("D1", n_anode, n_cathode, dm));
-    ckt.add_device(make_unique<Resistor>("R1", n_cathode, GROUND_INTERNAL, 1.0));
-    ckt.finalize();
+    const char* netlist = R"(
+Diode IV Sweep
+V1 anode 0 DC 0
+D1 anode cathode DMOD
+R1 cathode 0 1
+.model DMOD D(IS=1e-14 N=1)
+.dc V1 -1 0.6 0.1
+.end
+)";
+    Simulator sim;
+    Circuit ckt = sim.parse(netlist);
+    SimulationResult result = sim.run(ckt);
 
-    std::vector<DCSweepParam> params;
-    DCSweepParam p;
-    p.source_name = "V1";
-    p.start = -1.0;
-    p.stop  =  0.6;
-    p.step  =  0.1;
-    params.push_back(p);
-
-    DCSweepResult result = solve_dc_sweep(ckt, params);
+    ASSERT_TRUE(result.dc_sweep.has_value());
+    auto& sw = *result.dc_sweep;
 
     // Reverse bias: nearly zero current (V_cathode ≈ 0)
     // Forward bias around 0.6 V: exponential current
-    ASSERT_FALSE(result.sweep_values.empty());
+    ASSERT_FALSE(sw.sweep_values.empty());
 
     // Find the point closest to V1 = -1.0 (first point)
-    EXPECT_NEAR(result.voltages.at("v(anode)")[0], -1.0, 1e-3);
+    EXPECT_NEAR(sw.voltages.at("v(anode)")[0], -1.0, 1e-3);
     // V(cathode) at reverse bias ≈ 0 (tiny leakage)
-    EXPECT_NEAR(result.voltages.at("v(cathode)")[0], 0.0, 1e-6);
+    EXPECT_NEAR(sw.voltages.at("v(cathode)")[0], 0.0, 1e-6);
 
     // At forward bias (last point, V1 ≈ 0.6 V), current should be > 10 uA
     // (with Is=1e-14, N=1, VT≈26mV: I = 1e-14*exp(0.6/0.026) ≈ 0.12 mA)
-    size_t last = result.sweep_values.size() - 1;
-    double i_fwd = std::abs(result.currents.at("i(v1)")[last]);
+    size_t last = sw.sweep_values.size() - 1;
+    double i_fwd = std::abs(sw.currents.at("i(v1)")[last]);
     EXPECT_GT(i_fwd, 1e-5);
 }
 

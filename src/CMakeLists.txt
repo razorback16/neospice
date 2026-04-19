@@ -31,7 +31,7 @@ add_library(neospice_lib
     devices/inductor.cpp
     devices/coupled_inductor.cpp
     devices/tline.cpp
-    devices/diode.cpp
+
     parser/tokenizer.cpp
     parser/expression.cpp
     parser/model_cards.cpp

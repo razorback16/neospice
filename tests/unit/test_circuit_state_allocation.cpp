@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include "core/circuit.hpp"
-#include "devices/diode.hpp"
 #include "devices/device.hpp"
 
 using namespace neospice;

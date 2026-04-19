@@ -10,7 +10,6 @@
 #include "devices/coupled_inductor.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
-#include "devices/diode.hpp"
 #include "devices/dio/dio_device.hpp"
 #include "devices/vcvs.hpp"
 #include "devices/vccs.hpp"

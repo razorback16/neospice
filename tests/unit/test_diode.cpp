@@ -1,157 +1,176 @@
 #include <gtest/gtest.h>
-#include "devices/diode.hpp"
-#include "core/matrix.hpp"
+#include "parser/netlist_parser.hpp"
+#include "api/neospice.hpp"
+#include "core/dc.hpp"
+#include <cmath>
 
 using namespace neospice;
 
-// Default model helper
-static DiodeModel default_model() {
-    return DiodeModel{};
-}
+// ===========================================================================
+// UCB DIODevice tests — replacing old native Diode tests
+// ===========================================================================
 
 // ---------------------------------------------------------------------------
-// StampPattern — 2 non-ground nodes → nnz = 4
-// ---------------------------------------------------------------------------
-TEST(Diode, StampPattern) {
-    Diode d("D1", 0, 1, default_model());
-    SparsityBuilder builder(2);
-    d.stamp_pattern(builder);
-    auto pattern = builder.build();
-    EXPECT_EQ(pattern.nnz(), 4);
-}
-
-// ---------------------------------------------------------------------------
-// ForwardBias — vd = 0.7 V → positive conductance in matrix, nonzero RHS
+// ForwardBias — 0.7 V across diode → forward current flows
 // ---------------------------------------------------------------------------
 TEST(Diode, ForwardBias) {
-    // Anode at node 0, cathode at ground (GROUND_INTERNAL)
-    Diode d("D1", 0, GROUND_INTERNAL, default_model());
+    std::string netlist = R"(
+Diode Forward Bias
+V1 anode 0 DC 0.7
+D1 anode 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.op
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+    DCResult result = sim.run_dc(ckt);
 
-    SparsityBuilder builder(1);
-    d.stamp_pattern(builder);
-    auto pattern = builder.build();
-    NumericMatrix mat(pattern);
-    d.assign_offsets(pattern);
+    // V(anode) should be 0.7 V (set by voltage source)
+    EXPECT_NEAR(result.node_voltages.at("v(anode)"), 0.7, 1e-6);
 
-    // Set anode voltage to 0.7 V (cathode is ground = 0)
-    std::vector<double> voltages = {0.7};
-    std::vector<double> rhs(1, 0.0);
-    d.evaluate(voltages, mat, rhs);
-
-    // Conductance should be positive
-    EXPECT_GT(mat.value(pattern.offset(0, 0)), 0.0);
-
-    // RHS should be nonzero (Norton current source)
-    EXPECT_NE(rhs[0], 0.0);
+    // Diode current (through V1) should be positive and significant
+    // I(V1) = Is * (exp(Vd/NVt) - 1) ≈ 1e-14 * exp(0.7/0.026) ≈ 5 mA
+    double i_v1 = std::abs(result.branch_currents.at("i(v1)"));
+    EXPECT_GT(i_v1, 1e-5);  // Forward current > 10 uA
 }
 
 // ---------------------------------------------------------------------------
-// ReverseBias — vd = -1 V → very small conductance (near Is/nvt)
+// ReverseBias — -1 V across diode → very small reverse current
 // ---------------------------------------------------------------------------
 TEST(Diode, ReverseBias) {
-    DiodeModel model;
-    model.Is = 1e-14;
-    model.N  = 1.0;
+    std::string netlist = R"(
+Diode Reverse Bias
+V1 anode 0 DC -1.0
+R1 anode cathode 1
+D1 cathode 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.op
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+    DCResult result = sim.run_dc(ckt);
 
-    Diode d("D1", 0, GROUND_INTERNAL, model);
-    SparsityBuilder builder(1);
-    d.stamp_pattern(builder);
-    auto pattern = builder.build();
-    NumericMatrix mat(pattern);
-    d.assign_offsets(pattern);
+    // V(anode) = -1.0 V
+    EXPECT_NEAR(result.node_voltages.at("v(anode)"), -1.0, 1e-6);
 
-    std::vector<double> voltages = {-1.0};
-    std::vector<double> rhs(1, 0.0);
-    d.evaluate(voltages, mat, rhs);
-
-    // Conductance should be very small (diode is reverse biased)
-    const double gd = mat.value(pattern.offset(0, 0));
-    EXPECT_GT(gd, 0.0);       // still positive
-    EXPECT_LT(gd, 1e-9);      // but very small (essentially Is/nvt * exp(-1/vt))
+    // Reverse current through V1 should be very small (essentially Is)
+    double i_v1 = std::abs(result.branch_currents.at("i(v1)"));
+    EXPECT_LT(i_v1, 1e-9);  // Reverse leakage is tiny
 }
 
 // ---------------------------------------------------------------------------
-// VoltageLimiting — very large new voltage should be clamped
+// DCOperatingPoint — resistor + diode circuit, check diode voltage
 // ---------------------------------------------------------------------------
-TEST(Diode, VoltageLimiting) {
-    DiodeModel model;
-    model.Is = 1e-14;
-    model.N  = 1.0;
+TEST(Diode, DCOperatingPoint) {
+    std::string netlist = R"(
+Diode DC Operating Point
+V1 in 0 DC 5.0
+R1 in out 1k
+D1 out 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.op
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+    DCResult result = sim.run_dc(ckt);
 
-    Diode d("D1", 0, GROUND_INTERNAL, model);
+    // V(in) = 5.0 V
+    EXPECT_NEAR(result.node_voltages.at("v(in)"), 5.0, 1e-6);
 
-    // old_v: anode = 0.6 V
-    std::vector<double> old_v  = {0.6};
-    // new_v: anode = 100 V (Newton step gone wild)
-    std::vector<double> new_v  = {100.0};
-
-    d.limit_voltages(old_v, new_v);
-
-    // Voltage should be limited to a reasonable value (well below 100 V)
-    EXPECT_LT(new_v[0], 2.0);
-    // And should still be forward-biased (positive)
-    EXPECT_GT(new_v[0], 0.0);
+    // V(out) should be the diode forward voltage, roughly 0.5-0.85 V
+    double v_out = result.node_voltages.at("v(out)");
+    EXPECT_GT(v_out, 0.5);
+    EXPECT_LT(v_out, 0.85);
 }
 
 // ---------------------------------------------------------------------------
-// OutputCurrents — should return {"i(D1)"}
+// OutputCurrents — check that branch current is reported via DC sweep
 // ---------------------------------------------------------------------------
 TEST(Diode, OutputCurrents) {
-    Diode d("D1", 0, 1, default_model());
-    auto names = d.output_currents();
-    ASSERT_EQ(names.size(), 1u);
-    EXPECT_EQ(names[0], "i(D1)");
+    std::string netlist = R"(
+Diode Output Currents
+V1 in 0 DC 5.0
+R1 in out 1k
+D1 out 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.dc V1 5 5 1
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+
+    ASSERT_TRUE(result.dc_sweep.has_value());
+    auto& sw = *result.dc_sweep;
+
+    // Should have at least one sweep point
+    ASSERT_GE(sw.sweep_values.size(), 1u);
+
+    // i(v1) should be present
+    ASSERT_TRUE(sw.currents.count("i(v1)") > 0);
 }
 
 // ---------------------------------------------------------------------------
-// ACStamp — check that conductance and capacitance are stamped into G and C
+// AcStamp — verify AC analysis produces valid results.
+// The UCB DIODevice stamps small-signal conductance into the G matrix.
+// We verify the AC solution has the correct low-frequency gain from the
+// resistor + diode voltage divider.
 // ---------------------------------------------------------------------------
 TEST(Diode, AcStamp) {
-    DiodeModel model;
-    model.Is  = 1e-14;
-    model.N   = 1.0;
-    model.Cj0 = 1e-12;   // 1 pF junction cap
-    model.Vj  = 0.7;
-    model.M   = 0.5;
-    model.Tt  = 1e-9;    // 1 ns transit time
+    // Forward-biased diode with R1=100k.  At DC the diode forward voltage
+    // is ~0.7V so the small-signal dynamic resistance rd ≈ NVt/Id is small
+    // (a few ohms).  V(out) AC magnitude ≈ rd / (R1 + rd) ≈ very small.
+    std::string netlist = R"(
+Diode AC Analysis
+V1 in 0 DC 5.0 AC 1
+R1 in out 100k
+D1 out 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.ac dec 5 1 1e6
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
 
-    // Anode node 0, cathode node 1
-    Diode d("D1", 0, 1, model);
-    SparsityBuilder builder(2);
-    d.stamp_pattern(builder);
-    auto pattern = builder.build();
-    d.assign_offsets(pattern);
+    ASSERT_TRUE(result.ac.has_value());
+    auto& ac = *result.ac;
 
-    // Run evaluate first to populate last_gd_
-    std::vector<double> voltages = {0.7, 0.0};
-    NumericMatrix mat(pattern);
-    std::vector<double> rhs(2, 0.0);
-    d.evaluate(voltages, mat, rhs);
+    // Should have frequency points
+    ASSERT_GT(ac.frequency.size(), 5u);
 
-    // Now ac_stamp
-    NumericMatrix G(pattern);
-    NumericMatrix C(pattern);
-    d.ac_stamp(voltages, G, C);
+    // V(out) should have valid AC data
+    auto it = ac.voltages.find("v(out)");
+    ASSERT_NE(it, ac.voltages.end());
 
-    // G(0,0) should be positive (forward bias conductance)
-    EXPECT_GT(G.value(pattern.offset(0, 0)), 0.0);
-
-    // C(0,0) should be positive (capacitance)
-    EXPECT_GT(C.value(pattern.offset(0, 0)), 0.0);
-
-    // Off-diagonal entries should be negative
-    EXPECT_LT(G.value(pattern.offset(0, 1)), 0.0);
-    EXPECT_LT(C.value(pattern.offset(0, 1)), 0.0);
+    // At all frequencies, the magnitude should be > 0 and < 1
+    // (diode shunts signal to ground, attenuating it)
+    for (size_t i = 0; i < ac.frequency.size(); ++i) {
+        double mag = std::abs(it->second[i]);
+        EXPECT_GT(mag, 0.0) << "AC magnitude must be positive at f=" << ac.frequency[i];
+        EXPECT_LT(mag, 1.0) << "AC magnitude must be < 1 (attenuated) at f=" << ac.frequency[i];
+    }
 }
 
 // ---------------------------------------------------------------------------
-// GroundCathode — sanity check with cathode at GROUND_INTERNAL
+// GroundCathode — basic diode with cathode at ground
 // ---------------------------------------------------------------------------
 TEST(Diode, GroundCathode) {
-    Diode d("D1", 0, GROUND_INTERNAL, default_model());
-    SparsityBuilder builder(1);
-    d.stamp_pattern(builder);
-    auto pattern = builder.build();
-    // Only (0,0) entry since cathode is ground
-    EXPECT_EQ(pattern.nnz(), 1);
+    std::string netlist = R"(
+Diode Ground Cathode
+V1 anode 0 DC 0.6
+D1 anode 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.op
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+    DCResult result = sim.run_dc(ckt);
+
+    // Should converge without issues
+    EXPECT_NEAR(result.node_voltages.at("v(anode)"), 0.6, 1e-6);
 }

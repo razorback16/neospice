@@ -1,21 +1,21 @@
 #include <gtest/gtest.h>
 #include "devices/device.hpp"
-#include "devices/diode.hpp"
 #include "devices/capacitor.hpp"
+#include "devices/resistor.hpp"
 
 using namespace neospice;
 
 TEST(DeviceInterface, DefaultStateCountIsZero) {
-    DiodeModel m;
-    Diode d("D1", 1, 0, m);
-    EXPECT_EQ(0, d.state_vars());
+    // Use Resistor as a simple stateless device (old Diode was also stateless)
+    Resistor r("R1", 1, 0, 1000.0);
+    EXPECT_EQ(0, r.state_vars());
     Capacitor c("C1", 1, 0, 1e-9);
     EXPECT_EQ(0, c.state_vars());
 }
 
 TEST(DeviceInterface, SetStatePtrsDefaultIsNoop) {
-    DiodeModel m;
-    Diode d("D1", 1, 0, m);
+    // Use Resistor as a simple stateless device
+    Resistor r("R1", 1, 0, 1000.0);
     // Must not crash / throw for a stateless device when given nullptrs
-    d.set_state_ptrs(nullptr, nullptr, nullptr, 0);
+    r.set_state_ptrs(nullptr, nullptr, nullptr, 0);
 }

@@ -106,27 +106,6 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
     return card;
 }
 
-DiodeModel to_diode_model(const ModelCard& card) {
-    DiodeModel model;
-    model.name = card.name;
-
-    for (const auto& [key, val] : card.params) {
-        if (key == "is")       model.Is  = val;
-        else if (key == "n")   model.N   = val;
-        else if (key == "cj0" || key == "cjo") model.Cj0 = val;
-        else if (key == "vj")  model.Vj  = val;
-        else if (key == "m")   model.M   = val;
-        else if (key == "tt")  model.Tt  = val;
-        else if (key == "bv")  model.Bv  = val;
-        else if (key == "ibv") model.Ibv = val;
-        // Flicker (1/f) noise parameters
-        else if (key == "kf")  model.Kf  = val;
-        else if (key == "af")  model.Af  = val;
-    }
-
-    return model;
-}
-
 // ---------------------------------------------------------------------------
 // to_bsim4_card — parse a .model LEVEL=14 card into a BSIM4v7ModelCard via
 // the UCB BSIM4mParam dispatcher.

@@ -1,5 +1,4 @@
 #pragma once
-#include "devices/diode.hpp"
 #include "devices/switch.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
 #include "devices/bjt/bjt_device.hpp"            // BJTModelCard
@@ -21,8 +20,6 @@ struct ModelCard {
 };
 
 ModelCard parse_model_card(const std::vector<std::string>& tokens);
-DiodeModel to_diode_model(const ModelCard& card);
-
 /// Translate a parsed .model card (LEVEL=14 NMOS/PMOS) into a
 /// BSIM4v7ModelCard using the UCB BSIM4mParam dispatcher.  The returned
 /// card is heap-allocated so the parser can hand ownership to the Circuit
