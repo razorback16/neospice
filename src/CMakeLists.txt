@@ -24,6 +24,7 @@ add_library(neospice_lib
     parser/tokenizer.cpp
     parser/expression.cpp
     parser/model_cards.cpp
+    parser/subcircuit_expand.cpp
     parser/netlist_parser.cpp
     api/neospice.cpp
     output/raw_writer.cpp

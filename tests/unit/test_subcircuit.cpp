@@ -256,11 +256,11 @@ R1 a k rleak
 }
 
 // -----------------------------------------------------------------------
-// 11. X element no longer throws unsupported
+// 11. X element referencing unknown subcircuit throws ParseError
 // -----------------------------------------------------------------------
-TEST(Subcircuit, XElementNoLongerThrows) {
-    // After removing 'x' from the unsupported list, an X element line
-    // should be silently ignored (not throw).
+TEST(Subcircuit, XElementUnknownSubcircuitThrows) {
+    // X element referencing a subcircuit that doesn't exist should throw
+    // a ParseError now that expansion is implemented.
     std::string netlist = wrap(R"(
 R1 a b 1k
 Xinv inv a b
@@ -268,10 +268,28 @@ Xinv inv a b
 )");
 
     NetlistParser parser;
-    // Should NOT throw
+    EXPECT_THROW(parser.parse(netlist), ParseError);
+}
+
+// -----------------------------------------------------------------------
+// 11b. X element with defined subcircuit expands correctly
+// -----------------------------------------------------------------------
+TEST(Subcircuit, XElementExpandsWhenDefined) {
+    // X element referencing a defined subcircuit should expand without error
+    std::string netlist = wrap(R"(
+.subckt inv a b
+R1 a b 1k
+.ends inv
+
+R_top a b 1k
+Xinv a b inv
+.op
+)");
+
+    NetlistParser parser;
     EXPECT_NO_THROW({
         auto ckt = parser.parse(netlist);
-        EXPECT_EQ(ckt.devices().size(), 1u); // only R1
+        EXPECT_EQ(ckt.devices().size(), 2u); // R_top + xinv.r1
     });
 }
 

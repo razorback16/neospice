@@ -1,6 +1,7 @@
 #include "parser/netlist_parser.hpp"
 #include "parser/tokenizer.hpp"
 #include "parser/subcircuit.hpp"
+#include "parser/subcircuit_expand.hpp"
 #include "parser/expression.hpp"
 #include "parser/model_cards.hpp"
 #include "devices/resistor.hpp"
@@ -286,6 +287,12 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         lines = std::move(remaining_lines);
     }
 
+    // Pass 0.5: Expand X instances into primitive element lines.
+    // After this step, `lines` contains no X elements.
+    // Always call — even when subcircuit_defs_ is empty — so that X lines
+    // referencing undefined subcircuits produce a proper ParseError.
+    lines = expand_all_instances(lines, subcircuit_defs_);
+
     // Storage for params and models
     std::unordered_map<std::string, double> params;
     std::unordered_map<std::string, ModelCard> models;
@@ -491,8 +498,18 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             continue;
         }
 
-        // Element lines — dispatch by first character
-        char elem_type = std::tolower(static_cast<unsigned char>(first[0]));
+        // Element lines — dispatch by first character of the device name.
+        // For hierarchical names from subcircuit expansion (e.g., "x1.r1"),
+        // extract the element type from the leaf component (after last '.').
+        char elem_type;
+        {
+            auto dot_pos = first.rfind('.');
+            if (dot_pos != std::string::npos && dot_pos + 1 < first.size()) {
+                elem_type = first[dot_pos + 1];
+            } else {
+                elem_type = std::tolower(static_cast<unsigned char>(first[0]));
+            }
+        }
 
         if (elem_type == 'r') {
             // R name n+ n- value
