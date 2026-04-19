@@ -393,11 +393,8 @@ Xinv pri sec xfmr
     // Inductor names should carry the instance prefix "xinv."
     std::string l1_name = ki->inductor1()->name();
     std::string l2_name = ki->inductor2()->name();
-    // Names are stored as-parsed; verify they contain the hierarchy prefix
-    EXPECT_NE(l1_name.find("xinv"), std::string::npos)
-        << "L1 name '" << l1_name << "' missing 'xinv' prefix";
-    EXPECT_NE(l2_name.find("xinv"), std::string::npos)
-        << "L2 name '" << l2_name << "' missing 'xinv' prefix";
+    EXPECT_EQ(l1_name, "xinv.l1");
+    EXPECT_EQ(l2_name, "xinv.l2");
 
     EXPECT_DOUBLE_EQ(ki->coupling(), 0.99);
 }
@@ -417,7 +414,7 @@ TEST(Subcircuit, KElementInSubcircuitACTransformer) {
     //
     //   V1 in 0 AC 1
     //   R1 in pri 1
-    //   Xtr pri sec xfmr      ; expands to xinv.l1, xinv.l2, coupling k
+    //   Xtr pri sec xfmr      ; expands to xtr.l1, xtr.l2, coupling k
     //   R2 sec 0 1k
     //   .ac dec 1 1k 1k
     //
@@ -447,7 +444,6 @@ R2 sec 0 1k
         << "v(sec) not found in AC result (keys: check node names after expansion)";
 
     double v_sec_mag = std::abs(it_sec->second[0]);
-    // Allow ±0.5 deviation — same tolerance as the flat-circuit AC test
-    EXPECT_NEAR(v_sec_mag, 2.0, 0.5)
+    EXPECT_NEAR(v_sec_mag, 2.0, 0.3)
         << "Transformer gain is " << v_sec_mag << "; expected ~2 (sqrt(L2/L1))";
 }
