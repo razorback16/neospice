@@ -1,0 +1,64 @@
+model:
+  ngspice_prefix: "BJT"
+  neospice_name: "bjt"
+  neospice_namespace: "bjt"
+  instance_struct: "BJTinstance"
+  model_struct: "BJTmodel"
+  instance_tag: "sBJTinstance"
+  model_tag: "sBJTmodel"
+  cpp_instance: "BJTInstance"
+  cpp_model: "BJTModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "col", field: "BJTcolNode" }
+    - { name: "base", field: "BJTbaseNode" }
+    - { name: "emit", field: "BJTemitNode" }
+    - { name: "subst", field: "BJTsubstNode" }
+  state_count: 24
+  state_base_field: "BJTstate"
+  next_instance_field: "BJTnextInstance"
+  instances_field: "BJTinstances"
+  next_model_field: "BJTnextModel"
+  model_ptr_field: "BJTmodPtr"
+  name_field: "BJTname"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "bjtsetup.c"
+    load: "bjtload.c"
+    temp: "bjttemp.c"
+    param: "bjtparam.c"
+    mpar: "bjtmpar.c"
+    devsup: "bjt.c"
+  skip_files:
+    - "bjtacld.c"
+    - "bjtask.c"
+    - "bjtconv.c"
+    - "bjtdel.c"
+    - "bjtdest.c"
+    - "bjtdisto.c"
+    - "bjtdset.c"
+    - "bjtgetic.c"
+    - "bjtinit.c"
+    - "bjtmask.c"
+    - "bjtmdel.c"
+    - "bjtnoise.c"
+    - "bjtpzld.c"
+    - "bjtsacl.c"
+    - "bjtsload.c"
+    - "bjtsoachk.c"
+    - "bjtsprt.c"
+    - "bjtsset.c"
+    - "bjtsupd.c"
+    - "bjttrunc.c"
+  defines:
+    - "PREDICTOR"
+  has_internal_nodes: true
+  setup_function: "BJTsetup"
+  temp_function: "BJTtemp"
+  load_function: "BJTload"
+  geometry:
+    - { name: "area", field: "BJTarea", given: "BJTareaGiven", default: "1.0" }
+    - { name: "areab", field: "BJTareab", given: "BJTareabGiven", default: "1.0" }
+    - { name: "areac", field: "BJTareac", given: "BJTareacGiven", default: "1.0" }
+    - { name: "m", field: "BJTm", given: "BJTmGiven", default: "1.0" }

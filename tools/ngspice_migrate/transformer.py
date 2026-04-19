@@ -822,10 +822,11 @@ class Transformer:
 
         # Also strip model-specific def header if present
         if self.cfg.instance_struct:
-            # e.g. "bsim4def.h" or "<model>def.h"
-            def_header = self.cfg.instance_struct.lower().replace("instance", "") + "def.h"
+            # e.g. "bsim4def.h" or "<model>def.h" or "<model>defs.h"
+            def_base = self.cfg.instance_struct.lower().replace("instance", "") + "def"
+            # Match both "xyzdef.h" and "xyzdefs.h" patterns
             body = re.sub(
-                r'^[ \t]*#\s*include\s+"' + re.escape(def_header) + r'"\s*\n',
+                r'^[ \t]*#\s*include\s+"' + re.escape(def_base) + r's?\.h"\s*\n',
                 "",
                 body,
                 flags=re.MULTILINE,
