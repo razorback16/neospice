@@ -1,5 +1,6 @@
 #include "parser/netlist_parser.hpp"
 #include "parser/tokenizer.hpp"
+#include "parser/subcircuit.hpp"
 #include "parser/expression.hpp"
 #include "parser/model_cards.hpp"
 #include "devices/resistor.hpp"
@@ -156,6 +157,126 @@ Circuit NetlistParser::parse(const std::string& netlist) {
            std::isspace(static_cast<unsigned char>(netlist[start])))
         ++start;
     auto lines = tokenize(netlist.substr(start));
+
+    // Pass 0: extract .subckt/.ends blocks into subcircuit_defs_
+    // This must run before Pass 1 and Pass 2 so subcircuit body lines are
+    // not processed as top-level elements.
+    {
+        subcircuit_defs_.clear();
+        std::vector<TokenizedLine> remaining_lines;
+        remaining_lines.reserve(lines.size());
+
+        int depth = 0;
+        SubcircuitDef current_def;
+        // Stack of outer defs when nesting deeper than 1
+        std::vector<SubcircuitDef> def_stack;
+
+        for (const auto& line : lines) {
+            if (line.tokens.empty()) {
+                if (depth > 0) {
+                    current_def.body.push_back(line);
+                } else {
+                    remaining_lines.push_back(line);
+                }
+                continue;
+            }
+
+            std::string first = to_lower(line.tokens[0]);
+
+            if (first == ".subckt") {
+                if (line.tokens.size() < 2) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .subckt requires a subcircuit name");
+                }
+
+                if (depth > 0) {
+                    // Nested .subckt — push current onto the stack and start a new one
+                    def_stack.push_back(std::move(current_def));
+                    current_def = SubcircuitDef{};
+                }
+
+                // Parse the .subckt header: .subckt name [port...] [key=val ...]
+                current_def.name = to_lower(line.tokens[1]);
+                current_def.ports.clear();
+                current_def.default_params.clear();
+                current_def.body.clear();
+
+                for (size_t i = 2; i < line.tokens.size(); ++i) {
+                    const std::string& tok = line.tokens[i];
+                    auto eq_pos = tok.find('=');
+                    if (eq_pos != std::string::npos) {
+                        // key=value => parameter default
+                        std::string key = to_lower(tok.substr(0, eq_pos));
+                        std::string val = tok.substr(eq_pos + 1);
+                        current_def.default_params.emplace_back(key, val);
+                    } else {
+                        // No '=' => port name
+                        current_def.ports.push_back(to_lower(tok));
+                    }
+                }
+
+                depth++;
+
+            } else if (first == ".ends") {
+                if (depth == 0) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .ends without matching .subckt");
+                }
+
+                depth--;
+
+                if (depth == 0) {
+                    // Finished the outermost subcircuit definition
+                    subcircuit_defs_[current_def.name] = std::move(current_def);
+                    current_def = SubcircuitDef{};
+                } else {
+                    // End of a nested subcircuit. Collect the inner def, pop the
+                    // outer context from the stack, and store the inner subcircuit
+                    // as raw lines in the outer def's body (Task 7.2 will parse them
+                    // during expansion).
+                    SubcircuitDef inner_def = std::move(current_def);
+                    current_def = std::move(def_stack.back());
+                    def_stack.pop_back();
+
+                    // Reconstruct the .subckt header token line for the inner def
+                    // so the outer body contains a complete, self-contained block.
+                    TokenizedLine subckt_hdr;
+                    subckt_hdr.line_number = line.line_number;
+                    subckt_hdr.tokens.push_back(".subckt");
+                    subckt_hdr.tokens.push_back(inner_def.name);
+                    for (const auto& port : inner_def.ports) {
+                        subckt_hdr.tokens.push_back(port);
+                    }
+                    for (const auto& [key, val] : inner_def.default_params) {
+                        subckt_hdr.tokens.push_back(key + "=" + val);
+                    }
+                    current_def.body.push_back(subckt_hdr);
+
+                    // Add inner body lines to outer body
+                    for (const auto& bl : inner_def.body) {
+                        current_def.body.push_back(bl);
+                    }
+
+                    // Add the .ends line to the outer body
+                    current_def.body.push_back(line);
+                }
+
+            } else {
+                // Regular line
+                if (depth > 0) {
+                    current_def.body.push_back(line);
+                } else {
+                    remaining_lines.push_back(line);
+                }
+            }
+        }
+
+        if (depth > 0) {
+            throw ParseError("Unterminated .subckt '" + current_def.name + "': missing .ends");
+        }
+
+        lines = std::move(remaining_lines);
+    }
 
     // Storage for params and models
     std::unordered_map<std::string, double> params;
@@ -559,7 +680,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             fd.line_number = line.line_number;
             deferred_cccs.push_back(std::move(fd));
 
-        } else if (elem_type == 'b' || elem_type == 'x') {
+        } else if (elem_type == 'b') {
             throw ParseError("Line " + std::to_string(line.line_number) +
                              ": Unsupported element type '" + std::string(1, elem_type) + "'");
         }
