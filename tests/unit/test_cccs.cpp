@@ -55,8 +55,8 @@ TEST(CCCS, StampPatternAllTerminals) {
 // Matrix size 3: indices {0, 1, 2(sense branch)}
 //
 // Expected after evaluate:
-//   mat[0,2] = -gain = -3.0  (KCL np: current leaves)
-//   mat[1,2] = +gain = +3.0  (KCL nn: current enters)
+//   mat[0,2] = +gain = +3.0  (KCL np: current leaves)
+//   mat[1,2] = -gain = -3.0  (KCL nn: current enters)
 // RHS remains 0
 // ---------------------------------------------------------------------------
 TEST(CCCS, EvaluateValues) {
@@ -81,8 +81,8 @@ TEST(CCCS, EvaluateValues) {
     std::vector<double> rhs(3, 0.0);
     f.evaluate(voltages, mat, rhs);
 
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 2)), -gain);  // np, sense_branch
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 2)),  gain);  // nn, sense_branch
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 2)),  gain);  // np, sense_branch
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 2)), -gain);  // nn, sense_branch
 
     // RHS should remain 0 — CCCS has no independent source term
     for (double v : rhs) EXPECT_DOUBLE_EQ(v, 0.0);
@@ -131,7 +131,7 @@ TEST(CCCS, StampPatternThrowsWithoutSenseBranchIndex) {
 // R2 out 0 1k
 // .op
 //
-// V(out) = 10mA * 1k = 10.0 V
+// V(out) = -10mA * 1k = -10.0 V
 // ---------------------------------------------------------------------------
 TEST(CCCS, SimpleCurrentMirror) {
     Simulator sim;
@@ -148,17 +148,16 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    EXPECT_NEAR(result.dc->node_voltages["v(in)"],         5.0,  1e-6);
-    EXPECT_NEAR(result.dc->node_voltages["v(sense_node)"], 0.0,  1e-6);
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"],        10.0, 1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(in)"],         5.0,   1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(sense_node)"], 0.0,   1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"],        -10.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
 // Integration test: negative gain (inverting current mirror)
 //
 // Same topology but gain = -2
-// I_out = -2 * 5mA = -10mA
-// V(out) = -10mA * 1k = -10.0 V
+// I_out = -2 * 5mA = -10mA leaving out; current enters out → V(out) = +10.0 V
 // ---------------------------------------------------------------------------
 TEST(CCCS, NegativeGain) {
     Simulator sim;
@@ -175,7 +174,7 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -10.0, 1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 10.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -202,8 +201,8 @@ R2 out 0 1k
 // ---------------------------------------------------------------------------
 // Integration test: unity gain (gain=1.0)
 //
-// I_out = 1.0 * I(Vsense) = 5mA
-// V(out) = 5mA * 1k = 5.0 V
+// I_out = 1.0 * I(Vsense) = 5mA leaves out
+// V(out) = -5mA * 1k = -5.0 V
 // ---------------------------------------------------------------------------
 TEST(CCCS, UnityGain) {
     Simulator sim;
@@ -220,7 +219,7 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 5.0, 1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -5.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------

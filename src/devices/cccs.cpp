@@ -37,22 +37,17 @@ void CCCS::assign_offsets(const SparsityPattern& pattern) {
 
 void CCCS::evaluate(const std::vector<double>& /*voltages*/,
                     NumericMatrix& mat, std::vector<double>& /*rhs*/) {
-    // I_out = gain * I(Vsense) flows from np to nn
-    //
-    // KCL at np (current leaves np): d(-I_out)/d(I_sense) = -gain
-    //   → mat[np, sense_branch] += -gain
-    //
-    // KCL at nn (current enters nn): d(+I_out)/d(I_sense) = +gain
-    //   → mat[nn, sense_branch] += +gain
-    add_if_valid(mat, off_np_sense_, -gain_);
-    add_if_valid(mat, off_nn_sense_,  gain_);
+    // SPICE convention: I = gain * I(Vsense) leaves N+ (np).
+    // Current leaving np = +gain*I_sense → mat[np, sense_branch] += +gain
+    // Current leaving nn = -gain*I_sense → mat[nn, sense_branch] += -gain
+    add_if_valid(mat, off_np_sense_,  gain_);
+    add_if_valid(mat, off_nn_sense_, -gain_);
 }
 
 void CCCS::ac_stamp(const std::vector<double>& /*voltages*/,
                     NumericMatrix& G, NumericMatrix& /*C*/) {
-    // Linear device — AC stamp is identical to DC evaluate, into G matrix only
-    add_if_valid(G, off_np_sense_, -gain_);
-    add_if_valid(G, off_nn_sense_,  gain_);
+    add_if_valid(G, off_np_sense_,  gain_);
+    add_if_valid(G, off_nn_sense_, -gain_);
 }
 
 } // namespace neospice

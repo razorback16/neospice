@@ -127,33 +127,22 @@ void NonlinearVCCS::evaluate(const std::vector<double>& voltages,
     std::vector<double> derivs;
     double f_val = eval_poly(ctrl_v, derivs);
 
-    // Jacobian stamps:
-    //   mat[np, cpk] += -df/dVk  (Jacobian of KCL at np w.r.t. V(cpk))
-    //   mat[np, cnk] +=  df/dVk
-    //   mat[nn, cpk] +=  df/dVk  (Jacobian of KCL at nn)
-    //   mat[nn, cnk] += -df/dVk
+    // SPICE convention: I = f(Vc) leaves N+ (np).
+    // Jacobian: current leaving np = +df/dVk * V(cpk) - df/dVk * V(cnk)
     for (size_t k = 0; k < ctrl_pairs_.size(); ++k) {
-        add_if_valid(mat, off_np_cp_[k], -derivs[k]);
-        add_if_valid(mat, off_np_cn_[k],  derivs[k]);
-        add_if_valid(mat, off_nn_cp_[k],  derivs[k]);
-        add_if_valid(mat, off_nn_cn_[k], -derivs[k]);
+        add_if_valid(mat, off_np_cp_[k],  derivs[k]);
+        add_if_valid(mat, off_np_cn_[k], -derivs[k]);
+        add_if_valid(mat, off_nn_cp_[k], -derivs[k]);
+        add_if_valid(mat, off_nn_cn_[k],  derivs[k]);
     }
 
-    // Newton companion RHS:
-    // companion = f(Vc_k) - sum_k(df/dVk * Vk_k)
-    //
-    // At node np (KCL: current leaving np via VCCS = f(Vc)):
-    //   Linearized equation: -sum_k(df/dVk * V(cpk)) + sum_k(df/dVk * V(cnk)) = rhs[np]
-    //   rhs[np] = f(Vc_k) - sum_k(df/dVk * Vk_k) = companion
-    //
-    // At node nn (KCL: current entering nn via VCCS = f(Vc)):
-    //   rhs[nn] = -(f(Vc_k) - sum_k(df/dVk * Vk_k)) = -companion
+    // Newton companion: rhs[np] = -(f(Vc_k) - sum(df/dVk * Vc_k))
     double companion = f_val;
     for (size_t k = 0; k < ctrl_pairs_.size(); ++k) {
         companion -= derivs[k] * ctrl_v[k];
     }
-    add_rhs_if_valid(rhs, np_,  companion);
-    add_rhs_if_valid(rhs, nn_, -companion);
+    add_rhs_if_valid(rhs, np_, -companion);
+    add_rhs_if_valid(rhs, nn_,  companion);
 }
 
 void NonlinearVCCS::ac_stamp(const std::vector<double>& voltages,
@@ -169,10 +158,10 @@ void NonlinearVCCS::ac_stamp(const std::vector<double>& voltages,
     eval_poly(ctrl_v, derivs);
 
     for (size_t k = 0; k < ctrl_pairs_.size(); ++k) {
-        add_if_valid(G, off_np_cp_[k], -derivs[k]);
-        add_if_valid(G, off_np_cn_[k],  derivs[k]);
-        add_if_valid(G, off_nn_cp_[k],  derivs[k]);
-        add_if_valid(G, off_nn_cn_[k], -derivs[k]);
+        add_if_valid(G, off_np_cp_[k],  derivs[k]);
+        add_if_valid(G, off_np_cn_[k], -derivs[k]);
+        add_if_valid(G, off_nn_cp_[k], -derivs[k]);
+        add_if_valid(G, off_nn_cn_[k],  derivs[k]);
     }
 }
 
@@ -244,16 +233,15 @@ void TableVCCS::evaluate(const std::vector<double>& voltages,
     double slope = 0.0;
     double f_val = interp(vc, slope);
 
-    // Jacobian
-    add_if_valid(mat, off_np_ncp_, -slope);
-    add_if_valid(mat, off_np_ncn_,  slope);
-    add_if_valid(mat, off_nn_ncp_,  slope);
-    add_if_valid(mat, off_nn_ncn_, -slope);
+    // SPICE convention: current leaving np = +slope * Vc
+    add_if_valid(mat, off_np_ncp_,  slope);
+    add_if_valid(mat, off_np_ncn_, -slope);
+    add_if_valid(mat, off_nn_ncp_, -slope);
+    add_if_valid(mat, off_nn_ncn_,  slope);
 
-    // Newton companion: rhs[np] = f(Vc) - slope*Vc, rhs[nn] = -(f(Vc) - slope*Vc)
     double companion = f_val - slope * vc;
-    add_rhs_if_valid(rhs, np_,  companion);
-    add_rhs_if_valid(rhs, nn_, -companion);
+    add_rhs_if_valid(rhs, np_, -companion);
+    add_rhs_if_valid(rhs, nn_,  companion);
 }
 
 void TableVCCS::ac_stamp(const std::vector<double>& voltages,
@@ -265,10 +253,10 @@ void TableVCCS::ac_stamp(const std::vector<double>& voltages,
     double slope = 0.0;
     interp(vc, slope);
 
-    add_if_valid(G, off_np_ncp_, -slope);
-    add_if_valid(G, off_np_ncn_,  slope);
-    add_if_valid(G, off_nn_ncp_,  slope);
-    add_if_valid(G, off_nn_ncn_, -slope);
+    add_if_valid(G, off_np_ncp_,  slope);
+    add_if_valid(G, off_np_ncn_, -slope);
+    add_if_valid(G, off_nn_ncp_, -slope);
+    add_if_valid(G, off_nn_ncn_,  slope);
 }
 
 } // namespace neospice

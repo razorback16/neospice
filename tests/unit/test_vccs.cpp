@@ -43,10 +43,10 @@ TEST(VCCS, StampPatternAllTerminals) {
 // np=0, nn=1, ncp=2, ncn=3, gm=0.005, matrix size=4
 //
 // Expected after evaluate:
-//   mat[0,2] = -gm = -0.005   (KCL np, control+)
-//   mat[0,3] = +gm = +0.005   (KCL np, control-)
-//   mat[1,2] = +gm = +0.005   (KCL nn, control+)
-//   mat[1,3] = -gm = -0.005   (KCL nn, control-)
+//   mat[0,2] = +gm = +0.005   (KCL np, control+)
+//   mat[0,3] = -gm = -0.005   (KCL np, control-)
+//   mat[1,2] = -gm = -0.005   (KCL nn, control+)
+//   mat[1,3] = +gm = +0.005   (KCL nn, control-)
 //   RHS unchanged (all 0)
 // ---------------------------------------------------------------------------
 TEST(VCCS, EvaluateValues) {
@@ -69,10 +69,10 @@ TEST(VCCS, EvaluateValues) {
     std::vector<double> rhs(4, 0.0);
     g.evaluate(voltages, mat, rhs);
 
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 2)), -gm);  // np,  ncp
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 3)),  gm);  // np,  ncn
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 2)),  gm);  // nn,  ncp
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 3)), -gm);  // nn,  ncn
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 2)),  gm);  // np,  ncp
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 3)), -gm);  // np,  ncn
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 2)), -gm);  // nn,  ncp
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 3)),  gm);  // nn,  ncn
 
     // RHS should remain 0 — VCCS has no independent source term
     for (double v : rhs) EXPECT_DOUBLE_EQ(v, 0.0);
@@ -94,10 +94,10 @@ TEST(VCCS, ExtraVarsIsZero) {
 // R1 out 0 1k
 // .op
 //
-// Expected: I = gm * V(in) = 0.01 * 1.0 = 0.01 A
-//           V(out) = I * R = 0.01 * 1000 = 10.0 V
+// Expected: I = gm * V(in) = 0.01 A leaves N+ (out)
+//           V(out) = -I * R = -0.01 * 1000 = -10.0 V
 //
-// NOTE: Results verified against ngspice 40 (.op analysis).
+// Verified against ngspice 40 (.op analysis).
 // ---------------------------------------------------------------------------
 TEST(VCCS, SimpleTransconductance) {
     Simulator sim;
@@ -112,8 +112,8 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    EXPECT_NEAR(result.dc->node_voltages["v(in)"],  1.0,  1e-6);
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 10.0, 1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(in)"],   1.0,  1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -10.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,8 +125,8 @@ R1 out 0 1k
 // R1 out 0 2k
 // .op
 //
-// Expected: I = 0.005 * (3.0 - 1.0) = 0.01 A
-//           V(out) = 0.01 * 2000 = 20.0 V
+// Expected: I = 0.005 * (3.0 - 1.0) = 0.01 A leaves N+ (out)
+//           V(out) = -0.01 * 2000 = -20.0 V
 // ---------------------------------------------------------------------------
 TEST(VCCS, DifferentialInput) {
     Simulator sim;
@@ -144,7 +144,7 @@ R1 out 0 2k
     ASSERT_TRUE(result.dc.has_value());
     EXPECT_NEAR(result.dc->node_voltages["v(inp)"],  3.0,  1e-6);
     EXPECT_NEAR(result.dc->node_voltages["v(inn)"],  1.0,  1e-6);
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 20.0,  1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -20.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -174,8 +174,8 @@ R1 out 0 1k
 // R1 out 0 1k
 // .op
 //
-// Expected: I = -0.002 * 2.0 = -0.004 A
-//           V(out) = -0.004 * 1000 = -4.0 V
+// Expected: I = -0.002 * 2.0 = -0.004 A leaves N+ (out)
+//           V(out) = 0.004 * 1000 = 4.0 V
 // ---------------------------------------------------------------------------
 TEST(VCCS, NegativeTransconductance) {
     Simulator sim;
@@ -190,16 +190,16 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -4.0, 1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 4.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
 // Integration test: cascaded VCCS stages
 //
 // V1 in 0 DC 1.0
-// G1 mid 0 in 0 0.01      → V(mid) = 0.01 * 1.0 * 500 = 5.0 V
+// G1 mid 0 in 0 0.01      → V(mid) = -0.01 * 1.0 * 500 = -5.0 V
 // R1 mid 0 500
-// G2 out 0 mid 0 0.002    → V(out) = 0.002 * 5.0 * 1000 = 10.0 V
+// G2 out 0 mid 0 0.002    → V(out) = -0.002 * (-5.0) * 1000 = 10.0 V
 // R2 out 0 1k
 // .op
 // ---------------------------------------------------------------------------
@@ -218,8 +218,8 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    EXPECT_NEAR(result.dc->node_voltages["v(mid)"],  5.0,  1e-6);
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 10.0,  1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(mid)"], -5.0,  1e-6);
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 10.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------

@@ -304,8 +304,8 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // I = 0.01 * 1.0 = 0.01 A, V(out) = 0.01 * 1000 = 10.0
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 10.0, 1e-6);
+    // I = 0.01 * 1.0 = 0.01 A leaves out, V(out) = -0.01 * 1000 = -10.0
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -10.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -327,8 +327,8 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // I = 0.001 * 4.0 = 0.004 A, V(out) = 0.004 * 1000 = 4.0
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 4.0, 1e-4);
+    // I = 0.001 * 4.0 = 0.004 A leaves out, V(out) = -0.004 * 1000 = -4.0
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -4.0, 1e-4);
 }
 
 // ---------------------------------------------------------------------------
@@ -347,8 +347,8 @@ R1 out 0 2k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // I = 0.005 * 2.0 = 0.01 A, V(out) = 0.01 * 2000 = 20.0
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 20.0, 1e-6);
+    // I = 0.005 * 2.0 = 0.01 A leaves out, V(out) = -0.01 * 2000 = -20.0
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -20.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -367,9 +367,9 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // V(in)=0.5 interpolates to I = 0 + 0.5*0.01 = 0.005 A
-    // V(out) = 0.005 * 1000 = 5.0 V
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 5.0, 1e-4);
+    // V(in)=0.5 interpolates to I = 0 + 0.5*0.01 = 0.005 A leaves out
+    // V(out) = -0.005 * 1000 = -5.0 V
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -5.0, 1e-4);
 }
 
 // ---------------------------------------------------------------------------
@@ -391,8 +391,8 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // I = 0.001*1 + 0.001*1 = 0.002, V(out) = 0.002*1000 = 2.0
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 2.0, 1e-6);
+    // I = 0.001*1 + 0.001*1 = 0.002 leaves out, V(out) = -0.002*1000 = -2.0
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -2.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +414,6 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // I = 0.001 A (constant), V(out) = 0.001 * 1000 = 1.0
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 1.0, 1e-6);
+    // I = 0.001 A (constant) leaves out, V(out) = -0.001 * 1000 = -1.0
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -1.0, 1e-6);
 }
