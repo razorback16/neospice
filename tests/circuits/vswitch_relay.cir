@@ -1,0 +1,14 @@
+* VSwitch relay circuit: voltage-controlled switch test
+* V(ctrl) > Vt+Vh=1.1V → switch ON  (Ron=1),  V(out) ≈ 5V * 1/(1+1) = 2.5V? No:
+* Supply 5V through R1=1k, switch Ron=1 to ground → V(out) = 5*Ron/(R1+Ron) = 5*1/1001 ≈ 5mV (ON)
+* Supply 5V through R1=1k, switch Roff=1Meg to ground → V(out) = 5*1e6/(1000+1e6) ≈ 5V (OFF)
+*
+* S1 out 0 ctrl 0 SMOD     (control: V(ctrl)-V(0))
+* Vctrl ctrl 0 DC 5.0      → above threshold → ON
+.model SMOD SW(Vt=1.0 Vh=0.1 Ron=1 Roff=1Meg)
+Vin in 0 DC 5.0
+Vctrl ctrl 0 DC 5.0
+R1 in out 1k
+S1 out 0 ctrl 0 SMOD
+.op
+.end

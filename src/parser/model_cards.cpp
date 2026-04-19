@@ -1,5 +1,6 @@
 #include "parser/model_cards.hpp"
 #include "core/types.hpp"
+#include "devices/switch.hpp"
 #include "devices/bsim4v7/bsim4v7_def.hpp"
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include "devices/bjt/bjt_def.hpp"
@@ -363,6 +364,41 @@ std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card) {
     }
 
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// to_switch_model — parse a .model SW or CSW card into a SwitchModel.
+// ---------------------------------------------------------------------------
+SwitchModel to_switch_model(const ModelCard& card) {
+    SwitchModel model;
+    model.name = card.name;
+
+    if (card.type == "sw") {
+        model.is_voltage_controlled = true;
+    } else if (card.type == "csw") {
+        model.is_voltage_controlled = false;
+    } else {
+        throw ParseError(
+            "Model '" + card.name + "': unsupported switch type '" + card.type +
+            "' (only SW/CSW supported)");
+    }
+
+    for (const auto& [key, val] : card.params) {
+        if (model.is_voltage_controlled) {
+            if      (key == "vt")   model.Vt   = val;
+            else if (key == "vh")   model.Vh   = val;
+            else if (key == "ron")  model.Ron  = val;
+            else if (key == "roff") model.Roff = val;
+        } else {
+            // CSW uses It/Ih instead of Vt/Vh
+            if      (key == "it")   model.Vt   = val;
+            else if (key == "ih")   model.Vh   = val;
+            else if (key == "ron")  model.Ron  = val;
+            else if (key == "roff") model.Roff = val;
+        }
+    }
+
+    return model;
 }
 
 } // namespace neospice

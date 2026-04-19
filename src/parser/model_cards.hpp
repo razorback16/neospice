@@ -1,5 +1,6 @@
 #pragma once
 #include "devices/diode.hpp"
+#include "devices/switch.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
 #include "devices/bjt/bjt_device.hpp"            // BJTModelCard
 #include "devices/jfet/jfet_device.hpp"          // JFETModelCard
@@ -41,5 +42,10 @@ std::unique_ptr<BJTModelCard> to_bjt_card(const ModelCard& card);
 /// Translate a parsed .model card (NJF/PJF) into a JFETModelCard using
 /// the UCB JFETmParam dispatcher.
 std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card);
+
+/// Translate a parsed .model card (SW or CSW) into a SwitchModel.
+/// card.type must be "sw" (voltage-controlled) or "csw" (current-controlled).
+/// Throws ParseError for unsupported model types.
+SwitchModel to_switch_model(const ModelCard& card);
 
 } // namespace neospice

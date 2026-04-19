@@ -15,6 +15,7 @@
 #include "devices/vccs.hpp"
 #include "devices/ccvs.hpp"
 #include "devices/cccs.hpp"
+#include "devices/switch.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
@@ -503,6 +504,25 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         bool ic_vds_given = false, ic_vgs_given = false;
     };
     std::vector<DeferredJFET> deferred_jfets;
+
+    // Deferred VSwitch (S elements): resolved after all .model cards are known.
+    struct DeferredVSwitch {
+        std::string name;
+        int32_t np, nn, ncp, ncn;
+        std::string model_name;
+        int line_number;
+    };
+    std::vector<DeferredVSwitch> deferred_vswitches;
+
+    // Deferred CSwitch (W elements): resolved after all VSource devices and .model cards are known.
+    struct DeferredCSwitch {
+        std::string name;
+        int32_t np, nn;
+        std::string vsense_name;
+        std::string model_name;
+        int line_number;
+    };
+    std::vector<DeferredCSwitch> deferred_cswitches;
 
     // Pass 1: collect .model and .param cards
     std::vector<std::pair<std::string, std::string>> raw_params;
@@ -1230,6 +1250,37 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             deferred_coupled_inductors.push_back(std::move(kd));
 
+        } else if (elem_type == 's') {
+            // S name n+ n- nc+ nc- modelname
+            if (tokens.size() < 6) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": S element requires name, n+, n-, nc+, nc-, modelname");
+            }
+            DeferredVSwitch sd;
+            sd.name       = tokens[0];
+            sd.np         = ckt.node(tokens[1]);
+            sd.nn         = ckt.node(tokens[2]);
+            sd.ncp        = ckt.node(tokens[3]);
+            sd.ncn        = ckt.node(tokens[4]);
+            sd.model_name = tokens[5];
+            sd.line_number = line.line_number;
+            deferred_vswitches.push_back(std::move(sd));
+
+        } else if (elem_type == 'w') {
+            // W name n+ n- Vsense modelname
+            if (tokens.size() < 5) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": W element requires name, n+, n-, Vsense, modelname");
+            }
+            DeferredCSwitch wd;
+            wd.name        = tokens[0];
+            wd.np          = ckt.node(tokens[1]);
+            wd.nn          = ckt.node(tokens[2]);
+            wd.vsense_name = tokens[3];
+            wd.model_name  = tokens[4];
+            wd.line_number = line.line_number;
+            deferred_cswitches.push_back(std::move(wd));
+
         } else if (elem_type == 'b') {
             throw ParseError("Line " + std::to_string(line.line_number) +
                              ": Unsupported element type '" + std::string(1, elem_type) + "'");
@@ -1433,6 +1484,64 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                              kd.l2_name + "'");
         }
         ckt.add_device(std::make_unique<CoupledInductor>(kd.name, l1, l2, kd.coupling));
+    }
+
+    // Resolve deferred VSwitch (S elements)
+    for (const auto& sd : deferred_vswitches) {
+        auto it = models.find(sd.model_name);
+        if (it == models.end()) {
+            auto it2 = models.find(to_lower(sd.model_name));
+            if (it2 == models.end()) {
+                throw ParseError("Line " + std::to_string(sd.line_number) +
+                                 ": Unknown model '" + sd.model_name + "'");
+            }
+            it = it2;
+        }
+        std::string model_type = to_lower(it->second.type);
+        if (model_type != "sw") {
+            throw ParseError("Line " + std::to_string(sd.line_number) +
+                             ": S element references non-SW model '" + sd.model_name + "'");
+        }
+        SwitchModel sm = to_switch_model(it->second);
+        ckt.add_device(std::make_unique<VSwitch>(
+            sd.name, sd.np, sd.nn, sd.ncp, sd.ncn, sm));
+    }
+
+    // Resolve deferred CSwitch (W elements)
+    for (const auto& wd : deferred_cswitches) {
+        // Look up the model card
+        auto it = models.find(wd.model_name);
+        if (it == models.end()) {
+            auto it2 = models.find(to_lower(wd.model_name));
+            if (it2 == models.end()) {
+                throw ParseError("Line " + std::to_string(wd.line_number) +
+                                 ": Unknown model '" + wd.model_name + "'");
+            }
+            it = it2;
+        }
+        std::string model_type = to_lower(it->second.type);
+        if (model_type != "csw") {
+            throw ParseError("Line " + std::to_string(wd.line_number) +
+                             ": W element references non-CSW model '" + wd.model_name + "'");
+        }
+        SwitchModel sm = to_switch_model(it->second);
+
+        // Look up the sensing VSource by name
+        const VSource* vs = nullptr;
+        for (const auto& dev : ckt.devices()) {
+            if (auto* v = dynamic_cast<const VSource*>(dev.get())) {
+                if (to_lower(v->name()) == to_lower(wd.vsense_name)) {
+                    vs = v;
+                    break;
+                }
+            }
+        }
+        if (!vs) {
+            throw ParseError("Line " + std::to_string(wd.line_number) +
+                             ": W element '" + wd.name +
+                             "' references unknown voltage source '" + wd.vsense_name + "'");
+        }
+        ckt.add_device(std::make_unique<CSwitch>(wd.name, wd.np, wd.nn, vs, sm));
     }
 
     ckt.finalize();
