@@ -1,9 +1,13 @@
 #include <gtest/gtest.h>
 #include "parser/netlist_parser.hpp"
 #include "parser/subcircuit.hpp"
+#include "parser/subcircuit_expand.hpp"
+#include "parser/tokenizer.hpp"
 #include "core/dc.hpp"
 #include "devices/resistor.hpp"
 #include "devices/vsource.hpp"
+#include "devices/ccvs.hpp"
+#include "devices/cccs.hpp"
 
 using namespace neospice;
 
@@ -516,6 +520,165 @@ R_load outp 0 1Meg
         if (r && (r->name() == "x1.r1" || r->name() == "x1.r2")) {
             EXPECT_NEAR(r->resistance(), 1000.0, 1e-6)
                 << "Resistor " << r->name() << " should use .param rval=1k";
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// 19. CCVS/CCCS Vsense names are hierarchically prefixed
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, CCVSVsenseHierarchicalPrefix) {
+    // Subcircuit contains a VSource (Vsense) and a CCVS that references it.
+    // After expansion as X1, the CCVS should reference "x1.vsense" not "vsense".
+    std::string netlist = wrap(R"(
+.subckt ccvs_block np nn
+Vsense np mid 0
+H1 mid nn Vsense 100
+.ends ccvs_block
+
+V1 inp 0 1
+X1 inp outp ccvs_block
+R_load outp 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    // Should have: V1, x1.vsense, x1.h1, R_load => 4 devices
+    EXPECT_EQ(ckt.devices().size(), 4u);
+
+    // Verify the CCVS device x1.h1 exists and references x1.vsense
+    bool found_ccvs = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dev->name() == "x1.h1") {
+            found_ccvs = true;
+            auto* h = dynamic_cast<const CCVS*>(dev.get());
+            ASSERT_NE(h, nullptr) << "x1.h1 should be a CCVS device";
+        }
+    }
+    EXPECT_TRUE(found_ccvs) << "Expected CCVS device x1.h1 from expansion";
+
+    // Verify the Vsense x1.vsense exists
+    bool found_vsense = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dev->name() == "x1.vsense") {
+            found_vsense = true;
+        }
+    }
+    EXPECT_TRUE(found_vsense) << "Expected VSource x1.vsense from expansion";
+}
+
+// -----------------------------------------------------------------------
+// 20. CCCS Vsense names are hierarchically prefixed
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, CCCSVsenseHierarchicalPrefix) {
+    std::string netlist = wrap(R"(
+.subckt cccs_block np nn
+Vsense np mid 0
+F1 mid nn Vsense 50
+.ends cccs_block
+
+V1 inp 0 1
+X1 inp outp cccs_block
+R_load outp 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    // Should have: V1, x1.vsense, x1.f1, R_load => 4 devices
+    EXPECT_EQ(ckt.devices().size(), 4u);
+
+    bool found_cccs = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dev->name() == "x1.f1") {
+            found_cccs = true;
+            auto* f = dynamic_cast<const CCCS*>(dev.get());
+            ASSERT_NE(f, nullptr) << "x1.f1 should be a CCCS device";
+        }
+    }
+    EXPECT_TRUE(found_cccs) << "Expected CCCS device x1.f1 from expansion";
+}
+
+// -----------------------------------------------------------------------
+// 21. Top-level .param values visible during subcircuit expansion
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, TopLevelParamVisibleDuringExpansion) {
+    std::string netlist = wrap(R"(
+.param myR=2k
+
+.subckt rdiv in out r=1k
+R1 in mid {r}
+R2 mid out {r}
+.ends rdiv
+
+V1 inp 0 10
+X1 inp outp rdiv r={myR}
+R_load outp 0 1Meg
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    // R1 and R2 should use 2k from top-level .param myR=2k
+    for (const auto& dev : ckt.devices()) {
+        auto* r = dynamic_cast<const Resistor*>(dev.get());
+        if (r && (r->name() == "x1.r1" || r->name() == "x1.r2")) {
+            EXPECT_NEAR(r->resistance(), 2000.0, 1e-6)
+                << "Resistor " << r->name()
+                << " should use top-level .param myR=2k";
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// 22. Line numbers in depth-exceeded and port-mismatch errors
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, ErrorMessagesContainLineNumbers) {
+    // Port count mismatch should include "Line N:"
+    {
+        std::string netlist = wrap(R"(
+.subckt rdiv in out
+R1 in out 1k
+.ends rdiv
+
+V1 a 0 10
+X1 a b c rdiv
+.op
+)");
+        NetlistParser parser;
+        try {
+            parser.parse(netlist);
+            FAIL() << "Expected ParseError for port count mismatch";
+        } catch (const ParseError& e) {
+            std::string msg = e.what();
+            EXPECT_TRUE(msg.find("Line ") != std::string::npos)
+                << "Error should contain 'Line ': " << msg;
+        }
+    }
+
+    // Infinite recursion should include "Line N:"
+    {
+        std::string netlist = wrap(R"(
+.subckt recursive a b
+X1 a b recursive
+.ends recursive
+
+V1 inp 0 10
+X1 inp outp recursive
+.op
+)");
+        NetlistParser parser;
+        try {
+            parser.parse(netlist);
+            FAIL() << "Expected ParseError for infinite recursion";
+        } catch (const ParseError& e) {
+            std::string msg = e.what();
+            EXPECT_TRUE(msg.find("Line ") != std::string::npos)
+                << "Error should contain 'Line ': " << msg;
         }
     }
 }

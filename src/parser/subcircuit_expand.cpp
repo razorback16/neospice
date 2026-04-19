@@ -234,18 +234,29 @@ std::unordered_set<std::string> collect_internal_nodes(
     return internal_nodes;
 }
 
-} // anonymous namespace
-
+/// Expand a single X instance into flat element lines (internal helper).
+///
+/// @param instance_prefix  Hierarchical name prefix (e.g., "x1" or "x1.xinv")
+/// @param def              The subcircuit definition to expand
+/// @param connections      Actual node names for each port
+/// @param instance_params  Parameter overrides from X line (merged with defaults)
+/// @param all_defs         All known subcircuit definitions (for recursive X expansion)
+/// @param depth            Recursion depth (for infinite recursion detection)
+/// @param line_number      Source line number of the X element (for error messages)
+/// @param global_params    Top-level .param values (base for parameter resolution)
 std::vector<TokenizedLine> expand_instance(
     const std::string& instance_prefix,
     const SubcircuitDef& def,
     const std::vector<std::string>& connections,
     const std::unordered_map<std::string, double>& instance_params,
     const std::unordered_map<std::string, SubcircuitDef>& all_defs,
-    int depth) {
+    int depth,
+    int line_number,
+    const std::unordered_map<std::string, double>& global_params) {
 
     if (depth > MAX_SUBCIRCUIT_DEPTH) {
-        throw ParseError("Maximum subcircuit nesting depth (" +
+        throw ParseError("Line " + std::to_string(line_number) +
+                         ": Maximum subcircuit nesting depth (" +
                          std::to_string(MAX_SUBCIRCUIT_DEPTH) +
                          ") exceeded — possible infinite recursion in subcircuit '" +
                          def.name + "'");
@@ -253,7 +264,8 @@ std::vector<TokenizedLine> expand_instance(
 
     // Verify port count matches
     if (connections.size() != def.ports.size()) {
-        throw ParseError("Subcircuit '" + def.name + "' expects " +
+        throw ParseError("Line " + std::to_string(line_number) +
+                         ": Subcircuit '" + def.name + "' expects " +
                          std::to_string(def.ports.size()) + " port(s) but got " +
                          std::to_string(connections.size()) + " connection(s)");
     }
@@ -312,10 +324,14 @@ std::vector<TokenizedLine> expand_instance(
         }
     }
 
-    // Resolve parameters
-    std::unordered_map<std::string, double> params;
+    // Resolve parameters — start from global_params as a base so that
+    // subcircuit expressions can reference top-level .param values.
+    std::unordered_map<std::string, double> params = global_params;
     if (!raw_params.empty()) {
-        params = resolve_params(raw_params);
+        auto resolved = resolve_params(raw_params);
+        for (auto& [k, v] : resolved) {
+            params[k] = v;
+        }
     }
 
     // Helper: substitute a node name using the node_map
@@ -415,7 +431,8 @@ std::vector<TokenizedLine> expand_instance(
             // Recursive expansion
             std::string sub_prefix = instance_prefix + "." + x_name;
             auto expanded = expand_instance(sub_prefix, sub_def, sub_connections,
-                                            sub_params, merged_defs, depth + 1);
+                                            sub_params, merged_defs, depth + 1,
+                                            line.line_number, global_params);
             result.insert(result.end(), expanded.begin(), expanded.end());
 
         } else {
@@ -437,9 +454,21 @@ std::vector<TokenizedLine> expand_instance(
                 new_line.tokens.push_back(subst_node(line.tokens[i]));
             }
 
+            // Special handling for H (CCVS) and F (CCCS) elements:
+            // token[3] (first token after the 2 nodes) is a Vsense device name
+            // that must be prefixed with the instance hierarchy, not evaluated
+            // as a parameter expression.
+            size_t value_start = static_cast<size_t>(1 + ncount);
+            if ((elem_type == 'h' || elem_type == 'f') &&
+                value_start < line.tokens.size()) {
+                std::string vsense = to_lower(line.tokens[value_start]);
+                new_line.tokens.push_back(instance_prefix + "." + vsense);
+                value_start++;
+            }
+
             // Remaining tokens: values, model names, key=val pairs — evaluate
             // param expressions where applicable
-            for (size_t i = static_cast<size_t>(1 + ncount); i < line.tokens.size(); ++i) {
+            for (size_t i = value_start; i < line.tokens.size(); ++i) {
                 const std::string& tok = line.tokens[i];
                 auto eq_pos = tok.find('=');
                 if (eq_pos != std::string::npos) {
@@ -461,9 +490,12 @@ std::vector<TokenizedLine> expand_instance(
     return result;
 }
 
+} // anonymous namespace
+
 std::vector<TokenizedLine> expand_all_instances(
     const std::vector<TokenizedLine>& lines,
-    const std::unordered_map<std::string, SubcircuitDef>& all_defs) {
+    const std::unordered_map<std::string, SubcircuitDef>& all_defs,
+    const std::unordered_map<std::string, double>& global_params) {
 
     std::vector<TokenizedLine> result;
     result.reserve(lines.size());
@@ -520,7 +552,8 @@ std::vector<TokenizedLine> expand_all_instances(
                                  " connection(s)");
             }
 
-            // Parse parameter overrides
+            // Parse parameter overrides — use global_params so that
+            // expressions like R={myR} can reference top-level .param values.
             std::unordered_map<std::string, double> instance_params;
             for (size_t i = subckt_pos + 1; i < line.tokens.size(); ++i) {
                 auto eq_pos = line.tokens[i].find('=');
@@ -530,10 +563,9 @@ std::vector<TokenizedLine> expand_all_instances(
                     try {
                         instance_params[key] = parse_spice_number(val_str);
                     } catch (...) {
-                        // Try eval_expression with empty params (might be literal)
+                        // Try eval_expression with global_params context
                         try {
-                            std::unordered_map<std::string, double> empty;
-                            instance_params[key] = eval_expression(val_str, empty);
+                            instance_params[key] = eval_expression(val_str, global_params);
                         } catch (...) {
                             throw ParseError("Line " + std::to_string(line.line_number) +
                                              ": Cannot parse parameter value '" +
@@ -545,7 +577,8 @@ std::vector<TokenizedLine> expand_all_instances(
 
             // Expand
             auto expanded = expand_instance(x_name, def, connections,
-                                            instance_params, all_defs, 1);
+                                            instance_params, all_defs, 1,
+                                            line.line_number, global_params);
             result.insert(result.end(), expanded.begin(), expanded.end());
         } else {
             result.push_back(line);

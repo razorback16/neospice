@@ -287,11 +287,35 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         lines = std::move(remaining_lines);
     }
 
+    // Pass 0.25: Pre-collect top-level .param entries so that expansion
+    // (Pass 0.5) can resolve parameter expressions like R={myR}.
+    std::unordered_map<std::string, double> global_params;
+    {
+        std::vector<std::pair<std::string, std::string>> pre_raw_params;
+        for (const auto& line : lines) {
+            if (line.tokens.empty()) continue;
+            std::string first = to_lower(line.tokens[0]);
+            if (first == ".param") {
+                for (size_t i = 1; i < line.tokens.size(); ++i) {
+                    auto eq_pos = line.tokens[i].find('=');
+                    if (eq_pos != std::string::npos) {
+                        std::string key = to_lower(line.tokens[i].substr(0, eq_pos));
+                        std::string val_str = line.tokens[i].substr(eq_pos + 1);
+                        pre_raw_params.emplace_back(key, val_str);
+                    }
+                }
+            }
+        }
+        if (!pre_raw_params.empty()) {
+            global_params = resolve_params(pre_raw_params);
+        }
+    }
+
     // Pass 0.5: Expand X instances into primitive element lines.
     // After this step, `lines` contains no X elements.
     // Always call — even when subcircuit_defs_ is empty — so that X lines
     // referencing undefined subcircuits produce a proper ParseError.
-    lines = expand_all_instances(lines, subcircuit_defs_);
+    lines = expand_all_instances(lines, subcircuit_defs_, global_params);
 
     // Storage for params and models
     std::unordered_map<std::string, double> params;
