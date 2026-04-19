@@ -12,6 +12,8 @@ add_library(neospice_lib
     core/dc.cpp
     core/transient.cpp
     core/ac.cpp
+    core/noise.cpp
+    core/measure.cpp
     core/timestep.cpp
     devices/resistor.cpp
     devices/vsource.cpp
@@ -31,6 +33,7 @@ add_library(neospice_lib
     parser/netlist_parser.cpp
     api/neospice.cpp
     output/raw_writer.cpp
+    output/output.cpp
     $<TARGET_OBJECTS:bsim4v7_obj>
     $<TARGET_OBJECTS:bjt_obj>
     $<TARGET_OBJECTS:jfet_obj>

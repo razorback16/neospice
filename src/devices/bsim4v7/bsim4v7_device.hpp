@@ -60,6 +60,9 @@ public:
                          const SimOptions& opts) const override;
     bool device_converged() const override;
     std::optional<double> query_param(const std::string& name) const override;
+    std::vector<NoiseSource> noise_sources(
+        double freq, const std::vector<double>& dc_solution) const override;
+    void reset_temp() override { temp_done_ = false; }
 
     /// Set initial condition voltages on the underlying UCB instance.
     /// Called by the parser after make() when ic=VDS,VGS,VBS is present.

@@ -24,8 +24,41 @@ struct DCSweepParam {
     double step  = 0.0;
 };
 
+struct MeasureCommand {
+    std::string name;           // result name
+    std::string analysis_type;  // "tran", "ac", "dc"
+    std::string measure_type;   // "trig_targ", "find_when", "avg", "rms", "min", "max", "pp", "integ", "param"
+
+    // For TRIG/TARG:
+    std::string trig_signal, targ_signal;
+    double trig_val = 0, targ_val = 0;
+    std::string trig_direction, targ_direction; // "rise", "fall", "cross"
+    int trig_td_count = 1, targ_td_count = 1;  // which crossing (1st, 2nd, etc.)
+
+    // For FIND/WHEN:
+    std::string find_signal, when_signal;
+    double when_val = 0;
+    std::string when_direction; // "rise", "fall", "cross"
+    int when_td_count = 1;
+    bool at_given = false;      // true if AT= form was used
+    double at_val = 0;
+
+    // For statistical (AVG, RMS, MIN, MAX, PP, INTEG):
+    std::string signal;
+    double from_val = -1e30, to_val = 1e30;  // time/freq range
+
+    // For PARAM:
+    std::string param_expr;
+};
+
+struct PrintCommand {
+    std::string analysis_type;              // "tran", "ac", "dc", "noise"
+    std::vector<std::string> signals;       // e.g., {"v(out)", "i(v1)"}
+    bool is_plot = false;                   // true for .plot, false for .print
+};
+
 struct AnalysisCommand {
-    enum Type { OP, TRAN, AC, DC_SWEEP };
+    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE };
     Type type;
     double tran_tstep = 0, tran_tstop = 0;
     enum ACMode { DEC, OCT, LIN };
@@ -34,6 +67,9 @@ struct AnalysisCommand {
     double ac_fstart = 1.0, ac_fstop = 1e6;
     // DC sweep parameters (1 or 2 entries for nested sweep)
     std::vector<DCSweepParam> dc_sweep_params;
+    // Noise analysis parameters
+    std::string noise_output;      // e.g., "v(out)" — the output voltage node
+    std::string noise_input_src;   // e.g., "vin" — the input voltage source name
 };
 
 // IntegratorCtx is defined in core/types.hpp (included above) so that
@@ -85,6 +121,8 @@ public:
     std::unordered_map<int32_t, double> ic;       // .ic
     std::unordered_map<int32_t, double> nodeset;  // .nodeset
     std::vector<std::string>            save_signals;
+    std::vector<MeasureCommand>         measures;  // .meas / .measure
+    std::vector<PrintCommand>           prints;    // .print / .plot
 
     IntegratorCtx integrator_ctx;
 

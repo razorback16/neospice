@@ -366,6 +366,77 @@ TEST(JFETNgspiceCompare, NjfDCBiasPoint) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// reset_temp() tests -- verify that clearing temp_done_ allows re-evaluation
+// ---------------------------------------------------------------------------
+
+TEST(JFETDevice, ResetTempAllowsReEvaluation) {
+    // Verify that reset_temp() clears the cached temperature state so the
+    // device re-runs JFETtemp() on the next evaluate() call.  We confirm
+    // this indirectly: after reset_temp() the device must still produce a
+    // valid (non-crashing) operating point with correct results.
+    const std::string netlist =
+        "* NJF reset_temp test\n"
+        "VDD vdd 0 10.0\n"
+        "VGG gate 0 -1.0\n"
+        "RD vdd drain 1k\n"
+        "J1 drain gate 0 JMOD\n"
+        ".model JMOD NJF(VTO=-2 BETA=1e-4 LAMBDA=0.02 IS=1e-14 "
+        "RD=10 RS=10)\n"
+        ".op\n.end\n";
+
+    NetlistParser p;
+    Circuit ckt = p.parse(netlist);
+
+    // First DC solve -- sets temp_done_ = true inside the JFET device.
+    DCResult result1 = solve_dc(ckt);
+    double v_drain1 = result1.node_voltages["v(drain)"];
+    EXPECT_GT(v_drain1, 5.0);
+
+    // Call reset_temp() on all JFET devices.
+    int reset_count = 0;
+    for (auto& d : ckt.devices()) {
+        auto* jfet = dynamic_cast<JFETDevice*>(d.get());
+        if (!jfet) continue;
+        jfet->reset_temp();
+        ++reset_count;
+    }
+    EXPECT_EQ(1, reset_count);
+
+    // Second DC solve after reset -- should recompute temperature params and
+    // still converge to the same operating point.
+    DCResult result2 = solve_dc(ckt);
+    double v_drain2 = result2.node_voltages["v(drain)"];
+    EXPECT_GT(v_drain2, 5.0);
+
+    // Results should be consistent between solves.
+    EXPECT_NEAR(v_drain1, v_drain2, 1e-3);
+}
+
+TEST(JFETDevice, ResetTempBaseClassDefaultIsNoOp) {
+    // The Device base class reset_temp() is a no-op; call it via a pointer to
+    // confirm it compiles and doesn't crash.
+    const std::string netlist =
+        "* NJF base reset_temp\n"
+        "VDD vdd 0 10.0\n"
+        "VGG gate 0 -1.0\n"
+        "RD vdd drain 1k\n"
+        "J1 drain gate 0 JMOD\n"
+        ".model JMOD NJF(VTO=-2 BETA=1e-4)\n"
+        ".op\n.end\n";
+
+    NetlistParser p;
+    Circuit ckt = p.parse(netlist);
+
+    // Call via Device* base pointer -- exercises the virtual dispatch.
+    for (auto& d : ckt.devices()) {
+        d->reset_temp();  // must not crash or throw
+    }
+
+    DCResult result = solve_dc(ckt);
+    EXPECT_GT(result.node_voltages["v(drain)"], 5.0);
+}
+
 TEST(JFETNgspiceCompare, NjfACMidBandGain) {
     // Verify AC gain of a JFET common-source amplifier
     // Analytical gm = 2*BETA*(Vgs-Vto) = 2*1e-4*1 = 2e-4 S

@@ -14,6 +14,10 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 
+    /// Thermal noise: 4kT/R (current noise spectral density A²/Hz)
+    std::vector<NoiseSource> noise_sources(
+        double freq, const std::vector<double>& dc_solution) const override;
+
     double resistance() const { return resistance_; }
 
 private:

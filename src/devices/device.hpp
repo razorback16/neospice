@@ -70,6 +70,27 @@ public:
         return std::nullopt;
     }
 
+    /// Clear any cached temperature-dependent parameters so they will be
+    /// recomputed on the next evaluate() call.  Must be called whenever the
+    /// simulation temperature changes (e.g. temperature sweep).
+    virtual void reset_temp() {}
+
+    /// Noise source descriptor: a current noise source between two nodes.
+    struct NoiseSource {
+        int32_t node_i;           // first node (GROUND_INTERNAL = -1 for ground)
+        int32_t node_j;           // second node (GROUND_INTERNAL = -1 for ground)
+        double spectral_density;  // A²/Hz (current noise spectral density)
+    };
+
+    /// Return the noise current sources for this device at the given
+    /// frequency and DC operating point.  Default: no noise.
+    /// Devices that generate noise (resistors, diodes, MOSFETs, BJTs)
+    /// override this to return their noise contributions.
+    virtual std::vector<NoiseSource> noise_sources(
+        double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
+        return {};
+    }
+
 protected:
     std::string name_;
 

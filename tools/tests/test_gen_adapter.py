@@ -142,6 +142,7 @@ class TestAdapterHpp:
         assert "void assign_offsets(const SparsityPattern& pattern) override;" in hpp
         assert "void evaluate(const std::vector<double>& voltages," in hpp
         assert "void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;" in hpp
+        assert "void reset_temp() override { temp_done_ = false; }" in hpp
 
     def test_private_members(self, desc: StubDescriptor) -> None:
         hpp = generate_adapter_hpp(desc)

@@ -41,6 +41,8 @@ int node_count_for_element(char elem_type) {
             return 4;  // Q has 4 node tokens (C B E S) — substrate should be explicit in subcircuits
         case 'j':
             return 3;  // J has 3 node tokens (D G S)
+        case 'k':
+            return 0;  // K has no node tokens (references inductor device names, not nodes)
         default:
             return 0;
     }
@@ -467,6 +469,19 @@ std::vector<TokenizedLine> expand_instance(
                 value_start < line.tokens.size()) {
                 std::string vsense = to_lower(line.tokens[value_start]);
                 new_line.tokens.push_back(instance_prefix + "." + vsense);
+                value_start++;
+            }
+
+            // Special handling for K (coupled inductor) elements:
+            // tokens 1 and 2 (the two inductor device names) must be prefixed
+            // with the instance hierarchy.  Token 3+ (coupling coefficient) are
+            // ordinary values and pass through the normal evaluation path below.
+            if (elem_type == 'k' && value_start + 1 < line.tokens.size()) {
+                std::string l1_name = to_lower(line.tokens[value_start]);
+                new_line.tokens.push_back(instance_prefix + "." + l1_name);
+                value_start++;
+                std::string l2_name = to_lower(line.tokens[value_start]);
+                new_line.tokens.push_back(instance_prefix + "." + l2_name);
                 value_start++;
             }
 

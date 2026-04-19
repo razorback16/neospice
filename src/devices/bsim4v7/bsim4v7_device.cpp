@@ -1104,4 +1104,34 @@ BSIM4v7Device::query_param(const std::string& name) const {
     return std::nullopt;  // unrecognized parameter
 }
 
+// ---------------------------------------------------------------------------
+// noise_sources — simplified channel thermal noise: 4kT * (2/3) * gm
+//
+// The full BSIM4v7 noise model (b4v7noi.c) supports multiple noise models
+// (NOIA/NOIB/NOIC flicker noise, holistic thermal noise, etc.).  For V1 we
+// implement the dominant long-channel thermal noise between drain-prime and
+// source-prime, which is sufficient for typical hand-analysis comparison.
+// ---------------------------------------------------------------------------
+static inline int32_t ucb_to_neo(int ucb_node) {
+    return (ucb_node <= 0) ? GROUND_INTERNAL : (ucb_node - 1);
+}
+
+std::vector<Device::NoiseSource>
+BSIM4v7Device::noise_sources(double /*freq*/,
+                              const std::vector<double>& /*dc_solution*/) const {
+    const double kT = BOLTZMANN * T_NOMINAL;
+    const double gm = std::abs(inst_.BSIM4v7gm);
+    const double m  = inst_.BSIM4v7m;
+
+    // Channel thermal noise: 4kT * gamma * gm * m
+    // gamma = 2/3 for long-channel MOSFETs
+    const double channel_noise = 4.0 * kT * (2.0 / 3.0) * gm * m;
+
+    // Noise is between drain-prime and source-prime internal nodes
+    const int32_t dp_neo = ucb_to_neo(inst_.BSIM4v7dNodePrime);
+    const int32_t sp_neo = ucb_to_neo(inst_.BSIM4v7sNodePrime);
+
+    return {{dp_neo, sp_neo, channel_noise}};
+}
+
 } // namespace neospice

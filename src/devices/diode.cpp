@@ -61,8 +61,9 @@ void Diode::evaluate(const std::vector<double>& voltages,
     add_rhs_if_valid(rhs, na_, -ieq);
     add_rhs_if_valid(rhs, nc_,  ieq);
 
-    // Cache for AC analysis
+    // Cache for AC / noise analysis
     last_gd_ = gd;
+    last_id_ = id;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +141,17 @@ void Diode::ac_stamp(const std::vector<double>& voltages,
     add_if_valid(C, off_ac_, -ctotal);
     add_if_valid(C, off_ca_, -ctotal);
     add_if_valid(C, off_cc_,  ctotal);
+}
+
+// ---------------------------------------------------------------------------
+// Noise sources — shot noise (2qI) + thermal noise (4kTG)
+// ---------------------------------------------------------------------------
+
+std::vector<Device::NoiseSource> Diode::noise_sources(
+    double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
+    // Junction shot noise: S = 2 * q * |I_dc|  (A^2/Hz)
+    // Series resistance thermal noise (4kT/Rs) omitted — this model has no Rs.
+    return {{na_, nc_, 2.0 * CHARGE_Q * std::abs(last_id_)}};
 }
 
 // ---------------------------------------------------------------------------
