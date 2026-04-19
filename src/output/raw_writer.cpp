@@ -210,7 +210,7 @@ void write_raw(const std::string& filepath, const DCSweepResult& result) {
     out << "No. Points: " << npoints << "\n";
     out << "Variables:\n";
     for (std::size_t i = 0; i < nvars; ++i) {
-        const char* type_str = (var_types[i] == 0) ? "voltage" :
+        const char* type_str = (var_types[i] == 0) ? "sweep" :
                                (var_types[i] == 1) ? "voltage" : "current";
         out << "\t" << i << "\t" << var_names[i] << "\t" << type_str << "\n";
     }

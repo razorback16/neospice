@@ -116,12 +116,13 @@ static std::vector<double> make_sweep_values(double start, double stop, double s
     }
     std::vector<double> vals;
     // Determine direction
+    double tol = std::abs(step) * 1e-9;
     if (step > 0.0) {
-        for (double v = start; v <= stop + step * 1e-9; v += step) {
+        for (double v = start; v <= stop + tol; v += step) {
             vals.push_back(v);
         }
     } else {
-        for (double v = start; v >= stop + step * 1e-9; v += step) {
+        for (double v = start; v >= stop - tol; v += step) {
             vals.push_back(v);
         }
     }
@@ -232,24 +233,30 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         }
     };
 
-    // Helper: run Newton at current source settings, using previous solution as warm start
+    // Helper: run Newton at current source settings, using previous solution
+    // as warm start. First point uses INITJCT (junction guess); subsequent
+    // points use INITFIX so BSIM4 reads from the previous converged state.
+    bool first_point = true;
     auto run_newton = [&]() {
-        ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITJCT_BIT;
+        int init_bit = first_point ? MODEINITJCT_BIT : MODEINITFIX_BIT;
+        ckt.integrator_ctx.mode = MODEDC_BITS | init_bit;
         auto res = newton_solve(ckt, solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
+            first_point = false;
             return;
         }
-        // Fall back to gmin / source stepping
         ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
         res = gmin_stepping(ckt, solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
+            first_point = false;
             return;
         }
         res = source_stepping(ckt, solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
+            first_point = false;
             return;
         }
         throw ConvergenceError("DC sweep: convergence failed");
