@@ -18,6 +18,7 @@
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
+#include "devices/tline.hpp"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -1229,6 +1230,55 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": K element cannot couple an inductor to itself");
             }
             deferred_coupled_inductors.push_back(std::move(kd));
+
+        } else if (elem_type == 't') {
+            // T name p1+ p1- p2+ p2- Z0=val TD=val
+            //   or T name p1+ p1- p2+ p2- Z0=val F=val NL=val
+            // Minimum: name + 4 nodes + at least one keyword=value pair
+            if (tokens.size() < 6) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": T element requires name, p1+, p1-, p2+, p2-, Z0=val TD=val");
+            }
+            std::string tname = tokens[0];
+            int32_t tp1p = ckt.node(tokens[1]);
+            int32_t tp1n = ckt.node(tokens[2]);
+            int32_t tp2p = ckt.node(tokens[3]);
+            int32_t tp2n = ckt.node(tokens[4]);
+
+            double tz0 = 0.0, ttd = -1.0, tf = -1.0, tnl = -1.0;
+            bool z0_given = false;
+            for (size_t i = 5; i < tokens.size(); ++i) {
+                auto eq = tokens[i].find('=');
+                if (eq == std::string::npos) continue;
+                std::string key = to_lower(tokens[i].substr(0, eq));
+                double val = parse_spice_number(tokens[i].substr(eq + 1));
+                if      (key == "z0") { tz0 = val; z0_given = true; }
+                else if (key == "td") { ttd = val; }
+                else if (key == "f")  { tf  = val; }
+                else if (key == "nl") { tnl = val; }
+            }
+            if (!z0_given) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": T element '" + tname + "' missing Z0=");
+            }
+            if (tz0 <= 0.0) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": T element '" + tname + "' Z0 must be positive");
+            }
+            // Compute TD: either given directly or from F and NL (TD = NL/F)
+            if (ttd < 0.0) {
+                if (tf > 0.0 && tnl > 0.0) {
+                    ttd = tnl / tf;
+                } else if (tf > 0.0 && tnl < 0.0) {
+                    // Default NL = 0.25 (quarter wavelength)
+                    ttd = 0.25 / tf;
+                } else {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": T element '" + tname + "' requires TD= or F= (with optional NL=)");
+                }
+            }
+            ckt.add_device(std::make_unique<TransmissionLine>(
+                tname, tp1p, tp1n, tp2p, tp2n, tz0, ttd));
 
         } else if (elem_type == 'b') {
             throw ParseError("Line " + std::to_string(line.line_number) +
