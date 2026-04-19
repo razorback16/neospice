@@ -24,6 +24,11 @@ void Resistor::assign_offsets(const SparsityPattern& pattern) {
 
 void Resistor::evaluate(const std::vector<double>& /*voltages*/,
                         NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+    // Cache simulation temperature for use in noise_sources().
+    if (const IntegratorCtx* ic = tls_integrator_ctx) {
+        if (ic->options) sim_temp_ = ic->options->temp;
+    }
+
     const double g = 1.0 / resistance_;
     add_if_valid(mat, off_pp_,  g);
     add_if_valid(mat, off_pn_, -g);
@@ -43,8 +48,6 @@ void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
 
 std::vector<Device::NoiseSource> Resistor::noise_sources(
     double freq, const std::vector<double>& dc_solution) const {
-    // Thermal noise: i²_noise = 4kT * G = 4kT / R  (A²/Hz)
-    // Temperature: use sim_temp_ set by the noise solver from SimOptions.
     const double G = 1.0 / resistance_;
     double spectral_density = 4.0 * BOLTZMANN * sim_temp_ * G;
 

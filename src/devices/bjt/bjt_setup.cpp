@@ -489,7 +489,6 @@ BJTsetup(Shim::Matrix *matrix, BJTModel *inModel, Shim::Ckt *ckt, int *states)
 /* macro to make elements with built in test for out of memory */
 #define TSTALLOC(ptr,first,second) \
 { here->ptr = matrix->make_elt(here->first, here->second); }
-            /* TODO(translator): TSTALLOC macro kept as-is; needs manual rewrite. */
 
             TSTALLOC(BJTcolColPrimePtr,BJTcolNode,BJTcolPrimeNode);
             TSTALLOC(BJTbaseBasePrimePtr,BJTbaseNode,BJTbasePrimeNode);

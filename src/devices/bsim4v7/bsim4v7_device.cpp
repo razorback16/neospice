@@ -301,6 +301,9 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
     ckt.CKTbypass  = 0;
     ckt.CKTnoncon  = 0;
 
+    // Cache simulation temperature for noise_sources().
+    sim_temp_ = sim_opts->temp;
+
     // State ring.
     ckt.CKTstate0 = state0_;
     ckt.CKTstate1 = state1_;

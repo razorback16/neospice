@@ -1,11 +1,11 @@
 #include "core/ac.hpp"
+#include "core/freq_utils.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/klu_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
 #include <algorithm>
-#include <cmath>
 #include <stdexcept>
 
 namespace neospice {
@@ -13,46 +13,6 @@ namespace neospice {
 static std::string to_lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
     return s;
-}
-
-// Generate frequency points based on mode
-static std::vector<double> generate_frequencies(AnalysisCommand::ACMode mode,
-                                                 int npoints, double fstart, double fstop) {
-    std::vector<double> freqs;
-    if (fstart <= 0 || fstop <= 0 || fstop < fstart || npoints < 1)
-        return freqs;
-
-    switch (mode) {
-    case AnalysisCommand::DEC: {
-        double decades = std::log10(fstop / fstart);
-        int total = static_cast<int>(std::round(decades * npoints)) + 1;
-        freqs.reserve(total);
-        for (int i = 0; i < total; ++i) {
-            double f = fstart * std::pow(10.0, static_cast<double>(i) / npoints);
-            freqs.push_back(f);
-        }
-        break;
-    }
-    case AnalysisCommand::OCT: {
-        double octaves = std::log2(fstop / fstart);
-        int total = static_cast<int>(std::round(octaves * npoints)) + 1;
-        freqs.reserve(total);
-        for (int i = 0; i < total; ++i) {
-            double f = fstart * std::pow(2.0, static_cast<double>(i) / npoints);
-            freqs.push_back(f);
-        }
-        break;
-    }
-    case AnalysisCommand::LIN: {
-        freqs.reserve(npoints);
-        double step = (npoints > 1) ? (fstop - fstart) / (npoints - 1) : 0.0;
-        for (int i = 0; i < npoints; ++i) {
-            freqs.push_back(fstart + i * step);
-        }
-        break;
-    }
-    }
-    return freqs;
 }
 
 ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,

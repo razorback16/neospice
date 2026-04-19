@@ -35,6 +35,11 @@ private:
     MatrixOffset off_pn_ = -1;
     MatrixOffset off_np_ = -1;
     MatrixOffset off_nn_ = -1;
+
+    // Simulation temperature cached from the last evaluate() call.
+    // Updated via tls_integrator_ctx so noise_sources() uses the
+    // correct temperature rather than the nominal default.
+    mutable double sim_temp_ = T_NOMINAL;
 };
 
 } // namespace neospice
