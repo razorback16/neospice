@@ -34,6 +34,9 @@ public:
 
     // Device interface
     int32_t extra_vars() const override { return 1; }
+    void assign_branch_index(int32_t& next) override {
+        set_branch_index(next); next += extra_vars();
+    }
     std::vector<std::string> output_currents() const override;
 
     void stamp_pattern(SparsityBuilder& builder) const override;

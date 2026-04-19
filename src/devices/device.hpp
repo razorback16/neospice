@@ -31,6 +31,11 @@ public:
     virtual void ac_stamp(const std::vector<double>& voltages,
                           NumericMatrix& G, NumericMatrix& C) {}
     virtual int32_t extra_vars() const { return 0; }
+
+    /// Assign the branch (extra MNA variable) index during finalize().
+    /// Devices with extra_vars() > 0 override this to store their branch
+    /// index and advance `next` by extra_vars().
+    virtual void assign_branch_index(int32_t& /*next*/) {}
     virtual std::vector<std::string> output_currents() const { return {}; }
 
     /// Number of BSIM-style state slots per instance (0 for stateless devices).

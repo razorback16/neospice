@@ -4,6 +4,7 @@
 #include "devices/device.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "parser/netlist_parser.hpp"
+#include <algorithm>
 #include <cmath>
 
 using namespace neospice;
