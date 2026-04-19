@@ -57,12 +57,6 @@ private:
         return pos_ < expr_.size() ? expr_[pos_] : '\0';
     }
 
-    // Consume the next character (after whitespace)
-    char consume() {
-        skip_ws();
-        return pos_ < expr_.size() ? expr_[pos_++] : '\0';
-    }
-
     double parse_additive() {
         double left = parse_multiplicative();
         while (true) {
@@ -162,6 +156,7 @@ private:
         if (lname == "if") {
             if (args.size() != 3)
                 throw ParseError("Function if() requires 3 arguments");
+            // SPICE convention varies; we use cond > 0 as true.
             return (args[0] > 0.0) ? args[1] : args[2];
         }
         throw ParseError("Unknown function: " + name);
@@ -224,8 +219,10 @@ private:
                 return call_function(name, args);
             }
 
-            // Parameter lookup
-            auto it = params_.find(name);
+            // Parameter lookup — SPICE is case-insensitive; normalise to lowercase
+            std::string lname = name;
+            std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
+            auto it = params_.find(lname);
             if (it == params_.end()) {
                 throw ParseError("Unknown parameter: " + name);
             }
@@ -241,13 +238,23 @@ private:
 // Dependency scanner — collects identifiers referenced in an expression
 // that are NOT function names.
 // ---------------------------------------------------------------------------
-static const std::unordered_set<std::string> kBuiltinFunctions = {
+const std::unordered_set<std::string> kBuiltinFunctions = {
     "sqrt", "abs", "log", "log10", "exp", "sin", "cos",
     "min", "max", "pow", "if"
 };
 
+// ---------------------------------------------------------------------------
+// Strip optional surrounding braces from an expression string.
+// ---------------------------------------------------------------------------
+std::string strip_braces(const std::string& s) {
+    if (s.size() >= 2 && s.front() == '{' && s.back() == '}') {
+        return s.substr(1, s.size() - 2);
+    }
+    return s;
+}
+
 /// Return the set of parameter names referenced in `expr`.
-static std::unordered_set<std::string> scan_dependencies(const std::string& expr) {
+std::unordered_set<std::string> scan_dependencies(const std::string& expr) {
     std::unordered_set<std::string> deps;
     size_t pos = 0;
     while (pos < expr.size()) {
@@ -271,27 +278,17 @@ static std::unordered_set<std::string> scan_dependencies(const std::string& expr
             pos = tmp;
             continue;
         }
-        // Not a builtin function name used without '(' — add as dependency
+        // Not a builtin function name used without '(' — add as dependency (lowercase for SPICE)
         std::string lname = name;
         std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
         if (kBuiltinFunctions.find(lname) == kBuiltinFunctions.end()) {
-            deps.insert(name);
+            deps.insert(lname);
         }
     }
     return deps;
 }
 
 } // anonymous namespace
-
-// ---------------------------------------------------------------------------
-// Strip optional surrounding braces from an expression string.
-// ---------------------------------------------------------------------------
-static std::string strip_braces(const std::string& s) {
-    if (s.size() >= 2 && s.front() == '{' && s.back() == '}') {
-        return s.substr(1, s.size() - 2);
-    }
-    return s;
-}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -307,18 +304,20 @@ double eval_expression(const std::string& expr,
 std::unordered_map<std::string, double> resolve_params(
     const std::vector<std::pair<std::string, std::string>>& raw_params)
 {
-    // Index by name for fast lookup
+    // Index by name for fast lookup — lowercase keys for case-insensitive SPICE semantics
     std::unordered_map<std::string, std::string> expr_of;
     expr_of.reserve(raw_params.size());
     // Keep original order for stable topological sort
     std::vector<std::string> names;
     names.reserve(raw_params.size());
     for (const auto& kv : raw_params) {
-        if (expr_of.count(kv.first) == 0) {
-            names.push_back(kv.first);
+        std::string lkey = kv.first;
+        std::transform(lkey.begin(), lkey.end(), lkey.begin(), ::tolower);
+        if (expr_of.count(lkey) == 0) {
+            names.push_back(lkey);
         }
         // Last definition wins (matches SPICE semantics where later .param overrides earlier)
-        expr_of[kv.first] = strip_braces(kv.second);
+        expr_of[lkey] = strip_braces(kv.second);
     }
 
     // Build adjacency list (who does each param depend on?)

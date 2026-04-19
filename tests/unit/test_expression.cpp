@@ -335,6 +335,15 @@ TEST(ResolveParams, PDKStyleBackwardRef) {
 }
 
 // ============================================================
+// Case-insensitive function names
+// ============================================================
+TEST(Expression, FuncCaseInsensitive) {
+    // Function names should be accepted in any case
+    EXPECT_NEAR(eval("SQRT(4)"), 2.0, 1e-12);
+    EXPECT_NEAR(eval("Sqrt(4)"), 2.0, 1e-12);
+}
+
+// ============================================================
 // Error cases
 // ============================================================
 TEST(Expression, MissingCloseParen) {
