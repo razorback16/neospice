@@ -351,6 +351,15 @@ std::vector<TokenizedLine> expand_instance(
         return instance_prefix + "." + lower;
     };
 
+    // Pre-collect .model names from the subcircuit body so we can
+    // distinguish model references from node names on Q/J cards.
+    std::unordered_set<std::string> local_model_names;
+    for (const auto& line : body_lines) {
+        if (line.tokens.size() >= 2 && to_lower(line.tokens[0]) == ".model") {
+            local_model_names.insert(to_lower(line.tokens[1]));
+        }
+    }
+
     std::vector<TokenizedLine> result;
 
     for (const auto& line : body_lines) {
@@ -444,6 +453,15 @@ std::vector<TokenizedLine> expand_instance(
         } else {
             // Regular element line — substitute nodes and evaluate param expressions
             int ncount = node_count_for_element(elem_type);
+
+            // Q cards can have 3 or 4 nodes: Q name NC NB NE [NS] model [area]
+            // Use the local model names to disambiguate token[4].
+            if (elem_type == 'q' && line.tokens.size() > 4) {
+                std::string tok4_lower = to_lower(line.tokens[4]);
+                if (local_model_names.count(tok4_lower)) {
+                    ncount = 3;  // token[4] is model, not substrate
+                }
+            }
 
             TokenizedLine new_line;
             new_line.line_number = line.line_number;
