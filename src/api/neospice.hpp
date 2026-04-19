@@ -4,6 +4,7 @@
 #include "core/transient.hpp"
 #include "core/ac.hpp"
 #include "core/noise.hpp"
+#include "core/measure.hpp"
 #include <string>
 #include <optional>
 
@@ -15,6 +16,7 @@ struct SimulationResult {
     std::optional<ACResult> ac;
     std::optional<DCSweepResult> dc_sweep;
     std::optional<NoiseResult> noise;
+    std::optional<MeasureResult> measures;
 };
 
 struct SimulatorOptions {

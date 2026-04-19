@@ -13,6 +13,7 @@ add_library(neospice_lib
     core/transient.cpp
     core/ac.cpp
     core/noise.cpp
+    core/measure.cpp
     core/timestep.cpp
     devices/resistor.cpp
     devices/vsource.cpp

@@ -163,6 +163,15 @@ SimulationResult Simulator::run(Circuit& ckt) {
             break;
         }
     }
+
+    // Execute .meas commands after all analyses complete
+    if (!ckt.measures.empty()) {
+        const TransientResult* tran_ptr = result.transient ? &*result.transient : nullptr;
+        const ACResult* ac_ptr = result.ac ? &*result.ac : nullptr;
+        const DCSweepResult* dc_sweep_ptr = result.dc_sweep ? &*result.dc_sweep : nullptr;
+        result.measures = execute_measures(ckt.measures, tran_ptr, ac_ptr, dc_sweep_ptr);
+    }
+
     return result;
 }
 

@@ -686,6 +686,175 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     if (!sig.empty())
                         ckt.save_signals.push_back(sig);
                 }
+            } else if (first == ".meas" || first == ".measure") {
+                // .meas analysis_type name measure_spec...
+                if (tokens.size() < 4) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .meas requires analysis_type, name, and measure specification");
+                }
+                MeasureCommand mcmd;
+                mcmd.analysis_type = to_lower(tokens[1]);
+                mcmd.name = to_lower(tokens[2]);
+
+                // Determine measure type from token 3+
+                // Handle case where token 3 might be PARAM='expr' (keyword=value form)
+                std::string tok3_full = to_lower(tokens[3]);
+                std::string tok3 = tok3_full;
+                auto tok3_eq = tok3_full.find('=');
+                if (tok3_eq != std::string::npos) {
+                    tok3 = tok3_full.substr(0, tok3_eq);
+                }
+
+                if (tok3 == "avg" || tok3 == "rms" || tok3 == "min" ||
+                    tok3 == "max" || tok3 == "pp" || tok3 == "integ") {
+                    // Statistical measure: .meas type name FUNC signal [FROM=x TO=y]
+                    mcmd.measure_type = tok3;
+                    if (tokens.size() < 5) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": .meas " + tok3 + " requires a signal name");
+                    }
+                    mcmd.signal = to_lower(tokens[4]);
+                    // Parse optional FROM= and TO=
+                    for (size_t i = 5; i < tokens.size(); ++i) {
+                        auto eq_pos = tokens[i].find('=');
+                        if (eq_pos == std::string::npos) continue;
+                        std::string key = to_lower(tokens[i].substr(0, eq_pos));
+                        double val = parse_spice_number(tokens[i].substr(eq_pos + 1));
+                        if (key == "from") mcmd.from_val = val;
+                        else if (key == "to") mcmd.to_val = val;
+                    }
+                } else if (tok3 == "trig") {
+                    // TRIG/TARG: .meas type name TRIG signal VAL=v RISE=n|FALL=n|CROSS=n
+                    //                            TARG signal VAL=v RISE=n|FALL=n|CROSS=n
+                    mcmd.measure_type = "trig_targ";
+                    // Parse TRIG section
+                    size_t i = 4;
+                    if (i >= tokens.size()) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": .meas TRIG requires a signal name");
+                    }
+                    mcmd.trig_signal = to_lower(tokens[i]);
+                    ++i;
+                    // Parse VAL=, RISE=, FALL=, CROSS= until we hit TARG
+                    for (; i < tokens.size(); ++i) {
+                        std::string lower = to_lower(tokens[i]);
+                        if (lower == "targ") break;
+                        auto eq_pos = lower.find('=');
+                        if (eq_pos == std::string::npos) continue;
+                        std::string key = lower.substr(0, eq_pos);
+                        std::string valstr = tokens[i].substr(eq_pos + 1);
+                        if (key == "val") mcmd.trig_val = parse_spice_number(valstr);
+                        else if (key == "rise") { mcmd.trig_direction = "rise"; mcmd.trig_td_count = static_cast<int>(parse_spice_number(valstr)); }
+                        else if (key == "fall") { mcmd.trig_direction = "fall"; mcmd.trig_td_count = static_cast<int>(parse_spice_number(valstr)); }
+                        else if (key == "cross") { mcmd.trig_direction = "cross"; mcmd.trig_td_count = static_cast<int>(parse_spice_number(valstr)); }
+                    }
+                    // Parse TARG section
+                    if (i < tokens.size() && to_lower(tokens[i]) == "targ") {
+                        ++i;
+                        if (i >= tokens.size()) {
+                            throw ParseError("Line " + std::to_string(line.line_number) +
+                                             ": .meas TARG requires a signal name");
+                        }
+                        mcmd.targ_signal = to_lower(tokens[i]);
+                        ++i;
+                        for (; i < tokens.size(); ++i) {
+                            std::string lower = to_lower(tokens[i]);
+                            auto eq_pos = lower.find('=');
+                            if (eq_pos == std::string::npos) continue;
+                            std::string key = lower.substr(0, eq_pos);
+                            std::string valstr = tokens[i].substr(eq_pos + 1);
+                            if (key == "val") mcmd.targ_val = parse_spice_number(valstr);
+                            else if (key == "rise") { mcmd.targ_direction = "rise"; mcmd.targ_td_count = static_cast<int>(parse_spice_number(valstr)); }
+                            else if (key == "fall") { mcmd.targ_direction = "fall"; mcmd.targ_td_count = static_cast<int>(parse_spice_number(valstr)); }
+                            else if (key == "cross") { mcmd.targ_direction = "cross"; mcmd.targ_td_count = static_cast<int>(parse_spice_number(valstr)); }
+                        }
+                    } else {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": .meas TRIG/TARG missing TARG keyword");
+                    }
+                } else if (tok3 == "find") {
+                    // FIND/WHEN: .meas type name FIND signal WHEN signal2=val [RISE=n|FALL=n]
+                    // or:        .meas type name FIND signal AT=val
+                    mcmd.measure_type = "find_when";
+                    if (tokens.size() < 5) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": .meas FIND requires a signal name");
+                    }
+                    mcmd.find_signal = to_lower(tokens[4]);
+                    size_t i = 5;
+                    // Look for WHEN or AT=
+                    for (; i < tokens.size(); ++i) {
+                        std::string lower = to_lower(tokens[i]);
+                        auto eq_pos = lower.find('=');
+                        if (eq_pos != std::string::npos) {
+                            std::string key = lower.substr(0, eq_pos);
+                            std::string valstr = tokens[i].substr(eq_pos + 1);
+                            if (key == "at") {
+                                mcmd.at_given = true;
+                                mcmd.at_val = parse_spice_number(valstr);
+                            } else if (key == "rise") {
+                                mcmd.when_direction = "rise";
+                                mcmd.when_td_count = static_cast<int>(parse_spice_number(valstr));
+                            } else if (key == "fall") {
+                                mcmd.when_direction = "fall";
+                                mcmd.when_td_count = static_cast<int>(parse_spice_number(valstr));
+                            } else if (key == "cross") {
+                                mcmd.when_direction = "cross";
+                                mcmd.when_td_count = static_cast<int>(parse_spice_number(valstr));
+                            }
+                        } else if (lower == "when") {
+                            // WHEN signal2=val
+                            ++i;
+                            if (i >= tokens.size()) {
+                                throw ParseError("Line " + std::to_string(line.line_number) +
+                                                 ": .meas WHEN requires condition");
+                            }
+                            // The next token should be signal2=val
+                            std::string cond = tokens[i];
+                            auto cond_eq = cond.find('=');
+                            if (cond_eq != std::string::npos) {
+                                mcmd.when_signal = to_lower(cond.substr(0, cond_eq));
+                                mcmd.when_val = parse_spice_number(cond.substr(cond_eq + 1));
+                            }
+                            // Default direction is cross if not specified
+                            if (mcmd.when_direction.empty()) mcmd.when_direction = "cross";
+                            // Continue parsing for RISE=/FALL=/CROSS=
+                        }
+                    }
+                    // Default when_direction to "cross" if not set
+                    if (mcmd.when_direction.empty() && !mcmd.at_given)
+                        mcmd.when_direction = "cross";
+                } else if (tok3 == "param") {
+                    // PARAM: .meas type name PARAM='expression'
+                    // or:    .meas type name PARAM 'expression'
+                    mcmd.measure_type = "param";
+                    std::string expr;
+                    if (tok3_eq != std::string::npos) {
+                        // Token 3 is PARAM='expr' — extract the expression after '='
+                        expr = tokens[3].substr(tok3_eq + 1);
+                        for (size_t i = 4; i < tokens.size(); ++i) {
+                            expr += ' ';
+                            expr += tokens[i];
+                        }
+                    } else {
+                        // Token 3 is just "PARAM", expression starts at token 4+
+                        for (size_t i = 4; i < tokens.size(); ++i) {
+                            if (!expr.empty()) expr += ' ';
+                            expr += tokens[i];
+                        }
+                    }
+                    // Strip surrounding quotes (single or double)
+                    if (expr.size() >= 2 &&
+                        ((expr.front() == '\'' && expr.back() == '\'') ||
+                         (expr.front() == '"' && expr.back() == '"'))) {
+                        expr = expr.substr(1, expr.size() - 2);
+                    }
+                    mcmd.param_expr = expr;
+                } else {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": Unknown .meas type: " + tokens[3]);
+                }
+                ckt.measures.push_back(std::move(mcmd));
             }
             // Skip .model, .param (already handled), .print, .include, .lib, .endl, etc.
             continue;

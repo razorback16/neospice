@@ -24,6 +24,33 @@ struct DCSweepParam {
     double step  = 0.0;
 };
 
+struct MeasureCommand {
+    std::string name;           // result name
+    std::string analysis_type;  // "tran", "ac", "dc"
+    std::string measure_type;   // "trig_targ", "find_when", "avg", "rms", "min", "max", "pp", "integ", "param"
+
+    // For TRIG/TARG:
+    std::string trig_signal, targ_signal;
+    double trig_val = 0, targ_val = 0;
+    std::string trig_direction, targ_direction; // "rise", "fall", "cross"
+    int trig_td_count = 1, targ_td_count = 1;  // which crossing (1st, 2nd, etc.)
+
+    // For FIND/WHEN:
+    std::string find_signal, when_signal;
+    double when_val = 0;
+    std::string when_direction; // "rise", "fall", "cross"
+    int when_td_count = 1;
+    bool at_given = false;      // true if AT= form was used
+    double at_val = 0;
+
+    // For statistical (AVG, RMS, MIN, MAX, PP, INTEG):
+    std::string signal;
+    double from_val = -1e30, to_val = 1e30;  // time/freq range
+
+    // For PARAM:
+    std::string param_expr;
+};
+
 struct AnalysisCommand {
     enum Type { OP, TRAN, AC, DC_SWEEP, NOISE };
     Type type;
@@ -88,6 +115,7 @@ public:
     std::unordered_map<int32_t, double> ic;       // .ic
     std::unordered_map<int32_t, double> nodeset;  // .nodeset
     std::vector<std::string>            save_signals;
+    std::vector<MeasureCommand>         measures;  // .meas / .measure
 
     IntegratorCtx integrator_ctx;
 
