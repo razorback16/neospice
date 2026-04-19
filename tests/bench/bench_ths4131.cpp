@@ -174,6 +174,24 @@ int main() {
         }
     }
 
+    // --- neospice AC phase breakdown ---
+    {
+        Simulator sim;
+        auto ckt = sim.load(cir_path);
+        sim.run_dc(ckt);
+
+        auto t_total_start = Clock::now();
+        auto ac = sim.run_ac(ckt, AnalysisCommand::DEC, 10, 1.0, 100e6);
+        auto t_total_end = Clock::now();
+
+        double total_us = std::chrono::duration<double, std::micro>(
+            t_total_end - t_total_start).count();
+        int nfreq = static_cast<int>(ac.frequency.size());
+        std::printf("\n  AC phase breakdown (single run):\n");
+        std::printf("    Total AC: %.0f µs for %d freq points (%.1f µs/point)\n",
+                    total_us, nfreq, total_us / nfreq);
+    }
+
     // --- Summary ---
     std::printf("\n--- Summary ---\n");
     std::printf("  neospice breakdown:  parse %.0f µs + DC %.0f µs + AC %.0f µs = %.2f ms\n",
