@@ -148,6 +148,14 @@ NoiseResult solve_noise(Circuit& ckt,
     }
 
     // ---------------------------------------------------------------
+    // 4b. Propagate simulation temperature to all devices so that
+    //     noise_sources() uses the correct temperature from SimOptions.
+    // ---------------------------------------------------------------
+    for (auto& dev : ckt.devices()) {
+        dev->set_sim_temp(ckt.options.temp);
+    }
+
+    // ---------------------------------------------------------------
     // 5. Generate frequency points
     // ---------------------------------------------------------------
     auto freqs = generate_frequencies(mode, npoints, fstart, fstop);
