@@ -124,107 +124,98 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
         return ACResult{};
     }
 
-    // 6. Build 2n x 2n sparsity pattern ONCE
-    //    Layout: rows/cols 0..n-1 are real part, n..2n-1 are imaginary part
-    //    [Re(A)  -Im(A)] [Re(x)]   [Re(b)]
-    //    [Im(A)   Re(A)] [Im(x)] = [Im(b)]
-    const int32_t n2 = 2 * n;
-    SparsityBuilder builder(n2);
-
-    const auto& entries = pattern.entries();
-    for (const auto& [r, c] : entries) {
-        // Re(A) block: top-left (r, c) and bottom-right (r+n, c+n)
-        builder.add(r, c);
-        builder.add(r + n, c + n);
-        // -Im(A) block: top-right (r, c+n) and Im(A) block: bottom-left (r+n, c)
-        builder.add(r, c + n);
-        builder.add(r + n, c);
+    // 6. Pre-cache G/C value arrays for direct indexing
+    const int32_t nnz = pattern.nnz();
+    std::vector<double> g_vals(nnz);
+    std::vector<double> c_vals(nnz);
+    for (int32_t k = 0; k < nnz; ++k) {
+        g_vals[k] = G.data()[k];
+        c_vals[k] = C.data()[k];
     }
 
-    auto pattern_2n = builder.build();
-    NumericMatrix mat_2n(pattern_2n);
-
-    // Symbolic factorization ONCE
+    // 7. Symbolic factorization on n×n pattern (reuse DC pattern)
     KLUSolver ac_solver;
-    ac_solver.symbolic(pattern_2n);
+    ac_solver.symbolic(pattern);
+
+    // 8. Pre-compute result extraction indices (outside frequency loop)
+    struct VoltageSlot {
+        std::string key;
+        int32_t var_idx;
+    };
+    struct CurrentSlot {
+        std::string key;
+        int32_t branch_idx;
+    };
+    std::vector<VoltageSlot> voltage_slots;
+    voltage_slots.reserve(num_nodes);
+    for (int32_t i = 0; i < num_nodes; ++i) {
+        voltage_slots.push_back({"v(" + to_lower(ckt.node_name(i)) + ")", i});
+    }
+    std::vector<CurrentSlot> current_slots;
+    for (auto& dev : ckt.devices()) {
+        if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
+            int32_t br = vs->branch_index();
+            if (br >= 0 && br < n) {
+                current_slots.push_back({"i(" + to_lower(dev->name()) + ")", br});
+            }
+        } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
+            int32_t br = ind->branch_index();
+            if (br >= 0 && br < n) {
+                current_slots.push_back({"i(" + to_lower(dev->name()) + ")", br});
+            }
+        }
+    }
 
     // Prepare result
     ACResult ac_result;
     ac_result.frequency = freqs;
-
-    // Initialize voltage/current result vectors
-    for (int32_t i = 0; i < num_nodes; ++i) {
-        std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
-        ac_result.voltages[key].resize(freqs.size());
+    for (auto& vs : voltage_slots) {
+        ac_result.voltages[vs.key].resize(freqs.size());
     }
-    for (auto& dev : ckt.devices()) {
-        if (dynamic_cast<VSource*>(dev.get())) {
-            std::string key = "i(" + to_lower(dev->name()) + ")";
-            ac_result.currents[key].resize(freqs.size());
-        } else if (dynamic_cast<Inductor*>(dev.get())) {
-            std::string key = "i(" + to_lower(dev->name()) + ")";
-            ac_result.currents[key].resize(freqs.size());
-        }
+    for (auto& cs : current_slots) {
+        ac_result.currents[cs.key].resize(freqs.size());
     }
 
-    // 7. Frequency sweep
+    // 9. Complex RHS template (allocated once, copied per frequency)
+    std::vector<double> rhs_z(2 * n, 0.0);
+    for (int32_t i = 0; i < n; ++i) {
+        rhs_z[2 * i]     = ac_rhs[i].real();
+        rhs_z[2 * i + 1] = ac_rhs[i].imag();
+    }
+    const std::vector<double> rhs_z_template = rhs_z;
+
+    // 10. Complex Ax array: 2*nnz doubles (interleaved real,imag per NNZ in CSC order)
+    std::vector<double> ax(2 * nnz);
+
+    // 11. Frequency sweep
     for (size_t fi = 0; fi < freqs.size(); ++fi) {
         double omega = 2.0 * M_PI * freqs[fi];
 
-        // Build 2n x 2n numeric matrix
-        mat_2n.clear();
-
-        for (const auto& [r, c] : entries) {
-            double g_val = G.value(pattern.offset(r, c));
-            double c_val = C.value(pattern.offset(r, c));
-
-            double re_a = g_val;           // Re(G + jwC) = G
-            double im_a = omega * c_val;   // Im(G + jwC) = wC
-
-            // Top-left: Re(A)
-            mat_2n.add(pattern_2n.offset(r, c), re_a);
-            // Bottom-right: Re(A)
-            mat_2n.add(pattern_2n.offset(r + n, c + n), re_a);
-            // Top-right: -Im(A)
-            mat_2n.add(pattern_2n.offset(r, c + n), -im_a);
-            // Bottom-left: Im(A)
-            mat_2n.add(pattern_2n.offset(r + n, c), im_a);
+        // Build complex Ax = G + jωC
+        for (int32_t k = 0; k < nnz; ++k) {
+            ax[2 * k]     = g_vals[k];
+            ax[2 * k + 1] = omega * c_vals[k];
         }
 
-        // Build 2n RHS
-        std::vector<double> rhs_2n(n2, 0.0);
-        for (int32_t i = 0; i < n; ++i) {
-            rhs_2n[i]     = ac_rhs[i].real();
-            rhs_2n[i + n] = ac_rhs[i].imag();
-        }
-
-        // Factorize and solve
+        // Factor or refactor
         if (fi == 0) {
-            ac_solver.numeric(pattern_2n, mat_2n);
+            ac_solver.numeric_complex(pattern, ax);
         } else {
-            ac_solver.refactorize(mat_2n);
+            ac_solver.refactorize_complex(ax);
         }
-        ac_solver.solve(rhs_2n);
 
-        // Extract complex solution
-        for (int32_t i = 0; i < num_nodes; ++i) {
-            std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
-            ac_result.voltages[key][fi] = {rhs_2n[i], rhs_2n[i + n]};
+        // Solve
+        rhs_z = rhs_z_template;
+        ac_solver.solve_complex(rhs_z);
+
+        // Extract results — solution is interleaved (real,imag) pairs
+        for (auto& vs : voltage_slots) {
+            int32_t i = vs.var_idx;
+            ac_result.voltages[vs.key][fi] = {rhs_z[2*i], rhs_z[2*i+1]};
         }
-        for (auto& dev : ckt.devices()) {
-            if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-                int32_t br = vs->branch_index();
-                if (br >= 0 && br < n) {
-                    std::string key = "i(" + to_lower(dev->name()) + ")";
-                    ac_result.currents[key][fi] = {rhs_2n[br], rhs_2n[br + n]};
-                }
-            } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
-                int32_t br = ind->branch_index();
-                if (br >= 0 && br < n) {
-                    std::string key = "i(" + to_lower(dev->name()) + ")";
-                    ac_result.currents[key][fi] = {rhs_2n[br], rhs_2n[br + n]};
-                }
-            }
+        for (auto& cs : current_slots) {
+            int32_t br = cs.branch_idx;
+            ac_result.currents[cs.key][fi] = {rhs_z[2*br], rhs_z[2*br+1]};
         }
     }
 
