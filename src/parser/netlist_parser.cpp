@@ -148,6 +148,101 @@ SourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t star
     return spec;
 }
 
+// ---------------------------------------------------------------------------
+// extract_lib_section
+// ---------------------------------------------------------------------------
+// Given the text content of a library file and a section name, return the
+// lines that appear between ".lib section_name" and ".endl [section_name]".
+// Section name comparison is case-insensitive.
+// Throws ParseError if the named section is not found.
+// If multiple matching sections exist, the first one is returned.
+// A bare ".endl" (no section name) also terminates the current section.
+static std::string extract_lib_section(const std::string& content,
+                                       const std::string& section) {
+    std::string section_lower = to_lower(section);
+
+    std::istringstream input(content);
+    std::string line;
+    bool in_section = false;
+    std::ostringstream result;
+    bool found = false;
+
+    while (std::getline(input, line)) {
+        // Tokenize the line minimally: split on whitespace
+        std::string stripped = line;
+        // Find first non-space position
+        size_t start = 0;
+        while (start < stripped.size() &&
+               std::isspace(static_cast<unsigned char>(stripped[start])))
+            ++start;
+
+        // Build lowercase version from start
+        std::string lower_stripped = stripped.substr(start);
+        std::transform(lower_stripped.begin(), lower_stripped.end(),
+                       lower_stripped.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        // Tokenize by whitespace to get keyword and args
+        std::vector<std::string> toks;
+        {
+            std::istringstream ss(lower_stripped);
+            std::string tok;
+            while (ss >> tok) toks.push_back(tok);
+        }
+
+        if (toks.empty()) {
+            if (in_section) result << line << '\n';
+            continue;
+        }
+
+        if (toks[0] == ".lib") {
+            // ".lib section_name" — section start delimiter (2 tokens)
+            if (toks.size() == 2 && toks[1] == section_lower) {
+                if (!in_section) {
+                    in_section = true;
+                    found = true;
+                }
+                // Skip the delimiter line itself
+                continue;
+            } else if (toks.size() == 2 && in_section) {
+                // A different section start inside our section — treat as content
+                // (shouldn't normally happen, but be defensive)
+                result << line << '\n';
+                continue;
+            }
+            // Any other .lib form (3+ tokens) while in_section — treat as content
+            if (in_section) result << line << '\n';
+            continue;
+        }
+
+        if (toks[0] == ".endl") {
+            if (in_section) {
+                // ".endl" with no name, or ".endl section_name" matching ours
+                if (toks.size() == 1 ||
+                    (toks.size() >= 2 && toks[1] == section_lower)) {
+                    // End of our section
+                    in_section = false;
+                    break; // stop after the first matching section
+                } else {
+                    // .endl for a different section name — treat as content
+                    result << line << '\n';
+                }
+            }
+            continue;
+        }
+
+        if (in_section) {
+            result << line << '\n';
+        }
+    }
+
+    if (!found) {
+        throw ParseError(".lib: section '" + section + "' not found in library file");
+    }
+
+    return result.str();
+}
+
 } // anonymous namespace
 
 Circuit NetlistParser::parse(const std::string& netlist) {
@@ -833,6 +928,56 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     return ckt;
 }
 
+// Helper: resolve a filename token (possibly quoted) from a line.
+// pos points to the start of the filename token in `line`.
+// Returns the unquoted filename and advances pos past it.
+static std::string parse_filename_token(const std::string& line, size_t& pos) {
+    if (pos >= line.size()) return "";
+    char quote_char = line[pos];
+    std::string filename;
+    if (quote_char == '"' || quote_char == '\'') {
+        ++pos;
+        size_t end = line.find(quote_char, pos);
+        if (end == std::string::npos) {
+            throw ParseError("Unterminated quoted filename");
+        }
+        filename = line.substr(pos, end - pos);
+        pos = end + 1;
+    } else {
+        size_t end = pos;
+        while (end < line.size() && !std::isspace(static_cast<unsigned char>(line[end])))
+            ++end;
+        filename = line.substr(pos, end - pos);
+        pos = end;
+    }
+    return filename;
+}
+
+// Helper: open, canonicalise and read a library/include file.
+// Returns {canonical_path, file_content}.
+static std::pair<std::filesystem::path, std::string>
+open_lib_file(const std::string& filename,
+              const std::string& base_dir,
+              const std::string& directive_label) {
+    std::filesystem::path fpath(filename);
+    if (fpath.is_relative()) {
+        fpath = std::filesystem::path(base_dir) / fpath;
+    }
+    std::filesystem::path canonical_path;
+    try {
+        canonical_path = std::filesystem::canonical(fpath);
+    } catch (const std::filesystem::filesystem_error&) {
+        throw ParseError(directive_label + ": cannot open file: " + fpath.string());
+    }
+    std::ifstream ifs(canonical_path);
+    if (!ifs.is_open()) {
+        throw ParseError(directive_label + ": cannot open file: " + canonical_path.string());
+    }
+    std::ostringstream oss;
+    oss << ifs.rdbuf();
+    return {canonical_path, oss.str()};
+}
+
 std::string NetlistParser::resolve_includes(const std::string& content,
                                              const std::string& base_dir,
                                              std::set<std::string>& include_stack) {
@@ -841,103 +986,149 @@ std::string NetlistParser::resolve_includes(const std::string& content,
     std::string line;
 
     while (std::getline(input, line)) {
-        // Check if this line is a .include directive (case-insensitive)
         // Strip leading whitespace to find the directive keyword
         size_t start = 0;
         while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start])))
             ++start;
 
-        // Convert just the keyword portion to lowercase for comparison
+        // Build lowercase version from the non-whitespace start
         std::string lower_line = line.substr(start);
         std::transform(lower_line.begin(), lower_line.end(), lower_line.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
+        // ----------------------------------------------------------------
+        // .include filename
+        // ----------------------------------------------------------------
         bool is_include = false;
         size_t filename_start = 0;
         if (lower_line.size() >= 8 && lower_line.substr(0, 8) == ".include") {
-            // Verify character after ".include" is whitespace or end-of-string
             if (lower_line.size() == 8 || std::isspace(static_cast<unsigned char>(lower_line[8]))) {
                 is_include = true;
                 filename_start = start + 8; // position in original line after ".include"
             }
         }
 
-        if (!is_include) {
-            result << line << '\n';
+        if (is_include) {
+            // Skip whitespace after ".include"
+            size_t pos = filename_start;
+            while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos])))
+                ++pos;
+
+            if (pos >= line.size()) {
+                throw ParseError(".include directive missing filename");
+            }
+
+            std::string filename = parse_filename_token(line, pos);
+            if (filename.empty()) {
+                throw ParseError(".include directive has empty filename");
+            }
+
+            auto [canonical_path, file_content] = open_lib_file(filename, base_dir, ".include");
+            std::string canonical_str = canonical_path.string();
+            if (include_stack.count(canonical_str)) {
+                throw ParseError(".include: circular include detected for file: " + canonical_str);
+            }
+
+            include_stack.insert(canonical_str);
+            std::string included_base_dir = canonical_path.parent_path().string();
+            std::string expanded = resolve_includes(file_content, included_base_dir, include_stack);
+            include_stack.erase(canonical_str);
+
+            result << expanded;
+            if (!expanded.empty() && expanded.back() != '\n') result << '\n';
             continue;
         }
 
-        // Extract the filename from the rest of the line
-        // Skip whitespace after ".include"
-        size_t pos = filename_start;
-        while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos])))
-            ++pos;
-
-        if (pos >= line.size()) {
-            throw ParseError(".include directive missing filename");
-        }
-
-        std::string filename;
-        char quote_char = line[pos];
-        if (quote_char == '"' || quote_char == '\'') {
-            // Quoted filename — find matching closing quote
-            ++pos;
-            size_t end = line.find(quote_char, pos);
-            if (end == std::string::npos) {
-                throw ParseError(".include: unterminated quoted filename");
+        // ----------------------------------------------------------------
+        // .lib  — two forms:
+        //   3+ tokens: .lib filename section  => library call (include section)
+        //   2 tokens:  .lib section_name      => section start delimiter (skip at top level)
+        // Also skip bare .endl lines at top level.
+        // ----------------------------------------------------------------
+        bool is_lib = false;
+        size_t lib_rest_start = 0;
+        if (lower_line.size() >= 4 && lower_line.substr(0, 4) == ".lib") {
+            if (lower_line.size() == 4 || std::isspace(static_cast<unsigned char>(lower_line[4]))) {
+                is_lib = true;
+                lib_rest_start = start + 4; // position in original line after ".lib"
             }
-            filename = line.substr(pos, end - pos);
-        } else {
-            // Unquoted filename — read to next whitespace or end of line
-            size_t end = pos;
-            while (end < line.size() && !std::isspace(static_cast<unsigned char>(line[end])))
-                ++end;
-            filename = line.substr(pos, end - pos);
         }
 
-        if (filename.empty()) {
-            throw ParseError(".include directive has empty filename");
+        if (is_lib) {
+            // Collect whitespace-separated tokens from rest of line
+            std::string rest = line.substr(lib_rest_start);
+            std::vector<std::string> toks;
+            {
+                std::istringstream ss(rest);
+                std::string tok;
+                while (ss >> tok) toks.push_back(tok);
+            }
+
+            if (toks.size() >= 2) {
+                // .lib filename section — library call
+                std::string filename_tok = toks[0];
+                // The filename token may be quoted; parse it properly from the rest string
+                size_t pos2 = 0;
+                // Skip leading whitespace in rest
+                while (pos2 < rest.size() && std::isspace(static_cast<unsigned char>(rest[pos2])))
+                    ++pos2;
+                std::string filename = parse_filename_token(rest, pos2);
+
+                // The section name is the next non-whitespace token after the filename
+                while (pos2 < rest.size() && std::isspace(static_cast<unsigned char>(rest[pos2])))
+                    ++pos2;
+                if (pos2 >= rest.size()) {
+                    // Only one token after .lib => section delimiter, skip it
+                    continue;
+                }
+                size_t sec_end = pos2;
+                while (sec_end < rest.size() && !std::isspace(static_cast<unsigned char>(rest[sec_end])))
+                    ++sec_end;
+                std::string section = rest.substr(pos2, sec_end - pos2);
+
+                if (section.empty()) {
+                    // Treated as a section delimiter (only filename given) — skip
+                    continue;
+                }
+
+                // Resolve the library file
+                auto [canonical_path, file_content] = open_lib_file(filename, base_dir, ".lib");
+                std::string canonical_str = canonical_path.string();
+                if (include_stack.count(canonical_str)) {
+                    throw ParseError(".lib: circular include detected for file: " + canonical_str);
+                }
+
+                // Extract the named section from the library file
+                std::string section_content = extract_lib_section(file_content, section);
+
+                // Recursively resolve includes/libs within the extracted section
+                include_stack.insert(canonical_str);
+                std::string lib_base_dir = canonical_path.parent_path().string();
+                std::string expanded = resolve_includes(section_content, lib_base_dir, include_stack);
+                include_stack.erase(canonical_str);
+
+                result << expanded;
+                if (!expanded.empty() && expanded.back() != '\n') result << '\n';
+            }
+            // 0 or 1 tokens after .lib => bare ".lib" or ".lib section_name" delimiter — skip
+            continue;
         }
 
-        // Resolve path: if relative, prepend base_dir
-        std::filesystem::path fpath(filename);
-        if (fpath.is_relative()) {
-            fpath = std::filesystem::path(base_dir) / fpath;
+        // ----------------------------------------------------------------
+        // .endl — section end delimiter; skip at top level
+        // ----------------------------------------------------------------
+        bool is_endl = false;
+        if (lower_line.size() >= 5 && lower_line.substr(0, 5) == ".endl") {
+            if (lower_line.size() == 5 || std::isspace(static_cast<unsigned char>(lower_line[5]))) {
+                is_endl = true;
+            }
+        }
+        if (is_endl) {
+            // Skip .endl lines that appear at the top-level (outside a lib section context)
+            continue;
         }
 
-        // Canonicalize for circular-include detection
-        std::filesystem::path canonical_path;
-        try {
-            canonical_path = std::filesystem::canonical(fpath);
-        } catch (const std::filesystem::filesystem_error&) {
-            throw ParseError(".include: cannot open file: " + fpath.string());
-        }
-
-        std::string canonical_str = canonical_path.string();
-        if (include_stack.count(canonical_str)) {
-            throw ParseError(".include: circular include detected for file: " + canonical_str);
-        }
-
-        // Read the included file
-        std::ifstream ifs(canonical_path);
-        if (!ifs.is_open()) {
-            throw ParseError(".include: cannot open file: " + canonical_path.string());
-        }
-        std::ostringstream file_content;
-        file_content << ifs.rdbuf();
-
-        // Recursively resolve includes in the included file
-        include_stack.insert(canonical_str);
-        std::string included_base_dir = canonical_path.parent_path().string();
-        std::string expanded = resolve_includes(file_content.str(), included_base_dir, include_stack);
-        include_stack.erase(canonical_str);
-
-        // Append the expanded content (without adding extra newline if already ends with one)
-        result << expanded;
-        // Ensure a newline separator after included content
-        if (!expanded.empty() && expanded.back() != '\n') {
-            result << '\n';
-        }
+        result << line << '\n';
     }
 
     return result.str();
