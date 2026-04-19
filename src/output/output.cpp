@@ -358,4 +358,53 @@ std::string format_plot(const PrintCommand& cmd,
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// format_fourier — ngspice-style Fourier output
+// ---------------------------------------------------------------------------
+
+std::string format_fourier(const std::vector<FourierResult>& results) {
+    std::ostringstream out;
+
+    for (const auto& fr : results) {
+        out << "\nFourier analysis for " << fr.signal_name << ":\n";
+        out << "  No. Harmonics: " << fr.components.size()
+            << ", THD = " << std::fixed << std::setprecision(4) << fr.thd << " %\n\n";
+
+        // Column headers
+        out << std::setw(8)  << "Harmonic"
+            << std::setw(13) << "Frequency"
+            << std::setw(13) << "Fourier"
+            << std::setw(13) << "Normalized"
+            << std::setw(13) << "Phase"
+            << std::setw(13) << "Normalized"
+            << "\n";
+        out << std::setw(8)  << "Number"
+            << std::setw(13) << "[Hz]"
+            << std::setw(13) << "Component"
+            << std::setw(13) << "Component"
+            << std::setw(13) << "[Degrees]"
+            << std::setw(13) << "Phase [Deg]"
+            << "\n";
+
+        // Separator
+        const std::string sep(8 + 5 * 13, '-');
+        out << sep << "\n";
+
+        // Data rows
+        for (const auto& fc : fr.components) {
+            out << std::setw(8) << fc.harmonic;
+            out << std::scientific << std::setprecision(3);
+            out << std::setw(13) << fc.frequency;
+            out << std::setw(13) << fc.magnitude;
+            out << std::setw(13) << fc.normalized_mag;
+            out << std::setw(13) << fc.phase_deg;
+            out << std::setw(13) << fc.normalized_phase_deg;
+            out << "\n";
+        }
+        out << "\n";
+    }
+
+    return out.str();
+}
+
 } // namespace neospice

@@ -868,6 +868,17 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     }
                     ckt.prints.push_back(std::move(pcmd));
                 }
+            } else if (first == ".four" || first == ".fourier") {
+                // .four freq signal1 [signal2 ...]
+                if (tokens.size() >= 3) {
+                    FourierCommand fcmd;
+                    fcmd.fundamental_freq = parse_spice_number(tokens[1]);
+                    for (size_t i = 2; i < tokens.size(); ++i) {
+                        if (!tokens[i].empty())
+                            fcmd.signals.push_back(to_lower(tokens[i]));
+                    }
+                    ckt.fourier_commands.push_back(std::move(fcmd));
+                }
             }
             // Skip .model, .param (already handled), .include, .lib, .endl, etc.
             continue;

@@ -1,4 +1,5 @@
 #include "api/neospice.hpp"
+#include "core/fourier.hpp"
 #include "output/output.hpp"
 #include "parser/netlist_parser.hpp"
 #include <unordered_set>
@@ -186,6 +187,17 @@ SimulationResult Simulator::run(Circuit& ckt) {
             } else {
                 formatted = format_print(pcmd, tran_ptr, ac_ptr, dc_sweep_ptr, noise_ptr);
             }
+            result.print_output.push_back(std::move(formatted));
+        }
+    }
+
+    // Execute .four / .fourier commands after transient completes
+    if (!ckt.fourier_commands.empty() && result.transient) {
+        for (const auto& fcmd : ckt.fourier_commands) {
+            auto four_results = compute_fourier(fcmd.fundamental_freq,
+                                                fcmd.signals,
+                                                *result.transient);
+            std::string formatted = format_fourier(four_results);
             result.print_output.push_back(std::move(formatted));
         }
     }
