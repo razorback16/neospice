@@ -1067,8 +1067,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 else if (key == "sa")  m.geom.SA  = val;
                 else if (key == "sb")  m.geom.SB  = val;
                 else if (key == "sd")  m.geom.SD  = val;
-                // Silently ignore unknown M-card keys — UCB supports ~20 more
-                // (e.g., M=multiplier, TEMP, DTEMP, RBDB, RBSB, ...) that
+                else if (key == "m")   m.geom.M   = val;
+                // Silently ignore other unknown M-card keys — UCB supports ~20 more
+                // (e.g., TEMP, DTEMP, RBDB, RBSB, ...) that
                 // default cleanly in BSIM4setup.
             }
             deferred_mosfets.push_back(std::move(m));

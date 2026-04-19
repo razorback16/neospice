@@ -39,6 +39,7 @@ public:
         double SA = 0.0;
         double SB = 0.0;
         double SD = 0.0;
+        double M  = 1.0;   // device multiplier (parallel fingers count)
     };
 
     static std::unique_ptr<BSIM4v7Device> make(
