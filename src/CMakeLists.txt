@@ -20,6 +20,8 @@ add_library(neospice_lib
     devices/isource.cpp
     devices/vcvs.cpp
     devices/vccs.cpp
+    devices/vcvs_nonlinear.cpp
+    devices/vccs_nonlinear.cpp
     devices/ccvs.cpp
     devices/cccs.cpp
     devices/capacitor.cpp

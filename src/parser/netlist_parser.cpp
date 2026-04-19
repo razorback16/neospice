@@ -15,6 +15,8 @@
 #include "devices/vccs.hpp"
 #include "devices/ccvs.hpp"
 #include "devices/cccs.hpp"
+#include "devices/vcvs_nonlinear.hpp"
+#include "devices/vccs_nonlinear.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
@@ -1023,32 +1025,263 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             deferred_mosfets.push_back(std::move(m));
 
         } else if (elem_type == 'e') {
-            // E name np nn nc+ nc- gain
-            if (tokens.size() < 6) {
+            // E name np nn [POLY(N) cp1 cn1 ... coeffs | TABLE {V(in)} = (x,y)... | nc+ nc- gain]
+            if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": VCVS requires name, np, nn, nc+, nc-, gain");
+                                 ": VCVS requires name, np, nn, and source specification");
             }
             std::string name = tokens[0];
             int32_t np  = ckt.node(tokens[1]);
             int32_t nn  = ckt.node(tokens[2]);
-            int32_t ncp = ckt.node(tokens[3]);
-            int32_t ncn = ckt.node(tokens[4]);
-            double  gain = parse_spice_number(tokens[5]);
-            ckt.add_device(std::make_unique<VCVS>(name, np, nn, ncp, ncn, gain));
+
+            // Detect POLY or TABLE keyword at token[3]
+            std::string tok3 = to_lower(tokens[3]);
+
+            if (tok3.substr(0, 4) == "poly") {
+                // POLY(N) form
+                // Extract dimension N from "poly(n)" or "poly" followed by "(n)"
+                int poly_dim = 1;
+                std::string poly_tok = tok3;
+                size_t paren_pos = poly_tok.find('(');
+                if (paren_pos != std::string::npos) {
+                    size_t close = poly_tok.find(')');
+                    if (close != std::string::npos && close > paren_pos) {
+                        poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
+                    }
+                } else if (tokens.size() > 4) {
+                    // "POLY (N)" — dimension in separate token
+                    std::string next = tokens[4];
+                    if (!next.empty() && next.front() == '(') {
+                        size_t close = next.find(')');
+                        if (close != std::string::npos) {
+                            poly_dim = std::stoi(next.substr(1, close - 1));
+                        }
+                    }
+                }
+                // Now parse 2*poly_dim control node pairs, then coefficients
+                size_t idx = 4;
+                // Skip past any "(N)" token we haven't consumed yet
+                if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
+
+                std::vector<CtrlPair> ctrl_pairs;
+                ctrl_pairs.reserve(poly_dim);
+                for (int k = 0; k < poly_dim; ++k) {
+                    if (idx + 1 >= tokens.size()) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": POLY VCVS: not enough control node pairs");
+                    }
+                    int32_t cp = ckt.node(tokens[idx]);
+                    int32_t cn = ckt.node(tokens[idx + 1]);
+                    ctrl_pairs.push_back({cp, cn});
+                    idx += 2;
+                }
+                // Remaining tokens are polynomial coefficients
+                std::vector<double> coeffs;
+                for (; idx < tokens.size(); ++idx) {
+                    coeffs.push_back(parse_spice_number(tokens[idx]));
+                }
+                ckt.add_device(std::make_unique<NonlinearVCVS>(
+                    name, np, nn, std::move(ctrl_pairs), std::move(coeffs)));
+
+            } else if (tok3 == "table") {
+                // TABLE {V(in)} = (x1,y1) (x2,y2) ...
+                // Parse control expression: token[4] should be "{V(node)}" or similar
+                // For now support: TABLE {V(node)} = (x,y) (x,y) ...
+                if (tokens.size() < 6) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": TABLE VCVS requires control expression and table points");
+                }
+                // Extract node name from {V(node)} at token[4]
+                std::string ctrl_expr = tokens[4];
+                // Strip braces
+                if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
+                if (!ctrl_expr.empty() && ctrl_expr.back() == '}') ctrl_expr.pop_back();
+                // Extract node from V(node) or v(node)
+                std::string ctrl_lower = to_lower(ctrl_expr);
+                int32_t ctrl_pos = GROUND_INTERNAL, ctrl_neg = GROUND_INTERNAL;
+                if (ctrl_lower.size() > 3 && ctrl_lower[0] == 'v' && ctrl_lower[1] == '(') {
+                    size_t close = ctrl_lower.find(')');
+                    if (close != std::string::npos) {
+                        std::string node_name = ctrl_expr.substr(2, close - 2);
+                        // Support differential: V(n1,n2)
+                        size_t comma = node_name.find(',');
+                        if (comma != std::string::npos) {
+                            ctrl_pos = ckt.node(node_name.substr(0, comma));
+                            ctrl_neg = ckt.node(node_name.substr(comma + 1));
+                        } else {
+                            ctrl_pos = ckt.node(node_name);
+                            // ctrl_neg stays GROUND_INTERNAL
+                        }
+                    }
+                }
+                // Skip "=" token if present at token[5]
+                size_t idx = 5;
+                if (idx < tokens.size() && tokens[idx] == "=") ++idx;
+
+                // Parse table points: (x,y) may be in one token or spread across tokens
+                // Join remaining tokens and parse (x,y) pairs
+                std::string joined;
+                for (size_t i = idx; i < tokens.size(); ++i) {
+                    joined += tokens[i];
+                    joined += ' ';
+                }
+                std::vector<TablePoint> pts;
+                size_t pos = 0;
+                while (pos < joined.size()) {
+                    // Skip whitespace
+                    while (pos < joined.size() && std::isspace(static_cast<unsigned char>(joined[pos]))) ++pos;
+                    if (pos >= joined.size()) break;
+                    if (joined[pos] != '(') { ++pos; continue; }
+                    ++pos;  // skip '('
+                    size_t close = joined.find(')', pos);
+                    if (close == std::string::npos) break;
+                    std::string pair_str = joined.substr(pos, close - pos);
+                    pos = close + 1;
+                    size_t comma = pair_str.find(',');
+                    if (comma == std::string::npos) continue;
+                    double px = parse_spice_number(pair_str.substr(0, comma));
+                    double py = parse_spice_number(pair_str.substr(comma + 1));
+                    pts.push_back({px, py});
+                }
+                if (pts.empty()) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": TABLE VCVS: no table points found");
+                }
+                ckt.add_device(std::make_unique<TableVCVS>(
+                    name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
+
+            } else {
+                // Linear form: E name np nn nc+ nc- gain
+                if (tokens.size() < 6) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": VCVS requires name, np, nn, nc+, nc-, gain");
+                }
+                int32_t ncp = ckt.node(tokens[3]);
+                int32_t ncn = ckt.node(tokens[4]);
+                double  gain = parse_spice_number(tokens[5]);
+                ckt.add_device(std::make_unique<VCVS>(name, np, nn, ncp, ncn, gain));
+            }
 
         } else if (elem_type == 'g') {
-            // G name np nn nc+ nc- gm
-            if (tokens.size() < 6) {
+            // G name np nn [POLY(N) cp1 cn1 ... coeffs | TABLE {V(in)} = (x,y)... | nc+ nc- gm]
+            if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": VCCS requires name, np, nn, nc+, nc-, gm");
+                                 ": VCCS requires name, np, nn, and source specification");
             }
             std::string name = tokens[0];
             int32_t np  = ckt.node(tokens[1]);
             int32_t nn  = ckt.node(tokens[2]);
-            int32_t ncp = ckt.node(tokens[3]);
-            int32_t ncn = ckt.node(tokens[4]);
-            double  gm  = parse_spice_number(tokens[5]);
-            ckt.add_device(std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm));
+
+            std::string tok3g = to_lower(tokens[3]);
+
+            if (tok3g.substr(0, 4) == "poly") {
+                // POLY(N) form for VCCS
+                int poly_dim = 1;
+                std::string poly_tok = tok3g;
+                size_t paren_pos = poly_tok.find('(');
+                if (paren_pos != std::string::npos) {
+                    size_t close = poly_tok.find(')');
+                    if (close != std::string::npos && close > paren_pos) {
+                        poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
+                    }
+                } else if (tokens.size() > 4) {
+                    std::string next = tokens[4];
+                    if (!next.empty() && next.front() == '(') {
+                        size_t close = next.find(')');
+                        if (close != std::string::npos) {
+                            poly_dim = std::stoi(next.substr(1, close - 1));
+                        }
+                    }
+                }
+                size_t idx = 4;
+                if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
+
+                std::vector<CtrlPair> ctrl_pairs;
+                ctrl_pairs.reserve(poly_dim);
+                for (int k = 0; k < poly_dim; ++k) {
+                    if (idx + 1 >= tokens.size()) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": POLY VCCS: not enough control node pairs");
+                    }
+                    int32_t cp = ckt.node(tokens[idx]);
+                    int32_t cn = ckt.node(tokens[idx + 1]);
+                    ctrl_pairs.push_back({cp, cn});
+                    idx += 2;
+                }
+                std::vector<double> coeffs;
+                for (; idx < tokens.size(); ++idx) {
+                    coeffs.push_back(parse_spice_number(tokens[idx]));
+                }
+                ckt.add_device(std::make_unique<NonlinearVCCS>(
+                    name, np, nn, std::move(ctrl_pairs), std::move(coeffs)));
+
+            } else if (tok3g == "table") {
+                // TABLE {V(node)} = (x,y) ...
+                if (tokens.size() < 6) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": TABLE VCCS requires control expression and table points");
+                }
+                std::string ctrl_expr = tokens[4];
+                if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
+                if (!ctrl_expr.empty() && ctrl_expr.back() == '}') ctrl_expr.pop_back();
+                std::string ctrl_lower = to_lower(ctrl_expr);
+                int32_t ctrl_pos = GROUND_INTERNAL, ctrl_neg = GROUND_INTERNAL;
+                if (ctrl_lower.size() > 3 && ctrl_lower[0] == 'v' && ctrl_lower[1] == '(') {
+                    size_t close = ctrl_lower.find(')');
+                    if (close != std::string::npos) {
+                        std::string node_name = ctrl_expr.substr(2, close - 2);
+                        size_t comma = node_name.find(',');
+                        if (comma != std::string::npos) {
+                            ctrl_pos = ckt.node(node_name.substr(0, comma));
+                            ctrl_neg = ckt.node(node_name.substr(comma + 1));
+                        } else {
+                            ctrl_pos = ckt.node(node_name);
+                        }
+                    }
+                }
+                size_t idx = 5;
+                if (idx < tokens.size() && tokens[idx] == "=") ++idx;
+
+                std::string joined;
+                for (size_t i = idx; i < tokens.size(); ++i) {
+                    joined += tokens[i];
+                    joined += ' ';
+                }
+                std::vector<TablePoint> pts;
+                size_t pos = 0;
+                while (pos < joined.size()) {
+                    while (pos < joined.size() && std::isspace(static_cast<unsigned char>(joined[pos]))) ++pos;
+                    if (pos >= joined.size()) break;
+                    if (joined[pos] != '(') { ++pos; continue; }
+                    ++pos;
+                    size_t close = joined.find(')', pos);
+                    if (close == std::string::npos) break;
+                    std::string pair_str = joined.substr(pos, close - pos);
+                    pos = close + 1;
+                    size_t comma = pair_str.find(',');
+                    if (comma == std::string::npos) continue;
+                    double px = parse_spice_number(pair_str.substr(0, comma));
+                    double py = parse_spice_number(pair_str.substr(comma + 1));
+                    pts.push_back({px, py});
+                }
+                if (pts.empty()) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": TABLE VCCS: no table points found");
+                }
+                ckt.add_device(std::make_unique<TableVCCS>(
+                    name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
+
+            } else {
+                // Linear form: G name np nn nc+ nc- gm
+                if (tokens.size() < 6) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": VCCS requires name, np, nn, nc+, nc-, gm");
+                }
+                int32_t ncp = ckt.node(tokens[3]);
+                int32_t ncn = ckt.node(tokens[4]);
+                double  gm  = parse_spice_number(tokens[5]);
+                ckt.add_device(std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm));
+            }
 
         } else if (elem_type == 'h') {
             // H name np nn Vsense transresistance
