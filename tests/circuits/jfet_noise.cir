@@ -1,0 +1,11 @@
+JFET source follower noise test
+* NJF source follower: Vdd=10V, Rs=1k, biased in saturation
+* Gate at -1V sets operating point with gm > 0
+Vdd vdd 0 DC 10
+Vg gate 0 DC -1 AC 1
+Rs vdd drain 1k
+J1 drain gate source JMOD
+Rss source 0 2k
+.model JMOD NJF(VTO=-2 BETA=1e-4 LAMBDA=0.02 IS=1e-14 RD=0 RS=0)
+.noise V(source) Vg dec 10 100 1meg
+.end

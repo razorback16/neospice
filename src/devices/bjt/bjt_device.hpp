@@ -61,6 +61,9 @@ public:
     /// Called by the parser after make() when ic=VBE,VCE is present.
     void set_ic(double vbe, bool vbe_given, double vce, bool vce_given);
 
+    std::vector<NoiseSource> noise_sources(
+        double freq, const std::vector<double>& dc_solution) const override;
+
 private:
     explicit BJTDevice(std::string name) : Device(std::move(name)) {}
 

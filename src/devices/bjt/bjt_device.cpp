@@ -389,6 +389,80 @@ double BJTDevice::compute_trunc(const IntegratorCtx& ctx,
 }
 
 // ---------------------------------------------------------------------------
+// noise_sources — BJT noise contributions (shot + thermal + flicker)
+//
+// Sources (following ngspice bjtnoise.c):
+//   1. Collector shot noise:     S_ic = 2*q*|Ic|      (col_prime <-> emit_prime)
+//   2. Base shot + flicker:      S_ib = 2*q*|Ib| + KF*|Ib|^AF/f  (base_prime <-> emit_prime)
+//   3. Base resistance thermal:  S_rb = 4kT/Rb        (base_ext <-> base_prime), if Rb>0
+//   4. Collector series thermal: S_rc = 4kT/Rc        (col_ext <-> col_prime),   if Rc>0
+//   5. Emitter series thermal:   S_re = 4kT/Re        (emit_ext <-> emit_prime), if Re>0
+//
+// UCB nodes are 1-based (0=ground); neospice nodes are 0-based (-1=ground).
+// Convert: neo = ucb - 1.
+// ---------------------------------------------------------------------------
+std::vector<Device::NoiseSource> BJTDevice::noise_sources(
+        double freq, const std::vector<double>& /*dc_solution*/) const {
+    if (!state0_ || state_base_ < 0)
+        return {};
+
+    std::vector<NoiseSource> sources;
+
+    // Neospice node indices (ucb-1): -1 is ground.
+    const int32_t col_node       = inst_.BJTcolNode       - 1;
+    const int32_t base_node      = inst_.BJTbaseNode      - 1;
+    const int32_t emit_node      = inst_.BJTemitNode      - 1;
+    const int32_t col_prime_node = inst_.BJTcolPrimeNode  - 1;
+    const int32_t base_prime_node= inst_.BJTbasePrimeNode - 1;
+    const int32_t emit_prime_node= inst_.BJTemitPrimeNode - 1;
+
+    const double T  = T_NOMINAL;   // device temperature
+    const double m  = inst_.BJTm;  // parallel multiplier
+
+    // DC operating point currents (from state vector).
+    const double Ic = std::abs(state0_[state_base_ + 2]);  // BJTcc = BJTstate+2
+    const double Ib = std::abs(state0_[state_base_ + 3]);  // BJTcb = BJTstate+3
+
+    // --- 1. Collector shot noise ---
+    sources.push_back({col_prime_node, emit_prime_node,
+                       m * 2.0 * CHARGE_Q * Ic});
+
+    // --- 2. Base shot noise + flicker noise ---
+    double S_ib = 2.0 * CHARGE_Q * Ib;
+    const double KF = model_->BJTfNcoef;   // flicker noise coefficient (default 0)
+    const double AF = model_->BJTfNexp;    // flicker noise exponent (default 1)
+    if (KF > 0.0 && freq > 0.0 && Ib > 0.0) {
+        S_ib += KF * std::pow(Ib, AF) / freq;
+    }
+    sources.push_back({base_prime_node, emit_prime_node, m * S_ib});
+
+    // --- 3. Base resistance thermal noise (external to internal base) ---
+    // BJTtbaseResist is the temperature-adjusted base resistance.
+    const double Rb = inst_.BJTtbaseResist;
+    if (Rb > 0.0) {
+        sources.push_back({base_node, base_prime_node,
+                           m * 4.0 * BOLTZMANN * T / Rb});
+    }
+
+    // --- 4. Collector series resistance thermal noise ---
+    // BJTtcollectorConduct = 1/Rc (temperature-adjusted).
+    const double Gc = inst_.BJTtcollectorConduct * inst_.BJTareac;
+    if (Gc > 0.0) {
+        sources.push_back({col_node, col_prime_node,
+                           m * 4.0 * BOLTZMANN * T * Gc});
+    }
+
+    // --- 5. Emitter series resistance thermal noise ---
+    const double Ge = inst_.BJTtemitterConduct * inst_.BJTarea;
+    if (Ge > 0.0) {
+        sources.push_back({emit_node, emit_prime_node,
+                           m * 4.0 * BOLTZMANN * T * Ge});
+    }
+
+    return sources;
+}
+
+// ---------------------------------------------------------------------------
 // query_param — post-simulation parameter query
 // ---------------------------------------------------------------------------
 static std::string str_tolower(std::string s) {

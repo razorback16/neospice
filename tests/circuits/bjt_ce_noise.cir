@@ -1,0 +1,10 @@
+BJT common-emitter amplifier noise test
+* NPN CE amp: Vcc=5V, Rc=5k, Rb=100k, biased for ~1mA Ic
+Vcc vcc 0 DC 5
+Vbias base 0 DC 0.75 AC 1
+Rc vcc col 5k
+Rb base b_int 10k
+Q1 col b_int 0 QMOD
+.model QMOD NPN(IS=1e-14 BF=200 BR=5 VAF=100 RB=100)
+.noise V(col) Vbias dec 10 100 1meg
+.end

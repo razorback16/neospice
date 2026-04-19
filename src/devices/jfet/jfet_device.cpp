@@ -355,6 +355,54 @@ double JFETDevice::compute_trunc(const IntegratorCtx& ctx,
 }
 
 // ---------------------------------------------------------------------------
+// noise_sources — JFET noise contributions (channel thermal + flicker)
+//
+// Sources (following ngspice jfetnoi.c):
+//   1. Channel thermal + flicker:  S_id = 4kT*(2/3)*gm + KF*|Id|^AF/f
+//                                  (drain_prime <-> source_prime)
+//   2. Gate shot noise:            S_ig = 2*q*|Ig|   (gate <-> source_prime)
+//
+// UCB nodes are 1-based (0=ground); neospice nodes are 0-based (-1=ground).
+// ---------------------------------------------------------------------------
+std::vector<Device::NoiseSource> JFETDevice::noise_sources(
+        double freq, const std::vector<double>& /*dc_solution*/) const {
+    if (!state0_ || state_base_ < 0)
+        return {};
+
+    std::vector<NoiseSource> sources;
+
+    // Neospice node indices (ucb-1): -1 is ground.
+    const int32_t gate_node         = inst_.JFETgateNode         - 1;
+    const int32_t drain_prime_node  = inst_.JFETdrainPrimeNode   - 1;
+    const int32_t source_prime_node = inst_.JFETsourcePrimeNode  - 1;
+
+    const double T = T_NOMINAL;   // device temperature
+    const double m = inst_.JFETm; // parallel multiplier
+
+    // DC operating point from state vector.
+    const double gm = std::abs(state0_[state_base_ + 5]);  // JFETgm  = JFETstate+5
+    const double Id = std::abs(state0_[state_base_ + 3]);  // JFETcd  = JFETstate+3
+    const double Ig = std::abs(state0_[state_base_ + 2]);  // JFETcg  = JFETstate+2
+
+    // --- 1. Channel thermal noise + flicker noise ---
+    double S_ch = 4.0 * BOLTZMANN * T * (2.0 / 3.0) * gm;
+    const double KF = model_->JFETfNcoef;   // flicker noise coefficient (default 0)
+    const double AF = model_->JFETfNexp;    // flicker noise exponent (default 1)
+    if (KF > 0.0 && freq > 0.0 && Id > 0.0) {
+        S_ch += KF * std::pow(Id, AF) / freq;
+    }
+    sources.push_back({drain_prime_node, source_prime_node, m * S_ch});
+
+    // --- 2. Gate shot noise (gate leakage) ---
+    if (Ig > 0.0) {
+        sources.push_back({gate_node, source_prime_node,
+                           m * 2.0 * CHARGE_Q * Ig});
+    }
+
+    return sources;
+}
+
+// ---------------------------------------------------------------------------
 // query_param — post-simulation parameter query
 // ---------------------------------------------------------------------------
 static std::string str_tolower(std::string s) {
