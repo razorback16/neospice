@@ -104,7 +104,7 @@ double find_crossing(const std::vector<double>& xvec,
         bool match = false;
         if (direction == "rise" && is_rise) match = true;
         else if (direction == "fall" && is_fall) match = true;
-        else if (direction == "cross" && (is_rise || is_fall)) match = true;
+        else if ((direction == "cross" || direction.empty()) && (is_rise || is_fall)) match = true;
 
         if (match) {
             crossings_found++;

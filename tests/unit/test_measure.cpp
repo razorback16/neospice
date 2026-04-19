@@ -312,21 +312,18 @@ R2 out 0 1k
     EXPECT_NEAR(area, 200e-9, 5e-9);
 }
 
-TEST(MeasureExec, ACBandwidth_TrigTarg) {
-    // RC low-pass filter: -3dB at f = 1/(2*pi*RC)
-    // R=1k, C=1u => f_3dB = 159.15 Hz
-    // Gain at DC = 1.0, -3dB = 0.707
-    // Using TRIG/TARG with same signal to find bandwidth
-    // Note: For a low-pass, gain starts high and falls.
-    // The -3dB point should be around 159 Hz.
+TEST(MeasureExec, ACMaxGain) {
+    // RC low-pass: DC gain = 1.0, rolls off at f_3dB = 1/(2*pi*RC) = 159.15 Hz
+    // MAX of |v(out)| should be ~1.0
     Simulator sim;
     auto ckt = sim.parse(R"(
-ac bw test
+ac max test
 V1 in 0 DC 0 AC 1
 R1 in out 1k
 C1 out 0 1u
 .ac dec 20 1 100k
-.meas ac f3db FIND v(out) WHEN v(out)=0.707 FALL=1
+.meas ac gain_max MAX v(out)
+.meas ac gain_min MIN v(out)
 .end
 )");
 
@@ -334,38 +331,24 @@ C1 out 0 1u
     ASSERT_TRUE(result.measures.has_value());
     const auto& m = result.measures->values;
 
-    EXPECT_TRUE(m.count("f3db"));
-    // Note: FIND/WHEN with same signal as WHEN targets magnitude crossing
-    // In this case we use the FIND v(out) WHEN v(out)=0.707 form, which
-    // finds the frequency where |v(out)| = 0.707 and returns |v(out)| at that point
-    // Actually this returns the value of v(out) at the crossing, which is ~0.707
-    // Let me rethink - the FIND signal is evaluated at the crossing point
-    // So FIND v(out) WHEN v(out)=0.707 will return ~0.707 (the value itself at that point)
-    // That's not very useful. What we want is to find the FREQUENCY.
-    // For that, a different approach is needed.
+    ASSERT_TRUE(m.count("gain_max"));
+    EXPECT_NEAR(m.at("gain_max"), 1.0, 0.02);
+
+    ASSERT_TRUE(m.count("gain_min"));
+    EXPECT_LT(m.at("gain_min"), 0.1);
 }
 
-TEST(MeasureExec, ACBandwidth_Frequency) {
-    // Better test: Use TRIG/TARG with the frequency-domain result
-    // For bandwidth, TRIG at the first rise crossing and TARG at the fall crossing
-    // of the magnitude through 0.707 level
-    // But for a simple LP filter, magnitude only falls, never rises above 0.707
-    // after the first pass.
-    // Actually for LP: at low freq, gain ~1 (above 0.707), at high freq, gain drops
-    // The magnitude crosses 0.707 once (falling).
-    // TRIG/TARG gives f_targ - f_trig. If we trigger at a known low frequency,
-    // we can get the -3dB frequency.
-
-    // Simpler: just verify the 3dB point using a known RC circuit
-    // RC = 1k * 1u => f3dB = 1/(2*pi*1e-3) = 159.15 Hz
+TEST(MeasureExec, ACFindAtFrequency) {
+    // RC low-pass: at f_3dB = 159.15 Hz, |v(out)| ~ 0.707
+    // Use FIND/AT to check gain at a specific frequency
     Simulator sim;
     auto ckt = sim.parse(R"(
-ac bw test2
+ac find_at test
 V1 in 0 DC 0 AC 1
 R1 in out 1k
 C1 out 0 1u
-.ac dec 20 1 100k
-.meas ac bw TRIG v(out) VAL=0.707 FALL=1 TARG v(out) VAL=0.707 FALL=1
+.ac dec 50 1 100k
+.meas ac gain_at_f3db FIND v(out) AT=159.15
 .end
 )");
 
@@ -373,10 +356,8 @@ C1 out 0 1u
     ASSERT_TRUE(result.measures.has_value());
     const auto& m = result.measures->values;
 
-    EXPECT_TRUE(m.count("bw"));
-    // TRIG and TARG same signal, same crossing => result = 0
-    // This shows the limitation. A real bandwidth measurement uses TRIG and TARG
-    // at different crossings of the same signal.
+    ASSERT_TRUE(m.count("gain_at_f3db"));
+    EXPECT_NEAR(m.at("gain_at_f3db"), 0.707, 0.05);
 }
 
 TEST(MeasureExec, TranParam) {
