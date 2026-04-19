@@ -55,13 +55,13 @@ BJTDevice::make(std::string name,
 
     // Geometry.
     inst.BJTarea = geom.area;
-    inst.BJTareaGiven = (geom.area != 1.0) ? 1 : 0;
+    inst.BJTareaGiven = geom.area_given ? 1 : 0;
     inst.BJTareab = geom.areab;
-    inst.BJTareabGiven = (geom.areab != 1.0) ? 1 : 0;
+    inst.BJTareabGiven = geom.areab_given ? 1 : 0;
     inst.BJTareac = geom.areac;
-    inst.BJTareacGiven = (geom.areac != 1.0) ? 1 : 0;
+    inst.BJTareacGiven = geom.areac_given ? 1 : 0;
     inst.BJTm = geom.m;
-    inst.BJTmGiven = (geom.m != 1.0) ? 1 : 0;
+    inst.BJTmGiven = geom.m_given ? 1 : 0;
 
     // Thread onto the shared model's instance list.
     inst.BJTnextInstance = shared_card.ucb.BJTinstances;
@@ -162,6 +162,7 @@ void BJTDevice::assign_offsets(const SparsityPattern& pattern) {
     RESOLVE(BJTsubstSubstConPtr);
     RESOLVE(BJTbaseColPrimePtr);
     RESOLVE(BJTcolPrimeBasePtr);
+    RESOLVE(BJTsubstConSubstConPtr);
 
 #undef RESOLVE
 }

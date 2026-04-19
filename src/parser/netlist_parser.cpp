@@ -856,8 +856,16 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             // Otherwise treat as substrate node and look for model as next token.
             std::string tok4 = tokens[4];
             std::string tok4_lower = to_lower(tok4);
+            // Case-insensitive model name lookup
+            bool is_model_name = false;
+            for (const auto& [mname, _] : models) {
+                if (to_lower(mname) == tok4_lower) {
+                    is_model_name = true;
+                    break;
+                }
+            }
             size_t param_start;
-            if (models.count(tok4) > 0 || models.count(tok4_lower) > 0) {
+            if (is_model_name) {
                 q.nc = ckt.node(tokens[1]);
                 q.ns = ckt.node("0");  // default substrate = ground
                 q.model_name = tok4;
@@ -879,7 +887,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     std::string lower = to_lower(tokens[i]);
                     if (lower == "off") continue; // ignore OFF flag
                     // Bare number = area factor (legacy SPICE2 syntax)
-                    try { q.geom.area = parse_spice_number(tokens[i]); } catch (...) {}
+                    try {
+                        q.geom.area = parse_spice_number(tokens[i]);
+                        q.geom.area_given = true;
+                    } catch (...) {}
                     continue;
                 }
                 std::string key = to_lower(tokens[i].substr(0, eq));
@@ -900,10 +911,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     continue;
                 }
                 double val = parse_spice_number(valstr);
-                if (key == "area") q.geom.area = val;
-                else if (key == "areab") q.geom.areab = val;
-                else if (key == "areac") q.geom.areac = val;
-                else if (key == "m") q.geom.m = val;
+                if (key == "area") { q.geom.area = val; q.geom.area_given = true; }
+                else if (key == "areab") { q.geom.areab = val; q.geom.areab_given = true; }
+                else if (key == "areac") { q.geom.areac = val; q.geom.areac_given = true; }
+                else if (key == "m") { q.geom.m = val; q.geom.m_given = true; }
             }
             deferred_bjts.push_back(std::move(q));
 

@@ -27,9 +27,13 @@ class BJTDevice : public Device {
 public:
     struct Geom {
         double area = 1.0;
-        double areab = 1.0;
-        double areac = 1.0;
+        double areab = 1.0;  // defaults to area if not given
+        double areac = 1.0;  // defaults to area if not given
         double m = 1.0;
+        bool area_given = false;
+        bool areab_given = false;
+        bool areac_given = false;
+        bool m_given = false;
     };
 
     static std::unique_ptr<BJTDevice> make(
