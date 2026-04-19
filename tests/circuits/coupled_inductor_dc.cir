@@ -1,0 +1,8 @@
+Coupled Inductors DC Short Circuit Test
+V1 in 0 DC 5
+L1 in mid 10mH
+L2 mid out 10mH
+K1 L1 L2 0.99
+R1 out 0 100
+.op
+.end

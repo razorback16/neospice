@@ -1,0 +1,9 @@
+Coupled Inductors AC Transformer Test
+V1 in 0 DC 0 AC 1
+R1 in pri 1
+L1 pri 0 1mH
+L2 sec 0 4mH
+K1 L1 L2 0.999
+R2 sec 0 1k
+.ac dec 10 100 100k
+.end

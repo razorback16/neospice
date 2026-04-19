@@ -7,6 +7,9 @@
 #include "core/ac.hpp"
 #include "core/dc.hpp"
 #include "core/transient.hpp"
+#include "api/neospice.hpp"
+#include "framework/ngspice_runner.hpp"
+#include "framework/comparator.hpp"
 #include <cmath>
 
 using namespace neospice;
@@ -572,4 +575,42 @@ TEST(CoupledInductorTransient, ZeroCouplingNoStamp) {
     EXPECT_DOUBLE_EQ(mat.value(pattern.offset(5, 4)), 0.0);
     EXPECT_DOUBLE_EQ(rhs[4], 0.0);
     EXPECT_DOUBLE_EQ(rhs[5], 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// ngspice comparison tests for CoupledInductor (K element)
+// ---------------------------------------------------------------------------
+
+class CoupledInductorNgspiceTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        ngspice_ = std::make_unique<NgspiceRunner>(NGSPICE_BINARY);
+    }
+    std::unique_ptr<NgspiceRunner> ngspice_;
+    Simulator sim_;
+};
+
+// AC transformer: L1=1mH, L2=4mH, K=0.999, R_src=1, R_load=1k
+// Voltage ratio at high frequency should be approximately sqrt(L2/L1)=2.
+TEST_F(CoupledInductorNgspiceTest, ACTransformer) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/coupled_inductor_ac.cir";
+    auto ng_result = ngspice_->run_ac(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.ac.has_value());
+    auto cmp = compare_ac(ng_result, *cs_result.ac, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+// DC operating point: inductors are short-circuits at DC, K element is transparent.
+// V1=5V, R_load=100Ω → v(out)=5V, i(v1)=-50mA.
+TEST_F(CoupledInductorNgspiceTest, DCShortCircuit) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/coupled_inductor_dc.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run_dc(ckt);
+    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
