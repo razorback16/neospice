@@ -1,0 +1,16 @@
+NMOS Common-Source Amplifier — Noise Analysis
+* Reference circuit for BSIM4v7 noise model comparison with ngspice.
+* VDD = 1.8 V, VG = 0.9 V, RD = 5k
+* NMOD: LEVEL=14 (BSIM4v7), W=10u, L=100n
+* .noise analysis: output at V(drain), input source VG
+
+VDD vdd 0 DC 1.8
+VG  gate 0 DC 0.9 AC 1
+RD  vdd drain 5k
+M1  drain gate 0 0 NMOD W=10u L=100n
+
+.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
+
+.noise V(drain) VG dec 10 1 1e9
+
+.end

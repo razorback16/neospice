@@ -671,11 +671,11 @@ M1 drain gate 0 0 NMOD W=10u L=100n
 }
 
 // ---------------------------------------------------------------------------
-// Test 16: MOSFET noise is white at low frequency
+// Test 16: MOSFET noise is white at low frequency when flicker is disabled
 //
-// The simplified channel thermal noise model (no flicker noise) should
-// produce white noise. Verify the MOSFET noise contribution is flat
-// at low frequencies (below the pole frequencies set by parasitic caps).
+// With FNOIMOD=0 and KF=0 the flicker noise is completely suppressed.
+// The remaining channel thermal noise is white (frequency-independent).
+// Verify the output noise is flat at 10 Hz – 1 kHz.
 // ---------------------------------------------------------------------------
 TEST(Noise, MOSFETWhiteNoiseAtLowFreq) {
     std::string netlist = R"(
@@ -684,7 +684,7 @@ VDD vdd 0 DC 1.8
 VG gate 0 DC 0.9 AC 1
 RD vdd drain 5k
 M1 drain gate 0 0 NMOD W=10u L=100n
-.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
+.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9 FNOIMOD=0 KF=0
 .noise V(drain) VG dec 5 10 1000
 .end
 )";
@@ -696,7 +696,7 @@ M1 drain gate 0 0 NMOD W=10u L=100n
     ASSERT_GT(result.frequency.size(), 5u);
 
     // At low frequencies (10 Hz - 1 kHz), the noise should be approximately flat
-    // (no 1/f since we don't model flicker noise)
+    // (no 1/f since flicker noise is disabled via FNOIMOD=0 KF=0)
     double first_val = result.output_noise_density[0];
     EXPECT_GT(first_val, 0.0);
 
