@@ -89,8 +89,21 @@ void JFETDevice::declare_internal_nodes(Circuit& ckt) {
         return neo + 1;  // UCB convention: ground=0, real>=1
     };
 
+    // Splice this instance as sole member so JFETsetup only processes *this*.
+    JFETInstance* saved_head      = model_->JFETinstances;
+    JFETInstance* saved_next_inst = inst_.JFETnextInstance;
+    JFETModel*    saved_next_mod  = model_->JFETnextModel;
+    model_->JFETinstances  = &inst_;
+    inst_.JFETnextInstance = nullptr;
+    model_->JFETnextModel  = nullptr;
+
     int states = 0;
     int rc = JFETsetup(&shim_matrix, model_, &setup_ckt, &states);
+
+    model_->JFETinstances  = saved_head;
+    inst_.JFETnextInstance = saved_next_inst;
+    model_->JFETnextModel  = saved_next_mod;
+
     if (rc != Shim::OK) {
         throw std::runtime_error("JFETsetup failed with rc=" + std::to_string(rc));
     }

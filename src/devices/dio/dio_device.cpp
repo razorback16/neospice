@@ -94,8 +94,21 @@ void DIODevice::declare_internal_nodes(Circuit& ckt) {
         return neo + 1;  // UCB convention: ground=0, real>=1
     };
 
+    // Splice this instance as sole member so DIOsetup only processes *this*.
+    DIOInstance* saved_head      = model_->DIOinstances;
+    DIOInstance* saved_next_inst = inst_.DIOnextInstance;
+    DIOModel*    saved_next_mod  = model_->DIOnextModel;
+    model_->DIOinstances  = &inst_;
+    inst_.DIOnextInstance = nullptr;
+    model_->DIOnextModel  = nullptr;
+
     int states = 0;
     int rc = DIOsetup(&shim_matrix, model_, &setup_ckt, &states);
+
+    model_->DIOinstances  = saved_head;
+    inst_.DIOnextInstance = saved_next_inst;
+    model_->DIOnextModel  = saved_next_mod;
+
     if (rc != Shim::OK) {
         throw std::runtime_error("DIOsetup failed with rc=" + std::to_string(rc));
     }

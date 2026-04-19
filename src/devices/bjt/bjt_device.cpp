@@ -93,8 +93,21 @@ void BJTDevice::declare_internal_nodes(Circuit& ckt) {
         return neo + 1;  // UCB convention: ground=0, real>=1
     };
 
+    // Splice this instance as sole member so BJTsetup only processes *this*.
+    BJTInstance* saved_head      = model_->BJTinstances;
+    BJTInstance* saved_next_inst = inst_.BJTnextInstance;
+    BJTModel*    saved_next_mod  = model_->BJTnextModel;
+    model_->BJTinstances  = &inst_;
+    inst_.BJTnextInstance = nullptr;
+    model_->BJTnextModel  = nullptr;
+
     int states = 0;
     int rc = BJTsetup(&shim_matrix, model_, &setup_ckt, &states);
+
+    model_->BJTinstances  = saved_head;
+    inst_.BJTnextInstance = saved_next_inst;
+    model_->BJTnextModel  = saved_next_mod;
+
     if (rc != Shim::OK) {
         throw std::runtime_error("BJTsetup failed with rc=" + std::to_string(rc));
     }

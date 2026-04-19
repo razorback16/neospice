@@ -127,8 +127,21 @@ void BSIM4v7Device::declare_internal_nodes(Circuit& ckt) {
         return neo + 1;  // UCB convention: ground=0, real>=1
     };
 
+    // Splice this instance as sole member so BSIM4v7setup only processes *this*.
+    BSIM4v7Instance* saved_head      = model_->BSIM4v7instances;
+    BSIM4v7Instance* saved_next_inst = inst_.BSIM4v7nextInstance;
+    BSIM4v7Model*    saved_next_mod  = model_->BSIM4v7nextModel;
+    model_->BSIM4v7instances  = &inst_;
+    inst_.BSIM4v7nextInstance = nullptr;
+    model_->BSIM4v7nextModel  = nullptr;
+
     int states = 0;
     int rc = BSIM4v7setup(&shim_matrix, model_, &setup_ckt, &states);
+
+    model_->BSIM4v7instances  = saved_head;
+    inst_.BSIM4v7nextInstance = saved_next_inst;
+    model_->BSIM4v7nextModel  = saved_next_mod;
+
     if (rc != Shim::OK) {
         throw std::runtime_error("BSIM4v7setup failed with rc=" + std::to_string(rc));
     }
