@@ -4,7 +4,9 @@
 #include "core/ac.hpp"
 #include "core/dc.hpp"
 #include "core/noise.hpp"
+#include "core/fourier.hpp"
 #include <string>
+#include <vector>
 
 namespace neospice {
 
@@ -25,5 +27,9 @@ std::string format_plot(const PrintCommand& cmd,
                          const ACResult* ac,
                          const DCSweepResult* dc_sweep,
                          const NoiseResult* noise);
+
+/// Format Fourier results (from compute_fourier) as ngspice-style ASCII text.
+/// Each FourierResult produces one block; all blocks are concatenated.
+std::string format_fourier(const std::vector<FourierResult>& results);
 
 } // namespace neospice

@@ -57,6 +57,11 @@ struct PrintCommand {
     bool is_plot = false;                   // true for .plot, false for .print
 };
 
+struct FourierCommand {
+    double fundamental_freq = 0.0;          // Hz — the fundamental frequency
+    std::vector<std::string> signals;       // e.g., {"v(out)", "i(r1)"}
+};
+
 struct AnalysisCommand {
     enum Type { OP, TRAN, AC, DC_SWEEP, NOISE };
     Type type;
@@ -123,6 +128,7 @@ public:
     std::vector<std::string>            save_signals;
     std::vector<MeasureCommand>         measures;  // .meas / .measure
     std::vector<PrintCommand>           prints;    // .print / .plot
+    std::vector<FourierCommand>         fourier_commands;  // .four
 
     IntegratorCtx integrator_ctx;
 
