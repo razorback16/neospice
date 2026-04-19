@@ -1,5 +1,6 @@
 #include "core/circuit.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"  // complete BSIM4v7ModelCard for unique_ptr
+#include "devices/bjt/bjt_device.hpp"           // complete BJTModelCard for unique_ptr
 #include <cassert>
 #include <stdexcept>
 
@@ -57,6 +58,10 @@ void Circuit::add_device(std::unique_ptr<Device> dev) {
 
 void Circuit::add_bsim4_model_card(std::unique_ptr<BSIM4v7ModelCard> card) {
     bsim4_model_cards_.push_back(std::move(card));
+}
+
+void Circuit::add_bjt_model_card(std::unique_ptr<BJTModelCard> card) {
+    bjt_model_cards_.push_back(std::move(card));
 }
 
 void Circuit::finalize() {

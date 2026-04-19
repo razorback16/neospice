@@ -37,6 +37,8 @@ int node_count_for_element(char elem_type) {
             return 4;
         case 'h': case 'f':
             return 2;
+        case 'q':
+            return 3;  // Q has 3 node tokens (C B E) before model; substrate is optional
         default:
             return 0;
     }
@@ -464,6 +466,22 @@ std::vector<TokenizedLine> expand_instance(
                 std::string vsense = to_lower(line.tokens[value_start]);
                 new_line.tokens.push_back(instance_prefix + "." + vsense);
                 value_start++;
+            }
+
+            // Special handling for Q (BJT) elements: ncount=3 covers C,B,E but
+            // Q can have an optional 4th substrate node before the model name.
+            // If the token right after E (token[4]) is NOT a model name and NOT
+            // a key=value pair, treat it as a substrate node and substitute it.
+            if (elem_type == 'q' && value_start < line.tokens.size()) {
+                const std::string& tok4 = line.tokens[value_start];
+                // If it contains '=' it's a param; otherwise check if it could
+                // be a node (not just a bare number or model name).
+                // We substitute it as a node to be safe — the parser will
+                // later determine whether it's a model name or substrate node.
+                if (tok4.find('=') == std::string::npos) {
+                    new_line.tokens.push_back(subst_node(tok4));
+                    value_start++;
+                }
             }
 
             // Remaining tokens: values, model names, key=val pairs — evaluate

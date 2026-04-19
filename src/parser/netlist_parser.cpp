@@ -15,6 +15,7 @@
 #include "devices/ccvs.hpp"
 #include "devices/cccs.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
+#include "devices/bjt/bjt_device.hpp"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -464,6 +465,19 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     };
     std::vector<DeferredMosfet> deferred_mosfets;
 
+    // Deferred BJTs: parsed Q-cards are resolved in a second pass once
+    // all .model cards are known.
+    struct DeferredBJT {
+        std::string name;
+        int32_t nc, nb, ne, ns;  // collector, base, emitter, substrate
+        std::string model_name;
+        BJTDevice::Geom geom;
+        int line_number;
+        double ic_vbe = 0.0, ic_vce = 0.0;
+        bool ic_vbe_given = false, ic_vce_given = false;
+    };
+    std::vector<DeferredBJT> deferred_bjts;
+
     // Pass 1: collect .model and .param cards
     std::vector<std::pair<std::string, std::string>> raw_params;
     for (const auto& line : lines) {
@@ -825,6 +839,74 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             fd.line_number = line.line_number;
             deferred_cccs.push_back(std::move(fd));
 
+        } else if (elem_type == 'q') {
+            // Q name nc nb ne [ns] modelname [area=X] [areab=X] [areac=X] [m=X] [ic=VBE,VCE] [off]
+            if (tokens.size() < 5) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": Q card requires at least name, nc, nb, ne, model");
+            }
+            DeferredBJT q;
+            q.name = tokens[0];
+            q.nb = ckt.node(tokens[2]);
+            q.ne = ckt.node(tokens[3]);
+            q.line_number = line.line_number;
+
+            // Determine if token[4] is a substrate node or model name.
+            // Heuristic: if token[4] matches a known .model name, treat it as model.
+            // Otherwise treat as substrate node and look for model as next token.
+            std::string tok4 = tokens[4];
+            std::string tok4_lower = to_lower(tok4);
+            size_t param_start;
+            if (models.count(tok4) > 0 || models.count(tok4_lower) > 0) {
+                q.nc = ckt.node(tokens[1]);
+                q.ns = ckt.node("0");  // default substrate = ground
+                q.model_name = tok4;
+                param_start = 5;
+            } else if (tokens.size() >= 6) {
+                q.nc = ckt.node(tokens[1]);
+                q.ns = ckt.node(tok4);
+                q.model_name = tokens[5];
+                param_start = 6;
+            } else {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": Q card: cannot determine model name");
+            }
+
+            // Parse optional parameters: area, areab, areac, m, ic, off
+            for (size_t i = param_start; i < tokens.size(); ++i) {
+                auto eq = tokens[i].find('=');
+                if (eq == std::string::npos) {
+                    std::string lower = to_lower(tokens[i]);
+                    if (lower == "off") continue; // ignore OFF flag
+                    // Bare number = area factor (legacy SPICE2 syntax)
+                    try { q.geom.area = parse_spice_number(tokens[i]); } catch (...) {}
+                    continue;
+                }
+                std::string key = to_lower(tokens[i].substr(0, eq));
+                std::string valstr = tokens[i].substr(eq + 1);
+                if (key == "ic") {
+                    // ic=VBE,VCE
+                    std::vector<double> icvals;
+                    size_t start = 0;
+                    while (start < valstr.size()) {
+                        size_t comma = valstr.find(',', start);
+                        if (comma == std::string::npos) comma = valstr.size();
+                        std::string field = valstr.substr(start, comma - start);
+                        if (!field.empty()) icvals.push_back(parse_spice_number(field));
+                        start = comma + 1;
+                    }
+                    if (icvals.size() >= 1) { q.ic_vbe = icvals[0]; q.ic_vbe_given = true; }
+                    if (icvals.size() >= 2) { q.ic_vce = icvals[1]; q.ic_vce_given = true; }
+                    continue;
+                }
+                double val = parse_spice_number(valstr);
+                if (key == "area") q.geom.area = val;
+                else if (key == "areab") q.geom.areab = val;
+                else if (key == "areac") q.geom.areac = val;
+                else if (key == "m") q.geom.m = val;
+            }
+            deferred_bjts.push_back(std::move(q));
+
         } else if (elem_type == 'b') {
             throw ParseError("Line " + std::to_string(line.line_number) +
                              ": Unsupported element type '" + std::string(1, elem_type) + "'");
@@ -921,6 +1003,45 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     // Transfer card ownership to the Circuit (cards must outlive the devices).
     for (auto& [name, card] : bsim4_cards) {
         ckt.add_bsim4_model_card(std::move(card));
+    }
+
+    // Resolve deferred BJTs
+    std::unordered_map<std::string, std::unique_ptr<BJTModelCard>> bjt_cards;
+    for (const auto& q : deferred_bjts) {
+        auto it = models.find(q.model_name);
+        if (it == models.end()) {
+            auto it2 = models.find(to_lower(q.model_name));
+            if (it2 == models.end()) {
+                throw ParseError("Line " + std::to_string(q.line_number) +
+                                 ": Unknown model '" + q.model_name + "'");
+            }
+            it = it2;
+        }
+        // Check that the model type is NPN or PNP
+        std::string model_type = to_lower(it->second.type);
+        if (model_type != "npn" && model_type != "pnp") {
+            throw ParseError("Line " + std::to_string(q.line_number) +
+                             ": Q card references non-BJT model '" + q.model_name + "'");
+        }
+        auto card_it = bjt_cards.find(q.model_name);
+        if (card_it == bjt_cards.end()) {
+            try {
+                card_it = bjt_cards.emplace(q.model_name,
+                                            to_bjt_card(it->second)).first;
+            } catch (const ParseError& e) {
+                throw ParseError("Line " + std::to_string(q.line_number) +
+                                 ": " + e.what());
+            }
+        }
+        auto dev = BJTDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
+                                   q.geom, *card_it->second);
+        if (q.ic_vbe_given || q.ic_vce_given) {
+            dev->set_ic(q.ic_vbe, q.ic_vbe_given, q.ic_vce, q.ic_vce_given);
+        }
+        ckt.add_device(std::move(dev));
+    }
+    for (auto& [name, card] : bjt_cards) {
+        ckt.add_bjt_model_card(std::move(card));
     }
 
     ckt.finalize();

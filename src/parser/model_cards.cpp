@@ -2,6 +2,8 @@
 #include "core/types.hpp"
 #include "devices/bsim4v7/bsim4v7_def.hpp"
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
+#include "devices/bjt/bjt_def.hpp"
+#include "devices/bjt/bjt_shim.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -217,6 +219,75 @@ std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card) {
         if (rc != bsim4v7::Shim::OK) {
             throw ParseError(
                 "Model '" + card.name + "': BSIM4mParam failed for '" +
+                lkey + "' (rc=" + std::to_string(rc) + ")");
+        }
+    }
+
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// to_bjt_card — parse a .model NPN/PNP card into a BJTModelCard via
+// the UCB BJTmParam dispatcher.
+// ---------------------------------------------------------------------------
+std::unique_ptr<BJTModelCard> to_bjt_card(const ModelCard& card) {
+    auto out = std::make_unique<BJTModelCard>();
+    auto& ucb = out->ucb;
+
+    // Type check — card.type is lowercased at parse time.
+    if (card.type == "npn") {
+        ucb.BJTtype = 1;   // NPN
+    } else if (card.type == "pnp") {
+        ucb.BJTtype = -1;  // PNP
+    } else {
+        throw ParseError(
+            "Model '" + card.name + "': unsupported BJT type '" + card.type +
+            "' (only NPN/PNP supported)");
+    }
+
+    // Walk the BJT model parameter table, dispatching each matching
+    // parsed key through BJTmParam.
+    for (const auto& [lkey, val] : card.params) {
+        // Skip "level" — not a BJT model parameter.
+        if (lkey == "level") continue;
+
+        const bjt::Shim::IfParm* entry = nullptr;
+        for (int i = 0; i < bjt::BJTmPTSize; ++i) {
+            if (std::strcmp(bjt::BJTmPTable[i].keyword, lkey.c_str()) == 0) {
+                entry = &bjt::BJTmPTable[i];
+                break;
+            }
+        }
+        if (entry == nullptr) {
+            std::fprintf(stderr,
+                "Warning: model '%s': unknown BJT parameter '%s' (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        bjt::Shim::IfValue v{};
+        int dtype = entry->dataType & 0x1F;
+        if (dtype & bjt::Shim::IF_REAL) {
+            v.rValue = val;
+        } else if (dtype & bjt::Shim::IF_INTEGER) {
+            v.iValue = static_cast<int>(val);
+        } else if (dtype & bjt::Shim::IF_FLAG) {
+            v.iValue = (val != 0.0) ? 1 : 0;
+        } else if (dtype & bjt::Shim::IF_STRING) {
+            // Skip string params — BJT model has "type" as string which
+            // we handle via the NPN/PNP type field above.
+            continue;
+        } else {
+            std::fprintf(stderr,
+                "Warning: model '%s': parameter '%s' has unrecognized data type (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        int rc = bjt::BJTmParam(entry->id, &v, &ucb);
+        if (rc != bjt::Shim::OK) {
+            throw ParseError(
+                "Model '" + card.name + "': BJTmParam failed for '" +
                 lkey + "' (rc=" + std::to_string(rc) + ")");
         }
     }
