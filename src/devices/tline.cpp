@@ -1,0 +1,232 @@
+#include "devices/tline.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx
+#include <algorithm>
+#include <cassert>
+#include <cmath>
+
+namespace neospice {
+
+TransmissionLine::TransmissionLine(std::string name,
+                                   int32_t p1_pos, int32_t p1_neg,
+                                   int32_t p2_pos, int32_t p2_neg,
+                                   double z0, double td)
+    : Device(std::move(name)),
+      p1p_(p1_pos), p1n_(p1_neg),
+      p2p_(p2_pos), p2n_(p2_neg),
+      z0_(z0), td_(td),
+      g0_(1.0 / z0)
+{
+    assert(z0 > 0.0 && "Z0 must be positive");
+    assert(td >= 0.0 && "TD must be non-negative");
+}
+
+// ---------------------------------------------------------------------------
+// stamp_pattern / assign_offsets
+// ---------------------------------------------------------------------------
+
+void TransmissionLine::stamp_pattern(SparsityBuilder& builder) const {
+    // Port 1 shunt conductance: between p1p and p1n
+    stamp_if_not_ground(builder, p1p_, p1p_);
+    stamp_if_not_ground(builder, p1p_, p1n_);
+    stamp_if_not_ground(builder, p1n_, p1p_);
+    stamp_if_not_ground(builder, p1n_, p1n_);
+
+    // Port 2 shunt conductance: between p2p and p2n
+    stamp_if_not_ground(builder, p2p_, p2p_);
+    stamp_if_not_ground(builder, p2p_, p2n_);
+    stamp_if_not_ground(builder, p2n_, p2p_);
+    stamp_if_not_ground(builder, p2n_, p2n_);
+}
+
+void TransmissionLine::assign_offsets(const SparsityPattern& pattern) {
+    off_p1pp_ = offset_if_not_ground(pattern, p1p_, p1p_);
+    off_p1pn_ = offset_if_not_ground(pattern, p1p_, p1n_);
+    off_p1np_ = offset_if_not_ground(pattern, p1n_, p1p_);
+    off_p1nn_ = offset_if_not_ground(pattern, p1n_, p1n_);
+
+    off_p2pp_ = offset_if_not_ground(pattern, p2p_, p2p_);
+    off_p2pn_ = offset_if_not_ground(pattern, p2p_, p2n_);
+    off_p2np_ = offset_if_not_ground(pattern, p2n_, p2p_);
+    off_p2nn_ = offset_if_not_ground(pattern, p2n_, p2n_);
+}
+
+// ---------------------------------------------------------------------------
+// update_delayed_values
+// ---------------------------------------------------------------------------
+
+void TransmissionLine::update_delayed_values(double t_delayed) {
+    if (history_.empty() || t_delayed <= 0.0) {
+        // No history yet or delay reaches before t=0 — assume zero initial state.
+        e1_ = 0.0;
+        e2_ = 0.0;
+        return;
+    }
+
+    // If t_delayed is before the first history entry, use zero initial state.
+    if (t_delayed <= history_.front().time) {
+        e1_ = 0.0;
+        e2_ = 0.0;
+        return;
+    }
+
+    // If t_delayed is beyond the last entry, extrapolate with the last entry
+    // (shouldn't happen in normal operation but be safe).
+    if (t_delayed >= history_.back().time) {
+        const auto& h = history_.back();
+        e1_ = h.v2 + z0_ * h.i2;
+        e2_ = h.v1 + z0_ * h.i1;
+        return;
+    }
+
+    // Linear interpolation between the two bounding history points.
+    // Binary search for the first entry with time > t_delayed.
+    auto it = std::upper_bound(history_.begin(), history_.end(), t_delayed,
+        [](double t, const HistoryPoint& hp) { return t < hp.time; });
+
+    // 'it' points to the first element with time > t_delayed.
+    // The element before it has time <= t_delayed.
+    const auto& h1 = *(it - 1);
+    const auto& h2 = *it;
+
+    double alpha = (h2.time - h1.time > 1e-300)
+                   ? (t_delayed - h1.time) / (h2.time - h1.time)
+                   : 0.0;
+    alpha = std::max(0.0, std::min(1.0, alpha));
+
+    double v1_d  = h1.v1  + alpha * (h2.v1  - h1.v1 );
+    double i1_d  = h1.i1  + alpha * (h2.i1  - h1.i1 );
+    double v2_d  = h1.v2  + alpha * (h2.v2  - h1.v2 );
+    double i2_d  = h1.i2  + alpha * (h2.i2  - h1.i2 );
+
+    e1_ = v2_d + z0_ * i2_d;   // wave arriving at port 1
+    e2_ = v1_d + z0_ * i1_d;   // wave arriving at port 2
+}
+
+// ---------------------------------------------------------------------------
+// evaluate
+// ---------------------------------------------------------------------------
+
+void TransmissionLine::evaluate(const std::vector<double>& voltages,
+                                NumericMatrix& mat, std::vector<double>& rhs) {
+    // Compute delayed wave sources from history.
+    if (transient_ && tls_integrator_ctx) {
+        double t_now = tls_integrator_ctx->current_time;
+        update_delayed_values(t_now - td_);
+    } else {
+        // DC: no delay — lossless TL at DC is a short.
+        // We model it as G0 shunts on each port (Norton model with e1=e2=0
+        // plus a DC tie handled via large conductance).
+        e1_ = 0.0;
+        e2_ = 0.0;
+    }
+
+    // Stamp port-1 Norton companion: conductance G0 + current source e1/Z0
+    // The Norton current source injects current from p1n to p1p: +e1/Z0 at p1p, −e1/Z0 at p1n.
+    add_if_valid(mat, off_p1pp_,  g0_);
+    add_if_valid(mat, off_p1pn_, -g0_);
+    add_if_valid(mat, off_p1np_, -g0_);
+    add_if_valid(mat, off_p1nn_,  g0_);
+
+    // Port-2 Norton companion
+    add_if_valid(mat, off_p2pp_,  g0_);
+    add_if_valid(mat, off_p2pn_, -g0_);
+    add_if_valid(mat, off_p2np_, -g0_);
+    add_if_valid(mat, off_p2nn_,  g0_);
+
+    if (transient_) {
+        // RHS current sources: I_hist = e/Z0 = e * G0
+        double i_h1 = e1_ * g0_;
+        double i_h2 = e2_ * g0_;
+
+        add_rhs_if_valid(rhs, p1p_,  i_h1);
+        add_rhs_if_valid(rhs, p1n_, -i_h1);
+        add_rhs_if_valid(rhs, p2p_,  i_h2);
+        add_rhs_if_valid(rhs, p2n_, -i_h2);
+    }
+    // At DC: e1=e2=0, so no history current sources — just G0 shunts.
+}
+
+// ---------------------------------------------------------------------------
+// ac_stamp
+// ---------------------------------------------------------------------------
+
+void TransmissionLine::ac_stamp(const std::vector<double>& /*voltages*/,
+                                NumericMatrix& G, NumericMatrix& /*C*/) {
+    // Approximate AC stamp: model each port as a G0 conductance (short-circuit
+    // approximation valid at low frequencies / TD→0).  A rigorous stamp would
+    // require complex, frequency-dependent matrix entries — not supported by
+    // the current G+jωC framework without adding distributed-element support.
+    add_if_valid(G, off_p1pp_,  g0_);
+    add_if_valid(G, off_p1pn_, -g0_);
+    add_if_valid(G, off_p1np_, -g0_);
+    add_if_valid(G, off_p1nn_,  g0_);
+
+    add_if_valid(G, off_p2pp_,  g0_);
+    add_if_valid(G, off_p2pn_, -g0_);
+    add_if_valid(G, off_p2np_, -g0_);
+    add_if_valid(G, off_p2nn_,  g0_);
+}
+
+// ---------------------------------------------------------------------------
+// accept_step
+// ---------------------------------------------------------------------------
+
+void TransmissionLine::accept_step(double time,
+                                   const std::vector<double>& solution) {
+    // Compute port voltages
+    double vp1p = (p1p_ >= 0) ? solution[p1p_] : 0.0;
+    double vp1n = (p1n_ >= 0) ? solution[p1n_] : 0.0;
+    double vp2p = (p2p_ >= 0) ? solution[p2p_] : 0.0;
+    double vp2n = (p2n_ >= 0) ? solution[p2n_] : 0.0;
+
+    double v1 = vp1p - vp1n;
+    double v2 = vp2p - vp2n;
+
+    // Port currents: I = G0*V - e*G0
+    // At the just-accepted timestep the stored e values are what was used
+    // during that Newton solve, i.e., the delayed values from (t-TD).
+    // Current into port 1 from the external circuit: I1 = G0*(V1 - e1/G0... wait
+    // The companion model stamps G0 shunt and current source e*G0 into the RHS.
+    // KCL at p1p: sum of currents = 0.
+    // The current flowing INTO the device (into p1p) = G0*(Vp1p - Vp1n) - e1*G0
+    //   = G0*v1 - e1*g0
+    // But we want I1 as defined by the physics: the current entering the port.
+    // In the Norton model: I1 = G0*V1 - I_src = G0*v1 - e1*g0
+    double i1 = g0_ * v1 - e1_ * g0_;
+    double i2 = g0_ * v2 - e2_ * g0_;
+
+    HistoryPoint hp;
+    hp.time = time;
+    hp.v1 = v1;
+    hp.i1 = i1;
+    hp.v2 = v2;
+    hp.i2 = i2;
+    history_.push_back(hp);
+
+    // Trim history older than TD + a small margin (keep a few extra points for
+    // interpolation across large time jumps).
+    if (!history_.empty()) {
+        double t_keep = time - td_ - 2.0 * td_;   // keep 3 * TD of history
+        if (t_keep > 0.0) {
+            // Remove entries older than t_keep but keep at least 2 points.
+            while (history_.size() > 2 && history_.front().time < t_keep) {
+                history_.erase(history_.begin());
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// set_transient
+// ---------------------------------------------------------------------------
+
+void TransmissionLine::set_transient(bool enable) {
+    transient_ = enable;
+    if (!enable) {
+        history_.clear();
+        e1_ = 0.0;
+        e2_ = 0.0;
+    }
+}
+
+} // namespace neospice

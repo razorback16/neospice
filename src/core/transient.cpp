@@ -8,6 +8,7 @@
 #include "devices/capacitor.hpp"
 #include "devices/inductor.hpp"
 #include "devices/coupled_inductor.hpp"
+#include "devices/tline.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -157,6 +158,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
             ki->set_transient(tstep);
             ki->set_integration_method(1);  // Gear
+        } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
+            tl->set_transient(true);
         }
         // BSIM4 uses the circuit state ring (rotate_state + set_state_ptrs)
         // rather than these per-device hooks.
@@ -231,6 +234,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
                 ki->set_transient(dt);
             }
+            // TransmissionLine does not need set_transient(dt) each step — it
+            // reads tls_integrator_ctx->current_time to know what time it is.
             // BSIM4 reads dt from integrator_ctx (CKTdelta).
         }
 
@@ -249,6 +254,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             int cur_order = ctrl.order();
             ckt.integrator_ctx.order = cur_order;
             ckt.integrator_ctx.delta = dt;
+            ckt.integrator_ctx.current_time = t;
             ckt.integrator_ctx.delta_old[1] = ctrl.prev_dt();
             ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : 0);
 
@@ -303,6 +309,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                         ind->clear_transient();
                     else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get()))
                         ki->clear_transient();
+                    else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get()))
+                        tl->set_transient(false);
                 }
                 throw ConvergenceError("Transient failed to converge at t=" + std::to_string(t));
             }
@@ -373,6 +381,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                 ind->accept_step_from_solution(solution);
             } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
                 ki->accept_step_from_solution(solution);
+            } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
+                tl->accept_step(t, solution);
             }
             // BSIM4 state advance happens via ckt.rotate_state() on the next step.
         }
@@ -419,6 +429,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             ind->clear_transient();
         else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get()))
             ki->clear_transient();
+        else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get()))
+            tl->set_transient(false);
     }
 
     tran_result.rejected_steps = ctrl.rejected_count();

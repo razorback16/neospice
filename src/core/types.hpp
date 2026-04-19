@@ -45,6 +45,7 @@ struct IntegratorCtx {
     double delta = 0.0;
     double delta_old[8] = {};
     int    order = 1;
+    double current_time = 0.0;  // Current simulation time (set by transient solver)
 
     // Published by the analysis driver (dc.cpp / transient.cpp) before the
     // Newton stamp loop so state-storing devices can read user-configured

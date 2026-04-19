@@ -1,0 +1,10 @@
+* Lossless transmission line - matched load pulse delay test
+* V1 PULSE through Rs=50 into TL Z0=50 TD=10ns, loaded with Rload=50.
+* Expected: v(out) is delayed by TD=10ns and has amplitude ~0.5V (matched divider).
+
+V1 src 0 PULSE(0 1 0 1p 1p 50n 200n)
+Rs src in 50
+T1 in 0 out 0 Z0=50 TD=10n
+Rload out 0 50
+.tran 1n 60n
+.end
