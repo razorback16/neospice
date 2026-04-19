@@ -16,6 +16,7 @@ add_library(neospice_lib
     devices/isource.cpp
     devices/vcvs.cpp
     devices/vccs.cpp
+    devices/ccvs.cpp
     devices/capacitor.cpp
     devices/inductor.cpp
     devices/diode.cpp
