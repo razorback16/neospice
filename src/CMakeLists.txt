@@ -33,6 +33,7 @@ add_library(neospice_lib
     parser/netlist_parser.cpp
     api/neospice.cpp
     output/raw_writer.cpp
+    output/output.cpp
     $<TARGET_OBJECTS:bsim4v7_obj>
     $<TARGET_OBJECTS:bjt_obj>
     $<TARGET_OBJECTS:jfet_obj>

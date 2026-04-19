@@ -51,6 +51,12 @@ struct MeasureCommand {
     std::string param_expr;
 };
 
+struct PrintCommand {
+    std::string analysis_type;              // "tran", "ac", "dc", "noise"
+    std::vector<std::string> signals;       // e.g., {"v(out)", "i(v1)"}
+    bool is_plot = false;                   // true for .plot, false for .print
+};
+
 struct AnalysisCommand {
     enum Type { OP, TRAN, AC, DC_SWEEP, NOISE };
     Type type;
@@ -116,6 +122,7 @@ public:
     std::unordered_map<int32_t, double> nodeset;  // .nodeset
     std::vector<std::string>            save_signals;
     std::vector<MeasureCommand>         measures;  // .meas / .measure
+    std::vector<PrintCommand>           prints;    // .print / .plot
 
     IntegratorCtx integrator_ctx;
 

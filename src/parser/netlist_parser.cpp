@@ -855,8 +855,21 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                      ": Unknown .meas type: " + tokens[3]);
                 }
                 ckt.measures.push_back(std::move(mcmd));
+            } else if (first == ".print" || first == ".plot") {
+                // .print tran V(out) V(in) I(V1)
+                // .plot  tran V(out) I(V1)
+                if (tokens.size() >= 2) {
+                    PrintCommand pcmd;
+                    pcmd.analysis_type = to_lower(tokens[1]);
+                    pcmd.is_plot = (first == ".plot");
+                    for (size_t i = 2; i < tokens.size(); ++i) {
+                        if (!tokens[i].empty())
+                            pcmd.signals.push_back(to_lower(tokens[i]));
+                    }
+                    ckt.prints.push_back(std::move(pcmd));
+                }
             }
-            // Skip .model, .param (already handled), .print, .include, .lib, .endl, etc.
+            // Skip .model, .param (already handled), .include, .lib, .endl, etc.
             continue;
         }
 

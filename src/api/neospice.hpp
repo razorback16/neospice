@@ -7,6 +7,7 @@
 #include "core/measure.hpp"
 #include <string>
 #include <optional>
+#include <vector>
 
 namespace neospice {
 
@@ -17,6 +18,7 @@ struct SimulationResult {
     std::optional<DCSweepResult> dc_sweep;
     std::optional<NoiseResult> noise;
     std::optional<MeasureResult> measures;
+    std::vector<std::string> print_output;  // formatted .print/.plot output
 };
 
 struct SimulatorOptions {

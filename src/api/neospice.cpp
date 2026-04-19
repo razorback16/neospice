@@ -1,4 +1,5 @@
 #include "api/neospice.hpp"
+#include "output/output.hpp"
 #include "parser/netlist_parser.hpp"
 #include <unordered_set>
 
@@ -170,6 +171,23 @@ SimulationResult Simulator::run(Circuit& ckt) {
         const ACResult* ac_ptr = result.ac ? &*result.ac : nullptr;
         const DCSweepResult* dc_sweep_ptr = result.dc_sweep ? &*result.dc_sweep : nullptr;
         result.measures = execute_measures(ckt.measures, tran_ptr, ac_ptr, dc_sweep_ptr);
+    }
+
+    // Execute .print / .plot commands
+    if (!ckt.prints.empty()) {
+        const TransientResult* tran_ptr = result.transient ? &*result.transient : nullptr;
+        const ACResult* ac_ptr = result.ac ? &*result.ac : nullptr;
+        const DCSweepResult* dc_sweep_ptr = result.dc_sweep ? &*result.dc_sweep : nullptr;
+        const NoiseResult* noise_ptr = result.noise ? &*result.noise : nullptr;
+        for (const auto& pcmd : ckt.prints) {
+            std::string formatted;
+            if (pcmd.is_plot) {
+                formatted = format_plot(pcmd, tran_ptr, ac_ptr, dc_sweep_ptr, noise_ptr);
+            } else {
+                formatted = format_print(pcmd, tran_ptr, ac_ptr, dc_sweep_ptr, noise_ptr);
+            }
+            result.print_output.push_back(std::move(formatted));
+        }
     }
 
     return result;
