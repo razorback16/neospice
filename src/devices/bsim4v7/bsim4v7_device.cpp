@@ -1119,7 +1119,7 @@ static inline int32_t ucb_to_neo(int ucb_node) {
 std::vector<Device::NoiseSource>
 BSIM4v7Device::noise_sources(double /*freq*/,
                               const std::vector<double>& /*dc_solution*/) const {
-    const double kT = BOLTZMANN * T_NOMINAL;
+    const double kT = BOLTZMANN * sim_temp_;
     const double gm = std::abs(inst_.BSIM4v7gm);
     const double m  = inst_.BSIM4v7m;
 

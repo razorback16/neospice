@@ -68,6 +68,7 @@ add_executable(neospice_tests
     unit/test_coupled_inductor.cpp
     unit/test_jfet.cpp
     unit/test_noise.cpp
+    unit/test_noise_temp.cpp
     unit/test_measure.cpp
     unit/test_output.cpp
     framework/ngspice_runner.cpp

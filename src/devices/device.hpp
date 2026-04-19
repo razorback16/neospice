@@ -75,6 +75,12 @@ public:
     /// simulation temperature changes (e.g. temperature sweep).
     virtual void reset_temp() {}
 
+    /// Set the simulation temperature used for noise calculations.
+    /// Called by the noise solver before the frequency loop so that
+    /// noise_sources() uses the correct temperature from SimOptions.
+    void set_sim_temp(double t) { sim_temp_ = t; }
+    double sim_temp() const { return sim_temp_; }
+
     /// Noise source descriptor: a current noise source between two nodes.
     struct NoiseSource {
         int32_t node_i;           // first node (GROUND_INTERNAL = -1 for ground)
@@ -93,6 +99,7 @@ public:
 
 protected:
     std::string name_;
+    double sim_temp_ = T_NOMINAL;  ///< simulation temperature for noise (K)
 
     // Helpers for ground-aware stamping
     static void stamp_if_not_ground(SparsityBuilder& builder, int32_t r, int32_t c) {

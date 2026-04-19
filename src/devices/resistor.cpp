@@ -43,9 +43,9 @@ void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
 std::vector<Device::NoiseSource> Resistor::noise_sources(
     double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
     // Thermal noise: i²_noise = 4kT * G = 4kT / R  (A²/Hz)
-    // Temperature: use nominal 300.15 K (27°C).  Future: pass from SimOptions.
+    // Temperature: use sim_temp_ set by the noise solver from SimOptions.
     const double G = 1.0 / resistance_;
-    const double spectral_density = 4.0 * BOLTZMANN * T_NOMINAL * G;
+    const double spectral_density = 4.0 * BOLTZMANN * sim_temp_ * G;
     return {{np_, nn_, spectral_density}};
 }
 
