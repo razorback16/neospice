@@ -40,6 +40,26 @@ public:
     /// Requires a prior numeric() or refactorize() call.
     void solve(std::vector<double>& rhs);
 
+    // ---------------------------------------------------------------
+    // Complex (double-precision) variants — wrap klu_z_* functions.
+    // The same symbolic() call is reused; the sparsity pattern is shared
+    // between real and complex factorizations.
+    // ---------------------------------------------------------------
+
+    /// Full complex numeric factorization using klu_z_factor.
+    /// ax must contain 2*nnz doubles (interleaved real,imag per entry).
+    /// The SparsityPattern/CSC data must already be loaded via symbolic().
+    void numeric_complex(const SparsityPattern& pattern,
+                         const std::vector<double>& ax);
+
+    /// Refactorize with updated complex values using klu_z_refactor.
+    /// ax must contain 2*nnz doubles (interleaved real,imag per entry).
+    void refactorize_complex(const std::vector<double>& ax);
+
+    /// Solve the complex system in-place using klu_z_solve.
+    /// rhs must contain 2*n doubles (interleaved real,imag per unknown).
+    void solve_complex(std::vector<double>& rhs);
+
 private:
     klu_common*   common_;
     klu_symbolic* symbolic_;
