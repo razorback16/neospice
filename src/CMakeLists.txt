@@ -17,6 +17,7 @@ add_library(neospice_lib
     core/measure.cpp
     core/timestep.cpp
     devices/resistor.cpp
+    devices/switch.cpp
     devices/vsource.cpp
     devices/isource.cpp
     devices/vcvs.cpp
