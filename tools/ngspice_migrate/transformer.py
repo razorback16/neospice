@@ -689,6 +689,21 @@ class Transformer:
             "#ifndef OPU\n"
             "#define OPU(a,b,c,d) {a, b, (Shim::IF_ASK|c), d}\n"
             "#endif\n"
+            "#ifndef IOPA\n"
+            "#define IOPA(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|c), d}\n"
+            "#endif\n"
+            "#ifndef IOPR\n"
+            "#define IOPR(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|Shim::IF_REDUNDANT|c), d}\n"
+            "#endif\n"
+            "#ifndef IOPAU\n"
+            "#define IOPAU(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_ASK|c), d}\n"
+            "#endif\n"
+            "#ifndef IPR\n"
+            "#define IPR(a,b,c,d) {a, b, (Shim::IF_SET|Shim::IF_REDUNDANT|c), d}\n"
+            "#endif\n"
+            "#ifndef OPR\n"
+            "#define OPR(a,b,c,d) {a, b, (Shim::IF_ASK|Shim::IF_REDUNDANT|c), d}\n"
+            "#endif\n"
         )
 
         translated_header = (

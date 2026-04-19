@@ -102,7 +102,7 @@ model:
     - "diomask.c"             # Model ask — not needed
     - "diodel.c"              # Delete — C++ RAII handles this
     - "diodest.c"             # Destroy — C++ RAII handles this
-    - "dionoise.c"            # Noise — not yet supported in neospice
+    - "dionoise.c"            # Noise — manual noise_sources() implementation needed
     - "diopzld.c"             # Pole-zero — not yet supported
     - "diosoachk.c"           # SOA check — not yet supported
     - "dioinit.c"             # Init table — not needed (C++ registration)
@@ -189,7 +189,30 @@ The translated files may reference headers that don't exist. Fix includes:
 #include "devices/<ns>/<ns>_shim.hpp"
 ```
 
-### 3.2 Untranslated macros
+### 3.2 Sensitivity analysis code (MUST strip)
+
+Many ngspice devices contain sensitivity analysis code that is dead in neospice (no
+sensitivity framework). This code will **not compile** and must be manually removed.
+
+**Indicators**: `SenCond`, `CKTsenInfo`, `info->SENnumDev`, `PERTURBATION`,
+`TRANSEN`, `SENSDEBUG`, `goto next1`, `goto next2`.
+
+**Where it appears**:
+- **Setup**: Sensitivity state allocation blocks — remove entirely
+- **Load**: Guard blocks like `if ((info = ckt->CKTsenInfo) && ckt->CKTsenInfo->SENmode == TRANSEN) { ... }` — remove the entire block
+- **Load**: `SenCond` variable declarations and the `if (SenCond) { ... }` blocks — remove
+- **Load**: `goto next1` / `goto next2` labels used only by sensitivity code — remove labels and the `goto`s
+
+**Strategy**: Search for `SenCond` and `CKTsenInfo` in the translated file and remove
+all blocks that reference them. Also remove any `goto label` that only existed for
+the sensitivity flow. After stripping, verify the remaining control flow is correct.
+
+The shim provides a `void *CKTsenInfo = nullptr` stub so that **non-conditional**
+references to the field (like in struct access) don't cause errors, but the actual
+sensitivity logic must still be removed because it references functions and types
+that don't exist in neospice.
+
+### 3.3 Untranslated macros
 
 Some ngspice macros may not be handled by the tool. Common ones:
 - `TSTALLOC(ptr, row, col)` — should become matrix pointer reservation in setup
@@ -197,7 +220,21 @@ Some ngspice macros may not be handled by the tool. Common ones:
 - `DEVfetlim`, `DEVlimvds`, `DEVpnjlim` — voltage limiting functions; implement in the shim or inline
 - `MAX`, `MIN` — replace with `std::max`, `std::min`
 
-### 3.3 State array access
+### 3.4 Matrix stamp context (`mat.add` → `ckt->mat->add`)
+
+The stamp rewriter (pass 5) converts `*(ckt->CKTmatrix->...)` into `mat.add(...)`.
+However, in load functions the variable is `ckt` (the shim Ckt pointer), not a bare
+`mat`. After translation, do a global replace:
+
+```bash
+# In the translated load file:
+sed -i 's/mat\.add(here->/ckt->mat->add(here->/g' <ns>_load.cpp
+```
+
+Or use your editor's replace-all. This is needed because the stamp rewriter doesn't
+track which local variable holds the matrix reference.
+
+### 3.5 State array access
 
 Verify that state accesses use absolute offsets (base + relative):
 ```cpp
@@ -205,20 +242,30 @@ Verify that state accesses use absolute offsets (base + relative):
 // WRONG:   state0_[DIO_OFFSET]  (missing base)
 ```
 
-### 3.4 Ground node convention
+### 3.6 Ground node convention
 
 The auto-tool converts node indices but verify:
 - neospice: `GROUND_INTERNAL = -1`, real nodes `>= 0`
 - UCB/ngspice: ground = `0`, real nodes `>= 1`
 - Conversion: `neo_to_ucb(neo)` returns `(neo < 0) ? 0 : (neo + 1)`
 
-### 3.5 Build and iterate
+### 3.7 Build and iterate
 
 ```bash
 cmake --build build 2>&1 | head -50
 ```
 
 Fix errors one at a time. The most common are missing includes, undeclared identifiers from macros the tool didn't handle, and type mismatches from C-to-C++ strictness.
+
+### 3.8 What the tool auto-generates (no manual work needed)
+
+The shim generator (`gen_shim.py`) and transformer (`transformer.py`) now handle:
+
+- **Physical constants**: `OFF`, `CONSTKoverQ`, `CONSTe`, `CONSTboltz`, `REFTEMP` in shim header
+- **Stub fields**: `CKTtroubleElt` and `CKTsenInfo` null pointers in the Ckt struct
+- **Type flag**: `IF_COMPLEX` constant in shim namespace
+- **Parameter table macros**: `IOPA`, `IOPR`, `IOPAU`, `IPR`, `OPR`, `OP`, `IOP` in devsup translation preamble
+- **Convergence wiring**: `last_noncon_` member and `device_converged()` in generated adapter
 
 ---
 
@@ -276,6 +323,90 @@ Scale all stamps by the device multiplier `m`:
 double m = inst_.<PREFIX>m;  // or default 1.0
 // apply: add_G(off, gm * m);
 ```
+
+---
+
+## Phase 4b: Noise Model
+
+The auto-tool generates an empty `noise_sources()` stub. Fill in the device-specific
+noise physics from the ngspice `*noise.c` file.
+
+### 4b.1 Identify noise sources in ngspice
+
+Look in the skipped noise file (e.g., `dionoise.c`, `bjtnoise.c`, `b4noi.c`). Find:
+- The `static char *nNames[]` array — lists all noise source types
+- `NevalSrc()` calls — identify node pairs and noise type
+
+### 4b.2 Common noise source types
+
+| Type | Formula | Nodes | Example |
+|---|---|---|---|
+| Thermal | `4*k*T*G` | across a conductance | Series resistance |
+| Shot | `2*q*|I|` | across a junction | Collector/base current |
+| Flicker (1/f) | `KF*|I|^AF / f^EF` | same as shot source | Gate/base current |
+| Channel thermal (simple) | `4*k*T*gm*2/3` | drain_prime ↔ source_prime | MOSFET channel |
+
+### 4b.3 Implement `noise_sources()` override
+
+The stub is already in the generated `_device.cpp`. Fill it in:
+
+```cpp
+std::vector<Device::NoiseSource> <Prefix>Device::noise_sources(
+        double freq, const std::vector<double>& /*dc_solution*/) const {
+    if (!state0_ || state_base_ < 0) return {};
+
+    std::vector<NoiseSource> sources;
+    const double T = sim_temp();  // base class provides temperature
+    const double m = inst_.<PREFIX>m;
+
+    // Convert UCB node indices to neospice (ucb - 1)
+    const int32_t d_node = inst_.<PREFIX>drainNode - 1;
+    // ... etc
+
+    // Example: series resistance thermal noise
+    const double Gd = inst_.<PREFIX>drainConductance;
+    if (Gd > 0.0) {
+        sources.push_back({drain_node, drain_prime_node,
+                           m * 4.0 * BOLTZMANN * T * Gd});
+    }
+
+    // Example: shot noise (from operating point current in state vector)
+    const double Id = std::abs(state0_[state_base_ + <ID_OFFSET>]);
+    sources.push_back({drain_prime, source_prime,
+                       m * 2.0 * CHARGE_Q * Id});
+
+    // Example: flicker noise
+    const double KF = model_-><PREFIX>fNcoef;
+    const double AF = model_-><PREFIX>fNexp;
+    if (KF > 0.0 && freq > 0.0 && Id > 0.0) {
+        double S_flicker = KF * std::pow(Id, AF) / freq;
+        sources.push_back({drain_prime, source_prime, m * S_flicker});
+    }
+
+    return sources;
+}
+```
+
+### 4b.4 Temperature handling
+
+Use `sim_temp()` (inherited from Device base class) — **never** declare a local
+`sim_temp_` member, which would shadow the base class and break temperature propagation
+from the noise solver. The noise solver calls `dev->set_sim_temp(ckt.options.temp)`
+before the frequency loop.
+
+### 4b.5 Node index convention
+
+UCB uses 1-based nodes (0 = ground). Neospice uses 0-based (-1 = ground).
+Convert: `neo_node = ucb_node - 1`.
+
+### 4b.6 Reference implementations
+
+| Device | File | Noise Sources |
+|---|---|---|
+| Resistor | `src/devices/resistor.cpp` | Thermal + optional flicker |
+| BJT | `src/devices/bjt/bjt_device.cpp` | 5 sources: 2 shot, 3 thermal, 1 flicker |
+| JFET | `src/devices/jfet/jfet_device.cpp` | Channel thermal + gate flicker |
+| BSIM4v7 | `src/devices/bsim4v7/bsim4v7_device.cpp` | 12+ sources with model-dependent modes |
 
 ---
 
@@ -348,38 +479,21 @@ return dt_min;
 
 ---
 
-## Phase 6: Convergence Test (Manual)
+## Phase 6: Convergence Test (Auto-Wired)
 
-**Why manual**: ngspice's convergence test (in `*cvtest.c`) is often dead code when `NEWCONV` is not defined. The actual convergence check is inline in the load function, incrementing `CKTnoncon`.
+The auto-migration tool now generates `device_converged()` and `last_noncon_`
+automatically. The generated `evaluate()` captures `ckt.CKTnoncon` after each
+load call, and `device_converged()` returns `last_noncon_ == 0`.
 
-### 6.1 Check if convergence is inline or in cvtest
+**No manual work needed** for the common case (inline CKTnoncon in load function).
 
-- If `#ifndef NEWCONV` wraps the load function's convergence checks -> convergence is inline (common case)
-- If `#ifdef NEWCONV` and a separate cvtest file -> need to port the cvtest logic
+### 6.1 Verify correctness
 
-### 6.2 Wire CKTnoncon (inline case)
+If the device uses a separate `*cvtest.c` file (enabled by `#ifdef NEWCONV`), the
+auto-generated convergence may be insufficient. In that case, port the cvtest logic
+into `device_converged()` or add extra checks.
 
-The load function already increments `ckt->CKTnoncon` when currents don't converge.
-Capture this in the evaluate method:
-
-```cpp
-// In evaluate(), after the load call:
-last_noncon_ = ckt.CKTnoncon;
-```
-
-Add the member:
-```cpp
-mutable int last_noncon_ = 0;
-```
-
-Override:
-```cpp
-bool <Prefix>Device::device_converged() const override {
-    return last_noncon_ == 0;
-}
-```
-
-### 6.3 Framework integration
+### 6.2 Framework integration
 
 The Newton solver already calls `device_converged()` after node-voltage convergence passes (see `src/core/newton.cpp` lines 143-156). No framework changes needed.
 
@@ -506,6 +620,14 @@ SPICE element prefixes:
 | L | Inductor |
 | V | Voltage source |
 | I | Current source |
+| S | Voltage-controlled switch |
+| W | Current-controlled switch |
+| T | Transmission line |
+| K | Coupled inductor |
+| E | VCVS (linear, POLY, TABLE) |
+| G | VCCS (linear, POLY, TABLE) |
+| H | CCVS |
+| F | CCCS |
 
 ### 9.2 Model card registration
 
@@ -517,7 +639,37 @@ if (type == "d")    { /* Diode */ }
 if (type == "npn" || type == "pnp") { /* BJT */ }
 ```
 
-### 9.3 Instance creation
+### 9.3 Model card conversion using UCB mParam dispatcher
+
+For devices with complex parameter tables, reuse the auto-translated `mParam` function
+and parameter table (`mPTable`) to dispatch parameter setting:
+
+```cpp
+// In model_cards.cpp:
+std::unique_ptr<<Prefix>ModelCard> to_<prefix>_card(const ModelCard& card) {
+    auto out = std::make_unique<<Prefix>ModelCard>();
+    auto& ucb = out->ucb;
+
+    for (const auto& [lkey, val] : card.params) {
+        // Find the parameter in the UCB table
+        for (int i = 0; <PREFIX>mPTable[i].keyword[0]; ++i) {
+            if (lkey == to_lower(<PREFIX>mPTable[i].keyword)) {
+                Shim::IFvalue ifval;
+                ifval.rValue = val;
+                <PREFIX>mParam(/*param_id=*/<PREFIX>mPTable[i].id,
+                              &ifval, &ucb);
+                break;
+            }
+        }
+    }
+    return out;
+}
+```
+
+This avoids duplicating the entire parameter-setting switch table. The `mPTable` array
+and `mParam` function are auto-translated from the ngspice `*mpar.c` and `*devsup.c`.
+
+### 9.4 Instance creation
 
 Follow the BSIM4v7 pattern:
 1. Parse terminal nodes from the element line
@@ -614,13 +766,50 @@ TEST(DeviceTest, InitialConditions) {
 }
 ```
 
-### 11.6 Test circuits
+### 11.6 Noise test
+
+Test noise analysis output against ngspice:
+
+```cpp
+TEST(DeviceTest, NoiseVsNgspice) {
+    NgspiceRunner ng;
+    auto ref = ng.run_noise("test_noise.cir");
+
+    Circuit ckt;
+    // ... build circuit
+    auto result = solve_noise(ckt, "out", "vin",
+                              AnalysisCommand::ACMode::DEC, 10, 1.0, 1e6);
+
+    // Compare output noise density at key frequencies
+    // Typical tolerance: 10-20% (noise models are approximate)
+    for (size_t i = 0; i < result.frequency.size(); ++i) {
+        EXPECT_NEAR(result.output_noise_density[i],
+                    ref.output_noise[i], ref.output_noise[i] * 0.2);
+    }
+}
+```
+
+**Temperature-aware noise test**: Verify noise scales with temperature:
+
+```cpp
+TEST(DeviceTest, NoiseTempScaling) {
+    // Run at T=300K and T=400K
+    // Thermal noise should scale as T (4kT*G)
+    // Shot noise is temperature-independent (2*q*I)
+    double ratio = result_hot.output_noise_density[0] /
+                   result_cold.output_noise_density[0];
+    EXPECT_NEAR(ratio, 400.0 / 300.0, 0.1);  // for thermal-dominated
+}
+```
+
+### 11.7 Test circuits
 
 Create test circuits in `tests/circuits/`:
 - Basic DC bias circuit
 - AC small-signal circuit
 - Transient switching circuit
 - Multi-device circuit (tests multiplier and multi-instance)
+- Noise analysis circuit (resistor divider or amplifier)
 
 ---
 
@@ -639,6 +828,9 @@ Before considering the migration complete, verify:
 - [ ] Multi-device circuits work (shared ModelCard, separate instances)
 - [ ] No memory leaks (ModelCard destructor frees linked lists)
 - [ ] State buffer accesses use absolute offsets (`state_base_` + relative)
+- [ ] `noise_sources()` returns correct noise types for the device
+- [ ] Noise analysis matches ngspice within 20% tolerance
+- [ ] No shadowing of base class `sim_temp_` (use `sim_temp()` accessor)
 
 ---
 
@@ -647,21 +839,25 @@ Before considering the migration complete, verify:
 | Feature | Auto-Tool | Manual |
 |---|---|---|
 | Struct definitions (_def.hpp) | Yes | - |
-| Shim layer (CKT, matrix) | Yes | - |
+| Shim layer (CKT, matrix, constants) | Yes | - |
+| Physical constants (CONSTKoverQ etc.) | **Yes** (in shim) | - |
+| CKTtroubleElt / CKTsenInfo stubs | **Yes** (in shim) | - |
+| IF_COMPLEX type flag | **Yes** (in shim) | - |
+| Parameter table macros (IOPA etc.) | **Yes** (in preamble) | - |
 | Adapter skeleton (Device interface) | Yes | - |
-| Setup (node alloc, matrix ptrs) | Yes | Build fixes only |
-| Load (DC + transient stamps) | Yes | Build fixes only |
+| Convergence wiring (last_noncon_) | **Yes** (auto-wired) | - |
+| Setup (node alloc, matrix ptrs) | Yes | Strip sensitivity code |
+| Load (DC + transient stamps) | Yes | Strip sensitivity + fix `mat.add` context |
 | Temp (temperature params) | Yes | Build fixes only |
 | Param/Mpar (parameter tables) | Yes | Build fixes only |
 | CMakeLists.txt | Yes | - |
-| AC stamp (G/C split) | - | **Full implementation** |
-| Truncation error (LTE) | - | **Full implementation** |
-| Convergence test (CKTnoncon) | - | **Wiring only** |
+| AC stamp (G/C split) | Stub generated | **Fill in G/C entries** |
+| Truncation error (LTE) | Stub generated | **Fill in charge offsets + LTE formula** |
 | Initial conditions (ic=) | - | **Parser + set_ic()** |
-| Parameter query | - | **Full implementation** |
-| Parser integration | - | **Element/model registration** |
+| Parameter query | Stub generated | **Fill in parameter mappings** |
+| Parser integration | - | **Element/model registration + to_card()** |
 | Voltage limiting | Inline in load | Override if external |
-| Noise analysis | - | Not yet supported |
+| Noise model | Stub generated | **Fill in noise source physics** |
 | Pole-zero analysis | - | Not yet supported |
 | SOA checking | - | Not yet supported |
 | Delete/Destroy | - | C++ RAII (automatic) |

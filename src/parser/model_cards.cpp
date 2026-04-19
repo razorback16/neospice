@@ -7,6 +7,8 @@
 #include "devices/bjt/bjt_shim.hpp"
 #include "devices/jfet/jfet_def.hpp"
 #include "devices/jfet/jfet_shim.hpp"
+#include "devices/dio/dio_def.hpp"
+#include "devices/dio/dio_shim.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -363,6 +365,54 @@ std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card) {
         if (rc != jfet::Shim::OK) {
             throw ParseError(
                 "Model '" + card.name + "': JFETmParam failed for '" +
+                lkey + "' (rc=" + std::to_string(rc) + ")");
+        }
+    }
+
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// to_dio_card — parse a .model D card into a DIOModelCard via
+// the UCB DIOmParam dispatcher.
+// ---------------------------------------------------------------------------
+std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card) {
+    auto out = std::make_unique<DIOModelCard>();
+    auto& ucb = out->ucb;
+
+    for (const auto& [lkey, val] : card.params) {
+        if (lkey == "level") continue;
+
+        const dio::Shim::IfParm* entry = nullptr;
+        for (int i = 0; i < dio::DIOmPTSize; ++i) {
+            if (std::strcmp(dio::DIOmPTable[i].keyword, lkey.c_str()) == 0) {
+                entry = &dio::DIOmPTable[i];
+                break;
+            }
+        }
+        if (entry == nullptr) {
+            std::fprintf(stderr,
+                "Warning: model '%s': unknown DIO parameter '%s' (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        dio::Shim::IfValue v{};
+        int dtype = entry->dataType & 0x1F;
+        if (dtype & dio::Shim::IF_REAL) {
+            v.rValue = val;
+        } else if (dtype & dio::Shim::IF_INTEGER) {
+            v.iValue = static_cast<int>(val);
+        } else if (dtype & dio::Shim::IF_FLAG) {
+            v.iValue = (val != 0.0) ? 1 : 0;
+        } else {
+            continue;
+        }
+
+        int rc = dio::DIOmParam(entry->id, &v, &ucb);
+        if (rc != dio::Shim::OK) {
+            throw ParseError(
+                "Model '" + card.name + "': DIOmParam failed for '" +
                 lkey + "' (rc=" + std::to_string(rc) + ")");
         }
     }

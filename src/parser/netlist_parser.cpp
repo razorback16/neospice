@@ -11,6 +11,7 @@
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include "devices/diode.hpp"
+#include "devices/dio/dio_device.hpp"
 #include "devices/vcvs.hpp"
 #include "devices/vccs.hpp"
 #include "devices/ccvs.hpp"
@@ -424,13 +425,15 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     std::unordered_map<std::string, double> params;
     std::unordered_map<std::string, ModelCard> models;
 
-    // Deferred diodes: (name, anode_name, cathode_name, model_name, line_number)
     struct DeferredDiode {
         std::string name;
         std::string anode;
         std::string cathode;
         std::string model_name;
         int line_number;
+        DIODevice::Geom geom;
+        double ic_vd = 0.0;
+        bool ic_vd_given = false;
     };
     std::vector<DeferredDiode> deferred_diodes;
 
@@ -1009,13 +1012,36 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             ckt.add_device(std::move(is));
 
         } else if (elem_type == 'd') {
-            // D name anode cathode modelname
+            // D name anode cathode modelname [area=.. pj=.. m=.. ic=..]
             if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": Diode requires name, anode, cathode, modelname");
             }
-            deferred_diodes.push_back({tokens[0], tokens[1], tokens[2], tokens[3],
-                                       line.line_number});
+            DeferredDiode dd;
+            dd.name = tokens[0];
+            dd.anode = tokens[1];
+            dd.cathode = tokens[2];
+            dd.model_name = tokens[3];
+            dd.line_number = line.line_number;
+            for (size_t i = 4; i < tokens.size(); ++i) {
+                auto eq = tokens[i].find('=');
+                if (eq == std::string::npos) {
+                    // Bare number after model name = area factor
+                    try {
+                        dd.geom.area = std::stod(tokens[i]);
+                    } catch (...) {}
+                    continue;
+                }
+                std::string key = to_lower(tokens[i].substr(0, eq));
+                double v = std::stod(tokens[i].substr(eq + 1));
+                if (key == "area")     dd.geom.area = v;
+                else if (key == "pj")  dd.geom.pj = v;
+                else if (key == "w")   dd.geom.w = v;
+                else if (key == "l")   dd.geom.l = v;
+                else if (key == "m")   dd.geom.m = v;
+                else if (key == "ic")  { dd.ic_vd = v; dd.ic_vd_given = true; }
+            }
+            deferred_diodes.push_back(std::move(dd));
 
         } else if (elem_type == 'm') {
             // M name nd ng ns nb modelname [W=.. L=.. NF=.. AD=.. AS=.. PD=..
@@ -1635,17 +1661,29 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.add_device(std::make_unique<CCCS>(fd.name, fd.np, fd.nn, fd.gain, vs));
     }
 
-    // Resolve deferred diodes
+    // Resolve deferred diodes — UCB DIO adapter
+    std::unordered_map<std::string, std::unique_ptr<DIOModelCard>> dio_cards;
     for (const auto& dd : deferred_diodes) {
         auto it = models.find(dd.model_name);
         if (it == models.end()) {
             throw ParseError("Line " + std::to_string(dd.line_number) +
                              ": Unknown model '" + dd.model_name + "'");
         }
-        DiodeModel dm = to_diode_model(it->second);
+        auto card_it = dio_cards.find(dd.model_name);
+        if (card_it == dio_cards.end()) {
+            card_it = dio_cards.emplace(dd.model_name,
+                                        to_dio_card(it->second)).first;
+        }
         int32_t na = ckt.node(dd.anode);
         int32_t nc = ckt.node(dd.cathode);
-        ckt.add_device(std::make_unique<Diode>(dd.name, na, nc, dm));
+        auto dev = DIODevice::make(dd.name, na, nc, dd.geom, *card_it->second);
+        if (dd.ic_vd_given) {
+            dev->set_ic(dd.ic_vd, dd.ic_vd_given);
+        }
+        ckt.add_device(std::move(dev));
+    }
+    for (auto& [name, card] : dio_cards) {
+        ckt.add_dio_model_card(std::move(card));
     }
 
     // Resolve deferred MOSFETs.  A single BSIM4v7ModelCard is created per
