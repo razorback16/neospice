@@ -299,7 +299,22 @@ R1 A B 1k
 }
 
 // -----------------------------------------------------------------------
-// 13. Subcircuit lines are not processed by Pass 1/Pass 2
+// 13. Port after parameter default in header => ParseError
+// -----------------------------------------------------------------------
+TEST(Subcircuit, PortAfterParamThrows) {
+    // "out" appears after "wp=2u" — invalid per SPICE standard
+    std::string netlist = wrap(R"(
+.subckt bad_order in wp=2u out
+R1 in out 1k
+.ends
+)");
+
+    NetlistParser parser;
+    EXPECT_THROW(parser.parse(netlist), ParseError);
+}
+
+// -----------------------------------------------------------------------
+// 14. Subcircuit lines are not processed by Pass 1/Pass 2
 // -----------------------------------------------------------------------
 TEST(Subcircuit, SubcircuitLinesNotInTopLevel) {
     // This netlist has a .op analysis at top level and a subcircuit with

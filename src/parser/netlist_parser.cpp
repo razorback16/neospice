@@ -200,7 +200,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 current_def.ports.clear();
                 current_def.default_params.clear();
                 current_def.body.clear();
+                current_def.source_line = line.line_number;
 
+                bool seen_param = false;
                 for (size_t i = 2; i < line.tokens.size(); ++i) {
                     const std::string& tok = line.tokens[i];
                     auto eq_pos = tok.find('=');
@@ -209,8 +211,14 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         std::string key = to_lower(tok.substr(0, eq_pos));
                         std::string val = tok.substr(eq_pos + 1);
                         current_def.default_params.emplace_back(key, val);
+                        seen_param = true;
                     } else {
-                        // No '=' => port name
+                        // No '=' => port name; error if params already seen
+                        if (seen_param) {
+                            throw ParseError("Line " + std::to_string(line.line_number) +
+                                             ": port '" + tok +
+                                             "' appears after parameter defaults in .subckt header");
+                        }
                         current_def.ports.push_back(to_lower(tok));
                     }
                 }
@@ -241,7 +249,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     // Reconstruct the .subckt header token line for the inner def
                     // so the outer body contains a complete, self-contained block.
                     TokenizedLine subckt_hdr;
-                    subckt_hdr.line_number = line.line_number;
+                    subckt_hdr.line_number = inner_def.source_line;
                     subckt_hdr.tokens.push_back(".subckt");
                     subckt_hdr.tokens.push_back(inner_def.name);
                     for (const auto& port : inner_def.ports) {
