@@ -64,6 +64,7 @@ add_executable(neospice_tests
     unit/test_lib.cpp
     unit/test_pdk_integration.cpp
     unit/test_bjt.cpp
+    unit/test_bjt_validation.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
