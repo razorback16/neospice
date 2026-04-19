@@ -12,3 +12,4 @@ __pycache__/
 .claude/scheduled_tasks.lock
 Testing/
 .pytest_cache/
+.worktrees/
