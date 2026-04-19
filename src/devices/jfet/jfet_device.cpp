@@ -1,0 +1,388 @@
+#include "devices/jfet/jfet_device.hpp"
+
+#include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
+#include "core/types.hpp"          // SimOptions defaults
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <stdexcept>
+#include <string>
+
+// Forward declarations for translated UCB functions.
+namespace neospice::jfet {
+    int JFETsetup(Shim::Matrix*, JFETModel*, Shim::Ckt*, int*);
+    int JFETtemp(JFETModel*, Shim::Ckt*);
+    int JFETload(JFETModel*, Shim::Ckt*);
+}
+
+namespace neospice {
+
+using namespace neospice::jfet;
+
+// ---------------------------------------------------------------------------
+// JFETModelCard destructor
+// ---------------------------------------------------------------------------
+JFETModelCard::~JFETModelCard() = default;
+
+// ---------------------------------------------------------------------------
+// Neospice -> UCB node translation.
+// Neospice uses GROUND_INTERNAL = -1 for ground and consecutive non-negative
+// indices for real nodes.  UCB uses 0 for ground and >=1 for real nodes.
+// ---------------------------------------------------------------------------
+static inline int neo_to_ucb(int32_t neo) {
+    return (neo < 0) ? 0 : (neo + 1);
+}
+
+// ---------------------------------------------------------------------------
+// make
+// ---------------------------------------------------------------------------
+std::unique_ptr<JFETDevice>
+JFETDevice::make(std::string name,
+        int32_t n_drain, int32_t n_gate, int32_t n_source,
+        const Geom& geom, JFETModelCard& shared_card) {
+    std::unique_ptr<JFETDevice> dev(new JFETDevice(std::move(name)));
+    dev->model_ = &shared_card.ucb;
+
+    auto& inst = dev->inst_;
+    inst.JFETname = dev->name().c_str();
+    inst.JFETmodPtr = dev->model_;
+
+    // Node wiring (UCB convention).
+    inst.JFETdrainNode = neo_to_ucb(n_drain);
+    inst.JFETgateNode = neo_to_ucb(n_gate);
+    inst.JFETsourceNode = neo_to_ucb(n_source);
+
+    // Geometry.
+    inst.JFETarea = geom.area;
+    inst.JFETareaGiven = geom.area_given ? 1 : 0;
+    inst.JFETm = geom.m;
+    inst.JFETmGiven = geom.m_given ? 1 : 0;
+
+    // Thread onto the shared model's instance list.
+    inst.JFETnextInstance = shared_card.ucb.JFETinstances;
+    shared_card.ucb.JFETinstances = &inst;
+
+    // Remember the widest real node index for ghost array sizing.
+    int32_t widest = -1;
+    for (int32_t n : {n_drain, n_gate, n_source}) if (n > widest) widest = n;
+    dev->max_neo_node_ = widest;
+
+    return dev;
+}
+
+// ---------------------------------------------------------------------------
+// declare_internal_nodes
+// ---------------------------------------------------------------------------
+void JFETDevice::declare_internal_nodes(Circuit& ckt) {
+    SparsityBuilder scratch(1);
+    Shim::Matrix shim_matrix(scratch);
+
+    Shim::Ckt setup_ckt;
+    setup_ckt.CKTtemp    = T_NOMINAL;
+    setup_ckt.CKTnomTemp = T_NOMINAL;
+    setup_ckt.CKTinternalNodeCounter = 1000;
+
+    setup_ckt.node_alloc = [&ckt, this](const char* name) -> int {
+        std::string full = "__" + name_ + "_" + name;
+        int32_t neo = ckt.node(full);
+        return neo + 1;  // UCB convention: ground=0, real>=1
+    };
+
+    int states = 0;
+    int rc = JFETsetup(&shim_matrix, model_, &setup_ckt, &states);
+    if (rc != Shim::OK) {
+        throw std::runtime_error("JFETsetup failed with rc=" + std::to_string(rc));
+    }
+
+    const auto& journal = shim_matrix.reservation_journal();
+    journal_.assign(journal.begin(), journal.end());
+
+    // Recompute max_neo_node_ to cover internal nodes.
+    for (auto [r, c] : journal_) {
+        int mx = std::max(r, c);
+        if (mx > 0) {
+            int32_t neo = mx - 1;
+            if (neo > max_neo_node_) max_neo_node_ = neo;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// stamp_pattern
+// ---------------------------------------------------------------------------
+void JFETDevice::stamp_pattern(SparsityBuilder& builder) const {
+    for (auto [r, c] : journal_) {
+        if (r <= 0 || c <= 0) continue;
+        builder.add(r - 1, c - 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// assign_offsets
+// ---------------------------------------------------------------------------
+void JFETDevice::assign_offsets(const SparsityPattern& pattern) {
+    std::vector<MatrixOffset> offsets(journal_.size(), -1);
+    for (std::size_t i = 0; i < journal_.size(); ++i) {
+        auto [r, c] = journal_[i];
+        if (r <= 0 || c <= 0) continue;
+        offsets[i] = pattern.offset(r - 1, c - 1);
+    }
+
+#define RESOLVE(f)                                                       \
+    do {                                                                 \
+        if (inst_.f >= 0)                                                \
+            inst_.f = offsets[inst_.f];                                  \
+    } while (0)
+
+    RESOLVE(JFETdrainDrainPrimePtr);
+    RESOLVE(JFETgateDrainPrimePtr);
+    RESOLVE(JFETgateSourcePrimePtr);
+    RESOLVE(JFETsourceSourcePrimePtr);
+    RESOLVE(JFETdrainPrimeDrainPtr);
+    RESOLVE(JFETdrainPrimeGatePtr);
+    RESOLVE(JFETdrainPrimeSourcePrimePtr);
+    RESOLVE(JFETsourcePrimeGatePtr);
+    RESOLVE(JFETsourcePrimeSourcePtr);
+    RESOLVE(JFETsourcePrimeDrainPrimePtr);
+    RESOLVE(JFETdrainDrainPtr);
+    RESOLVE(JFETgateGatePtr);
+    RESOLVE(JFETsourceSourcePtr);
+    RESOLVE(JFETdrainPrimeDrainPrimePtr);
+    RESOLVE(JFETsourcePrimeSourcePrimePtr);
+
+#undef RESOLVE
+}
+
+// ---------------------------------------------------------------------------
+// set_state_ptrs
+// ---------------------------------------------------------------------------
+void JFETDevice::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+    state0_ = s0;
+    state1_ = s1;
+    state2_ = s2;
+    state_base_ = base;
+    inst_.JFETstate = base;
+}
+
+// ---------------------------------------------------------------------------
+// evaluate
+// ---------------------------------------------------------------------------
+void JFETDevice::evaluate(const std::vector<double>& voltages,
+                            NumericMatrix& mat,
+                            std::vector<double>& rhs) {
+    const int n_real = static_cast<int>(rhs.size());
+    const int n_ghost = (max_neo_node_ >= 0 ? max_neo_node_ + 1 : 0) + 1;
+
+    ghost_voltages_.assign(n_ghost, 0.0);
+    ghost_rhs_.assign(n_ghost, 0.0);
+    for (int32_t k = 0; k <= max_neo_node_ && k < n_real; ++k) {
+        ghost_voltages_[k + 1] = voltages[k];
+    }
+
+    Shim::Ckt ckt;
+
+    // Integrator context.
+    const IntegratorCtx* ic = tls_integrator_ctx;
+    if (ic) {
+        ckt.CKTmode  = ic->mode;
+        ckt.CKTorder = ic->order;
+        ckt.CKTdelta = ic->delta;
+        for (int i = 0; i < 8; ++i) ckt.CKTag[i]       = ic->ag[i];
+        for (int i = 0; i < 8; ++i) ckt.CKTdeltaOld[i] = ic->delta_old[i];
+    } else {
+        ckt.CKTmode  = 0x70 | 0x200;  // MODEDC | MODEINITJCT
+        ckt.CKTorder = 1;
+    }
+
+    // SimOptions.
+    const SimOptions* sim_opts = (ic ? ic->options : nullptr);
+    SimOptions fallback;
+    if (!sim_opts) sim_opts = &fallback;
+    ckt.CKTtemp    = sim_opts->temp;
+    ckt.CKTnomTemp = sim_opts->temp;
+    ckt.CKTgmin    = sim_opts->gmin;
+    ckt.CKTreltol  = sim_opts->reltol;
+    ckt.CKTabstol  = sim_opts->abstol;
+    ckt.CKTvoltTol = sim_opts->vntol;
+    ckt.CKTbypass  = 0;
+    ckt.CKTnoncon  = 0;
+
+    // State ring.
+    ckt.CKTstate0 = state0_;
+    ckt.CKTstate1 = state1_;
+    ckt.CKTstate2 = state2_;
+
+    // Ghost rhs / old-iterate pointers.
+    ckt.CKTrhs    = ghost_rhs_.data();
+    ckt.CKTrhsOld = ghost_voltages_.data();
+    ckt.mat       = &mat;
+
+    // First-call JFETtemp.
+    if (!temp_done_) {
+        int rc = JFETtemp(model_, &ckt);
+        if (rc != Shim::OK) {
+            throw std::runtime_error("JFETtemp failed with rc=" + std::to_string(rc));
+        }
+        temp_done_ = true;
+    }
+
+    // Splice this instance as sole member, call load, then restore.
+    JFETInstance* saved_head      = model_->JFETinstances;
+    JFETInstance* saved_next_inst = inst_.JFETnextInstance;
+    JFETModel*    saved_next_mod  = model_->JFETnextModel;
+    model_->JFETinstances  = &inst_;
+    inst_.JFETnextInstance = nullptr;
+    model_->JFETnextModel  = nullptr;
+    int rc = JFETload(model_, &ckt);
+    model_->JFETinstances  = saved_head;
+    inst_.JFETnextInstance = saved_next_inst;
+    model_->JFETnextModel  = saved_next_mod;
+    if (rc != Shim::OK) {
+        throw std::runtime_error("JFETload failed with rc=" + std::to_string(rc));
+    }
+
+    // Capture the UCB convergence flag for device_converged().
+    last_noncon_ = ckt.CKTnoncon;
+
+    // Fold ghost rhs contributions back into the real rhs.
+    for (int32_t k = 1; k <= max_neo_node_ + 1 && k < n_ghost; ++k) {
+        if (k - 1 < n_real) rhs[k - 1] += ghost_rhs_[k];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// device_converged
+// ---------------------------------------------------------------------------
+bool JFETDevice::device_converged() const {
+    return last_noncon_ == 0;
+}
+
+// ---------------------------------------------------------------------------
+// set_ic — Initial conditions for VDS and VGS
+// ---------------------------------------------------------------------------
+void JFETDevice::set_ic(double vds, bool vds_given,
+                        double vgs, bool vgs_given) {
+    if (vds_given) { inst_.JFETicVDS = vds; inst_.JFETicVDSGiven = 1; }
+    if (vgs_given) { inst_.JFETicVGS = vgs; inst_.JFETicVGSGiven = 1; }
+}
+
+// ---------------------------------------------------------------------------
+// ac_stamp — linearized small-signal AC stamp (G/C matrix split)
+//
+// Translates ngspice jfetacld.c complex-matrix stamping into separate
+// G (conductance) and C (capacitance) matrices.  The AC solver combines
+// them as (G + jwC) at each frequency point.
+// ---------------------------------------------------------------------------
+void JFETDevice::ac_stamp(const std::vector<double>& /*voltages*/,
+                          NumericMatrix& G, NumericMatrix& C) {
+    auto& inst = inst_;
+    const double m = inst.JFETm;
+
+    // --- Conductance values ---
+    const double gdpr = model_->JFETdrainConduct * inst.JFETarea;
+    const double gspr = model_->JFETsourceConduct * inst.JFETarea;
+    const double gm   = state0_[inst.JFETstate + 5];   // JFETgm
+    const double gds  = state0_[inst.JFETstate + 6];   // JFETgds
+    const double ggs  = state0_[inst.JFETstate + 7];   // JFETggs
+    const double ggd  = state0_[inst.JFETstate + 8];   // JFETggd
+
+    // --- Capacitance values (dQ/dV stored by NIintegrate) ---
+    const double xgs  = state0_[inst.JFETstate + 9];   // JFETqgs (capacitance)
+    const double xgd  = state0_[inst.JFETstate + 11];  // JFETqgd (capacitance)
+
+    // --- G matrix stamps ---
+    G.add(inst.JFETdrainDrainPtr,               m * gdpr);
+    G.add(inst.JFETgateGatePtr,                 m * (ggd + ggs));
+    G.add(inst.JFETsourceSourcePtr,             m * gspr);
+    G.add(inst.JFETdrainPrimeDrainPrimePtr,     m * (gdpr + gds + ggd));
+    G.add(inst.JFETsourcePrimeSourcePrimePtr,   m * (gspr + gds + gm + ggs));
+    G.add(inst.JFETdrainDrainPrimePtr,          m * (-gdpr));
+    G.add(inst.JFETgateDrainPrimePtr,           m * (-ggd));
+    G.add(inst.JFETgateSourcePrimePtr,          m * (-ggs));
+    G.add(inst.JFETsourceSourcePrimePtr,        m * (-gspr));
+    G.add(inst.JFETdrainPrimeDrainPtr,          m * (-gdpr));
+    G.add(inst.JFETdrainPrimeGatePtr,           m * (-ggd + gm));
+    G.add(inst.JFETdrainPrimeSourcePrimePtr,    m * (-gds - gm));
+    G.add(inst.JFETsourcePrimeGatePtr,          m * (-ggs - gm));
+    G.add(inst.JFETsourcePrimeSourcePtr,        m * (-gspr));
+    G.add(inst.JFETsourcePrimeDrainPrimePtr,    m * (-gds));
+
+    // --- C matrix stamps ---
+    C.add(inst.JFETgateGatePtr,                 m * (xgd + xgs));
+    C.add(inst.JFETdrainPrimeDrainPrimePtr,     m * xgd);
+    C.add(inst.JFETsourcePrimeSourcePrimePtr,   m * xgs);
+    C.add(inst.JFETgateDrainPrimePtr,           m * (-xgd));
+    C.add(inst.JFETgateSourcePrimePtr,          m * (-xgs));
+    C.add(inst.JFETdrainPrimeGatePtr,           m * (-xgd));
+    C.add(inst.JFETsourcePrimeGatePtr,          m * (-xgs));
+}
+
+// ---------------------------------------------------------------------------
+// compute_trunc — device-specific local truncation error for time stepping
+// ---------------------------------------------------------------------------
+double JFETDevice::compute_trunc(const IntegratorCtx& ctx,
+                                 const SimOptions& opts) const {
+    if (ctx.order < 2 || ctx.delta <= 0.0)
+        return 1e30;
+
+    if (!state0_ || !state1_ || !state2_)
+        return 1e30;
+
+    const double lte_coeff = 2.0 / 9.0;
+    const double h0 = ctx.delta;
+    const double h1 = ctx.delta_old[1];
+    if (h1 <= 0.0) return 1e30;
+
+    // Charge offsets: qgs=9, qgd=11
+    static const int charge_offsets[] = {9, 11};
+    double dt_min = 1e30;
+
+    for (int rel : charge_offsets) {
+        int qcap = state_base_ + rel;
+        double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
+        double dd1 = (q0 - q1) / h0;
+        double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
+        double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
+        if (tol <= 0.0) continue;
+        if (std::abs(dd2) > 1e-30) {
+            double del = opts.trtol * tol / (lte_coeff * std::abs(dd2));
+            del = std::sqrt(del);
+            dt_min = std::min(dt_min, del);
+        }
+    }
+    return dt_min;
+}
+
+// ---------------------------------------------------------------------------
+// query_param — post-simulation parameter query
+// ---------------------------------------------------------------------------
+static std::string str_tolower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return s;
+}
+
+std::optional<double>
+JFETDevice::query_param(const std::string& name) const {
+    const std::string key = str_tolower(name);
+    const double m = inst_.JFETm;
+
+    // --- Operating-point parameters from state vector ---
+    if (state0_ && state_base_ >= 0) {
+        if (key == "vgs")  return state0_[inst_.JFETstate + 0];
+        if (key == "vgd")  return state0_[inst_.JFETstate + 1];
+        if (key == "id")   return state0_[inst_.JFETstate + 3] * m;
+        if (key == "ig")   return state0_[inst_.JFETstate + 2] * m;
+        if (key == "gm")   return state0_[inst_.JFETstate + 5] * m;
+        if (key == "gds")  return state0_[inst_.JFETstate + 6] * m;
+    }
+
+    // --- Geometry (no multiplier) ---
+    if (key == "area") return inst_.JFETarea;
+    if (key == "m")    return inst_.JFETm;
+
+    return std::nullopt;
+}
+
+} // namespace neospice

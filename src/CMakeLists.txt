@@ -1,5 +1,6 @@
 add_subdirectory(devices/bsim4v7)
 add_subdirectory(devices/bjt)
+add_subdirectory(devices/jfet)
 
 add_library(neospice_lib
     core/types.cpp
@@ -32,6 +33,7 @@ add_library(neospice_lib
     output/raw_writer.cpp
     $<TARGET_OBJECTS:bsim4v7_obj>
     $<TARGET_OBJECTS:bjt_obj>
+    $<TARGET_OBJECTS:jfet_obj>
 )
 
 target_include_directories(neospice_lib PUBLIC

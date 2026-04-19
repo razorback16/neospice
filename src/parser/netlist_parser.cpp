@@ -17,6 +17,7 @@
 #include "devices/cccs.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
+#include "devices/jfet/jfet_device.hpp"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -490,6 +491,19 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     };
     std::vector<DeferredBJT> deferred_bjts;
 
+    // Deferred JFETs: parsed J-cards are resolved in a second pass once
+    // all .model cards are known.
+    struct DeferredJFET {
+        std::string name;
+        std::string nd, ng, ns;  // drain, gate, source node names
+        std::string model_name;
+        JFETDevice::Geom geom;
+        int line_number = 0;
+        double ic_vds = 0, ic_vgs = 0;
+        bool ic_vds_given = false, ic_vgs_given = false;
+    };
+    std::vector<DeferredJFET> deferred_jfets;
+
     // Pass 1: collect .model and .param cards
     std::vector<std::pair<std::string, std::string>> raw_params;
     for (const auto& line : lines) {
@@ -930,6 +944,59 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             deferred_bjts.push_back(std::move(q));
 
+        } else if (elem_type == 'j') {
+            // J name drain gate source model [area] [off] [ic=VDS,VGS]
+            if (tokens.size() < 5) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": J card requires at least name, nd, ng, ns, model");
+            }
+            DeferredJFET j;
+            j.name = tokens[0];
+            j.nd = tokens[1];
+            j.ng = tokens[2];
+            j.ns = tokens[3];
+            j.model_name = tokens[4];
+            j.line_number = line.line_number;
+            // Parse remaining: area=, m=, ic=, off, or bare area number
+            for (size_t i = 5; i < tokens.size(); ++i) {
+                auto eq = tokens[i].find('=');
+                if (eq != std::string::npos) {
+                    std::string key = to_lower(tokens[i].substr(0, eq));
+                    std::string valstr = tokens[i].substr(eq + 1);
+                    if (key == "area") {
+                        j.geom.area = parse_spice_number(valstr);
+                        j.geom.area_given = true;
+                    } else if (key == "m") {
+                        j.geom.m = parse_spice_number(valstr);
+                        j.geom.m_given = true;
+                    } else if (key == "ic") {
+                        // ic=VDS,VGS
+                        std::vector<double> icvals;
+                        size_t start = 0;
+                        while (start < valstr.size()) {
+                            size_t comma = valstr.find(',', start);
+                            if (comma == std::string::npos) comma = valstr.size();
+                            std::string field = valstr.substr(start, comma - start);
+                            if (!field.empty()) icvals.push_back(parse_spice_number(field));
+                            start = comma + 1;
+                        }
+                        if (icvals.size() >= 1) { j.ic_vds = icvals[0]; j.ic_vds_given = true; }
+                        if (icvals.size() >= 2) { j.ic_vgs = icvals[1]; j.ic_vgs_given = true; }
+                    }
+                } else {
+                    std::string lower = to_lower(tokens[i]);
+                    if (lower == "off") continue; // ignore OFF flag
+                    // Bare number = area factor (legacy SPICE2 syntax)
+                    if (!j.geom.area_given) {
+                        try {
+                            j.geom.area = parse_spice_number(tokens[i]);
+                            j.geom.area_given = true;
+                        } catch (...) {}
+                    }
+                }
+            }
+            deferred_jfets.push_back(std::move(j));
+
         } else if (elem_type == 'k') {
             // K name L1 L2 coupling_coefficient
             if (tokens.size() < 4) {
@@ -1083,6 +1150,48 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     }
     for (auto& [name, card] : bjt_cards) {
         ckt.add_bjt_model_card(std::move(card));
+    }
+
+    // Resolve deferred JFETs
+    std::unordered_map<std::string, std::unique_ptr<JFETModelCard>> jfet_cards;
+    for (const auto& j : deferred_jfets) {
+        auto it = models.find(j.model_name);
+        if (it == models.end()) {
+            auto it2 = models.find(to_lower(j.model_name));
+            if (it2 == models.end()) {
+                throw ParseError("Line " + std::to_string(j.line_number) +
+                                 ": Unknown model '" + j.model_name + "'");
+            }
+            it = it2;
+        }
+        // Check that the model type is NJF or PJF
+        std::string model_type = to_lower(it->second.type);
+        if (model_type != "njf" && model_type != "pjf") {
+            throw ParseError("Line " + std::to_string(j.line_number) +
+                             ": J card references non-JFET model '" + j.model_name + "'");
+        }
+        auto card_it = jfet_cards.find(j.model_name);
+        if (card_it == jfet_cards.end()) {
+            try {
+                card_it = jfet_cards.emplace(j.model_name,
+                                              to_jfet_card(it->second)).first;
+            } catch (const ParseError& e) {
+                throw ParseError("Line " + std::to_string(j.line_number) +
+                                 ": " + e.what());
+            }
+        }
+        int32_t nd = ckt.node(j.nd);
+        int32_t ng = ckt.node(j.ng);
+        int32_t ns = ckt.node(j.ns);
+        auto dev = JFETDevice::make(j.name, nd, ng, ns,
+                                     j.geom, *card_it->second);
+        if (j.ic_vds_given || j.ic_vgs_given) {
+            dev->set_ic(j.ic_vds, j.ic_vds_given, j.ic_vgs, j.ic_vgs_given);
+        }
+        ckt.add_device(std::move(dev));
+    }
+    for (auto& [name, card] : jfet_cards) {
+        ckt.add_jfet_model_card(std::move(card));
     }
 
     // Resolve deferred coupled inductors (K elements) — find inductor devices by name.

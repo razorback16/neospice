@@ -2,6 +2,7 @@
 #include "devices/diode.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
 #include "devices/bjt/bjt_device.hpp"            // BJTModelCard
+#include "devices/jfet/jfet_device.hpp"          // JFETModelCard
 #include "parser/tokenizer.hpp"
 #include <memory>
 #include <string>
@@ -36,5 +37,9 @@ std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card);
 /// for BSIM4v7 — the Circuit owns the card and BJTDevice holds a
 /// non-owning pointer.
 std::unique_ptr<BJTModelCard> to_bjt_card(const ModelCard& card);
+
+/// Translate a parsed .model card (NJF/PJF) into a JFETModelCard using
+/// the UCB JFETmParam dispatcher.
+std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card);
 
 } // namespace neospice

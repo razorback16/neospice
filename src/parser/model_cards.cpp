@@ -4,6 +4,8 @@
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include "devices/bjt/bjt_def.hpp"
 #include "devices/bjt/bjt_shim.hpp"
+#include "devices/jfet/jfet_def.hpp"
+#include "devices/jfet/jfet_shim.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -288,6 +290,74 @@ std::unique_ptr<BJTModelCard> to_bjt_card(const ModelCard& card) {
         if (rc != bjt::Shim::OK) {
             throw ParseError(
                 "Model '" + card.name + "': BJTmParam failed for '" +
+                lkey + "' (rc=" + std::to_string(rc) + ")");
+        }
+    }
+
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// to_jfet_card — parse a .model NJF/PJF card into a JFETModelCard via
+// the UCB JFETmParam dispatcher.
+// ---------------------------------------------------------------------------
+std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card) {
+    auto out = std::make_unique<JFETModelCard>();
+    auto& ucb = out->ucb;
+
+    // Type check — card.type is lowercased at parse time.
+    if (card.type == "njf") {
+        ucb.JFETtype = 1;   // NJF
+    } else if (card.type == "pjf") {
+        ucb.JFETtype = -1;  // PJF
+    } else {
+        throw ParseError(
+            "Model '" + card.name + "': unsupported JFET type '" + card.type +
+            "' (only NJF/PJF supported)");
+    }
+
+    // Walk the JFET model parameter table, dispatching each matching
+    // parsed key through JFETmParam.
+    for (const auto& [lkey, val] : card.params) {
+        // Skip "level" — not a JFET model parameter.
+        if (lkey == "level") continue;
+
+        const jfet::Shim::IfParm* entry = nullptr;
+        for (int i = 0; i < jfet::JFETmPTSize; ++i) {
+            if (std::strcmp(jfet::JFETmPTable[i].keyword, lkey.c_str()) == 0) {
+                entry = &jfet::JFETmPTable[i];
+                break;
+            }
+        }
+        if (entry == nullptr) {
+            std::fprintf(stderr,
+                "Warning: model '%s': unknown JFET parameter '%s' (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        jfet::Shim::IfValue v{};
+        int dtype = entry->dataType & 0x1F;
+        if (dtype & jfet::Shim::IF_REAL) {
+            v.rValue = val;
+        } else if (dtype & jfet::Shim::IF_INTEGER) {
+            v.iValue = static_cast<int>(val);
+        } else if (dtype & jfet::Shim::IF_FLAG) {
+            v.iValue = (val != 0.0) ? 1 : 0;
+        } else if (dtype & jfet::Shim::IF_STRING) {
+            // Skip string params
+            continue;
+        } else {
+            std::fprintf(stderr,
+                "Warning: model '%s': parameter '%s' has unrecognized data type (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        int rc = jfet::JFETmParam(entry->id, &v, &ucb);
+        if (rc != jfet::Shim::OK) {
+            throw ParseError(
+                "Model '" + card.name + "': JFETmParam failed for '" +
                 lkey + "' (rc=" + std::to_string(rc) + ")");
         }
     }

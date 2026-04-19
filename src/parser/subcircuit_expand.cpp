@@ -39,6 +39,8 @@ int node_count_for_element(char elem_type) {
             return 2;
         case 'q':
             return 4;  // Q has 4 node tokens (C B E S) — substrate should be explicit in subcircuits
+        case 'j':
+            return 3;  // J has 3 node tokens (D G S)
         default:
             return 0;
     }
