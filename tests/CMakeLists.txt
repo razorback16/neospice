@@ -65,6 +65,7 @@ add_executable(neospice_tests
     unit/test_pdk_integration.cpp
     unit/test_bjt.cpp
     unit/test_bjt_validation.cpp
+    unit/test_diode_validation.cpp
     unit/test_coupled_inductor.cpp
     unit/test_tline.cpp
     unit/test_jfet.cpp

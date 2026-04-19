@@ -1,0 +1,7 @@
+Diode Switching Transient
+V1 in 0 PULSE(0 5 0 1u 1u 5u 12u)
+R1 in out 1k
+D1 out 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.tran 100n 36u
+.end

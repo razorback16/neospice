@@ -152,6 +152,32 @@ DCResult NgspiceRunner::run_dc(const std::string& cir_path) {
     return result;
 }
 
+DCSweepResult NgspiceRunner::run_dc_sweep(const std::string& cir_path) {
+    std::string raw_path = run_batch(cir_path);
+    RawData raw = parse_raw(raw_path);
+    std::filesystem::remove(raw_path);
+    std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
+
+    DCSweepResult result;
+
+    for (int v = 0; v < raw.num_vars; ++v) {
+        const auto& name = raw.var_names[v];
+        // ngspice names the sweep variable "v(v-sweep)" for voltage source sweeps
+        if (name.find("v-sweep") != std::string::npos) {
+            result.sweep_var = name;
+            result.sweep_values = raw.real_data[v];
+        } else if (name.find("v(") == 0) {
+            result.voltages[name] = raw.real_data[v];
+        } else if (name.find("i(") == 0 || name.find("#branch") != std::string::npos) {
+            result.currents[name] = raw.real_data[v];
+        } else {
+            result.voltages[name] = raw.real_data[v];
+        }
+    }
+
+    return result;
+}
+
 TransientResult NgspiceRunner::run_transient(const std::string& cir_path) {
     std::string raw_path = run_batch(cir_path);
     RawData raw = parse_raw(raw_path);

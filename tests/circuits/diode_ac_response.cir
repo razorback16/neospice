@@ -1,0 +1,7 @@
+Diode AC Response
+V1 in 0 DC 5.0 AC 1
+R1 in out 1k
+D1 out 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.ac dec 10 1 1e6
+.end
