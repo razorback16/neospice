@@ -175,15 +175,19 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
             add_current(etbl->branch_index(), dev->name());
     }
 
-    // Prepare result
+    // Prepare result + cache direct pointers for zero-lookup frequency loop
     ACResult ac_result;
     ac_result.frequency = freqs;
-    for (auto& vs : voltage_slots) {
+    for (auto& vs : voltage_slots)
         ac_result.voltages[vs.key].resize(freqs.size());
-    }
-    for (auto& cs : current_slots) {
+    for (auto& cs : current_slots)
         ac_result.currents[cs.key].resize(freqs.size());
-    }
+
+    std::vector<std::complex<double>*> v_ptrs, c_ptrs;
+    for (auto& vs : voltage_slots)
+        v_ptrs.push_back(ac_result.voltages[vs.key].data());
+    for (auto& cs : current_slots)
+        c_ptrs.push_back(ac_result.currents[cs.key].data());
 
     // 9. Complex RHS template (allocated once, copied per frequency)
     std::vector<double> rhs_z(2 * n, 0.0);
@@ -200,31 +204,27 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     for (size_t fi = 0; fi < freqs.size(); ++fi) {
         double omega = 2.0 * M_PI * freqs[fi];
 
-        // Build complex Ax = G + jωC
         for (int32_t k = 0; k < nnz; ++k) {
             ax[2 * k]     = g_vals[k];
             ax[2 * k + 1] = omega * c_vals[k];
         }
 
-        // Factor or refactor
         if (fi == 0) {
             ac_solver.numeric_complex(pattern, ax);
         } else {
             ac_solver.refactorize_complex(ax);
         }
 
-        // Solve
         rhs_z = rhs_z_template;
         ac_solver.solve_complex(rhs_z);
 
-        // Extract results — solution is interleaved (real,imag) pairs
-        for (auto& vs : voltage_slots) {
-            int32_t i = vs.var_idx;
-            ac_result.voltages[vs.key][fi] = {rhs_z[2*i], rhs_z[2*i+1]};
+        for (std::size_t k = 0; k < voltage_slots.size(); ++k) {
+            int32_t i = voltage_slots[k].var_idx;
+            v_ptrs[k][fi] = {rhs_z[2*i], rhs_z[2*i+1]};
         }
-        for (auto& cs : current_slots) {
-            int32_t br = cs.branch_idx;
-            ac_result.currents[cs.key][fi] = {rhs_z[2*br], rhs_z[2*br+1]};
+        for (std::size_t k = 0; k < current_slots.size(); ++k) {
+            int32_t br = current_slots[k].branch_idx;
+            c_ptrs[k][fi] = {rhs_z[2*br], rhs_z[2*br+1]};
         }
     }
 

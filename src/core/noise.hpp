@@ -1,7 +1,7 @@
 #pragma once
 #include "core/circuit.hpp"
 #include <string>
-#include <unordered_map>
+#include <map>
 #include <vector>
 
 namespace neospice {
@@ -11,7 +11,7 @@ struct NoiseResult {
     std::vector<double> output_noise_density;  // V^2/Hz (output-referred, total)
     std::vector<double> input_noise_density;   // V^2/Hz (input-referred, total)
     // Per-device breakdown: device_name -> V^2/Hz contribution at each frequency
-    std::unordered_map<std::string, std::vector<double>> device_noise;
+    std::map<std::string, std::vector<double>> device_noise;
 };
 
 /// Run noise analysis on the circuit.

@@ -1,10 +1,9 @@
 #include "output/raw_writer.hpp"
-#include <fstream>
+#include <cstdio>
 #include <ctime>
-#include <sstream>
+#include <cstring>
 #include <vector>
 #include <string>
-#include <map>
 
 namespace neospice {
 
@@ -16,23 +15,21 @@ static std::string current_date_string() {
 }
 
 void write_raw(const std::string& filepath, const TransientResult& result) {
-    std::ofstream out(filepath, std::ios::binary);
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
+    char stream_buf[256 * 1024];
+    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
 
-    // Build ordered variable list: time first, then voltages, then currents
     std::vector<std::string> var_names;
-    std::vector<int> var_types; // 0 = time, 1 = voltage, 2 = current
+    std::vector<int> var_types;
     var_names.push_back("time");
     var_types.push_back(0);
 
-    // Use sorted maps for deterministic ordering
-    std::map<std::string, std::vector<double>> sorted_voltages(result.voltages.begin(), result.voltages.end());
-    std::map<std::string, std::vector<double>> sorted_currents(result.currents.begin(), result.currents.end());
-
-    for (const auto& [name, _] : sorted_voltages) {
+    for (const auto& [name, _] : result.voltages) {
         var_names.push_back(name);
         var_types.push_back(1);
     }
-    for (const auto& [name, _] : sorted_currents) {
+    for (const auto& [name, _] : result.currents) {
         var_names.push_back(name);
         var_types.push_back(2);
     }
@@ -40,99 +37,94 @@ void write_raw(const std::string& filepath, const TransientResult& result) {
     std::size_t npoints = result.time.size();
     std::size_t nvars = var_names.size();
 
-    // Write text header
-    out << "Title: neospice Transient Analysis\n";
-    out << "Date: " << current_date_string() << "\n";
-    out << "Plotname: Transient Analysis\n";
-    out << "Flags: real\n";
-    out << "No. Variables: " << nvars << "\n";
-    out << "No. Points: " << npoints << "\n";
-    out << "Variables:\n";
+    std::fprintf(fp, "Title: neospice Transient Analysis\n");
+    std::fprintf(fp, "Date: %s\n", current_date_string().c_str());
+    std::fprintf(fp, "Plotname: Transient Analysis\n");
+    std::fprintf(fp, "Flags: real\n");
+    std::fprintf(fp, "No. Variables: %zu\n", nvars);
+    std::fprintf(fp, "No. Points: %zu\n", npoints);
+    std::fprintf(fp, "Variables:\n");
     for (std::size_t i = 0; i < nvars; ++i) {
         const char* type_str = (var_types[i] == 0) ? "time" :
                                (var_types[i] == 1) ? "voltage" : "current";
-        out << "\t" << i << "\t" << var_names[i] << "\t" << type_str << "\n";
+        std::fprintf(fp, "\t%zu\t%s\t%s\n", i, var_names[i].c_str(), type_str);
     }
-    out << "Binary:\n";
+    std::fprintf(fp, "Binary:\n");
 
-    // Write binary data: for each point, write all variables as doubles
+    std::vector<const std::vector<double>*> col_ptrs;
+    col_ptrs.push_back(&result.time);
+    for (const auto& [name, data] : result.voltages)
+        col_ptrs.push_back(&data);
+    for (const auto& [name, data] : result.currents)
+        col_ptrs.push_back(&data);
+
+    std::vector<double> row(nvars);
     for (std::size_t pt = 0; pt < npoints; ++pt) {
-        // time
-        double val = result.time[pt];
-        out.write(reinterpret_cast<const char*>(&val), sizeof(double));
-        // voltages
-        for (const auto& [name, data] : sorted_voltages) {
-            val = data[pt];
-            out.write(reinterpret_cast<const char*>(&val), sizeof(double));
-        }
-        // currents
-        for (const auto& [name, data] : sorted_currents) {
-            val = data[pt];
-            out.write(reinterpret_cast<const char*>(&val), sizeof(double));
-        }
+        for (std::size_t c = 0; c < col_ptrs.size(); ++c)
+            row[c] = (*col_ptrs[c])[pt];
+        std::fwrite(row.data(), sizeof(double), nvars, fp);
     }
+    std::fclose(fp);
 }
 
 void write_raw(const std::string& filepath, const DCResult& result) {
-    std::ofstream out(filepath, std::ios::binary);
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
 
     std::vector<std::string> var_names;
-    std::vector<int> var_types; // 1 = voltage, 2 = current
+    std::vector<int> var_types;
 
-    std::map<std::string, double> sorted_voltages(result.node_voltages.begin(), result.node_voltages.end());
-    std::map<std::string, double> sorted_currents(result.branch_currents.begin(), result.branch_currents.end());
-
-    for (const auto& [name, _] : sorted_voltages) {
+    for (const auto& [name, _] : result.node_voltages) {
         var_names.push_back(name);
         var_types.push_back(1);
     }
-    for (const auto& [name, _] : sorted_currents) {
+    for (const auto& [name, _] : result.branch_currents) {
         var_names.push_back(name);
         var_types.push_back(2);
     }
 
     std::size_t nvars = var_names.size();
 
-    out << "Title: neospice DC Analysis\n";
-    out << "Date: " << current_date_string() << "\n";
-    out << "Plotname: DC Operating Point\n";
-    out << "Flags: real\n";
-    out << "No. Variables: " << nvars << "\n";
-    out << "No. Points: 1\n";
-    out << "Variables:\n";
+    std::fprintf(fp, "Title: neospice DC Analysis\n");
+    std::fprintf(fp, "Date: %s\n", current_date_string().c_str());
+    std::fprintf(fp, "Plotname: DC Operating Point\n");
+    std::fprintf(fp, "Flags: real\n");
+    std::fprintf(fp, "No. Variables: %zu\n", nvars);
+    std::fprintf(fp, "No. Points: 1\n");
+    std::fprintf(fp, "Variables:\n");
     for (std::size_t i = 0; i < nvars; ++i) {
         const char* type_str = (var_types[i] == 1) ? "voltage" : "current";
-        out << "\t" << i << "\t" << var_names[i] << "\t" << type_str << "\n";
+        std::fprintf(fp, "\t%zu\t%s\t%s\n", i, var_names[i].c_str(), type_str);
     }
-    out << "Binary:\n";
+    std::fprintf(fp, "Binary:\n");
 
-    // Single point
-    for (const auto& [name, val] : sorted_voltages) {
+    for (const auto& [name, val] : result.node_voltages) {
         double v = val;
-        out.write(reinterpret_cast<const char*>(&v), sizeof(double));
+        std::fwrite(&v, sizeof(double), 1, fp);
     }
-    for (const auto& [name, val] : sorted_currents) {
+    for (const auto& [name, val] : result.branch_currents) {
         double v = val;
-        out.write(reinterpret_cast<const char*>(&v), sizeof(double));
+        std::fwrite(&v, sizeof(double), 1, fp);
     }
+    std::fclose(fp);
 }
 
 void write_raw(const std::string& filepath, const ACResult& result) {
-    std::ofstream out(filepath, std::ios::binary);
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
+    char stream_buf[256 * 1024];
+    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
 
     std::vector<std::string> var_names;
-    std::vector<int> var_types; // 0 = frequency, 1 = voltage, 2 = current
+    std::vector<int> var_types;
     var_names.push_back("frequency");
     var_types.push_back(0);
 
-    std::map<std::string, std::vector<std::complex<double>>> sorted_voltages(result.voltages.begin(), result.voltages.end());
-    std::map<std::string, std::vector<std::complex<double>>> sorted_currents(result.currents.begin(), result.currents.end());
-
-    for (const auto& [name, _] : sorted_voltages) {
+    for (const auto& [name, _] : result.voltages) {
         var_names.push_back(name);
         var_types.push_back(1);
     }
-    for (const auto& [name, _] : sorted_currents) {
+    for (const auto& [name, _] : result.currents) {
         var_names.push_back(name);
         var_types.push_back(2);
     }
@@ -140,61 +132,55 @@ void write_raw(const std::string& filepath, const ACResult& result) {
     std::size_t npoints = result.frequency.size();
     std::size_t nvars = var_names.size();
 
-    out << "Title: neospice AC Analysis\n";
-    out << "Date: " << current_date_string() << "\n";
-    out << "Plotname: AC Analysis\n";
-    out << "Flags: complex\n";
-    out << "No. Variables: " << nvars << "\n";
-    out << "No. Points: " << npoints << "\n";
-    out << "Variables:\n";
+    std::fprintf(fp, "Title: neospice AC Analysis\n");
+    std::fprintf(fp, "Date: %s\n", current_date_string().c_str());
+    std::fprintf(fp, "Plotname: AC Analysis\n");
+    std::fprintf(fp, "Flags: complex\n");
+    std::fprintf(fp, "No. Variables: %zu\n", nvars);
+    std::fprintf(fp, "No. Points: %zu\n", npoints);
+    std::fprintf(fp, "Variables:\n");
     for (std::size_t i = 0; i < nvars; ++i) {
         const char* type_str = (var_types[i] == 0) ? "frequency" :
                                (var_types[i] == 1) ? "voltage" : "current";
-        out << "\t" << i << "\t" << var_names[i] << "\t" << type_str << "\n";
+        std::fprintf(fp, "\t%zu\t%s\t%s\n", i, var_names[i].c_str(), type_str);
     }
-    out << "Binary:\n";
+    std::fprintf(fp, "Binary:\n");
 
-    // For complex: each variable is written as (re, im) pair of doubles
+    std::vector<const std::vector<std::complex<double>>*> col_ptrs;
+    for (const auto& [name, data] : result.voltages)
+        col_ptrs.push_back(&data);
+    for (const auto& [name, data] : result.currents)
+        col_ptrs.push_back(&data);
+
+    std::vector<double> row(2 * nvars);
     for (std::size_t pt = 0; pt < npoints; ++pt) {
-        // frequency as (freq, 0.0)
-        double re = result.frequency[pt];
-        double im = 0.0;
-        out.write(reinterpret_cast<const char*>(&re), sizeof(double));
-        out.write(reinterpret_cast<const char*>(&im), sizeof(double));
-        // voltages
-        for (const auto& [name, data] : sorted_voltages) {
-            re = data[pt].real();
-            im = data[pt].imag();
-            out.write(reinterpret_cast<const char*>(&re), sizeof(double));
-            out.write(reinterpret_cast<const char*>(&im), sizeof(double));
+        row[0] = result.frequency[pt];
+        row[1] = 0.0;
+        for (std::size_t c = 0; c < col_ptrs.size(); ++c) {
+            row[2 + 2*c]     = (*col_ptrs[c])[pt].real();
+            row[2 + 2*c + 1] = (*col_ptrs[c])[pt].imag();
         }
-        // currents
-        for (const auto& [name, data] : sorted_currents) {
-            re = data[pt].real();
-            im = data[pt].imag();
-            out.write(reinterpret_cast<const char*>(&re), sizeof(double));
-            out.write(reinterpret_cast<const char*>(&im), sizeof(double));
-        }
+        std::fwrite(row.data(), sizeof(double), 2 * nvars, fp);
     }
+    std::fclose(fp);
 }
 
 void write_raw(const std::string& filepath, const DCSweepResult& result) {
-    std::ofstream out(filepath, std::ios::binary);
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
+    char stream_buf[256 * 1024];
+    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
 
-    // Build ordered variable list: sweep_var first, then voltages, then currents
     std::vector<std::string> var_names;
-    std::vector<int> var_types; // 0 = sweep/voltage, 1 = voltage, 2 = current
+    std::vector<int> var_types;
     var_names.push_back(result.sweep_var);
     var_types.push_back(0);
 
-    std::map<std::string, std::vector<double>> sorted_voltages(result.voltages.begin(), result.voltages.end());
-    std::map<std::string, std::vector<double>> sorted_currents(result.currents.begin(), result.currents.end());
-
-    for (const auto& [name, _] : sorted_voltages) {
+    for (const auto& [name, _] : result.voltages) {
         var_names.push_back(name);
         var_types.push_back(1);
     }
-    for (const auto& [name, _] : sorted_currents) {
+    for (const auto& [name, _] : result.currents) {
         var_names.push_back(name);
         var_types.push_back(2);
     }
@@ -202,35 +188,34 @@ void write_raw(const std::string& filepath, const DCSweepResult& result) {
     std::size_t npoints = result.sweep_values.size();
     std::size_t nvars = var_names.size();
 
-    out << "Title: neospice DC Sweep Analysis\n";
-    out << "Date: " << current_date_string() << "\n";
-    out << "Plotname: DC Transfer Characteristic\n";
-    out << "Flags: real\n";
-    out << "No. Variables: " << nvars << "\n";
-    out << "No. Points: " << npoints << "\n";
-    out << "Variables:\n";
+    std::fprintf(fp, "Title: neospice DC Sweep Analysis\n");
+    std::fprintf(fp, "Date: %s\n", current_date_string().c_str());
+    std::fprintf(fp, "Plotname: DC Transfer Characteristic\n");
+    std::fprintf(fp, "Flags: real\n");
+    std::fprintf(fp, "No. Variables: %zu\n", nvars);
+    std::fprintf(fp, "No. Points: %zu\n", npoints);
+    std::fprintf(fp, "Variables:\n");
     for (std::size_t i = 0; i < nvars; ++i) {
         const char* type_str = (var_types[i] == 0) ? "sweep" :
                                (var_types[i] == 1) ? "voltage" : "current";
-        out << "\t" << i << "\t" << var_names[i] << "\t" << type_str << "\n";
+        std::fprintf(fp, "\t%zu\t%s\t%s\n", i, var_names[i].c_str(), type_str);
     }
-    out << "Binary:\n";
+    std::fprintf(fp, "Binary:\n");
 
+    std::vector<const std::vector<double>*> col_ptrs;
+    col_ptrs.push_back(&result.sweep_values);
+    for (const auto& [name, data] : result.voltages)
+        col_ptrs.push_back(&data);
+    for (const auto& [name, data] : result.currents)
+        col_ptrs.push_back(&data);
+
+    std::vector<double> row(nvars);
     for (std::size_t pt = 0; pt < npoints; ++pt) {
-        // sweep variable value
-        double val = result.sweep_values[pt];
-        out.write(reinterpret_cast<const char*>(&val), sizeof(double));
-        // voltages
-        for (const auto& [name, data] : sorted_voltages) {
-            val = data[pt];
-            out.write(reinterpret_cast<const char*>(&val), sizeof(double));
-        }
-        // currents
-        for (const auto& [name, data] : sorted_currents) {
-            val = data[pt];
-            out.write(reinterpret_cast<const char*>(&val), sizeof(double));
-        }
+        for (std::size_t c = 0; c < col_ptrs.size(); ++c)
+            row[c] = (*col_ptrs[c])[pt];
+        std::fwrite(row.data(), sizeof(double), nvars, fp);
     }
+    std::fclose(fp);
 }
 
 } // namespace neospice

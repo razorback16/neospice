@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <filesystem>
+#include <chrono>
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -25,9 +26,13 @@ int main(int argc, char* argv[]) {
     }
 
     try {
+        using Clock = std::chrono::high_resolution_clock;
         neospice::Simulator sim;
+        auto t_parse = Clock::now();
         auto ckt = sim.load(input_path);
+        auto t_loaded = Clock::now();
         auto result = sim.run(ckt);
+        auto t_sim = Clock::now();
 
         int written = 0;
         if (result.dc) {
@@ -58,6 +63,14 @@ int main(int argc, char* argv[]) {
             std::cerr << "No analysis commands found in netlist\n";
             return 1;
         }
+        auto t_write = Clock::now();
+        auto parse_us = std::chrono::duration<double, std::micro>(t_loaded - t_parse).count();
+        auto sim_us = std::chrono::duration<double, std::micro>(t_sim - t_loaded).count();
+        auto write_us = std::chrono::duration<double, std::micro>(t_write - t_sim).count();
+        auto total_us = std::chrono::duration<double, std::micro>(t_write - t_parse).count();
+        std::cerr << "[neospice] parse=" << parse_us/1000.0 << " ms, sim="
+                  << sim_us/1000.0 << " ms, write=" << write_us/1000.0
+                  << " ms, total=" << total_us/1000.0 << " ms\n";
     } catch (const neospice::ParseError& e) {
         std::cerr << "Parse error: " << e.what() << "\n";
         return 1;

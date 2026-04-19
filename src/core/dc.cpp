@@ -220,33 +220,45 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         if (node_idx >= 0 && node_idx < n) solution[node_idx] = value;
     }
 
-    // Helper lambda: collect results into sweep_result at the current solution
+    // Pre-compute extraction slots once (outside sweep loop)
+    struct SweepSlot { std::string key; int32_t idx; };
+    std::vector<SweepSlot> sv_slots, sc_slots;
+
+    for (int32_t i = 0; i < num_nodes; ++i) {
+        if (ckt.is_internal_node(i)) continue;
+        sv_slots.push_back({"v(" + to_lower(ckt.node_name(i)) + ")", i});
+    }
+    auto add_sweep_slot = [&](int32_t br, const std::string& dname) {
+        if (br >= 0 && br < n)
+            sc_slots.push_back({"i(" + to_lower(dname) + ")", br});
+    };
+    for (const auto& dev : ckt.devices()) {
+        if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
+            add_sweep_slot(vs->branch_index(), dev->name());
+        else if (auto* ind = dynamic_cast<const Inductor*>(dev.get()))
+            add_sweep_slot(ind->branch_index(), dev->name());
+        else if (auto* e = dynamic_cast<const VCVS*>(dev.get()))
+            add_sweep_slot(e->branch_index(), dev->name());
+        else if (auto* h = dynamic_cast<const CCVS*>(dev.get()))
+            add_sweep_slot(h->branch_index(), dev->name());
+        else if (auto* enl = dynamic_cast<const NonlinearVCVS*>(dev.get()))
+            add_sweep_slot(enl->branch_index(), dev->name());
+        else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
+            add_sweep_slot(etbl->branch_index(), dev->name());
+    }
+
+    std::vector<std::vector<double>*> sv_ptrs, sc_ptrs;
+    for (auto& s : sv_slots)
+        sv_ptrs.push_back(&sweep_result.voltages[s.key]);
+    for (auto& s : sc_slots)
+        sc_ptrs.push_back(&sweep_result.currents[s.key]);
+
     auto collect_point = [&](double sweep_x) {
         sweep_result.sweep_values.push_back(sweep_x);
-
-        for (int32_t i = 0; i < num_nodes; ++i) {
-            if (ckt.is_internal_node(i)) continue;
-            std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
-            sweep_result.voltages[key].push_back(solution[i]);
-        }
-        auto add_sweep_current = [&](int32_t br, const std::string& dname) {
-            if (br >= 0 && br < n)
-                sweep_result.currents["i(" + to_lower(dname) + ")"].push_back(solution[br]);
-        };
-        for (const auto& dev : ckt.devices()) {
-            if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
-                add_sweep_current(vs->branch_index(), dev->name());
-            else if (auto* ind = dynamic_cast<const Inductor*>(dev.get()))
-                add_sweep_current(ind->branch_index(), dev->name());
-            else if (auto* e = dynamic_cast<const VCVS*>(dev.get()))
-                add_sweep_current(e->branch_index(), dev->name());
-            else if (auto* h = dynamic_cast<const CCVS*>(dev.get()))
-                add_sweep_current(h->branch_index(), dev->name());
-            else if (auto* enl = dynamic_cast<const NonlinearVCVS*>(dev.get()))
-                add_sweep_current(enl->branch_index(), dev->name());
-            else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
-                add_sweep_current(etbl->branch_index(), dev->name());
-        }
+        for (std::size_t k = 0; k < sv_slots.size(); ++k)
+            sv_ptrs[k]->push_back(solution[sv_slots[k].idx]);
+        for (std::size_t k = 0; k < sc_slots.size(); ++k)
+            sc_ptrs[k]->push_back(solution[sc_slots[k].idx]);
     };
 
     // Helper: run Newton at current source settings, using previous solution

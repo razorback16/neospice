@@ -1,21 +1,21 @@
 #pragma once
 #include "core/circuit.hpp"
 #include <string>
-#include <unordered_map>
+#include <map>
 #include <vector>
 
 namespace neospice {
 
 struct DCResult {
-    std::unordered_map<std::string, double> node_voltages;
-    std::unordered_map<std::string, double> branch_currents;
+    std::map<std::string, double> node_voltages;
+    std::map<std::string, double> branch_currents;
 };
 
 struct DCSweepResult {
-    std::string sweep_var;                                              // inner sweep source name, e.g. "v1"
-    std::vector<double> sweep_values;                                   // inner sweep values (x-axis)
-    std::unordered_map<std::string, std::vector<double>> voltages;      // node voltages at each point
-    std::unordered_map<std::string, std::vector<double>> currents;      // branch currents at each point
+    std::string sweep_var;
+    std::vector<double> sweep_values;
+    std::map<std::string, std::vector<double>> voltages;
+    std::map<std::string, std::vector<double>> currents;
 };
 
 DCResult solve_dc(Circuit& ckt);

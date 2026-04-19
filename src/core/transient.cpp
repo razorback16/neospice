@@ -116,35 +116,48 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
 
     // ---------------------------------------------------------------
-    // Result storage helper
+    // Result storage: pre-compute extraction slots once
     // ---------------------------------------------------------------
     TransientResult tran_result;
 
+    struct TranSlot { std::string key; int32_t idx; };
+    std::vector<TranSlot> v_slots, c_slots;
+
+    for (int32_t i = 0; i < num_nodes; ++i) {
+        if (ckt.is_internal_node(i)) continue;
+        v_slots.push_back({"v(" + to_lower(ckt.node_name(i)) + ")", i});
+    }
+    auto add_tran_slot = [&](int32_t br, const std::string& dname) {
+        if (br >= 0 && br < n)
+            c_slots.push_back({"i(" + to_lower(dname) + ")", br});
+    };
+    for (const auto& dev : ckt.devices()) {
+        if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
+            add_tran_slot(vs->branch_index(), dev->name());
+        else if (auto* ind = dynamic_cast<const Inductor*>(dev.get()))
+            add_tran_slot(ind->branch_index(), dev->name());
+        else if (auto* e = dynamic_cast<const VCVS*>(dev.get()))
+            add_tran_slot(e->branch_index(), dev->name());
+        else if (auto* h = dynamic_cast<const CCVS*>(dev.get()))
+            add_tran_slot(h->branch_index(), dev->name());
+        else if (auto* enl = dynamic_cast<const NonlinearVCVS*>(dev.get()))
+            add_tran_slot(enl->branch_index(), dev->name());
+        else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
+            add_tran_slot(etbl->branch_index(), dev->name());
+    }
+
+    std::vector<std::vector<double>*> v_ptrs, c_ptrs;
+    for (auto& s : v_slots)
+        v_ptrs.push_back(&tran_result.voltages[s.key]);
+    for (auto& s : c_slots)
+        c_ptrs.push_back(&tran_result.currents[s.key]);
+
     auto store_point = [&](double t, const std::vector<double>& sol) {
         tran_result.time.push_back(t);
-        for (int32_t i = 0; i < num_nodes; ++i) {
-            if (ckt.is_internal_node(i)) continue;
-            std::string key = "v(" + to_lower(ckt.node_name(i)) + ")";
-            tran_result.voltages[key].push_back(sol[i]);
-        }
-        auto add_tran_current = [&](int32_t br, const std::string& dname) {
-            if (br >= 0 && br < n)
-                tran_result.currents["i(" + to_lower(dname) + ")"].push_back(sol[br]);
-        };
-        for (const auto& dev : ckt.devices()) {
-            if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
-                add_tran_current(vs->branch_index(), dev->name());
-            else if (auto* ind = dynamic_cast<const Inductor*>(dev.get()))
-                add_tran_current(ind->branch_index(), dev->name());
-            else if (auto* e = dynamic_cast<const VCVS*>(dev.get()))
-                add_tran_current(e->branch_index(), dev->name());
-            else if (auto* h = dynamic_cast<const CCVS*>(dev.get()))
-                add_tran_current(h->branch_index(), dev->name());
-            else if (auto* enl = dynamic_cast<const NonlinearVCVS*>(dev.get()))
-                add_tran_current(enl->branch_index(), dev->name());
-            else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
-                add_tran_current(etbl->branch_index(), dev->name());
-        }
+        for (std::size_t k = 0; k < v_slots.size(); ++k)
+            v_ptrs[k]->push_back(sol[v_slots[k].idx]);
+        for (std::size_t k = 0; k < c_slots.size(); ++k)
+            c_ptrs[k]->push_back(sol[c_slots[k].idx]);
     };
 
     // ---------------------------------------------------------------
