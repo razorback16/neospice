@@ -80,6 +80,7 @@ add_executable(neospice_tests
     unit/test_output.cpp
     unit/test_options.cpp
     unit/test_nonlinear_sources.cpp
+    unit/test_ths4131.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
@@ -97,3 +98,16 @@ target_compile_definitions(neospice_tests PRIVATE
 )
 
 gtest_discover_tests(neospice_tests)
+
+# Performance benchmarks
+add_executable(bench_ths4131
+    bench/bench_ths4131.cpp
+    framework/ngspice_runner.cpp
+)
+
+target_link_libraries(bench_ths4131 PRIVATE neospice_lib)
+target_include_directories(bench_ths4131 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(bench_ths4131 PRIVATE
+    NGSPICE_BINARY="/usr/bin/ngspice"
+    TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
+)

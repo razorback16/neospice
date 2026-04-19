@@ -1,0 +1,32 @@
+THS4131 Differential Amplifier - Unity Gain
+* Supply: +/-5V, Input: 100mV DC on non-inverting, VOCM=0V
+* Unity gain: Rf=Rg=1k
+*
+.include ths4131.lib
+*
+* Power supplies
+VCC vcc 0 DC 5
+VEE vee 0 DC -5
+*
+* Input signal
+Vin inp 0 DC 0.1 AC 1
+*
+* Feedback network (unity gain: Rf = Rg)
+Rg1 inp in_p 1k
+Rf1 out_p in_p 1k
+Rg2 0 in_n 1k
+Rf2 out_n in_n 1k
+*
+* VOCM reference
+Vvocm vocm 0 DC 0
+*
+* Op-amp instance
+X1 in_p in_n vcc vee out_p out_n vocm THS4131
+*
+* Load resistors
+Rload1 out_p 0 1k
+Rload2 out_n 0 1k
+*
+.op
+.ac dec 10 1 100e6
+.end
