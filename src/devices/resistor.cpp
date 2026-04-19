@@ -1,5 +1,6 @@
 #include "devices/resistor.hpp"
 #include "core/types.hpp"
+#include "core/circuit.hpp"
 #include <cmath>
 
 namespace neospice {

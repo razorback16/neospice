@@ -86,7 +86,6 @@ private:
 
     mutable bool temp_done_ = false;
     mutable int last_noncon_ = 0;
-    mutable double sim_temp_ = T_NOMINAL;  // cached from last evaluate()
 
     int32_t max_neo_node_ = -1;
 
