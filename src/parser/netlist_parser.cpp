@@ -344,8 +344,15 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         ckt.nodeset[idx] = val;
                     }
                 }
+            } else if (first == ".save") {
+                // .save V(out) I(V1) ...
+                for (size_t i = 1; i < tokens.size(); ++i) {
+                    std::string sig = to_lower(tokens[i]);
+                    if (!sig.empty())
+                        ckt.save_signals.push_back(sig);
+                }
             }
-            // Skip .model, .param (already handled), .save, .print, .include, .lib, .endl, etc.
+            // Skip .model, .param (already handled), .print, .include, .lib, .endl, etc.
             continue;
         }
 
