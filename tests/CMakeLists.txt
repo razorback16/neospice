@@ -51,6 +51,12 @@ add_executable(neospice_tests
     unit/test_bsim4v7_trunc.cpp
     unit/test_bsim4v7_cvtest.cpp
     unit/test_bsim4v7_query.cpp
+    unit/test_vcvs.cpp
+    unit/test_vccs.cpp
+    unit/test_ccvs.cpp
+    unit/test_cccs.cpp
+    unit/test_dc_sweep.cpp
+    unit/test_save_filter.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )

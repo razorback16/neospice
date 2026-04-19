@@ -8,4 +8,5 @@ namespace neospice {
 void write_raw(const std::string& filepath, const TransientResult& result);
 void write_raw(const std::string& filepath, const DCResult& result);
 void write_raw(const std::string& filepath, const ACResult& result);
+void write_raw(const std::string& filepath, const DCSweepResult& result);
 } // namespace neospice

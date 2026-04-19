@@ -40,6 +40,10 @@ public:
     void set_pulse(PulseParams p);
     void set_sin(SinParams p);
 
+    /// Override the DC value (used during DC sweep analysis).
+    void set_dc_value(double v) { dc_value_ = v; }
+    double dc_value() const { return dc_value_; }
+
     /// Called before evaluate() during transient analysis.
     void set_time(double t) { current_time_ = t; }
 
@@ -51,6 +55,9 @@ public:
 
     // Device interface
     int32_t extra_vars() const override { return 1; }
+    void assign_branch_index(int32_t& next) override {
+        set_branch_index(next); next += extra_vars();
+    }
     std::vector<std::string> output_currents() const override;
 
     void stamp_pattern(SparsityBuilder& builder) const override;

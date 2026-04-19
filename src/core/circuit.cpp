@@ -1,6 +1,4 @@
 #include "core/circuit.hpp"
-#include "devices/vsource.hpp"
-#include "devices/inductor.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"  // complete BSIM4v7ModelCard for unique_ptr
 #include <cassert>
 #include <stdexcept>
@@ -77,13 +75,7 @@ void Circuit::finalize() {
     int32_t branch_idx = next_node_;
 
     for (auto& dev : devices_) {
-        if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-            vs->set_branch_index(branch_idx);
-            branch_idx += vs->extra_vars();
-        } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
-            ind->set_branch_index(branch_idx);
-            branch_idx += ind->extra_vars();
-        }
+        dev->assign_branch_index(branch_idx);
     }
 
     // 2. Total number of MNA variables.

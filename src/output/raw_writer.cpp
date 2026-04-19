@@ -178,4 +178,59 @@ void write_raw(const std::string& filepath, const ACResult& result) {
     }
 }
 
+void write_raw(const std::string& filepath, const DCSweepResult& result) {
+    std::ofstream out(filepath, std::ios::binary);
+
+    // Build ordered variable list: sweep_var first, then voltages, then currents
+    std::vector<std::string> var_names;
+    std::vector<int> var_types; // 0 = sweep/voltage, 1 = voltage, 2 = current
+    var_names.push_back(result.sweep_var);
+    var_types.push_back(0);
+
+    std::map<std::string, std::vector<double>> sorted_voltages(result.voltages.begin(), result.voltages.end());
+    std::map<std::string, std::vector<double>> sorted_currents(result.currents.begin(), result.currents.end());
+
+    for (const auto& [name, _] : sorted_voltages) {
+        var_names.push_back(name);
+        var_types.push_back(1);
+    }
+    for (const auto& [name, _] : sorted_currents) {
+        var_names.push_back(name);
+        var_types.push_back(2);
+    }
+
+    std::size_t npoints = result.sweep_values.size();
+    std::size_t nvars = var_names.size();
+
+    out << "Title: neospice DC Sweep Analysis\n";
+    out << "Date: " << current_date_string() << "\n";
+    out << "Plotname: DC Transfer Characteristic\n";
+    out << "Flags: real\n";
+    out << "No. Variables: " << nvars << "\n";
+    out << "No. Points: " << npoints << "\n";
+    out << "Variables:\n";
+    for (std::size_t i = 0; i < nvars; ++i) {
+        const char* type_str = (var_types[i] == 0) ? "sweep" :
+                               (var_types[i] == 1) ? "voltage" : "current";
+        out << "\t" << i << "\t" << var_names[i] << "\t" << type_str << "\n";
+    }
+    out << "Binary:\n";
+
+    for (std::size_t pt = 0; pt < npoints; ++pt) {
+        // sweep variable value
+        double val = result.sweep_values[pt];
+        out.write(reinterpret_cast<const char*>(&val), sizeof(double));
+        // voltages
+        for (const auto& [name, data] : sorted_voltages) {
+            val = data[pt];
+            out.write(reinterpret_cast<const char*>(&val), sizeof(double));
+        }
+        // currents
+        for (const auto& [name, data] : sorted_currents) {
+            val = data[pt];
+            out.write(reinterpret_cast<const char*>(&val), sizeof(double));
+        }
+    }
+}
+
 } // namespace neospice

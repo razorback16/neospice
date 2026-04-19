@@ -70,13 +70,29 @@ D1 out 0 MYDIODE
 }
 
 TEST(Parser, UnsupportedElement) {
+    // 'x' (subcircuit) is still unsupported
     std::string netlist = R"(
 Bad Circuit
-E1 out 0 in 0 10
+X1 out 0 in 0 10
 .end
 )";
     NetlistParser parser;
     EXPECT_THROW(parser.parse(netlist), ParseError);
+}
+
+TEST(Parser, VCVSElement) {
+    // E element should parse without throwing
+    std::string netlist = R"(
+VCVS Test
+V1 in 0 DC 2.0
+E1 out 0 in 0 3.0
+R1 out 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    // Should not throw
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 TEST(Parser, Options) {

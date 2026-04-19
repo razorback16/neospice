@@ -15,6 +15,13 @@ namespace neospice {
 // the complete type in circuit.cpp (for unique_ptr destruction).
 struct BSIM4v7ModelCard;
 
+struct DCSweepParam {
+    std::string source_name;
+    double start = 0.0;
+    double stop  = 0.0;
+    double step  = 0.0;
+};
+
 struct AnalysisCommand {
     enum Type { OP, TRAN, AC, DC_SWEEP };
     Type type;
@@ -23,6 +30,8 @@ struct AnalysisCommand {
     ACMode ac_mode = DEC;
     int ac_npoints = 10;
     double ac_fstart = 1.0, ac_fstop = 1e6;
+    // DC sweep parameters (1 or 2 entries for nested sweep)
+    std::vector<DCSweepParam> dc_sweep_params;
 };
 
 // IntegratorCtx is defined in core/types.hpp (included above) so that
