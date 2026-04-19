@@ -209,6 +209,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     std::vector<DeferredMosfet> deferred_mosfets;
 
     // Pass 1: collect .model and .param cards
+    std::vector<std::pair<std::string, std::string>> raw_params;
     for (const auto& line : lines) {
         if (line.tokens.empty()) continue;
         std::string first = to_lower(line.tokens[0]);
@@ -217,16 +218,21 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             auto card = parse_model_card(line.tokens);
             models[card.name] = card;
         } else if (first == ".param") {
-            // .param key=value ...
+            // .param key=value  or  .param key={expr}
+            // Collect raw (name, expression) pairs; resolve later in dependency order.
             for (size_t i = 1; i < line.tokens.size(); ++i) {
                 auto eq_pos = line.tokens[i].find('=');
                 if (eq_pos != std::string::npos) {
                     std::string key = line.tokens[i].substr(0, eq_pos);
                     std::string val_str = line.tokens[i].substr(eq_pos + 1);
-                    params[key] = eval_expression(val_str, params);
+                    raw_params.emplace_back(key, val_str);
                 }
             }
         }
+    }
+    // Resolve all .param definitions in dependency order (handles forward references)
+    if (!raw_params.empty()) {
+        params = resolve_params(raw_params);
     }
 
     // Pass 2: parse element lines and dot commands
