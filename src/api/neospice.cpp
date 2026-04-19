@@ -19,6 +19,11 @@ DCResult Simulator::run_dc(Circuit& ckt) {
     return solve_dc(ckt);
 }
 
+DCSweepResult Simulator::run_dc_sweep(Circuit& ckt,
+                                      const std::vector<DCSweepParam>& params) {
+    return solve_dc_sweep(ckt, params);
+}
+
 TransientResult Simulator::run_transient(Circuit& ckt, double tstep, double tstop) {
     return solve_transient(ckt, tstep, tstop);
 }
@@ -41,6 +46,9 @@ SimulationResult Simulator::run(Circuit& ckt) {
         case AnalysisCommand::AC:
             result.ac = solve_ac(ckt, cmd.ac_mode, cmd.ac_npoints,
                                  cmd.ac_fstart, cmd.ac_fstop);
+            break;
+        case AnalysisCommand::DC_SWEEP:
+            result.dc_sweep = solve_dc_sweep(ckt, cmd.dc_sweep_params);
             break;
         default:
             break;

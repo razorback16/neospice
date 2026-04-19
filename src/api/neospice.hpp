@@ -12,6 +12,7 @@ struct SimulationResult {
     std::optional<DCResult> dc;
     std::optional<TransientResult> transient;
     std::optional<ACResult> ac;
+    std::optional<DCSweepResult> dc_sweep;
 };
 
 struct SimulatorOptions {
@@ -35,6 +36,7 @@ public:
     TransientResult run_transient(Circuit& ckt, double tstep, double tstop);
     ACResult run_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
                     int npoints, double fstart, double fstop);
+    DCSweepResult run_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& params);
 
     SimulationResult run(Circuit& ckt);
 

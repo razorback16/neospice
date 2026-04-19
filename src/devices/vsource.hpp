@@ -40,6 +40,10 @@ public:
     void set_pulse(PulseParams p);
     void set_sin(SinParams p);
 
+    /// Override the DC value (used during DC sweep analysis).
+    void set_dc_value(double v) { dc_value_ = v; }
+    double dc_value() const { return dc_value_; }
+
     /// Called before evaluate() during transient analysis.
     void set_time(double t) { current_time_ = t; }
 

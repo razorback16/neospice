@@ -267,6 +267,39 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 cmd.ac_fstart = parse_spice_number(tokens[3]);
                 cmd.ac_fstop = parse_spice_number(tokens[4]);
                 ckt.analyses.push_back(cmd);
+            } else if (first == ".dc") {
+                // .dc Vsrc1 start1 stop1 step1 [Vsrc2 start2 stop2 step2]
+                // Each sweep group is 4 tokens: source_name start stop step
+                if (tokens.size() < 5) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .dc requires source start stop step");
+                }
+                AnalysisCommand cmd;
+                cmd.type = AnalysisCommand::DC_SWEEP;
+                size_t i = 1;
+                while (i + 3 < tokens.size() + 1 && i < tokens.size()) {
+                    // Need 4 tokens: name start stop step
+                    if (i + 3 >= tokens.size() + 1) break;
+                    if (i + 3 > tokens.size()) break;
+                    DCSweepParam sp;
+                    sp.source_name = tokens[i];
+                    try {
+                        sp.start = parse_spice_number(tokens[i + 1]);
+                        sp.stop  = parse_spice_number(tokens[i + 2]);
+                        sp.step  = parse_spice_number(tokens[i + 3]);
+                    } catch (...) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": .dc sweep parameters must be numbers");
+                    }
+                    cmd.dc_sweep_params.push_back(sp);
+                    i += 4;
+                    if (cmd.dc_sweep_params.size() >= 2) break; // support at most 2 sweeps
+                }
+                if (cmd.dc_sweep_params.empty()) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .dc requires at least one sweep group");
+                }
+                ckt.analyses.push_back(cmd);
             } else if (first == ".options") {
                 for (size_t i = 1; i < tokens.size(); ++i) {
                     auto eq_pos = tokens[i].find('=');
