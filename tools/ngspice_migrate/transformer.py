@@ -45,7 +45,7 @@ class TransformerConfig:
             gen_model="GENmodel",
             prefix="DIO",
             namespace="dio",
-            defines=["PREDICTOR"],
+            defines=[],
         )
     """
 

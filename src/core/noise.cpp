@@ -77,14 +77,27 @@ NoiseResult solve_noise(Circuit& ckt,
     KLUSolver dc_solver;
     dc_solver.symbolic(ckt.pattern());
 
+    // Publish SimOptions for BSIM4v7Device (and any future state-storing
+    // device) via the same integrator_ctx channel used for CKTmode/ag.
+    ckt.integrator_ctx.options = &ckt.options;
+
+    // Noise analysis runs a plain DC operating point first — use MODEDCOP
+    // (0x10), same as solve_dc().  newton_solve() reads integrator_ctx.mode.
+    constexpr int MODEDCOP_BIT    = 0x10;
+    constexpr int MODEINITJCT_BIT = 0x200;
+    constexpr int MODEINITFIX_BIT = 0x400;
+
+    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, dc_solver, dc_solution, ckt.options);
     if (result.converged) {
         dc_solution = result.solution;
     } else {
+        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, dc_solver, dc_solution, ckt.options);
         if (result.converged) {
             dc_solution = result.solution;
         } else {
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
             result = source_stepping(ckt, dc_solver, dc_solution, ckt.options);
             if (result.converged) {
                 dc_solution = result.solution;
@@ -95,7 +108,28 @@ NoiseResult solve_noise(Circuit& ckt,
     }
 
     // ---------------------------------------------------------------
-    // 4. Build G and C matrices
+    // 4. MODEINITSMSIG pass — compute small-signal parameters
+    // ---------------------------------------------------------------
+    {
+        constexpr int MODEAC_BIT        = 0x2;
+        constexpr int MODEINITSMSIG_BIT = 0x800;
+        ckt.integrator_ctx.mode = MODEAC_BIT | MODEINITSMSIG_BIT;
+
+        NumericMatrix smsig_mat(ckt.pattern());
+        smsig_mat.clear();
+        std::vector<double> smsig_rhs(n, 0.0);
+
+        struct IntegratorCtxGuard {
+            IntegratorCtxGuard(const IntegratorCtx& c) { tls_integrator_ctx = &c; }
+            ~IntegratorCtxGuard()                      { tls_integrator_ctx = nullptr; }
+        } guard(ckt.integrator_ctx);
+        for (auto& dev : ckt.devices()) {
+            dev->evaluate(dc_solution, smsig_mat, smsig_rhs);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // 4b. Build G and C matrices
     // ---------------------------------------------------------------
     const auto& pattern = ckt.pattern();
     NumericMatrix G(pattern);
@@ -108,7 +142,7 @@ NoiseResult solve_noise(Circuit& ckt,
     }
 
     // ---------------------------------------------------------------
-    // 4b. Propagate simulation temperature to all devices so that
+    // 4c. Propagate simulation temperature to all devices so that
     //     noise_sources() uses the correct temperature from SimOptions.
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {

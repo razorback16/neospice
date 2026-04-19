@@ -38,7 +38,10 @@ struct SimOptions {
 };
 
 /// Populated by the transient/DC driver before each Newton load, read by
-/// state-storing devices (BSIM4v7). DC leaves mode=MODEDC|MODEDCOP|MODEINITJCT/FIX.
+/// state-storing devices (BSIM4v7).
+/// DC op uses mode=MODEDCOP(0x10)|MODEINITJCT/FIX.
+/// DC sweep uses mode=MODEDCTRANCURVE(0x40)|MODEINITJCT/FIX.
+/// Transient DC preamble uses mode=MODETRANOP(0x20)|MODEINITJCT/FIX.
 struct IntegratorCtx {
     int    mode  = 0;       // Shim-style CKTmode bitfield
     double ag[8] = {};      // UCB integrator coeffs (BE/Trap/Gear2)

@@ -1,4 +1,3 @@
-#define PREDICTOR
 /**** BSIM4.7.0 Released by Darsen Lu 04/08/2011 ****/
 /**** OpenMP support ngspice 06/28/2010 ****/
 /**********

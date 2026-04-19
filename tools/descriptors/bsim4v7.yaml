@@ -45,8 +45,7 @@ model:
     - "b4v7trunc.c"
     - "b4v7soachk.c"
     - "bsim4v7init.c"
-  defines:
-    - "PREDICTOR"
+  defines: []
   has_internal_nodes: true
   setup_function: "BSIM4v7setup"
   temp_function: "BSIM4v7temp"

@@ -66,25 +66,25 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     // user-configured values from evaluate() via tls_integrator_ctx.
     ckt.integrator_ctx.options = &ckt.options;
 
-    // DC preamble — mirror dc.cpp's integrator_ctx.mode sequence so BSIM4v7
-    // (and any future state-storing device) sees MODEDC + MODEINITJCT/FIX
-    // at the same phases of gmin/source stepping.  See dc.cpp for the bit
-    // values and the ngspice cktdefs.h cross-reference.
-    constexpr int MODEDC_BITS     = 0x70;
+    // DC preamble — the transient initial operating point uses MODETRANOP
+    // (0x20), NOT the full MODEDC mask (0x70) or MODEDCOP (0x10).  ngspice
+    // uses MODETRANOP so that BSIM4v7's load function can distinguish a
+    // transient-initial DC from a standalone DC operating point.
+    constexpr int MODETRANOP_BIT  = 0x20;
     constexpr int MODEINITJCT_BIT = 0x200;
     constexpr int MODEINITFIX_BIT = 0x400;
 
-    ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITJCT_BIT;
+    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
     } else {
-        ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
+        ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
         } else {
-            ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
+            ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
             result = source_stepping(ckt, solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
@@ -205,9 +205,11 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     int step_count = 0;
 
     // CKTmode bits for transient
-    // MODETRAN=0x1, MODEINITTRAN=0x1000 (source: ngspice cktdefs.h; mirrored in bsim4v7_shim.hpp)
+    // MODETRAN=0x1, MODEINITTRAN=0x1000, MODEINITPRED=0x2000
+    // (source: ngspice cktdefs.h; mirrored in bsim4v7_shim.hpp)
     constexpr int MODETRAN_BIT     = 0x1;
     constexpr int MODEINITTRAN_BIT = 0x1000;
+    constexpr int MODEINITPRED_BIT = 0x2000;
 
     // ---------------------------------------------------------------
     // 8. Adaptive time-stepping loop
@@ -256,7 +258,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             ckt.integrator_ctx.delta = dt;
             ckt.integrator_ctx.current_time = t;
             ckt.integrator_ctx.delta_old[1] = ctrl.prev_dt();
-            ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : 0);
+            ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
 
             if (cur_order == 1) {
                 // Backward Euler: y'(t_n) ≈ (y_n - y_{n-1}) / dt

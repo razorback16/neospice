@@ -51,8 +51,7 @@ model:
     - "bjtsset.c"
     - "bjtsupd.c"
     - "bjttrunc.c"
-  defines:
-    - "PREDICTOR"
+  defines: []
   has_internal_nodes: true
   setup_function: "BJTsetup"
   temp_function: "BJTtemp"

@@ -26,7 +26,7 @@ def _dio_config() -> TransformerConfig:
         gen_model="GENmodel",
         prefix="DIO",
         namespace="dio",
-        defines=["PREDICTOR"],
+        defines=[],
     )
 
 
@@ -169,7 +169,7 @@ def test_strip_omp_blocks():
 def test_namespace_wrap(tx):
     """Correct namespace, includes, using directive."""
     out = tx.wrap("int x = 1;\n", "/* banner */")
-    assert '#define PREDICTOR' in out
+    assert '#define PREDICTOR' not in out
     assert '/* banner */' in out
     assert '#include "devices/dio/dio_def.hpp"' in out
     assert '#include "devices/dio/dio_shim.hpp"' in out
@@ -206,7 +206,7 @@ def test_full_translate_simple():
         cpp_model="DIOModel",
         prefix="DIO",
         namespace="dio",
-        defines=["PREDICTOR"],
+        defines=[],
     )
     tx = Transformer(cfg)
     out = tx.translate(src)

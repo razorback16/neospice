@@ -49,8 +49,7 @@ model:
     - "diosset.c"
     - "diosupd.c"
     - "diotrunc.c"
-  defines:
-    - "PREDICTOR"
+  defines: []
   has_internal_nodes: true
   setup_function: "DIOsetup"
   temp_function: "DIOtemp"

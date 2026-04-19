@@ -55,7 +55,7 @@ def test_descriptor_builds_transformer_config():
     assert cfg.cpp_instance == "BSIM4v7Instance"
     assert cfg.namespace == "bsim4v7"
     assert cfg.prefix == "BSIM4v7"
-    assert cfg.defines == ["PREDICTOR"]
+    assert cfg.defines == []
     assert cfg.model_struct == "BSIM4v7model"
     assert cfg.instance_tag == "sBSIM4v7instance"
     assert cfg.model_tag == "sBSIM4v7model"
@@ -165,7 +165,7 @@ def test_bsim4v7_full_fields():
     assert "b4v7acld.c" in desc.skip_files
     assert len(desc.skip_files) == 12
     # defines
-    assert desc.defines == ["PREDICTOR"]
+    assert desc.defines == []
     # feature flags
     assert desc.has_internal_nodes is True
     # functions

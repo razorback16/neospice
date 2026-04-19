@@ -88,11 +88,12 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
     // but we want to exercise newton_solve directly to keep the test
     // independent of DC fallback logic.)
     //
-    // Set the integrator mode to MODEDC | MODEINITJCT so BSIM4v7load takes
-    // the junction-initialisation branch.
-    constexpr int MODEDC_BITS     = 0x70;
+    // Set the integrator mode to MODEDCOP | MODEINITJCT so BSIM4v7load takes
+    // the junction-initialisation branch.  Plain DC op uses 0x10 (MODEDCOP),
+    // not the full 0x70 mask.
+    constexpr int MODEDCOP_BIT    = 0x10;
     constexpr int MODEINITJCT_BIT = 0x200;
-    ckt.integrator_ctx.mode  = MODEDC_BITS | MODEINITJCT_BIT;
+    ckt.integrator_ctx.mode  = MODEDCOP_BIT | MODEINITJCT_BIT;
     ckt.integrator_ctx.order = 1;
 
     std::vector<double> solution(ckt.num_vars(), 0.0);

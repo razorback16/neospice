@@ -474,7 +474,7 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "") -> str:
     parts.append("        for (int i = 0; i < 8; ++i) ckt.CKTag[i]       = ic->ag[i];\n")
     parts.append("        for (int i = 0; i < 8; ++i) ckt.CKTdeltaOld[i] = ic->delta_old[i];\n")
     parts.append("    } else {\n")
-    parts.append("        ckt.CKTmode  = 0x70 | 0x200;  // MODEDC | MODEINITJCT\n")
+    parts.append("        ckt.CKTmode  = 0x10 | 0x200;  // MODEDCOP | MODEINITJCT\n")
     parts.append("        ckt.CKTorder = 1;\n")
     parts.append("    }\n")
     parts.append("\n")

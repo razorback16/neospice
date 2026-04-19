@@ -48,25 +48,27 @@ DCResult solve_dc(Circuit& ckt) {
     // CKTmode bits (ngspice cktdefs.h; mirrored in devices/bsim4v7/bsim4v7_shim.hpp):
     //   MODEDC=0x70 (mask: DCOP|TRANOP|DCTRANCURVE), MODEDCOP=0x10,
     //   MODEINITJCT=0x200, MODEINITFIX=0x400.
-    // MODEDC already covers MODEDCOP so we just OR in the INIT discriminant.
-    constexpr int MODEDC_BITS     = 0x70;
+    // Plain DC operating point uses MODEDCOP (0x10), NOT the full MODEDC mask.
+    // This matters because BSIM4v7's load function checks MODEDCTRANCURVE to
+    // decide whether to compute charges; for a plain DC op that bit must be off.
+    constexpr int MODEDCOP_BIT    = 0x10;
     constexpr int MODEINITJCT_BIT = 0x200;
     constexpr int MODEINITFIX_BIT = 0x400;
 
     // 3. Try newton_solve first (initial junction guess mode)
-    ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITJCT_BIT;
+    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
     } else {
         // 4. Try gmin stepping (fix/iterate mode)
-        ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
+        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
         } else {
             // 5. Try source stepping
-            ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
             result = source_stepping(ckt, solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
@@ -195,9 +197,12 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
 
     ckt.integrator_ctx.options = &ckt.options;
 
-    constexpr int MODEDC_BITS     = 0x70;
-    constexpr int MODEINITJCT_BIT = 0x200;
-    constexpr int MODEINITFIX_BIT = 0x400;
+    // DC sweep uses MODEDCTRANCURVE (0x40), NOT the full MODEDC mask.
+    // This is the ngspice convention: BSIM4v7's load function checks
+    // MODEDCTRANCURVE to decide whether to compute charges during a DC sweep.
+    constexpr int MODEDCTRANCURVE_BIT = 0x40;
+    constexpr int MODEINITJCT_BIT     = 0x200;
+    constexpr int MODEINITFIX_BIT     = 0x400;
 
     // Initial guess: zeros
     std::vector<double> solution(n, 0.0);
@@ -239,14 +244,14 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     bool first_point = true;
     auto run_newton = [&]() {
         int init_bit = first_point ? MODEINITJCT_BIT : MODEINITFIX_BIT;
-        ckt.integrator_ctx.mode = MODEDC_BITS | init_bit;
+        ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | init_bit;
         auto res = newton_solve(ckt, solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
             first_point = false;
             return;
         }
-        ckt.integrator_ctx.mode = MODEDC_BITS | MODEINITFIX_BIT;
+        ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITFIX_BIT;
         res = gmin_stepping(ckt, solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;

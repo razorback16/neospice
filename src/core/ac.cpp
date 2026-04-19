@@ -42,14 +42,27 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     KLUSolver dc_solver;
     dc_solver.symbolic(ckt.pattern());
 
+    // Publish SimOptions for BSIM4v7Device (and any future state-storing
+    // device) via the same integrator_ctx channel used for CKTmode/ag.
+    ckt.integrator_ctx.options = &ckt.options;
+
+    // AC analysis runs a plain DC operating point first — use MODEDCOP (0x10),
+    // same as solve_dc().  newton_solve() reads integrator_ctx.mode.
+    constexpr int MODEDCOP_BIT    = 0x10;
+    constexpr int MODEINITJCT_BIT = 0x200;
+    constexpr int MODEINITFIX_BIT = 0x400;
+
+    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, dc_solver, dc_solution, ckt.options);
     if (result.converged) {
         dc_solution = result.solution;
     } else {
+        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, dc_solver, dc_solution, ckt.options);
         if (result.converged) {
             dc_solution = result.solution;
         } else {
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
             result = source_stepping(ckt, dc_solver, dc_solution, ckt.options);
             if (result.converged) {
                 dc_solution = result.solution;
@@ -59,7 +72,29 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
         }
     }
 
-    // 2. Build G and C matrices using the DC sparsity pattern
+    // 2. MODEINITSMSIG pass — compute small-signal parameters (capacitances,
+    //    transconductances) at the DC operating point.  ngspice runs this
+    //    extra evaluation after DC convergence so the state vectors contain
+    //    the small-signal values that ac_stamp() reads.
+    {
+        constexpr int MODEAC_BIT        = 0x2;
+        constexpr int MODEINITSMSIG_BIT = 0x800;
+        ckt.integrator_ctx.mode = MODEAC_BIT | MODEINITSMSIG_BIT;
+
+        NumericMatrix smsig_mat(ckt.pattern());
+        smsig_mat.clear();
+        std::vector<double> smsig_rhs(ckt.num_vars(), 0.0);
+
+        struct IntegratorCtxGuard {
+            IntegratorCtxGuard(const IntegratorCtx& c) { tls_integrator_ctx = &c; }
+            ~IntegratorCtxGuard()                      { tls_integrator_ctx = nullptr; }
+        } guard(ckt.integrator_ctx);
+        for (auto& dev : ckt.devices()) {
+            dev->evaluate(dc_solution, smsig_mat, smsig_rhs);
+        }
+    }
+
+    // 3. Build G and C matrices using the DC sparsity pattern
     const auto& pattern = ckt.pattern();
     NumericMatrix G(pattern);
     NumericMatrix C(pattern);
@@ -70,7 +105,7 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
         dev->ac_stamp(dc_solution, G, C);
     }
 
-    // 3. Build AC excitation vector (complex RHS)
+    // 4. Build AC excitation vector (complex RHS)
     std::vector<std::complex<double>> ac_rhs(n, {0.0, 0.0});
     for (auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
@@ -83,13 +118,13 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
         }
     }
 
-    // 4. Generate frequency points
+    // 5. Generate frequency points
     auto freqs = generate_frequencies(mode, npoints, fstart, fstop);
     if (freqs.empty()) {
         return ACResult{};
     }
 
-    // 5. Build 2n x 2n sparsity pattern ONCE
+    // 6. Build 2n x 2n sparsity pattern ONCE
     //    Layout: rows/cols 0..n-1 are real part, n..2n-1 are imaginary part
     //    [Re(A)  -Im(A)] [Re(x)]   [Re(b)]
     //    [Im(A)   Re(A)] [Im(x)] = [Im(b)]
@@ -132,7 +167,7 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
         }
     }
 
-    // 6. Frequency sweep
+    // 7. Frequency sweep
     for (size_t fi = 0; fi < freqs.size(); ++fi) {
         double omega = 2.0 * M_PI * freqs[fi];
 

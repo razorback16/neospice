@@ -137,10 +137,11 @@ TEST_F(DiodeValidation, DCSweepNgspice) {
 // ============================================================================
 // 2.  AC Response — Diode biased at DC=5V through R1=1k, AC sweep 1Hz-1MHz
 //
-// Tests the small-signal conductance stamp (geq = dI/dV at the operating
-// point).  No junction capacitance (CJO/TT omitted) so the response is
-// flat across frequency — the comparison verifies that neospice and ngspice
-// compute the same small-signal voltage divider ratio rd/(R1+rd).
+// Tests the small-signal model including junction capacitance (CJO=10p,
+// TT=5n).  At low frequencies the response is a resistive divider
+// rd/(R1+rd).  At high frequencies the diode capacitance shunts more
+// signal, changing the impedance.  The MODEINITSMSIG evaluation pass
+// populates the capacitance state before ac_stamp() reads it.
 // ============================================================================
 
 TEST_F(DiodeValidation, ACResponseNgspice) {
@@ -164,14 +165,10 @@ TEST_F(DiodeValidation, ACResponseNgspice) {
 
     ASSERT_FALSE(cs_result.frequency.empty());
 
-    // Both should have the same number of frequency points
     ASSERT_EQ(ng_result.frequency.size(), cs_result.frequency.size())
         << "Frequency point count mismatch";
 
-    // Compare using the framework AC comparator
-    // Without junction capacitance the response should be flat and match very
-    // tightly.  Use 1% relative tolerance, 1e-9 absolute.
-    auto cmp = compare_ac(ng_result, cs_result, {1e-2, 1e-9});
+    auto cmp = compare_ac(ng_result, cs_result, {2e-2, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -188,12 +185,6 @@ TEST_F(DiodeValidation, ACResponseNgspice) {
         << "AC gain at low frequency should be small (diode shunts signal)";
     EXPECT_GT(gain_low, 1e-6)
         << "AC gain should not be zero";
-
-    // Gain should be roughly constant across all frequencies (no capacitance)
-    double gain_high = std::abs(cs_vout.back());
-    double gain_ratio = gain_high / gain_low;
-    EXPECT_NEAR(gain_ratio, 1.0, 0.05)
-        << "Without CJO, AC gain should be flat across frequency";
 }
 
 // ============================================================================

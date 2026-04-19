@@ -24,13 +24,27 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         std::cerr << "\n";
     }
 
-    // CKTmode init-phase bits (mirrors ngspice cktdefs.h). After iter 0 the
-    // Newton driver must flip MODEINITJCT -> MODEINITFIX so state-storing
-    // devices (BSIM4v7) start reading CKTrhsOld instead of their hard-coded
-    // junction-initialisation branch.  This matches ngspice's NIiter.
-    constexpr int MODEINITJCT_BIT  = 0x200;
-    constexpr int MODEINITFIX_BIT  = 0x400;
-    constexpr int MODEINITTRAN_BIT = 0x1000;
+    // CKTmode init-phase bits (mirrors ngspice cktdefs.h).  After each
+    // Newton iteration the driver flips the init-phase flag following the
+    // same cascade as ngspice's NIiter (niiter.c:234-269):
+    //
+    //   MODEINITFLOAT  -> check convergence, return if converged
+    //   MODEINITJCT    -> flip to MODEINITFIX
+    //   MODEINITFIX    -> if converged, flip to MODEINITFLOAT
+    //   MODEINITSMSIG  -> flip to MODEINITFLOAT
+    //   MODEINITTRAN   -> flip to MODEINITFLOAT  (first transient step)
+    //   MODEINITPRED   -> flip to MODEINITFLOAT  (subsequent transient steps)
+    //
+    // The INITF mask clears all init-flag bits before setting the new one.
+    constexpr int INITF_MASK         = 0x3F00;
+    constexpr int MODEINITFLOAT_BIT  = 0x100;
+    constexpr int MODEINITJCT_BIT    = 0x200;
+    constexpr int MODEINITFIX_BIT    = 0x400;
+    constexpr int MODEINITSMSIG_BIT  = 0x800;
+    constexpr int MODEINITTRAN_BIT   = 0x1000;
+    constexpr int MODEINITPRED_BIT   = 0x2000;
+
+    // Save the caller's mode so we can restore it on exit.
     const int saved_mode = ckt.integrator_ctx.mode;
 
     for (int iter = 0; iter < opts.max_iter; ++iter) {
@@ -40,17 +54,6 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
         // Clear matrix and RHS
         mat.clear();
         std::fill(rhs.begin(), rhs.end(), 0.0);
-
-        // Post-iter-0 init-phase flip.  JCT -> FIX on first inner iteration,
-        // and clear MODEINITTRAN so BSIM4 stops reading state1 as the guess
-        // and honours the current Newton iterate instead.  Matches ngspice
-        // NIiter.  Leaves other mode bits (MODEDC, MODETRAN, ...) untouched.
-        if (iter > 0) {
-            int m = saved_mode;
-            if (m & MODEINITJCT_BIT) m = (m & ~MODEINITJCT_BIT) | MODEINITFIX_BIT;
-            m &= ~MODEINITTRAN_BIT;
-            ckt.integrator_ctx.mode = m;
-        }
 
         // Evaluate all devices at the current guess.  Publish the
         // Circuit's IntegratorCtx through a thread-local so state-storing
@@ -155,9 +158,45 @@ NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
             }
         }
 
-        if (converged) {
-            ckt.integrator_ctx.mode = saved_mode;
-            return {true, iter + 1, solution};
+        // -----------------------------------------------------------------
+        // Post-iteration init-phase flip (matches ngspice NIiter.c:234-269).
+        //
+        // The mode is modified in-place on ckt.integrator_ctx.mode so that
+        // the NEXT iteration sees the updated phase.  On convergence or
+        // max-iter exit we restore saved_mode.
+        // -----------------------------------------------------------------
+        int m = ckt.integrator_ctx.mode;
+
+        if (m & MODEINITFLOAT_BIT) {
+            // Corrector phase — convergence check is meaningful.
+            if (converged) {
+                ckt.integrator_ctx.mode = saved_mode;
+                return {true, iter + 1, solution};
+            }
+            // else: keep iterating in MODEINITFLOAT
+        } else if (m & MODEINITJCT_BIT) {
+            // Junction-init -> fix mode (try reading CKTrhsOld next iter)
+            ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFIX_BIT;
+        } else if (m & MODEINITFIX_BIT) {
+            // Fix mode -> float once converged under FIX
+            if (converged)
+                ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFLOAT_BIT;
+            // else: stay in MODEINITFIX and keep iterating
+        } else if (m & MODEINITSMSIG_BIT) {
+            ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFLOAT_BIT;
+        } else if (m & MODEINITTRAN_BIT) {
+            // First transient step: predictor/init -> corrector
+            ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFLOAT_BIT;
+        } else if (m & MODEINITPRED_BIT) {
+            // Subsequent transient steps: predictor -> corrector
+            ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFLOAT_BIT;
+        } else {
+            // No init flag set (shouldn't happen in well-formed usage).
+            // If already converged, return success.
+            if (converged) {
+                ckt.integrator_ctx.mode = saved_mode;
+                return {true, iter + 1, solution};
+            }
         }
     }
 

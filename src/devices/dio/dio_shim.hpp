@@ -184,9 +184,17 @@ namespace Shim {
                     double cap, int qcap);
 } // namespace Shim
 
-// --- UCB device limiting functions (devsup.c) ---
+// --- UCB device limiting / predictor functions (devsup.c) ---
 double DEVlimvds  (double vnew, double vold);
 double DEVpnjlim  (double vnew, double vold, double vt, double vcrit, int *icheck);
 double DEVfetlim  (double vnew, double vold, double vto);
+
+/// Predictor extrapolation: predict a state value from history using
+/// linear extrapolation.  Matches ngspice's DEVpred() in devsup.c.
+inline double DEVpred(Shim::Ckt *ckt, int loct) {
+    double xfact = ckt->CKTdelta / ckt->CKTdeltaOld[1];
+    return ((1.0 + xfact) * *(ckt->CKTstate1 + loct))
+         - (       xfact  * *(ckt->CKTstate2 + loct));
+}
 
 } // namespace neospice::dio
