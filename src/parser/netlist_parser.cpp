@@ -569,6 +569,39 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 cmd.ac_fstart = parse_spice_number(tokens[3]);
                 cmd.ac_fstop = parse_spice_number(tokens[4]);
                 ckt.analyses.push_back(cmd);
+            } else if (first == ".noise") {
+                // .noise V(out) Vin dec 10 1 1e9
+                if (tokens.size() < 7) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .noise requires V(output) input_source mode npoints fstart fstop");
+                }
+                AnalysisCommand cmd;
+                cmd.type = AnalysisCommand::NOISE;
+
+                // Parse output spec: V(node) or v(node)
+                std::string out_spec = tokens[1];
+                std::string out_lower = to_lower(out_spec);
+                if (out_lower.size() > 3 && out_lower.substr(0, 2) == "v(" && out_lower.back() == ')') {
+                    cmd.noise_output = out_lower.substr(2, out_lower.size() - 3);
+                } else {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .noise output must be V(node)");
+                }
+
+                // Input source name
+                cmd.noise_input_src = tokens[2];
+
+                // Frequency sweep parameters (reuse ac_mode, ac_npoints, ac_fstart, ac_fstop)
+                std::string mode = to_lower(tokens[3]);
+                if (mode == "dec") cmd.ac_mode = AnalysisCommand::DEC;
+                else if (mode == "oct") cmd.ac_mode = AnalysisCommand::OCT;
+                else if (mode == "lin") cmd.ac_mode = AnalysisCommand::LIN;
+                else throw ParseError("Line " + std::to_string(line.line_number) +
+                                      ": Unknown noise sweep mode: " + tokens[3]);
+                cmd.ac_npoints = static_cast<int>(parse_spice_number(tokens[4]));
+                cmd.ac_fstart = parse_spice_number(tokens[5]);
+                cmd.ac_fstop = parse_spice_number(tokens[6]);
+                ckt.analyses.push_back(cmd);
             } else if (first == ".dc") {
                 // .dc Vsrc1 start1 stop1 step1 [Vsrc2 start2 stop2 step2]
                 // Each sweep group is 4 tokens: source_name start stop step

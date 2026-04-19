@@ -116,6 +116,13 @@ ACResult Simulator::run_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     return result;
 }
 
+NoiseResult Simulator::run_noise(Circuit& ckt, const std::string& output_node,
+                                 const std::string& input_src,
+                                 AnalysisCommand::ACMode mode,
+                                 int npoints, double fstart, double fstop) {
+    return solve_noise(ckt, output_node, input_src, mode, npoints, fstart, fstop);
+}
+
 SimulationResult Simulator::run(Circuit& ckt) {
     SimulationResult result;
     for (auto& cmd : ckt.analyses) {
@@ -143,6 +150,13 @@ SimulationResult Simulator::run(Circuit& ckt) {
             auto sw = solve_dc_sweep(ckt, cmd.dc_sweep_params);
             apply_save_filter(sw, ckt.save_signals);
             result.dc_sweep = std::move(sw);
+            break;
+        }
+        case AnalysisCommand::NOISE: {
+            auto nr = solve_noise(ckt, cmd.noise_output, cmd.noise_input_src,
+                                  cmd.ac_mode, cmd.ac_npoints,
+                                  cmd.ac_fstart, cmd.ac_fstop);
+            result.noise = std::move(nr);
             break;
         }
         default:

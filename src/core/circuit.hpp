@@ -25,7 +25,7 @@ struct DCSweepParam {
 };
 
 struct AnalysisCommand {
-    enum Type { OP, TRAN, AC, DC_SWEEP };
+    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE };
     Type type;
     double tran_tstep = 0, tran_tstop = 0;
     enum ACMode { DEC, OCT, LIN };
@@ -34,6 +34,9 @@ struct AnalysisCommand {
     double ac_fstart = 1.0, ac_fstop = 1e6;
     // DC sweep parameters (1 or 2 entries for nested sweep)
     std::vector<DCSweepParam> dc_sweep_params;
+    // Noise analysis parameters
+    std::string noise_output;      // e.g., "v(out)" — the output voltage node
+    std::string noise_input_src;   // e.g., "vin" — the input voltage source name
 };
 
 // IntegratorCtx is defined in core/types.hpp (included above) so that

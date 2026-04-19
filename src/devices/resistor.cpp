@@ -1,4 +1,5 @@
 #include "devices/resistor.hpp"
+#include "core/types.hpp"
 
 namespace neospice {
 
@@ -37,6 +38,15 @@ void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
     add_if_valid(G, off_pn_, -g);
     add_if_valid(G, off_np_, -g);
     add_if_valid(G, off_nn_,  g);
+}
+
+std::vector<Device::NoiseSource> Resistor::noise_sources(
+    double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
+    // Thermal noise: i²_noise = 4kT * G = 4kT / R  (A²/Hz)
+    // Temperature: use nominal 300.15 K (27°C).  Future: pass from SimOptions.
+    const double G = 1.0 / resistance_;
+    const double spectral_density = 4.0 * BOLTZMANN * T_NOMINAL * G;
+    return {{np_, nn_, spectral_density}};
 }
 
 } // namespace neospice

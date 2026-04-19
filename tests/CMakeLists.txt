@@ -67,6 +67,7 @@ add_executable(neospice_tests
     unit/test_bjt_validation.cpp
     unit/test_coupled_inductor.cpp
     unit/test_jfet.cpp
+    unit/test_noise.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
