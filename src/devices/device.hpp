@@ -70,6 +70,11 @@ public:
         return std::nullopt;
     }
 
+    /// Clear any cached temperature-dependent parameters so they will be
+    /// recomputed on the next evaluate() call.  Must be called whenever the
+    /// simulation temperature changes (e.g. temperature sweep).
+    virtual void reset_temp() {}
+
 protected:
     std::string name_;
 

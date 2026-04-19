@@ -162,6 +162,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
     parts.append("\n")
     parts.append(f"    int32_t state_vars() const override {{ return {desc.state_count}; }}\n")
     parts.append("    void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;\n")
+    parts.append("    void reset_temp() override { temp_done_ = false; }\n")
     parts.append("\n")
 
     # Private section
