@@ -20,9 +20,8 @@ struct DiodeModel {
     double Bv  = 100.0;   // Breakdown voltage (V)
     double Ibv = 1e-3;    // Current at breakdown (A)
     // Flicker (1/f) noise parameters
-    double Kf  = 0.0;     // Flicker noise coefficient (A²·Hz^(Ef-1))
+    double Kf  = 0.0;     // Flicker noise coefficient
     double Af  = 1.0;     // Flicker noise current exponent
-    double Ef  = 1.0;     // Flicker noise frequency exponent
 };
 
 // ---------------------------------------------------------------------------

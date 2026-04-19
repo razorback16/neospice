@@ -52,7 +52,7 @@ std::vector<Device::NoiseSource> Resistor::noise_sources(
     const double G = 1.0 / resistance_;
     double spectral_density = 4.0 * BOLTZMANN * sim_temp_ * G;
 
-    // Flicker (1/f) noise: S_flicker = Kf * |I_dc|^Af / f^Ef
+    // Flicker (1/f) noise: S = Kf * |I_dc|^Af / f
     if (noise_kf != 0.0 && freq > 0.0) {
         const double v_np = (np_ >= 0) ? dc_solution[np_] : 0.0;
         const double v_nn = (nn_ >= 0) ? dc_solution[nn_] : 0.0;
@@ -60,8 +60,7 @@ std::vector<Device::NoiseSource> Resistor::noise_sources(
         const double i_abs = std::abs(i_dc);
         const double i_af = (i_abs > 0.0 || noise_af == 0.0)
                             ? std::pow(i_abs, noise_af) : 0.0;
-        const double s_flicker = noise_kf * i_af / std::pow(freq, noise_ef);
-        spectral_density += s_flicker;
+        spectral_density += noise_kf * i_af / freq;
     }
 
     return {{np_, nn_, spectral_density}};

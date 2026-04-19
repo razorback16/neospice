@@ -85,7 +85,7 @@ Diode Flicker Noise Test
 V1 in 0 DC 0.65 AC 1
 R1 in anode 1k
 D1 anode 0 DMOD
-.model DMOD D IS=1e-14 N=1 Kf=1e-14 Af=1 Ef=1
+.model DMOD D IS=1e-14 N=1 Kf=1e-14 Af=1
 .noise V(anode) V1 dec 10 1 1e6
 .end
 )";
@@ -117,7 +117,7 @@ Diode With Flicker
 V1 in 0 DC 0.65 AC 1
 R1 in anode 1k
 D1 anode 0 DMOD
-.model DMOD D IS=1e-14 N=1 Kf=1e-14 Af=1 Ef=1
+.model DMOD D IS=1e-14 N=1 Kf=1e-14 Af=1
 .noise V(anode) V1 lin 1 1e6 1e6
 .end
 )";
@@ -162,16 +162,16 @@ D1 anode 0 DMOD
 
 // ---------------------------------------------------------------------------
 // Test 5: Verify 1/f slope — noise at 10 Hz should be ~10x noise at 100 Hz
-//         for Ef=1 (ideal 1/f noise).
+//         for (ideal 1/f noise).
 // ---------------------------------------------------------------------------
-TEST(FlickerNoise, OneOverFSlopeEf1) {
+TEST(FlickerNoise, OneOverFSlope) {
     // Use a strong flicker (large Kf) so flicker dominates over shot noise
     std::string netlist = R"(
 Diode 1/f Slope Test
 V1 in 0 DC 0.65 AC 1
 R1 in anode 100
 D1 anode 0 DMOD
-.model DMOD D IS=1e-14 N=1 Kf=1e-9 Af=1 Ef=1
+.model DMOD D IS=1e-14 N=1 Kf=1e-9 Af=1
 .noise V(anode) V1 lin 2 10 100
 .end
 )";
@@ -211,7 +211,7 @@ Flicker Breakdown Test
 V1 in 0 DC 0.65 AC 1
 R1 in anode 1k
 D1 anode 0 DMOD
-.model DMOD D IS=1e-14 N=1 Kf=1e-9 Af=1 Ef=1
+.model DMOD D IS=1e-14 N=1 Kf=1e-9 Af=1
 .noise V(anode) V1 lin 1 1 1
 .end
 )";
@@ -253,9 +253,9 @@ D1 anode 0 DMOD
 }
 
 // ---------------------------------------------------------------------------
-// Test 7: Parse Kf/Af/Ef from .model card and verify they are used.
+// Test 7: Parse Kf/Af from .model card and verify they are used.
 // ---------------------------------------------------------------------------
-TEST(FlickerNoise, ModelCardParseKfAfEf) {
+TEST(FlickerNoise, ModelCardParseKfAf) {
     // Parse a circuit where the .model card has flicker parameters.
     // Verify that the resulting noise is frequency-dependent (flicker active).
     std::string netlist = R"(
@@ -263,7 +263,7 @@ Model Card Flicker Parse
 V1 in 0 DC 0.65 AC 1
 R1 in a 100
 D1 a 0 DFLIC
-.model DFLIC D IS=1e-14 N=1 Kf=1e-10 Af=1 Ef=1
+.model DFLIC D IS=1e-14 N=1 Kf=1e-10 Af=1
 .noise V(a) V1 lin 2 1 1000
 .end
 )";
@@ -277,10 +277,10 @@ D1 a 0 DFLIC
     double noise_1hz   = result.output_noise_density[0];
     double noise_1khz  = result.output_noise_density[1];
 
-    // With Ef=1: noise should decrease by ~1000x from 1 Hz to 1 kHz
+    // With 1/f noise: noise should decrease by ~1000x from 1 Hz to 1 kHz
     // (assuming flicker dominates). Even conservatively, 1 Hz noise > 1 kHz noise.
     EXPECT_GT(noise_1hz, noise_1khz)
-        << "Parsed Kf/Af/Ef should produce frequency-dependent (1/f) noise";
+        << "Parsed Kf/Af should produce 1/f noise";
 }
 
 // ---------------------------------------------------------------------------
@@ -312,7 +312,7 @@ D1 anode 0 DMOD
 
 // ---------------------------------------------------------------------------
 // Test 9: Standard 1/f slope — noise at 10 Hz should be ~10x at 100 Hz.
-// (UCB diode uses standard ngspice noise: always 1/f, Ef parameter not supported)
+// (Standard 1/f noise model matching ngspice)
 // ---------------------------------------------------------------------------
 TEST(FlickerNoise, OneOverFSlopeStandard) {
     std::string netlist = R"(

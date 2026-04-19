@@ -24,7 +24,6 @@ public:
     /// If noise_kf == 0 (default), no flicker noise is added (backward compatible).
     double noise_kf = 0.0;  // Flicker noise coefficient
     double noise_af = 1.0;  // Flicker noise current exponent
-    double noise_ef = 1.0;  // Flicker noise frequency exponent
 
 private:
     int32_t np_;          // positive node (GROUND_INTERNAL = -1 for ground)

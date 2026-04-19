@@ -153,14 +153,12 @@ std::vector<Device::NoiseSource> Diode::noise_sources(
     // Series resistance thermal noise (4kT/Rs) omitted — this model has no Rs.
     double spectral_density = 2.0 * CHARGE_Q * std::abs(last_id_);
 
-    // Flicker (1/f) noise: S_flicker = Kf * |Id|^Af / f^Ef
-    // Only added if Kf != 0 and frequency is positive.
+    // Flicker (1/f) noise: S = Kf * |Id|^Af / f
     if (model_.Kf != 0.0 && freq > 0.0) {
         const double i_abs = std::abs(last_id_);
         const double i_af = (i_abs > 0.0 || model_.Af == 0.0)
                             ? std::pow(i_abs, model_.Af) : 0.0;
-        const double s_flicker = model_.Kf * i_af / std::pow(freq, model_.Ef);
-        spectral_density += s_flicker;
+        spectral_density += model_.Kf * i_af / freq;
     }
 
     return {{na_, nc_, spectral_density}};
