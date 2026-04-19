@@ -4,7 +4,7 @@
 
 **Goal:** Build a modern, correct, GPU-acceleratable SPICE simulator with the device library, analysis modes, and netlist features needed for practical analog/mixed-signal design.
 
-**What's done:** Milestones 1–7 delivered a working CPU simulator with R/C/L/V/I/Diode/BSIM4v7 (full: DC/transient/AC/trunc/convergence/IC/query), E/G/H/F controlled sources, DC/transient/AC/DC-sweep analysis, adaptive time stepping, convergence aids, ngspice comparison framework, auto-migration tool, subcircuits (`.subckt`/`X` with hierarchical flattening), full `.param` expression evaluator, `.include`/`.lib` support, and `.save` filtering. 363 C++ tests passing.
+**What's done:** Milestones 1–8 delivered a working CPU simulator with R/C/L/V/I/Diode/BSIM4v7 (full: DC/transient/AC/trunc/convergence/IC/query), BJT (Gummel-Poon NPN/PNP), JFET (Shockley NJF/PJF), coupled inductors (K element), E/G/H/F controlled sources, DC/transient/AC/DC-sweep analysis, adaptive time stepping, convergence aids, ngspice comparison framework, auto-migration tool, subcircuits (`.subckt`/`X` with hierarchical flattening), full `.param` expression evaluator, `.include`/`.lib` support, and `.save` filtering. 416 C++ tests passing.
 
 **Architecture principle:** Each phase is self-contained — it ships a testable increment, validated against ngspice, before the next phase begins. Phases are ordered by user impact (what unlocks the most real circuits).
 
@@ -26,6 +26,9 @@
 | Controlled sources (E,G,F,H) | **Done** — all 4 linear controlled sources | ~~Phase 6~~ Done |
 | `.param` expressions | **Done** — full evaluator: `**`, functions, `if()`, topo sort | ~~Phase 7~~ Done |
 | `.save` filtering | **Done** — enforced in all analysis types | ~~Phase 6~~ Done |
+| BJT (Gummel-Poon) | **Done** — NPN/PNP, DC/transient/AC/trunc/convergence/IC/query | ~~Phase 8~~ Done |
+| JFET (Shockley) | **Done** — NJF/PJF, DC/transient/AC/trunc/convergence/IC/query | ~~Phase 8~~ Done |
+| Coupled inductors (K element) | **Done** — mutual inductance, transformer support | ~~Phase 8~~ Done |
 | GPU acceleration (CUDA) | Not started (design doc M2/M3) | Phase 10 |
 | Noise analysis | Not started | Phase 9 |
 | `.measure` | Parsed, not executed | Phase 9 |
@@ -208,59 +211,63 @@
 
 ---
 
-## Phase 8: BJT + Additional Device Models
+## Phase 8: BJT + Additional Device Models ✅ COMPLETE
 
-**Goal:** Add the BJT (Gummel-Poon model) and optionally JFET. The BJT is essential for analog design — bipolar op-amps, bandgap references, current mirrors.
+**Status:** All tasks completed and merged to `main` via `81b97de`. 416 C++ tests passing.
 
-**Approach:** Use the auto-migration tool to port from ngspice. The BJT model (`~/Codes/ngspice/src/spicelib/devices/bjt/`) is simpler than BSIM4v7 (~3K LOC for the load function vs 5.6K).
+**Goal:** Add BJT (Gummel-Poon model), JFET (Shockley model), and coupled inductors (K element). The BJT is essential for analog design — bipolar op-amps, bandgap references, current mirrors. The JFET covers analog switches and low-noise front-ends. Coupled inductors enable transformers and coupled filters.
 
-### Task 8.1: BJT Descriptor + Auto-Migration
+**Approach:** Used the auto-migration tool to port BJT and JFET from ngspice. Coupled inductors implemented natively (no ngspice counterpart needed). All devices validated against ngspice with dedicated comparison tests.
 
-- [ ] Create `tools/descriptors/bjt.yaml` — map ngspice bjt struct names, terminals (C, B, E, S), source files
-- [ ] Extend migration tool if needed (BJT uses similar patterns to BSIM4v7 but simpler)
-- [ ] Run migration: generates `src/devices/bjt/` with def.hpp, shim, adapter, translated .cpp files
-- [ ] Build, fix any compilation issues
-- [ ] Verify migration tool handles BJT-specific patterns (e.g., `QXXXX` element prefix)
+**Files delivered:**
+- BJT: `src/devices/bjt/` — descriptor, auto-migrated + adapted (def.hpp, shim, load, temp, setup, device adapter)
+- JFET: `src/devices/jfet/` — descriptor, auto-migrated + adapted (same structure as BJT)
+- Coupled inductor: `src/devices/coupled_inductor.hpp/cpp` — native K element implementation
+- Parser: `netlist_parser.cpp` — Q/J/K element parsing, deferred resolution, `.model NPN/PNP/NJF/PJF`
+- Model cards: `model_cards.hpp/cpp` — `to_bjt_card()`, `to_jfet_card()` dispatching
+- Tests: `test_bjt.cpp`, `test_jfet.cpp`, `test_coupled_inductor.cpp` — 53 new tests
 
-**Subagent:** `general-purpose`
+**Known limitations (to be addressed in Phase 9):**
+- K elements inside subcircuits don't get inductor name prefixing during expansion
+- `temp_done_` flag prevents multi-temperature reuse (matches existing BSIM4v7 pattern)
 
-### Task 8.2: BJT Device Adapter + Parser
+### Task 8.1: BJT Descriptor + Auto-Migration ✅
 
-- [ ] Wire `BJTDevice` adapter (same pattern as BSIM4v7Device)
-- [ ] Parser: recognize `Q` element lines: `Qname C B E [S] model [area] [off]`
-- [ ] Parser: `.model name NPN/PNP(params...)` routing to BJT mParam
-- [ ] Test: NPN common-emitter DC characteristics vs ngspice
+- [x] Created `tools/descriptors/bjt.yaml` — 4 terminals (C, B, E, S), 24 states, 7 source files
+- [x] Ran migration: generated `src/devices/bjt/` with def.hpp, shim, adapter, translated .cpp files
+- [x] Fixed compilation issues: missing constants (CONSTKoverQ, REFTEMP), macros (IOPAU/IOPR/IOPA), type casts
+- [x] Build passing with all translated files
 
-**Subagent:** `general-purpose`
+### Task 8.2: BJT Device Adapter + Parser ✅
 
-### Task 8.3: BJT Validation Suite
+- [x] Wired `BJTDevice` adapter — ghost voltages, journal-based sparsity, instance splicing
+- [x] Parser: `Q` element lines with 3 or 4 terminals, deferred model resolution
+- [x] Parser: `.model name NPN/PNP(params...)` routing through BJT mParam tables
+- [x] AC stamp (G/C split), truncation error, convergence test, IC support, query_param
 
-- [ ] Test: NPN Ic-Vce family (DC sweep)
-- [ ] Test: BJT current mirror (DC operating point)
-- [ ] Test: Common-emitter amplifier transient (pulse input)
-- [ ] Test: BJT amplifier AC gain/phase vs ngspice
-- [ ] Test: PNP device (opposite polarity)
+### Task 8.3: BJT Validation Suite ✅
 
-**Subagent:** `general-purpose`
+- [x] Test: NPN Ic-Vce DC sweep characteristics vs ngspice
+- [x] Test: BJT current mirror DC operating point vs ngspice
+- [x] Test: Common-emitter amplifier transient (pulse input) vs ngspice
+- [x] Test: BJT amplifier AC gain/phase vs ngspice
+- [x] Test: PNP device (opposite polarity) vs ngspice
 
-### Task 8.4: JFET (Optional)
+### Task 8.4: JFET ✅
 
-- [ ] Create descriptor, migrate via tool
-- [ ] Parser: `J` element, `.model name NJF/PJF`
-- [ ] Test: JFET common-source amplifier DC + AC
+- [x] Created `tools/descriptors/jfet.yaml` — 3 terminals, 13 states, 6 source files
+- [x] Ran migration, fixed compilation (same pattern as BJT)
+- [x] Parser: `J` element with area/m/ic= support, `.model name NJF/PJF`
+- [x] AC stamp (15 G-entries, 7 C-entries), truncation, convergence, query_param
+- [x] 14 tests: parser, model card, device, ngspice comparison (DC + AC)
 
-**Subagent:** `general-purpose`
+### Task 8.5: Coupled Inductors (K element) ✅
 
-### Task 8.5: Coupled Inductors (K element)
-
-Mutual inductance between inductors — needed for transformers, coupled filters.
-
-- [ ] Implement `K` element: `Kname L1 L2 coupling_coefficient`
-- [ ] MNA: mutual inductance stamps cross-terms between L1 and L2 branch equations
-- [ ] Parser: recognize `K` element lines
-- [ ] Test: ideal transformer (K=1), loosely coupled coils (K=0.5), compare vs ngspice
-
-**Subagent:** `general-purpose`
+- [x] Implemented `CoupledInductor` — M = k*sqrt(L1*L2), cross-coupling MNA stamps
+- [x] Trapezoidal and Gear-2 companion models (R_eq_m = 2M/dt and 1.5M/dt)
+- [x] Parser: `K` element with deferred inductor resolution
+- [x] Constructor validation: null checks, coupling range, self-coupling rejection
+- [x] 20 tests: unit, DC, transient, AC transformer, ngspice comparison
 
 ---
 
@@ -402,10 +409,10 @@ Phases 8 and 9 can run **in parallel** after Phase 7 is complete. Phase 10 is in
 |-------|-------|---------------|------------------|
 | ~~5~~ | ~~4~~ | ~~Done~~ | 158 |
 | ~~6~~ | ~~6~~ | ~~Done~~ | 229 |
-| 7 | 6 | 4–6 | ~200 |
-| 8 | 5 | 3–4 | ~225 |
-| 9 | 4 | 3–4 | ~245 |
-| 10 | 4 | 4–6 | ~255 |
+| ~~7~~ | ~~6~~ | ~~Done~~ | 363 |
+| ~~8~~ | ~~5~~ | ~~Done~~ | 416 |
+| 9 | 4 | 3–4 | ~460 |
+| 10 | 4 | 4–6 | ~475 |
 
 Total: ~20–27 sessions across all phases.
 
