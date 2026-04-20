@@ -62,6 +62,7 @@ enum class NodeType {
     // Ternary
     IF_FN,          // if(cond, then, else) — cond != 0 selects then
     LIMIT,          // limit(x, lo, hi) = min(max(x, lo), hi)
+    PWL,            // PWL(x, x1,y1, x2,y2, ...) — piecewise linear
 };
 
 struct ASTNode {
@@ -71,6 +72,7 @@ struct ASTNode {
     std::unique_ptr<ASTNode> left;    // child 0 / operand
     std::unique_ptr<ASTNode> mid;     // child 1 (for ternary)
     std::unique_ptr<ASTNode> right;   // child 1 or 2
+    std::vector<std::pair<double,double>> pwl_points;  // for PWL node
 };
 
 // ---------------------------------------------------------------------------

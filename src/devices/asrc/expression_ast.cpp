@@ -561,6 +561,35 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
                          return make_ternary(NodeType::IF_FN);
     if (name == "limit") return make_ternary(NodeType::LIMIT);
 
+    if (name == "pwl") {
+        auto x_arg = parse_additive();
+        std::vector<std::pair<double,double>> points;
+        while (true) {
+            skip_ws();
+            if (pos_ < expr_.size() && expr_[pos_] == ')') break;
+            if (!match(','))
+                throw ParseError("ASRC expression: PWL: expected ','");
+            auto x_node = parse_additive();
+            if (x_node->type != NodeType::CONSTANT)
+                throw ParseError("ASRC expression: PWL breakpoint x must be constant");
+            skip_ws();
+            if (!match(','))
+                throw ParseError("ASRC expression: PWL: expected ',' between x,y pair");
+            auto y_node = parse_additive();
+            if (y_node->type != NodeType::CONSTANT)
+                throw ParseError("ASRC expression: PWL breakpoint y must be constant");
+            points.emplace_back(x_node->value, y_node->value);
+        }
+        if (pos_ >= expr_.size() || expr_[pos_] != ')')
+            throw ParseError("ASRC expression: PWL: missing ')'");
+        ++pos_;
+        auto node = std::make_unique<ASTNode>();
+        node->type = NodeType::PWL;
+        node->left = std::move(x_arg);
+        node->pwl_points = std::move(points);
+        return node;
+    }
+
     throw ParseError("ASRC expression: unknown function '" + name + "'");
 }
 
@@ -1031,6 +1060,43 @@ CompiledExpression::eval_node(const ASTNode* node,
         } else {
             result.val = x.val;
             if (need_grad) result.grad = std::move(x.grad);
+        }
+        return result;
+    }
+
+    case NodeType::PWL: {
+        auto x = eval_node(node->left.get(), var_values, nv, need_grad);
+        const auto& pts = node->pwl_points;
+        if (pts.empty()) return result;
+
+        double xv = x.val;
+        double yv = 0.0;
+        double dydx = 0.0;
+
+        if (xv <= pts.front().first) {
+            yv = pts.front().second;
+            dydx = 0.0;
+        } else if (xv >= pts.back().first) {
+            yv = pts.back().second;
+            dydx = 0.0;
+        } else {
+            for (size_t i = 0; i + 1 < pts.size(); ++i) {
+                if (xv >= pts[i].first && xv <= pts[i+1].first) {
+                    double dx = pts[i+1].first - pts[i].first;
+                    double dy = pts[i+1].second - pts[i].second;
+                    double frac = (dx > 0.0) ? (xv - pts[i].first) / dx : 0.0;
+                    yv = pts[i].second + frac * dy;
+                    dydx = (dx > 0.0) ? dy / dx : 0.0;
+                    break;
+                }
+            }
+        }
+
+        result.val = yv;
+        if (need_grad) {
+            result.grad.resize(nv, 0.0);
+            for (int i = 0; i < nv; ++i)
+                result.grad[i] = dydx * x.grad[i];
         }
         return result;
     }

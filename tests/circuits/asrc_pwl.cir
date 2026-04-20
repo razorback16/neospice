@@ -1,0 +1,6 @@
+ASRC PWL function test
+V1 in 0 1.5
+B1 out 0 V={PWL(V(in), 0,0, 1,1, 2,3, 3,3)}
+R1 out 0 1k
+.op
+.end
