@@ -78,7 +78,7 @@ TEST_F(NgspiceCompareTest, DiodeRectifierTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {2e-1, 1e-1});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1.5e-1, 1e-1});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -188,7 +188,7 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     ASSERT_TRUE(cs_result.transient.has_value());
     // Relative error is amplified near the switching threshold where small
     // denominators inflate the metric.  Absolute agreement is <50mV / 1.8V.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {3e-1, 5e-2});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {2.5e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

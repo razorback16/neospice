@@ -201,7 +201,7 @@ TEST_F(VBICValidation, SwitchingTransient) {
             ++it;
     }
 
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {3e-1, 5e-2});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {2.7e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
