@@ -8,7 +8,11 @@ namespace neospice {
 Resistor::Resistor(std::string name, int32_t node_pos, int32_t node_neg, double resistance)
     : Device(std::move(name)), np_(node_pos), nn_(node_neg),
       resistance_nom_(resistance), resistance_eff_(resistance)
-{}
+{
+    // Guard against zero/near-zero resistance in case process_temperature is never called
+    if (std::abs(resistance_eff_) < 1e-3)
+        resistance_eff_ = 1e-3;
+}
 
 void Resistor::stamp_pattern(SparsityBuilder& builder) const {
     stamp_if_not_ground(builder, np_, np_);
@@ -80,7 +84,7 @@ void Resistor::process_temperature(double sim_temp, double sim_tnom) {
     double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
     resistance_eff_ = resistance_nom_ * factor * scale_ / m_;
     // Guard against zero or negative resistance
-    if (resistance_eff_ < 1e-3) resistance_eff_ = 1e-3;
+    if (std::abs(resistance_eff_) < 1e-3) resistance_eff_ = 1e-3;
 }
 
 } // namespace neospice
