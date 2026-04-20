@@ -27,11 +27,12 @@ namespace neospice {
 /// by stamping a large conductance (1e9 S) that ties p1+ to p2+ and p1- to
 /// p2-.  This ensures correct DC coupling between the two ports.
 ///
-/// AC: the exact frequency-domain description of a lossless TL is a two-port
-/// Y-matrix with hyperbolic functions.  Since our AC framework uses the G+jωC
-/// split, an exact stamp is not possible without extending the framework.
-/// For now we stamp a large conductance on each port (short-circuit
-/// approximation), which is correct in the limit TD→0.
+/// AC: the exact frequency-domain Y-matrix is stamped per frequency via
+/// ac_stamp_freq().  The Y-parameters are:
+///   Y11 = Y22 = -j * G0 * cot(ω·TD)    (self-admittance)
+///   Y12 = Y21 =  j * G0 * csc(ω·TD)    (cross-admittance)
+/// These are purely imaginary for a lossless line and reproduce the exact
+/// phase shift and impedance at every frequency.
 class TransmissionLine : public Device {
 public:
     TransmissionLine(std::string name,
@@ -46,6 +47,9 @@ public:
                   NumericMatrix& mat, std::vector<double>& rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
+    bool ac_stamp_freq(double omega,
+                       std::vector<double>& ax, int32_t nnz,
+                       std::vector<std::complex<double>>& ac_rhs) override;
 
     // Called by the transient solver after each accepted timestep.
     // Records the converged port voltages and currents into the history buffer

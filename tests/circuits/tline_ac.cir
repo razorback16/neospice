@@ -1,0 +1,7 @@
+* Transmission line AC sweep
+V1 in 0 AC 1
+R1 in a 50
+T1 a 0 b 0 Z0=50 TD=10n
+R2 b 0 50
+.ac dec 20 1k 10G
+.end

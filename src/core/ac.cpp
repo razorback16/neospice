@@ -235,6 +235,11 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
             ax[2 * k + 1] = omega * c_vals[k];
         }
 
+        // Per-frequency device stamps (e.g. transmission line cross-port coupling)
+        for (auto& dev : ckt.devices()) {
+            dev->ac_stamp_freq(omega, ax, nnz, ac_rhs);
+        }
+
         if (fi == 0) {
             ac_solver.numeric_complex(pattern, ax);
         } else {

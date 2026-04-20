@@ -1,6 +1,7 @@
 #pragma once
 #include "core/types.hpp"
 #include "core/matrix.hpp"
+#include <complex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -30,6 +31,19 @@ public:
                                 std::vector<double>& /*new_v*/) {}
     virtual void ac_stamp(const std::vector<double>& /*voltages*/,
                           NumericMatrix& /*G*/, NumericMatrix& /*C*/) {}
+
+    /// Per-frequency AC stamp for devices with frequency-dependent matrix
+    /// entries (e.g. transmission lines with propagation delay).
+    /// Called once per frequency point, AFTER the base G+jωC matrix is built.
+    /// Returns true if the device handled the stamp (caller skips G+jωC
+    /// fallback for this device's entries); false means no action taken.
+    /// ax is the interleaved complex NNZ array: ax[2*k]=real, ax[2*k+1]=imag.
+    virtual bool ac_stamp_freq(double /*omega*/,
+                               std::vector<double>& /*ax*/, int32_t /*nnz*/,
+                               std::vector<std::complex<double>>& /*ac_rhs*/) {
+        return false;  // not handled; caller falls back to G + jwC
+    }
+
     virtual int32_t extra_vars() const { return 0; }
 
     /// Assign the branch (extra MNA variable) index during finalize().

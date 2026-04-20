@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <complex>
 
 namespace neospice {
 
@@ -180,20 +181,82 @@ void TransmissionLine::evaluate(const std::vector<double>& voltages,
 // ---------------------------------------------------------------------------
 
 void TransmissionLine::ac_stamp(const std::vector<double>& /*voltages*/,
-                                NumericMatrix& G, NumericMatrix& /*C*/) {
-    // Approximate AC stamp: model each port as a G0 conductance (short-circuit
-    // approximation valid at low frequencies / TD→0).  A rigorous stamp would
-    // require complex, frequency-dependent matrix entries — not supported by
-    // the current G+jωC framework without adding distributed-element support.
-    add_if_valid(G, off_p1pp_,  g0_);
-    add_if_valid(G, off_p1pn_, -g0_);
-    add_if_valid(G, off_p1np_, -g0_);
-    add_if_valid(G, off_p1nn_,  g0_);
+                                NumericMatrix& /*G*/, NumericMatrix& /*C*/) {
+    // The lossless TL AC model uses frequency-dependent Y-parameters that are
+    // purely imaginary at all frequencies.  Nothing is stamped into the
+    // frequency-independent G or C matrices — all AC contributions are handled
+    // by ac_stamp_freq() which is called at each frequency point.
+}
 
-    add_if_valid(G, off_p2pp_,  g0_);
-    add_if_valid(G, off_p2pn_, -g0_);
-    add_if_valid(G, off_p2np_, -g0_);
-    add_if_valid(G, off_p2nn_,  g0_);
+// ---------------------------------------------------------------------------
+// ac_stamp_freq — frequency-dependent cross-port coupling
+// ---------------------------------------------------------------------------
+
+bool TransmissionLine::ac_stamp_freq(double omega,
+                                      std::vector<double>& ax, int32_t /*nnz*/,
+                                      std::vector<std::complex<double>>& /*ac_rhs*/) {
+    // Exact frequency-domain Y-matrix for a lossless transmission line:
+    //
+    //   Y11 = Y22 = -j * G0 * cot(omega * TD)     (self-admittance)
+    //   Y12 = Y21 =  j * G0 * csc(omega * TD)     (cross-admittance)
+    //
+    // These are purely imaginary for a lossless line.  Near omega*TD = n*pi
+    // the terms diverge; we use a large-value clamp for numerical stability.
+
+    double theta = omega * td_;
+
+    double sin_theta = std::sin(theta);
+    double cos_theta = std::cos(theta);
+
+    double y11_im, y12_im;
+
+    if (std::abs(sin_theta) < 1e-12) {
+        // Near resonance (omega*TD ~ n*pi): TL is approximately a short
+        // circuit.  Use a large admittance to model this.
+        double sign = (cos_theta > 0) ? 1.0 : -1.0;
+        double big = g0_ * 1e12;
+        y11_im = -sign * big;
+        y12_im =  sign * big;
+    } else {
+        // Y11 = -j * G0 * cos(theta) / sin(theta)
+        // Y12 =  j * G0 / sin(theta)
+        y11_im = -g0_ * cos_theta / sin_theta;
+        y12_im =  g0_ / sin_theta;
+    }
+
+    // Y11 and Y12 are purely imaginary: Y11 = j*y11_im, Y12 = j*y12_im
+    // Stamp into ax as imaginary parts (ax[2*off+1])
+    auto stamp_im = [&](MatrixOffset off, double im) {
+        if (off >= 0) {
+            ax[2 * off + 1] += im;
+        }
+    };
+
+    // Self-admittance Y11 at port 1 (between p1p and p1n)
+    stamp_im(off_p1pp_,  y11_im);
+    stamp_im(off_p1pn_, -y11_im);
+    stamp_im(off_p1np_, -y11_im);
+    stamp_im(off_p1nn_,  y11_im);
+
+    // Self-admittance Y22 at port 2 (between p2p and p2n)
+    stamp_im(off_p2pp_,  y11_im);
+    stamp_im(off_p2pn_, -y11_im);
+    stamp_im(off_p2np_, -y11_im);
+    stamp_im(off_p2nn_,  y11_im);
+
+    // Cross-admittance Y12: port 1 ← port 2
+    stamp_im(off_p1p_p2p_,  y12_im);
+    stamp_im(off_p1p_p2n_, -y12_im);
+    stamp_im(off_p1n_p2p_, -y12_im);
+    stamp_im(off_p1n_p2n_,  y12_im);
+
+    // Cross-admittance Y21: port 2 ← port 1 (symmetric)
+    stamp_im(off_p2p_p1p_,  y12_im);
+    stamp_im(off_p2p_p1n_, -y12_im);
+    stamp_im(off_p2n_p1p_, -y12_im);
+    stamp_im(off_p2n_p1n_,  y12_im);
+
+    return true;
 }
 
 // ---------------------------------------------------------------------------

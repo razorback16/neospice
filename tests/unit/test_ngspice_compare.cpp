@@ -414,6 +414,25 @@ TEST_F(NgspiceCompareTest, DiodeNoise) {
 // When TR/TF/PW/PER are omitted from PULSE, ngspice uses tstep/tstop.
 // ---------------------------------------------------------------------------
 
+TEST_F(NgspiceCompareTest, TlineAC) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/tline_ac.cir";
+    auto ng_result = ngspice_->run_ac(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.ac.has_value());
+    // Strip ngspice internal nodes (containing '#') that neospice doesn't expose.
+    for (auto it = ng_result.voltages.begin();
+         it != ng_result.voltages.end(); ) {
+        if (it->first.find('#') != std::string::npos)
+            it = ng_result.voltages.erase(it);
+        else
+            ++it;
+    }
+    auto cmp = compare_ac(ng_result, *cs_result.ac, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 TEST_F(NgspiceCompareTest, PulseDefaultsTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/pulse_defaults.cir";
     auto ng_result = ngspice_->run_transient(path);
