@@ -45,12 +45,18 @@ void CoupledInductor::evaluate(const std::vector<double>& /*voltages*/,
     double r_eq_m;  // mutual companion resistance
 
     if (integration_method_ == 1 && gear_ready_) {
-        // Gear-2 (BDF2): R_eq_m = 1.5 * M / dt
-        r_eq_m = 1.5 * mutual_ / dt_;
-
-        // Gear-2 companion: V_eq = (M / (2*dt)) * (4*I_prev - I_prev2)
-        double v_eq_12 = (mutual_ / (2.0 * dt_)) * (4.0 * i2_prev_ - i2_prev2_);
-        double v_eq_21 = (mutual_ / (2.0 * dt_)) * (4.0 * i1_prev_ - i1_prev2_);
+        // Gear BDF-2 with variable-timestep coefficients
+        // From ngspice NIcomCof: r = dt_prev/dt
+        //   ag0 = (2+r)/((1+r)*dt)
+        //   ag1 = -(1+r)/(r*dt)
+        //   ag2 = 1/((1+r)*r*dt)
+        double r = (dt_prev_ > 0.0) ? dt_prev_ / dt_ : 1.0;
+        double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
+        r_eq_m = ag0 * mutual_;
+        double ag1 = -(1.0 + r) / (r * dt_);
+        double ag2 = 1.0 / ((1.0 + r) * r * dt_);
+        double v_eq_12 = -mutual_ * (ag1 * i2_prev_ + ag2 * i2_prev2_);
+        double v_eq_21 = -mutual_ * (ag1 * i1_prev_ + ag2 * i1_prev2_);
 
         add_if_valid(mat, off_br1_br2_, -r_eq_m);
         add_if_valid(mat, off_br2_br1_, -r_eq_m);
@@ -117,6 +123,8 @@ void CoupledInductor::accept_step_from_solution(const std::vector<double>& sol) 
     int32_t br2 = l2_->branch_index();
     double i1 = (br1 >= 0) ? sol[br1] : 0.0;
     double i2 = (br2 >= 0) ? sol[br2] : 0.0;
+
+    dt_prev_ = dt_;
 
     // Shift history
     i1_prev2_ = i1_prev_;

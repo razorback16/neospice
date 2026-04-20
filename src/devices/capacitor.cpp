@@ -29,9 +29,17 @@ void Capacitor::evaluate(const std::vector<double>& /*voltages*/,
     double g_eq, i_eq;
 
     if (integration_method_ == 1 && gear_ready_) {
-        // Gear BDF-2
-        g_eq = 1.5 * cap_ / dt_;
-        i_eq = (cap_ / (2.0 * dt_)) * (4.0 * v_prev_ - v_prev2_);
+        // Gear BDF-2 with variable-timestep coefficients
+        // From ngspice NIcomCof: r = dt_prev/dt
+        //   ag0 = (2+r)/((1+r)*dt)
+        //   ag1 = -(1+r)/(r*dt)
+        //   ag2 = 1/((1+r)*r*dt)
+        double r = (dt_prev_ > 0.0) ? dt_prev_ / dt_ : 1.0;
+        double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
+        g_eq = ag0 * cap_;
+        double ag1 = -(1.0 + r) / (r * dt_);
+        double ag2 = 1.0 / ((1.0 + r) * r * dt_);
+        i_eq = -cap_ * (ag1 * v_prev_ + ag2 * v_prev2_);
     } else {
         // Trapezoidal
         g_eq = 2.0 * cap_ / dt_;
@@ -79,7 +87,12 @@ void Capacitor::accept_step(double v_across) {
     dt_prev_ = dt_;
 
     if (integration_method_ == 1 && gear_ready_) {
-        double i_new = (cap_ / (2.0 * dt_)) * (3.0 * v_across - 4.0 * v_prev_ + v_prev2_);
+        // Variable-timestep BDF-2 current: i = C*(ag0*v + ag1*v_prev + ag2*v_prev2)
+        double r = (dt_prev_ > 0.0) ? dt_prev_ / dt_ : 1.0;
+        double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
+        double ag1 = -(1.0 + r) / (r * dt_);
+        double ag2 = 1.0 / ((1.0 + r) * r * dt_);
+        double i_new = cap_ * (ag0 * v_across + ag1 * v_prev_ + ag2 * v_prev2_);
         v_prev2_ = v_prev_;
         i_prev2_ = i_prev_;
         v_prev_ = v_across;

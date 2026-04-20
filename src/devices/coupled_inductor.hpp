@@ -50,6 +50,7 @@ private:
     // Transient state
     bool transient_ = false;
     double dt_ = 0.0;
+    double dt_prev_ = 0.0;       // timestep at previous accepted step
     int integration_method_ = 0;  // 0=trapezoidal, 1=gear2
     bool gear_ready_ = false;
 

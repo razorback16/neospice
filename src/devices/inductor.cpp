@@ -45,8 +45,17 @@ void Inductor::evaluate(const std::vector<double>& /*voltages*/,
         double r_eq, v_eq;
 
         if (integration_method_ == 1 && gear_ready_) {
-            r_eq = 1.5 * inductance_ / dt_;
-            v_eq = (inductance_ / (2.0 * dt_)) * (4.0 * i_prev_ - i_prev2_);
+            // Gear BDF-2 with variable-timestep coefficients
+            // From ngspice NIcomCof: r = dt_prev/dt
+            //   ag0 = (2+r)/((1+r)*dt)
+            //   ag1 = -(1+r)/(r*dt)
+            //   ag2 = 1/((1+r)*r*dt)
+            double r = (dt_prev_ > 0.0) ? dt_prev_ / dt_ : 1.0;
+            double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
+            r_eq = ag0 * inductance_;
+            double ag1 = -(1.0 + r) / (r * dt_);
+            double ag2 = 1.0 / ((1.0 + r) * r * dt_);
+            v_eq = -inductance_ * (ag1 * i_prev_ + ag2 * i_prev2_);
         } else {
             r_eq = 2.0 * inductance_ / dt_;
             v_eq = r_eq * i_prev_ + v_prev_;
