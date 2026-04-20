@@ -106,9 +106,13 @@ namespace Shim {
         int CKTfixLimit = 0;
 
         // Default MOS geometry values (used by temp)
-        double CKTdefaultMosM  = 0.0;
-        double CKTdefaultMosL  = 0.0;
-        double CKTdefaultMosW  = 0.0;
+        // M defaults to 1.0 (parallel device multiplier); 0 would kill current.
+        // W and L default to 0.0 meaning "not specified by .option"; the UCB
+        // temp function only overwrites the instance value when the
+        // corresponding xxxGiven flag is false.
+        double CKTdefaultMosM  = 1.0;
+        double CKTdefaultMosL  = 1e-4;
+        double CKTdefaultMosW  = 1e-6;
         double CKTdefaultMosAD = 0.0;
         double CKTdefaultMosAS = 0.0;
 

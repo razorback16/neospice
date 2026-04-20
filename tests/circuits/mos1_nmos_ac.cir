@@ -1,0 +1,8 @@
+MOS1 NMOS Common-Source AC
+Vdd vdd 0 5
+Vin gate 0 DC 2.0 AC 1
+Rd vdd drain 1k
+M1 drain gate 0 0 NMOD W=10u L=1u
+.model NMOD NMOS LEVEL=1 VTO=0.7 KP=110U GAMMA=0.4 PHI=0.65 CGSO=0.6e-9 CGDO=0.6e-9 CGBO=1e-10 CBD=10f CBS=10f
+.ac dec 10 100 10e6
+.end
