@@ -1679,16 +1679,32 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t tp2n = ckt.node(tokens[4]);
 
             double tz0 = 0.0, ttd = -1.0, tf = -1.0, tnl = -1.0;
-            bool z0_given = false;
+            double ic_v1 = 0, ic_i1 = 0, ic_v2 = 0, ic_i2 = 0;
+            bool z0_given = false, ic_given = false;
             for (size_t i = 5; i < tokens.size(); ++i) {
                 auto eq = tokens[i].find('=');
                 if (eq == std::string::npos) continue;
                 std::string key = to_lower(tokens[i].substr(0, eq));
-                double val = parse_spice_number(tokens[i].substr(eq + 1));
-                if      (key == "z0") { tz0 = val; z0_given = true; }
-                else if (key == "td") { ttd = val; }
-                else if (key == "f")  { tf  = val; }
-                else if (key == "nl") { tnl = val; }
+                if (key == "ic") {
+                    std::string ic_str = tokens[i].substr(eq + 1);
+                    std::vector<double> ic_vals;
+                    std::stringstream ss(ic_str);
+                    std::string tok;
+                    while (std::getline(ss, tok, ',')) {
+                        ic_vals.push_back(parse_spice_number(tok));
+                    }
+                    if (ic_vals.size() >= 1) ic_v1 = ic_vals[0];
+                    if (ic_vals.size() >= 2) ic_i1 = ic_vals[1];
+                    if (ic_vals.size() >= 3) ic_v2 = ic_vals[2];
+                    if (ic_vals.size() >= 4) ic_i2 = ic_vals[3];
+                    ic_given = true;
+                } else {
+                    double val = parse_spice_number(tokens[i].substr(eq + 1));
+                    if      (key == "z0") { tz0 = val; z0_given = true; }
+                    else if (key == "td") { ttd = val; }
+                    else if (key == "f")  { tf  = val; }
+                    else if (key == "nl") { tnl = val; }
+                }
             }
             if (!z0_given) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
@@ -1708,8 +1724,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                      ": T element '" + tname + "' requires TD= or F= (with optional NL=)");
                 }
             }
-            ckt.add_device(std::make_unique<TransmissionLine>(
-                tname, tp1p, tp1n, tp2p, tp2n, tz0, ttd));
+            auto tl = std::make_unique<TransmissionLine>(tname, tp1p, tp1n, tp2p, tp2n, tz0, ttd);
+            if (ic_given)
+                tl->set_ic(ic_v1, ic_i1, ic_v2, ic_i2);
+            ckt.add_device(std::move(tl));
 
         } else if (elem_type == 'o') {
             // O name p1+ p1- p2+ p2- modelname

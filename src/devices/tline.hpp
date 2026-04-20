@@ -66,6 +66,9 @@ public:
     /// Return breakpoints at t = k*TD for k = 1, 2, ... up to tstop.
     std::vector<double> get_breakpoints(double tstart, double tstop) const;
 
+    void set_ic(double v1, double i1, double v2, double i2);
+    bool has_ic() const { return has_ic_; }
+
     double z0() const { return z0_; }
     double td() const { return td_; }
 
@@ -80,6 +83,9 @@ private:
     double g0_;           // 1/Z0
 
     bool transient_ = false;
+
+    bool has_ic_ = false;
+    double ic_v1_ = 0.0, ic_i1_ = 0.0, ic_v2_ = 0.0, ic_i2_ = 0.0;
 
     /// One record per accepted timestep
     struct HistoryPoint {

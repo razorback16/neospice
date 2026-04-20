@@ -1,0 +1,10 @@
+Transmission line IC test
+* V1 is a slow sine, TL has IC=0.3V on both ports.
+* With Z0=R1=R2=50, matched termination means IC decays
+* smoothly without step discontinuities at TD boundaries.
+V1 in 0 SIN(0.5 0.5 50meg)
+R1 in tl_in 50
+T1 tl_in 0 tl_out 0 Z0=50 TD=5.05n IC=0.3,0,0.3,0
+R2 tl_out 0 50
+.tran 0.1n 100n UIC
+.end

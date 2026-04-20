@@ -76,10 +76,18 @@ void TransmissionLine::assign_offsets(const SparsityPattern& pattern) {
 // ---------------------------------------------------------------------------
 
 void TransmissionLine::update_delayed_values(double t_delayed) {
-    if (history_.empty() || t_delayed <= 0.0) {
-        // No history yet or delay reaches before t=0 — assume zero initial state.
+    if (history_.empty()) {
         e1_ = 0.0;
         e2_ = 0.0;
+        return;
+    }
+
+    // When IC values seed history at negative times, allow interpolation there.
+    if (t_delayed < history_.front().time) {
+        // Extrapolate from earliest history point (constant extrapolation).
+        const auto& h = history_.front();
+        e1_ = h.v2 + z0_ * h.i2;
+        e2_ = h.v1 + z0_ * h.i1;
         return;
     }
 
@@ -349,22 +357,33 @@ void TransmissionLine::accept_step(double time,
 // init_dc_state
 // ---------------------------------------------------------------------------
 
+void TransmissionLine::set_ic(double v1, double i1, double v2, double i2) {
+    has_ic_ = true;
+    ic_v1_ = v1; ic_i1_ = i1;
+    ic_v2_ = v2; ic_i2_ = i2;
+}
+
 void TransmissionLine::init_dc_state(const std::vector<double>& sol) {
-    double vp1p = (p1p_ >= 0) ? sol[p1p_] : 0.0;
-    double vp1n = (p1n_ >= 0) ? sol[p1n_] : 0.0;
-    double vp2p = (p2p_ >= 0) ? sol[p2p_] : 0.0;
-    double vp2n = (p2n_ >= 0) ? sol[p2n_] : 0.0;
-    double v1 = vp1p - vp1n;
-    double v2 = vp2p - vp2n;
-    // At DC steady-state with short-circuit model, i1 ~ 0, i2 ~ 0 through TL
-    // (current flows through the external R network, not "through" the TL)
-    // Seed history with these DC values
+    double v1, i1, v2, i2;
+    if (has_ic_) {
+        v1 = ic_v1_; i1 = ic_i1_;
+        v2 = ic_v2_; i2 = ic_i2_;
+    } else {
+        double vp1p = (p1p_ >= 0) ? sol[p1p_] : 0.0;
+        double vp1n = (p1n_ >= 0) ? sol[p1n_] : 0.0;
+        double vp2p = (p2p_ >= 0) ? sol[p2p_] : 0.0;
+        double vp2n = (p2n_ >= 0) ? sol[p2n_] : 0.0;
+        v1 = vp1p - vp1n;
+        v2 = vp2p - vp2n;
+        i1 = 0.0;
+        i2 = 0.0;
+    }
     history_.clear();
     for (int k = 2; k >= 0; --k) {
         HistoryPoint hp;
         hp.time = -static_cast<double>(k) * td_;
-        hp.v1 = v1; hp.i1 = 0.0;
-        hp.v2 = v2; hp.i2 = 0.0;
+        hp.v1 = v1; hp.i1 = i1;
+        hp.v2 = v2; hp.i2 = i2;
         history_.push_back(hp);
     }
 }

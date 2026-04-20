@@ -182,12 +182,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     };
 
     // ---------------------------------------------------------------
-    // 4. Store t=0
-    // ---------------------------------------------------------------
-    store_point(0.0, solution);
-
-    // ---------------------------------------------------------------
-    // 5. Enable transient and set integration method
+    // 4. Enable transient and set integration method
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
@@ -209,7 +204,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     }
 
     // ---------------------------------------------------------------
-    // 6. Initialize DC state
+    // 5. Initialize DC state
     // ---------------------------------------------------------------
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
@@ -225,7 +220,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     }
 
     // ---------------------------------------------------------------
-    // 6a. Apply IC= overrides when UIC is active
+    // 5a. Apply IC= overrides when UIC is active
     // ---------------------------------------------------------------
     if (uic) {
         for (auto& dev : ckt.devices()) {
@@ -236,6 +231,36 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             }
         }
     }
+
+    // ---------------------------------------------------------------
+    // 5b. Re-solve for consistent t=0 when TL has IC
+    // ---------------------------------------------------------------
+    // When a transmission line has IC= values, the delay-line history is seeded
+    // with those values.  The DC solution (computed before transient mode) does
+    // not reflect the TL's IC-driven wave sources.  Re-solve at t=0 with the
+    // TL in transient mode so node voltages are consistent with IC.
+    {
+        bool tl_has_ic = false;
+        for (auto& dev : ckt.devices()) {
+            if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
+                if (tl->has_ic()) { tl_has_ic = true; break; }
+            }
+        }
+        if (tl_has_ic) {
+            ckt.integrator_ctx.current_time = 0.0;
+            ckt.integrator_ctx.delta = tstep;
+            ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
+            auto ic_result = newton_solve(ckt, solver, solution, ckt.options);
+            if (ic_result.converged) {
+                solution = ic_result.solution;
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // 6. Store t=0
+    // ---------------------------------------------------------------
+    store_point(0.0, solution);
 
     // ---------------------------------------------------------------
     // 6b. Resolve PULSE/SIN default parameters
