@@ -1027,6 +1027,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     r->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
                 else if (tok.starts_with("dtemp="))
                     r->set_dtemp(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("rac="))
+                    r->set_rac(parse_spice_number(tok.substr(4)));
             }
             ckt.add_device(std::move(r));
 

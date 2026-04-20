@@ -1,0 +1,6 @@
+Resistor RAC test
+V1 in 0 AC 1 DC 1
+R1 in out 1k RAC=500
+R2 out 0 1k
+.ac dec 10 1 1meg
+.end

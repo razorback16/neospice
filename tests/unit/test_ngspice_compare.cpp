@@ -524,3 +524,28 @@ TEST_F(NgspiceCompareTest, AsrcHertz) {
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
+
+// ---------------------------------------------------------------------------
+// Resistor RAC= AC resistance test
+// RAC is a neospice extension (ngspice does not support it), so we verify
+// the expected voltage divider ratio directly instead of comparing to ngspice.
+// With R1=1k RAC=500, R2=1k: v(out) = 1 * 1k/(500+1k) = 0.6667
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, ResistorRAC) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/resistor_rac.cir";
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.ac.has_value());
+    const auto& ac = *cs_result.ac;
+    // Find v(out) in the AC results
+    const auto& v_out = ac.voltage("out");
+    ASSERT_FALSE(v_out.empty());
+    // Expected: v(out) = 1k/(500+1k) = 2/3 at all frequencies (flat response)
+    const double expected_mag = 1000.0 / (500.0 + 1000.0);
+    for (size_t i = 0; i < v_out.size(); ++i) {
+        double mag = std::abs(v_out[i]);
+        EXPECT_NEAR(mag, expected_mag, 1e-10)
+            << "AC magnitude mismatch at frequency point " << i;
+    }
+}

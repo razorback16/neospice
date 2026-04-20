@@ -44,8 +44,9 @@ void Resistor::evaluate(const std::vector<double>& /*voltages*/,
 
 void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
                         NumericMatrix& G, NumericMatrix& /*C*/) {
-    // Pure conductance: same stamp as DC, no capacitance contribution
-    const double g = 1.0 / resistance_eff_;
+    // Use RAC for AC analysis when set, otherwise fall back to DC resistance
+    double r = (rac_ > 0.0) ? rac_ : resistance_eff_;
+    const double g = 1.0 / r;
     add_if_valid(G, off_pp_,  g);
     add_if_valid(G, off_pn_, -g);
     add_if_valid(G, off_np_, -g);

@@ -28,6 +28,8 @@ public:
     void set_multiplier(double m) { m_ = m; }
     void set_temp(double t) { temp_ = t; }
     void set_dtemp(double dt) { dtemp_ = dt; }
+    void set_rac(double r) { rac_ = r; }
+    double rac() const { return rac_; }
 
     /// Apply temperature-dependent adjustment to effective resistance.
     /// Called once during circuit finalize (or whenever temperature changes).
@@ -50,6 +52,7 @@ private:
     double m_ = 1.0;          // multiplier (m instances in parallel)
     double temp_ = -1.0;      // device temperature in K (-1 = use simulation default)
     double dtemp_ = 0.0;      // delta temperature in K
+    double rac_ = -1.0;       // AC resistance (-1 = use DC resistance)
 
     MatrixOffset off_pp_ = -1;
     MatrixOffset off_pn_ = -1;
