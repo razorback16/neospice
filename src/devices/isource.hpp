@@ -17,6 +17,9 @@ public:
     double ac_mag() const { return ac_mag_; }
     double ac_phase_rad() const { return ac_phase_deg_ * (M_PI / 180.0); }
 
+    int32_t pos_node() const { return np_; }
+    int32_t neg_node() const { return nn_; }
+
     /// Time-domain waveforms.
     void set_pulse(PulseParams p);
     void set_sin(SinParams p);

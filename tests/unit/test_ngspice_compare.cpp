@@ -53,6 +53,17 @@ TEST_F(NgspiceCompareTest, RCACAnalysis) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, IsrcACAnalysis) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/isrc_ac.cir";
+    auto ng_result = ngspice_->run_ac(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.ac.has_value());
+    auto cmp = compare_ac(ng_result, *cs_result.ac, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 // ---------------------------------------------------------------------------
 // Transient tests — both neospice and ngspice use trapezoidal integration.
 // Remaining error sources:

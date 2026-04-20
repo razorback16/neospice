@@ -4,6 +4,7 @@
 #include "core/convergence.hpp"
 #include "core/klu_solver.hpp"
 #include "devices/vsource.hpp"
+#include "devices/isource.hpp"
 #include "devices/inductor.hpp"
 #include "devices/vcvs.hpp"
 #include "devices/ccvs.hpp"
@@ -128,6 +129,17 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
                 if (br >= 0 && br < n) {
                     ac_rhs[br] = std::polar(vs->ac_mag(), vs->ac_phase_rad());
                 }
+            }
+        }
+    }
+    for (auto& dev : ckt.devices()) {
+        if (auto* is = dynamic_cast<ISource*>(dev.get())) {
+            if (is->ac_mag() != 0.0) {
+                auto exc = std::polar(is->ac_mag(), is->ac_phase_rad());
+                int32_t np = is->pos_node();
+                int32_t nn = is->neg_node();
+                if (np >= 0 && np < n) ac_rhs[np] -= exc;
+                if (nn >= 0 && nn < n) ac_rhs[nn] += exc;
             }
         }
     }

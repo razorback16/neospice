@@ -1,0 +1,6 @@
+* AC analysis driven by current source
+I1 0 in AC 1m
+R1 in out 1k
+C1 out 0 100n
+.ac dec 10 1 1Meg
+.end
