@@ -15,8 +15,8 @@ namespace neospice {
 /// where M = k * sqrt(L1 * L2).
 ///
 /// In the time domain (transient companion model), the K element adds:
-///   mat[br1, br2] += -R_eq_m      rhs[br1] += R_eq_m * I2_prev + V_m12_prev
-///   mat[br2, br1] += -R_eq_m      rhs[br2] += R_eq_m * I1_prev + V_m21_prev
+///   mat[br1, br2] += -R_eq_m      rhs[br1] -= R_eq_m * I2_prev
+///   mat[br2, br1] += -R_eq_m      rhs[br2] -= R_eq_m * I1_prev
 /// where R_eq_m = 2*M/dt (trapezoidal) or 1.5*M/dt (Gear-2).
 class CoupledInductor : public Device {
 public:
@@ -52,12 +52,6 @@ private:
     double dt_ = 0.0;
     int integration_method_ = 0;  // 0=trapezoidal, 1=gear2
     bool gear_ready_ = false;
-
-    // Previous mutual voltage contributions for trapezoidal companion model.
-    // v_m12 = mutual voltage contribution to L1's branch equation
-    // v_m21 = mutual voltage contribution to L2's branch equation
-    double v_m12_prev_ = 0.0;
-    double v_m21_prev_ = 0.0;
 
     // Previous partner currents (for RHS history terms)
     double i1_prev_ = 0.0;  // L1's branch current at previous step

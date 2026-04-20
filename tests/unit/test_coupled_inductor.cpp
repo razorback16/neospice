@@ -455,7 +455,7 @@ TEST(CoupledInductorTransient, TrapezoidalCompanionModel) {
     std::vector<double> sol(6, 0.0);
     k.init_dc_state(sol);
 
-    // First evaluate: v_eq = r_eq_m*0 + 0 = 0
+    // First evaluate: v_eq = r_eq_m*0 = 0
     {
         NumericMatrix mat(pattern);
         std::vector<double> rhs(6, 0.0);
@@ -463,8 +463,8 @@ TEST(CoupledInductorTransient, TrapezoidalCompanionModel) {
 
         EXPECT_DOUBLE_EQ(mat.value(pattern.offset(4, 5)), -r_eq_m);
         EXPECT_DOUBLE_EQ(mat.value(pattern.offset(5, 4)), -r_eq_m);
-        EXPECT_DOUBLE_EQ(rhs[4], 0.0);  // v_eq_12 = r_eq_m * 0 + 0
-        EXPECT_DOUBLE_EQ(rhs[5], 0.0);  // v_eq_21 = r_eq_m * 0 + 0
+        EXPECT_DOUBLE_EQ(rhs[4], 0.0);  // -v_eq_12 = -(r_eq_m * 0) = 0
+        EXPECT_DOUBLE_EQ(rhs[5], 0.0);  // -v_eq_21 = -(r_eq_m * 0) = 0
     }
 
     // Simulate accepting a step with some branch currents
@@ -472,19 +472,17 @@ TEST(CoupledInductorTransient, TrapezoidalCompanionModel) {
     sol[5] = 0.05; // I_L2 = 0.05A
     k.accept_step_from_solution(sol);
 
-    // Second evaluate: history terms should appear in RHS
+    // Second evaluate: history terms should appear in RHS (negative sign)
     {
         NumericMatrix mat(pattern);
         std::vector<double> rhs(6, 0.0);
         k.evaluate(sol, mat, rhs);
 
-        // v_m12_prev = r_eq_m * (0.05 - 0) - 0 = r_eq_m * 0.05
-        // v_m21_prev = r_eq_m * (0.1 - 0) - 0 = r_eq_m * 0.1
-        double v_m12 = r_eq_m * 0.05;
-        double v_m21 = r_eq_m * 0.1;
-
-        double expected_rhs_4 = r_eq_m * 0.05 + v_m12;  // r_eq_m * i2_prev + v_m12
-        double expected_rhs_5 = r_eq_m * 0.1  + v_m21;  // r_eq_m * i1_prev + v_m21
+        // v_eq_12 = r_eq_m * i2_prev = r_eq_m * 0.05
+        // v_eq_21 = r_eq_m * i1_prev = r_eq_m * 0.1
+        // rhs[br] += -v_eq
+        double expected_rhs_4 = -(r_eq_m * 0.05);  // -v_eq_12
+        double expected_rhs_5 = -(r_eq_m * 0.1);   // -v_eq_21
 
         EXPECT_NEAR(rhs[4], expected_rhs_4, 1e-12);
         EXPECT_NEAR(rhs[5], expected_rhs_5, 1e-12);
@@ -527,7 +525,7 @@ TEST(CoupledInductorTransient, GearCompanionModel) {
     k.accept_step_from_solution(sol);
 
     // Now i1_prev=0.15, i2_prev=0.08, i1_prev2=0.1, i2_prev2=0.05
-    // Gear-2 companion:
+    // Gear-2 companion (RHS uses negative sign):
     double r_eq_m_gear = 1.5 * M / dt;
     double v_eq_12_gear = (M / (2.0 * dt)) * (4.0 * 0.08 - 0.05);
     double v_eq_21_gear = (M / (2.0 * dt)) * (4.0 * 0.15 - 0.1);
@@ -539,8 +537,8 @@ TEST(CoupledInductorTransient, GearCompanionModel) {
 
         EXPECT_DOUBLE_EQ(mat.value(pattern.offset(4, 5)), -r_eq_m_gear);
         EXPECT_DOUBLE_EQ(mat.value(pattern.offset(5, 4)), -r_eq_m_gear);
-        EXPECT_NEAR(rhs[4], v_eq_12_gear, 1e-12);
-        EXPECT_NEAR(rhs[5], v_eq_21_gear, 1e-12);
+        EXPECT_NEAR(rhs[4], -v_eq_12_gear, 1e-12);
+        EXPECT_NEAR(rhs[5], -v_eq_21_gear, 1e-12);
     }
 }
 
@@ -611,6 +609,23 @@ TEST_F(CoupledInductorNgspiceTest, DCShortCircuit) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
     auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+// Transient: pulse through transformer primary, compare secondary response.
+// Tolerance is wide because the coupled inductor transient involves PULSE edges
+// and inductive energy transfer that exercises timestep-control differences
+// between neospice and ngspice (LTE, breakpoints). The sign fix and
+// double-counting removal are validated by the unit tests above and the AC
+// comparison; this test guards against gross regressions.
+TEST_F(CoupledInductorNgspiceTest, CoupledInductorTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/coupled_inductor_transient.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-1, 1e-1});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

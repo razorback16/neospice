@@ -1,0 +1,9 @@
+* Coupled inductor transient test: pulse through transformer
+V1 in 0 PULSE(0 5 0 1u 1u 50u 200u)
+R1 in a 10
+L1 a 0 10mH
+L2 b 0 10mH
+K1 L1 L2 0.5
+R2 b 0 100
+.tran 1u 400u
+.end

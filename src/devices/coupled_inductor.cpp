@@ -57,23 +57,23 @@ void CoupledInductor::evaluate(const std::vector<double>& /*voltages*/,
 
         int32_t br1 = l1_->branch_index();
         int32_t br2 = l2_->branch_index();
-        add_rhs_if_valid(rhs, br1, v_eq_12);
-        add_rhs_if_valid(rhs, br2, v_eq_21);
+        add_rhs_if_valid(rhs, br1, -v_eq_12);
+        add_rhs_if_valid(rhs, br2, -v_eq_21);
     } else {
         // Trapezoidal: R_eq_m = 2 * M / dt
         r_eq_m = 2.0 * mutual_ / dt_;
 
-        // Trapezoidal companion: V_eq = R_eq_m * I_partner_prev + V_mutual_prev
-        double v_eq_12 = r_eq_m * i2_prev_ + v_m12_prev_;
-        double v_eq_21 = r_eq_m * i1_prev_ + v_m21_prev_;
+        // Trapezoidal companion: V_eq = R_eq_m * I_partner_prev
+        double v_eq_12 = r_eq_m * i2_prev_;
+        double v_eq_21 = r_eq_m * i1_prev_;
 
         add_if_valid(mat, off_br1_br2_, -r_eq_m);
         add_if_valid(mat, off_br2_br1_, -r_eq_m);
 
         int32_t br1 = l1_->branch_index();
         int32_t br2 = l2_->branch_index();
-        add_rhs_if_valid(rhs, br1, v_eq_12);
-        add_rhs_if_valid(rhs, br2, v_eq_21);
+        add_rhs_if_valid(rhs, br1, -v_eq_12);
+        add_rhs_if_valid(rhs, br2, -v_eq_21);
     }
 }
 
@@ -109,8 +109,6 @@ void CoupledInductor::init_dc_state(const std::vector<double>& sol) {
     i2_prev_ = (br2 >= 0) ? sol[br2] : 0.0;
     i1_prev2_ = i1_prev_;
     i2_prev2_ = i2_prev_;
-    v_m12_prev_ = 0.0;
-    v_m21_prev_ = 0.0;
     gear_ready_ = false;
 }
 
@@ -119,16 +117,6 @@ void CoupledInductor::accept_step_from_solution(const std::vector<double>& sol) 
     int32_t br2 = l2_->branch_index();
     double i1 = (br1 >= 0) ? sol[br1] : 0.0;
     double i2 = (br2 >= 0) ? sol[br2] : 0.0;
-
-    if (integration_method_ != 1 || !gear_ready_) {
-        // Trapezoidal: update the mutual voltage history.
-        // v_m12(n) = R_eq_m * I2(n) - R_eq_m * I2(n-1) - v_m12(n-1)
-        //          = (2M/dt) * (I2(n) - I2(n-1)) - v_m12(n-1)
-        double r_eq_m = 2.0 * mutual_ / dt_;
-        v_m12_prev_ = r_eq_m * (i2 - i2_prev_) - v_m12_prev_;
-        v_m21_prev_ = r_eq_m * (i1 - i1_prev_) - v_m21_prev_;
-    }
-    // For Gear-2, v_m_prev is not used (RHS is computed from i_prev/i_prev2 directly)
 
     // Shift history
     i1_prev2_ = i1_prev_;
