@@ -198,6 +198,7 @@ void DIODevice::evaluate(const std::vector<double>& voltages,
     if (ic) {
         ckt.CKTmode  = ic->mode;
         ckt.CKTorder = ic->order;
+        ckt.CKTintegrateMethod = ic->integrate_method;
         ckt.CKTdelta = ic->delta;
         for (int i = 0; i < 8; ++i) ckt.CKTag[i]       = ic->ag[i];
         for (int i = 0; i < 8; ++i) ckt.CKTdeltaOld[i] = ic->delta_old[i];

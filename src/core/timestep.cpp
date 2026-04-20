@@ -11,12 +11,20 @@ void TimeStepController::init(double initial_dt, double tstop) {
     proposed_dt_ = initial_dt;
     rejected_ = 0;
     breakpoints_.clear();
+    source_breakpoints_.clear();
 }
 
 void TimeStepController::advance(double dt) {
     time_ += dt;
+    crossed_bp_ = false;
+    crossed_src_bp_ = false;
     while (!breakpoints_.empty() && *breakpoints_.begin() <= time_ + 1e-18) {
         breakpoints_.erase(breakpoints_.begin());
+        crossed_bp_ = true;
+    }
+    while (!source_breakpoints_.empty() && *source_breakpoints_.begin() <= time_ + 1e-18) {
+        source_breakpoints_.erase(source_breakpoints_.begin());
+        crossed_src_bp_ = true;
     }
 }
 
@@ -61,6 +69,13 @@ bool TimeStepController::evaluate_step(const std::vector<double>& sol,
 void TimeStepController::add_breakpoint(double t) {
     if (t > time_ && t <= tstop_) {
         breakpoints_.insert(t);
+    }
+}
+
+void TimeStepController::add_source_breakpoint(double t) {
+    if (t > time_ && t <= tstop_) {
+        breakpoints_.insert(t);
+        source_breakpoints_.insert(t);
     }
 }
 

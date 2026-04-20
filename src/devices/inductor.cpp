@@ -52,7 +52,7 @@ void Inductor::evaluate(const std::vector<double>& /*voltages*/,
 
         mat.add(off_br_br_, -r_eq);
         if (branch_idx_ >= 0)
-            rhs[branch_idx_] += v_eq;
+            rhs[branch_idx_] -= v_eq;
     }
 }
 

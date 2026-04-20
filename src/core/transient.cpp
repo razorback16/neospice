@@ -39,10 +39,10 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
     for (auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
             auto bps = vs->get_breakpoints(0.0, tstop);
-            for (double bp : bps) ctrl.add_breakpoint(bp);
+            for (double bp : bps) ctrl.add_source_breakpoint(bp);
         } else if (auto* is = dynamic_cast<ISource*>(dev.get())) {
             auto bps = is->get_breakpoints(0.0, tstop);
-            for (double bp : bps) ctrl.add_breakpoint(bp);
+            for (double bp : bps) ctrl.add_source_breakpoint(bp);
         }
     }
 }
@@ -80,6 +80,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     // Publish SimOptions (temp, tolerances, gmin) so BSIM4v7Device can read
     // user-configured values from evaluate() via tls_integrator_ctx.
     ckt.integrator_ctx.options = &ckt.options;
+
+    const bool use_gear = (ckt.options.method == "gear");
 
     // DC preamble — the transient initial operating point uses MODETRANOP
     // (0x20), NOT the full MODEDC mask (0x70) or MODEDCOP (0x10).  ngspice
@@ -186,13 +188,13 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
             cap->set_transient(tstep);
-            cap->set_integration_method(1);  // Gear
+            cap->set_integration_method(use_gear ? 1 : 0);
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->set_transient(tstep);
-            ind->set_integration_method(1);  // Gear
+            ind->set_integration_method(use_gear ? 1 : 0);
         } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
             ki->set_transient(tstep);
-            ki->set_integration_method(1);  // Gear
+            ki->set_integration_method(use_gear ? 1 : 0);
         } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
             tl->set_transient(true);
         } else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get())) {
@@ -252,8 +254,26 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     // 8. Adaptive time-stepping loop
     // ---------------------------------------------------------------
     double dt = tstep;
+    ckt.integrator_ctx.integrate_method = use_gear ? 1 : 0;
+
+    // Counter: accepted steps since last source breakpoint crossing.
+    // Used to hold order at 1 (BE) for 2 steps after a discontinuity
+    // so the second-difference LTE doesn't see the edge.
+    int steps_after_bp = 1000;
+
+    int total_iterations = 0;
+    constexpr int MAX_ITERATIONS = 500000;
 
     while (ctrl.current_time() < tstop - 1e-18) {
+        if (++total_iterations > MAX_ITERATIONS) {
+            throw ConvergenceError(
+                "Transient exceeded " + std::to_string(MAX_ITERATIONS) +
+                " iterations at t=" + std::to_string(ctrl.current_time()) +
+                " step_count=" + std::to_string(step_count) +
+                " dt=" + std::to_string(dt) +
+                " order=" + std::to_string(ctrl.order()) +
+                " steps_after_bp=" + std::to_string(steps_after_bp));
+        }
         // Clamp dt to not exceed tstop, breakpoints, or next output point
         dt = std::min(dt, dt_max);
         dt = std::max(dt, dt_min);
@@ -299,39 +319,44 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             ckt.integrator_ctx.delta_old[1] = first_step ? dt : ctrl.prev_dt();
             ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
 
+            // Determine effective method: trap unless user chose gear or
+            // ringing detection temporarily switched to gear.
+            bool eff_gear = use_gear;
+
             if (cur_order == 1) {
                 // Backward Euler: y'(t_n) ≈ (y_n - y_{n-1}) / dt
                 ckt.integrator_ctx.ag[0] =  1.0 / dt;
                 ckt.integrator_ctx.ag[1] = -1.0 / dt;
                 ckt.integrator_ctx.ag[2] =  0.0;
             } else {
-                // Variable-step Gear-2 (BDF2).  Derived from the Lagrange
-                // polynomial through (t_{n-2}, y_{n-2}), (t_{n-1}, y_{n-1}),
-                // (t_n, y_n) differentiated at t_n.  With h = dt = t_n -
-                // t_{n-1} and k = h_old = t_{n-1} - t_{n-2}:
-                //
-                //   ag[0] =  (2h + k) / ( h * (h + k) )
-                //   ag[1] = -(h  + k) / ( h * k       )
-                //   ag[2] =   h       / ( k * (h + k) )
-                //
-                // Uniform-step sanity: h = k → (1.5, -2, 0.5)/h ✓.
-                // Shim::NIintegrate (bsim4v7_shim.cpp) sums all three terms
-                // over CKTstate0/1/2 for CKTorder==2, so all three must be
-                // populated — the previous code populated only ag[0]/ag[1]
-                // and additionally used an ag[1] expression that was only
-                // correct for uniform h=k.
-                double h_old = ctrl.prev_dt();
-                if (h_old > 0.0) {
-                    double sum = dt + h_old;
-                    ckt.integrator_ctx.ag[0] =  (2.0 * dt + h_old) / (dt    * sum  );
-                    ckt.integrator_ctx.ag[1] = -(dt + h_old)       / (dt    * h_old);
-                    ckt.integrator_ctx.ag[2] =  dt                 / (h_old * sum  );
-                } else {
-                    // Fallback to BE if prev_dt not yet set (shouldn't happen
-                    // once step_count ≥ 2, but keeps us safe).
-                    ckt.integrator_ctx.ag[0] =  1.0 / dt;
-                    ckt.integrator_ctx.ag[1] = -1.0 / dt;
+                if (!eff_gear) {
+                    // Trapezoidal: i_n = (2/h)(q_n - q_{n-1}) - i_{n-1}
+                    ckt.integrator_ctx.ag[0] =  2.0 / dt;
+                    ckt.integrator_ctx.ag[1] = -2.0 / dt;
                     ckt.integrator_ctx.ag[2] =  0.0;
+                } else {
+                    // Variable-step Gear-2 (BDF2).  Derived from the Lagrange
+                    // polynomial through (t_{n-2}, y_{n-2}), (t_{n-1}, y_{n-1}),
+                    // (t_n, y_n) differentiated at t_n.  With h = dt = t_n -
+                    // t_{n-1} and k = h_old = t_{n-1} - t_{n-2}:
+                    //
+                    //   ag[0] =  (2h + k) / ( h * (h + k) )
+                    //   ag[1] = -(h  + k) / ( h * k       )
+                    //   ag[2] =   h       / ( k * (h + k) )
+                    //
+                    // Uniform-step sanity: h = k → (1.5, -2, 0.5)/h ✓.
+                    double h_old = ctrl.prev_dt();
+                    if (h_old > 0.0) {
+                        double sum = dt + h_old;
+                        ckt.integrator_ctx.ag[0] =  (2.0 * dt + h_old) / (dt    * sum  );
+                        ckt.integrator_ctx.ag[1] = -(dt + h_old)       / (dt    * h_old);
+                        ckt.integrator_ctx.ag[2] =  dt                 / (h_old * sum  );
+                    } else {
+                        // Fallback to BE if prev_dt not yet set
+                        ckt.integrator_ctx.ag[0] =  1.0 / dt;
+                        ckt.integrator_ctx.ag[1] = -1.0 / dt;
+                        ckt.integrator_ctx.ag[2] =  0.0;
+                    }
                 }
             }
         }
@@ -361,41 +386,36 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         }
         solution = nr.solution;
 
-        // LTE check (skip first two steps — need three points)
+        // LTE check — skip first 2 steps (need 3 points) and skip
+        // 3 steps after a source breakpoint so the second-difference
+        // history is fully populated from uniform post-edge steps.
         bool accepted = true;
-        if (step_count >= 2) {
-            ctrl.set_dt(dt);  // set before evaluate so proposed_dt is relative to current dt
+        if (step_count >= 2 && steps_after_bp >= 3) {
+            ctrl.set_dt(dt);
             accepted = ctrl.evaluate_step(solution, sol_prev, sol_prev2, num_nodes, ckt.options);
-            // If rejected but dt is already at minimum, force acceptance
             if (!accepted && dt <= dt_min * 1.01) {
                 accepted = true;
             }
         }
 
         // Device-specific LTE — compute minimum suggested dt from charge
-        // truncation error across all devices (BSIM4v7 MOSFETs, etc.).
-        // This mirrors ngspice's CKTtrunc / BSIM4v7trunc path.
+        // truncation error across all devices (BSIM4, MOS1, BJT, etc.).
         double device_dt = 1e30;
         if (step_count >= 2) {
             for (const auto& dev : ckt.devices()) {
                 device_dt = std::min(device_dt,
                     dev->compute_trunc(ckt.integrator_ctx, ckt.options));
             }
-            // If device LTE suggests significantly smaller step, reject
-            if (accepted && device_dt < dt * 0.9) {
-                if (dt > dt_min * 1.01) {
-                    accepted = false;
-                    ctrl.record_rejection();
-                    ctrl.set_dt(dt);
-                }
+            if (accepted && device_dt < dt * 0.9 && dt > dt_min * 1.01) {
+                accepted = false;
+                ctrl.record_rejection();
+                ctrl.set_dt(dt);
             }
         }
 
         if (!accepted) {
-            // Reject: restore solution and retry with smaller dt
             solution = sol_prev;
             double proposed = ctrl.proposed_dt();
-            // If device LTE gave a tighter bound, use it
             if (device_dt < proposed)
                 proposed = device_dt;
             dt = std::max(proposed, dt_min);
@@ -407,8 +427,16 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         ctrl.advance(dt);
         ctrl.set_dt(dt);
         step_count++;
+        if (steps_after_bp < 1000) ++steps_after_bp;
 
-        // Advance to Gear-2 once two steps have been accepted
+        // After crossing a source breakpoint, reduce dt and skip LTE
+        // for a few steps to let the solution settle after the edge.
+        if (ctrl.crossed_source_breakpoint() && step_count > 2) {
+            steps_after_bp = 0;
+            dt = tstep;
+        }
+
+        // Advance to order 2 once two steps have been accepted
         if (step_count == 2) {
             ctrl.set_order(2);
         }
@@ -454,8 +482,10 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         sol_prev2 = sol_prev;
         sol_prev = solution;
 
-        // Propose next dt (constrained by device LTE if applicable)
-        if (step_count >= 2) {
+        // Propose next dt (constrained by LTE and device LTE).
+        // Require sab >= 4: LTE first evaluates at sab==3, so the
+        // proposed_dt from that evaluation is available at sab==4.
+        if (step_count >= 2 && steps_after_bp >= 4) {
             double proposed = ctrl.proposed_dt();
             if (device_dt < proposed)
                 proposed = device_dt;

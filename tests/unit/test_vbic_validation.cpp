@@ -201,10 +201,7 @@ TEST_F(VBICValidation, SwitchingTransient) {
             ++it;
     }
 
-    // Gear BDF-2 vs trapezoidal method mismatch at sharp switching edges
-    // requires wider tolerance, consistent with other transient tests in
-    // the project (CMOSInverterTransient uses {5e-1, 5e-2}).
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-1, 5e-2});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {3e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

@@ -63,7 +63,7 @@ TEST(BSIM4v7NIintegrate, BackwardEulerOrder1) {
 }
 
 TEST(BSIM4v7NIintegrate, Gear2SumsThreeHistories) {
-    // Gear-2: CKTorder = 2, all three state generations contribute.
+    // Gear-2: CKTorder = 2, CKTintegrateMethod = 1 (Gear).
     // Synthetic coefficients (not a real Gear-2 formula — just distinct
     // non-zero values so we can verify the sum loop picks up each term).
     StateFixture fx;
@@ -72,6 +72,7 @@ TEST(BSIM4v7NIintegrate, Gear2SumsThreeHistories) {
     fx.s2[0] = 1.0;
 
     fx.ckt.CKTorder = 2;
+    fx.ckt.CKTintegrateMethod = 1;  // Gear
     fx.ckt.CKTag[0] = 7.0;
     fx.ckt.CKTag[1] = 11.0;
     fx.ckt.CKTag[2] = 13.0;
@@ -85,6 +86,31 @@ TEST(BSIM4v7NIintegrate, Gear2SumsThreeHistories) {
         fx.ckt.CKTag[0] * fx.s0[0] +
         fx.ckt.CKTag[1] * fx.s1[0] +
         fx.ckt.CKTag[2] * fx.s2[0];
+    EXPECT_DOUBLE_EQ(fx.s0[1], expected_current);
+    EXPECT_DOUBLE_EQ(geq, fx.ckt.CKTag[0] * cap);
+    EXPECT_DOUBLE_EQ(ceq, expected_current - geq * fx.s0[0]);
+}
+
+TEST(BSIM4v7NIintegrate, TrapezoidalOrder2) {
+    // Trapezoidal order 2: deriv = -i_{n-1} + ag[0]*q_n + ag[1]*q_{n-1}
+    StateFixture fx;
+    const double h = 1e-9;
+    fx.s0[0] = 3.0e-15;  // q_n
+    fx.s1[0] = 2.0e-15;  // q_{n-1}
+    fx.s1[1] = 0.5e-6;   // i_{n-1} (previous derivative)
+
+    fx.ckt.CKTorder = 2;
+    fx.ckt.CKTintegrateMethod = 0;  // Trapezoidal
+    fx.ckt.CKTag[0] =  2.0 / h;
+    fx.ckt.CKTag[1] = -2.0 / h;
+
+    const double cap = 1e-15;
+    double geq = 0.0, ceq = 0.0;
+    int rc = Shim::NIintegrate(&fx.ckt, &geq, &ceq, cap, 0);
+    EXPECT_EQ(rc, Shim::OK);
+
+    const double expected_current =
+        -fx.s1[1] + fx.ckt.CKTag[0] * fx.s0[0] + fx.ckt.CKTag[1] * fx.s1[0];
     EXPECT_DOUBLE_EQ(fx.s0[1], expected_current);
     EXPECT_DOUBLE_EQ(geq, fx.ckt.CKTag[0] * cap);
     EXPECT_DOUBLE_EQ(ceq, expected_current - geq * fx.s0[0]);

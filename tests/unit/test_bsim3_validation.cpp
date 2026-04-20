@@ -300,12 +300,7 @@ TEST_F(BSIM3Validation, CMOS_Inverter_Transient) {
             ++it;
     }
 
-    // The CMOS inverter has fast switching edges (100ps rise/fall).
-    // Our Gear BDF-2 integrator and ngspice's trapezoidal method produce
-    // nearly identical waveforms, but Gear-2 may lag the trapezoidal
-    // solution by ~10-15 ps at the sharpest transition points.
-    // Use same tolerance as the BSIM4v7 CMOS inverter test.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-1, 5e-2});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {3e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

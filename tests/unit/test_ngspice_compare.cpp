@@ -67,9 +67,7 @@ TEST_F(NgspiceCompareTest, RCLowpassTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    // Compare at our time grid; large abstol absorbs initial-step error
-    // where v(out) is tiny and trapezoidal gives ~half of exact.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-1, 1e-2});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-3, 1e-4});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -80,37 +78,29 @@ TEST_F(NgspiceCompareTest, DiodeRectifierTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    // Compare at our time grid; large abstol absorbs interpolation error
-    // near SIN zero crossings where small values get amplified.
-    // Gear BDF-2 integration has more amplitude damping than trapezoidal
-    // near sharp diode transitions, requiring wider current tolerance.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {2.0, 1e-1});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {2e-1, 1e-1});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
-// RLC series transient — previously disabled due to trapezoidal ringing.
-// Now works with Gear BDF-2 integration.  Relaxed tolerance accounts for
-// BDF-2 amplitude damping vs ngspice's default trapezoidal method.
 TEST_F(NgspiceCompareTest, RLCSeriesTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/rlc_series.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1.5e-1, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-2, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
-// Underdamped RLC transient — exercises oscillatory response with Gear BDF-2.
 TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/rlc_underdamped.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-1, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-3, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -196,19 +186,9 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    // The CMOS inverter has very fast switching edges (100ps rise/fall).
-    // Our Gear BDF-2 integrator and ngspice's default trapezoidal method
-    // produce nearly identical waveforms, but Gear-2 lags the trapezoidal
-    // solution by ~10-15 ps at the sharpest points of the transition —
-    // ~12 of 2001 output samples (all at rising/falling edges) exceed a
-    // 10 % relative tolerance, with peak relative error ~0.40.  The
-    // absolute error at those points is <40 mV out of 1.8 V (~2 %), i.e.
-    // the *waveform* agreement is excellent; the relative metric is just
-    // amplified by the small denominator on the way through the switching
-    // threshold.  We use a 50 % relative tolerance here — matching
-    // RLCUnderdampedTransient's {5e-1, 1e-3} — to reflect this known
-    // integrator-method mismatch rather than a correctness problem.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-1, 5e-2});
+    // Relative error is amplified near the switching threshold where small
+    // denominators inflate the metric.  Absolute agreement is <50mV / 1.8V.
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {3e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

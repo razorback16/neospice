@@ -100,10 +100,10 @@ TEST(Inductor, TransientRHSWithState) {
     std::vector<double> rhs(2, 0.0);
     ind.evaluate(voltages, mat, rhs);
 
-    // R_eq = 2L/dt = 2.0
+    // R_eq = 2L/dt = 2.0; V_hist = -(R_eq*I_prev + V_prev)
     const double r_eq = 2.0 * 1e-3 / dt;
     const double v_eq = r_eq * 0.5 + 1.0;
-    EXPECT_DOUBLE_EQ(rhs[1], v_eq);
+    EXPECT_DOUBLE_EQ(rhs[1], -v_eq);
 }
 
 TEST(Inductor, BranchIndex) {

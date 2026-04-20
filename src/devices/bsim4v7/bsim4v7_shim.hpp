@@ -70,6 +70,7 @@ namespace Shim {
         double  CKTdeltaOld[8]  = {};
         double  CKTag[8]        = {};
         int     CKTorder        = 1;
+        int     CKTintegrateMethod = 0;  // 0=trapezoidal, 1=gear
 
         double *CKTstate0 = nullptr;
         double *CKTstate1 = nullptr;

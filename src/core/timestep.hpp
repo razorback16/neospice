@@ -23,8 +23,12 @@ public:
                        const SimOptions& opts);
 
     void add_breakpoint(double t);
+    void add_source_breakpoint(double t);
     double clamp_to_breakpoint(double proposed_dt) const;
     double clamp_to_end(double proposed_dt) const;
+
+    /// True if the last advance() consumed one or more SOURCE breakpoints.
+    bool crossed_source_breakpoint() const { return crossed_src_bp_; }
 
     int rejected_count() const { return rejected_; }
     void record_rejection() { ++rejected_; }
@@ -46,7 +50,10 @@ private:
     int rejected_ = 0;
     int order_ = 1;
     double prev_dt_ = 0.0;
+    bool crossed_bp_ = false;
+    bool crossed_src_bp_ = false;
     std::set<double> breakpoints_;
+    std::set<double> source_breakpoints_;
 };
 
 } // namespace neospice
