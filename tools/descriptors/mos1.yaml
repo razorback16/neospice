@@ -1,0 +1,67 @@
+model:
+  ngspice_prefix: "MOS1"
+  neospice_name: "mos1"
+  neospice_namespace: "mos1"
+  instance_struct: "MOS1instance"
+  model_struct: "MOS1model"
+  instance_tag: "sMOS1instance"
+  model_tag: "sMOS1model"
+  cpp_instance: "MOS1Instance"
+  cpp_model: "MOS1Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "MOS1dNode" }
+    - { name: "g", field: "MOS1gNode" }
+    - { name: "s", field: "MOS1sNode" }
+    - { name: "b", field: "MOS1bNode" }
+  state_count: 17
+  state_base_field: "MOS1states"
+  next_instance_field: "MOS1nextInstance"
+  instances_field: "MOS1instances"
+  next_model_field: "MOS1nextModel"
+  model_ptr_field: "MOS1modPtr"
+  name_field: "MOS1name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "mos1set.c"
+    load: "mos1load.c"
+    temp: "mos1temp.c"
+    param: "mos1par.c"
+    mpar: "mos1mpar.c"
+    devsup: "mos1.c"
+  skip_files:
+    - "mos1acld.c"
+    - "mos1ask.c"
+    - "mos1conv.c"
+    - "mos1del.c"
+    - "mos1dest.c"
+    - "mos1dist.c"
+    - "mos1dset.c"
+    - "mos1ic.c"
+    - "mos1init.c"
+    - "mos1mask.c"
+    - "mos1mdel.c"
+    - "mos1noi.c"
+    - "mos1pzld.c"
+    - "mos1sacl.c"
+    - "mos1sld.c"
+    - "mos1sprt.c"
+    - "mos1sset.c"
+    - "mos1supd.c"
+    - "mos1trun.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "MOS1setup"
+  temp_function: "MOS1temp"
+  load_function: "MOS1load"
+  geometry:
+    - { name: "W", field: "MOS1w", given: "MOS1wGiven", default: "1e-6" }
+    - { name: "L", field: "MOS1l", given: "MOS1lGiven", default: "1e-4" }
+    - { name: "AD", field: "MOS1drainArea", given: "MOS1drainAreaGiven", default: "0.0" }
+    - { name: "AS", field: "MOS1sourceArea", given: "MOS1sourceAreaGiven", default: "0.0" }
+    - { name: "PD", field: "MOS1drainPerimiter", given: "MOS1drainPerimiterGiven", default: "0.0" }
+    - { name: "PS", field: "MOS1sourcePerimiter", given: "MOS1sourcePerimiterGiven", default: "0.0" }
+    - { name: "NRD", field: "MOS1drainSquares", given: "MOS1drainSquaresGiven", default: "0.0" }
+    - { name: "NRS", field: "MOS1sourceSquares", given: "MOS1sourceSquaresGiven", default: "0.0" }
+    - { name: "M", field: "MOS1m", given: "MOS1mGiven", default: "1.0" }

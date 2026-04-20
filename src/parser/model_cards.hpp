@@ -1,6 +1,7 @@
 #pragma once
 #include "devices/switch.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
+#include "devices/mos1/mos1_device.hpp"          // MOS1ModelCard
 #include "devices/bjt/bjt_device.hpp"            // BJTModelCard
 #include "devices/jfet/jfet_device.hpp"          // JFETModelCard
 #include "devices/dio/dio_device.hpp"            // DIOModelCard
@@ -31,6 +32,10 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens);
 ///   * unknown BSIM4 parameter keys are WARNED on stderr, not thrown.
 std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card);
 
+/// Translate a parsed .model card (LEVEL=1 NMOS/PMOS) into a
+/// MOS1ModelCard using the UCB MOS1mParam dispatcher.
+std::unique_ptr<MOS1ModelCard> to_mos1_card(const ModelCard& card);
+
 /// Translate a parsed .model card (NPN/PNP) into a BJTModelCard using
 /// the UCB BJTmParam dispatcher.  Ownership semantics are the same as
 /// for BSIM4v7 — the Circuit owns the card and BJTDevice holds a
@@ -44,6 +49,11 @@ std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card);
 /// Translate a parsed .model card (D) into a DIOModelCard using
 /// the UCB DIOmParam dispatcher.
 std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card);
+
+/// Detect the MOSFET level from a parsed .model card.
+/// Returns 1 for MOS1, 14 (default) for BSIM4v7.
+/// Only valid for NMOS/PMOS type cards.
+int detect_mosfet_level(const ModelCard& card);
 
 /// Translate a parsed .model card (SW or CSW) into a SwitchModel.
 /// card.type must be "sw" (voltage-controlled) or "csw" (current-controlled).

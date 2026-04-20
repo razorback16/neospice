@@ -1,11 +1,12 @@
-// T8 parser smoke tests — exercise M-card → BSIM4v7Device and LEVEL=14
-// dispatch in the netlist parser.  These tests do NOT run any analysis;
-// they only validate that the parser produces the expected Device objects
-// and that unsupported LEVEL values are rejected at parse time.
+// T8 parser smoke tests — exercise M-card → BSIM4v7Device (LEVEL=14) and
+// MOS1Device (LEVEL=1) dispatch in the netlist parser.  These tests do NOT
+// run any analysis; they only validate that the parser produces the expected
+// Device objects and that unsupported LEVEL values are rejected at parse time.
 
 #include <gtest/gtest.h>
 #include "parser/netlist_parser.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
+#include "devices/mos1/mos1_device.hpp"
 #include "core/types.hpp"
 
 using namespace neospice;
@@ -30,11 +31,30 @@ TEST(ParserMosfet, Level14NmosCardInstantiatesDevice) {
     EXPECT_EQ(1, mosfet_count);
 }
 
+TEST(ParserMosfet, Level1NmosCardInstantiatesMOS1Device) {
+    const std::string netlist =
+        "* MOS1 NMOS probe\n"
+        "VDD d 0 1.0\n"
+        "VGS g 0 0.8\n"
+        "M1 d g 0 0 M1MOD W=10u L=1u\n"
+        ".model M1MOD NMOS LEVEL=1 VTO=0.7 KP=110e-6\n"
+        ".op\n.end\n";
+
+    NetlistParser p;
+    Circuit ckt = p.parse(netlist);
+
+    int mos1_count = 0;
+    for (auto& d : ckt.devices()) {
+        if (dynamic_cast<MOS1Device*>(d.get())) ++mos1_count;
+    }
+    EXPECT_EQ(1, mos1_count);
+}
+
 TEST(ParserMosfet, UnsupportedLevelThrows) {
     const std::string netlist =
-        "* Unsupported LEVEL=1 probe\n"
+        "* Unsupported LEVEL=3 probe\n"
         "M1 d g s b M1MOD\n"
-        ".model M1MOD NMOS LEVEL=1 VT0=0.7\n"
+        ".model M1MOD NMOS LEVEL=3 VT0=0.7\n"
         ".end\n";
 
     NetlistParser p;

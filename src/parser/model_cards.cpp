@@ -3,6 +3,8 @@
 #include "devices/switch.hpp"
 #include "devices/bsim4v7/bsim4v7_def.hpp"
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
+#include "devices/mos1/mos1_def.hpp"
+#include "devices/mos1/mos1_shim.hpp"
 #include "devices/bjt/bjt_def.hpp"
 #include "devices/bjt/bjt_shim.hpp"
 #include "devices/jfet/jfet_def.hpp"
@@ -391,6 +393,83 @@ std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card) {
         if (rc != dio::Shim::OK) {
             throw ParseError(
                 "Model '" + card.name + "': DIOmParam failed for '" +
+                lkey + "' (rc=" + std::to_string(rc) + ")");
+        }
+    }
+
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// detect_mosfet_level — return the LEVEL from a NMOS/PMOS .model card.
+// ---------------------------------------------------------------------------
+int detect_mosfet_level(const ModelCard& card) {
+    auto it = card.params.find("level");
+    if (it == card.params.end()) return 14;  // default BSIM4v7
+    return static_cast<int>(it->second);
+}
+
+// ---------------------------------------------------------------------------
+// to_mos1_card — parse a .model LEVEL=1 card into a MOS1ModelCard via
+// the UCB MOS1mParam dispatcher.
+// ---------------------------------------------------------------------------
+std::unique_ptr<MOS1ModelCard> to_mos1_card(const ModelCard& card) {
+    auto out = std::make_unique<MOS1ModelCard>();
+    auto& ucb = out->ucb;
+
+    // Type check — .model TYPE field is lowercased at parse time.
+    if (card.type == "nmos") {
+        ucb.MOS1type      = 1;
+        ucb.MOS1typeGiven = 1;
+    } else if (card.type == "pmos") {
+        ucb.MOS1type      = -1;
+        ucb.MOS1typeGiven = 1;
+    } else {
+        throw ParseError(
+            "Model '" + card.name + "': unsupported MOS type '" + card.type +
+            "' (only NMOS/PMOS supported)");
+    }
+
+    // Walk the MOS1 model parameter table, dispatching each matching
+    // parsed key through MOS1mParam.
+    for (const auto& [lkey, val] : card.params) {
+        if (lkey == "level") continue;
+
+        const mos1::Shim::IfParm* entry = nullptr;
+        for (int i = 0; i < mos1::MOS1mPTSize; ++i) {
+            if (std::strcmp(mos1::MOS1mPTable[i].keyword, lkey.c_str()) == 0) {
+                entry = &mos1::MOS1mPTable[i];
+                break;
+            }
+        }
+        if (entry == nullptr) {
+            std::fprintf(stderr,
+                "Warning: model '%s': unknown MOS1 parameter '%s' (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        mos1::Shim::IfValue v{};
+        int dtype = entry->dataType & 0x1F;
+        if (dtype & mos1::Shim::IF_REAL) {
+            v.rValue = val;
+        } else if (dtype & mos1::Shim::IF_INTEGER) {
+            v.iValue = static_cast<int>(val);
+        } else if (dtype & mos1::Shim::IF_FLAG) {
+            v.iValue = (val != 0.0) ? 1 : 0;
+        } else if (dtype & mos1::Shim::IF_STRING) {
+            continue;  // skip string params
+        } else {
+            std::fprintf(stderr,
+                "Warning: model '%s': parameter '%s' has unrecognized data type (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        int rc = mos1::MOS1mParam(entry->id, &v, &ucb);
+        if (rc != mos1::Shim::OK) {
+            throw ParseError(
+                "Model '" + card.name + "': MOS1mParam failed for '" +
                 lkey + "' (rc=" + std::to_string(rc) + ")");
         }
     }

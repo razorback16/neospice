@@ -19,6 +19,7 @@
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/vccs_nonlinear.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
+#include "devices/mos1/mos1_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
 #include "devices/tline.hpp"
@@ -1711,43 +1712,93 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.add_dio_model_card(std::move(card));
     }
 
-    // Resolve deferred MOSFETs.  A single BSIM4v7ModelCard is created per
-    // distinct .model name (N:1 instance→card) and retained so all instances
-    // that reference the same name share UCB's BSIM4instances linked list.
-    // Ownership is transferred to the Circuit after all devices are made,
-    // guaranteeing the cards outlive the BSIM4v7Device non-owning back-pointers.
+    // Resolve deferred MOSFETs.  Level dispatch routes to different device
+    // implementations:  LEVEL=1 -> MOS1Device, LEVEL=14 (default) -> BSIM4v7Device.
+    // A single model card is created per distinct .model name (N:1 instance->card)
+    // and retained so all instances sharing the name share UCB's linked list.
     std::unordered_map<std::string, std::unique_ptr<BSIM4v7ModelCard>> bsim4_cards;
+    std::unordered_map<std::string, std::unique_ptr<MOS1ModelCard>> mos1_cards;
+    std::unordered_map<std::string, int> mosfet_levels;  // cache level per model
     for (const auto& m : deferred_mosfets) {
         auto it = models.find(m.model_name);
         if (it == models.end()) {
             throw ParseError("Line " + std::to_string(m.line_number) +
                              ": Unknown model '" + m.model_name + "'");
         }
-        // Lazy-create BSIM4v7ModelCard — to_bsim4_card validates LEVEL=14
-        // and NMOS/PMOS type, throws ParseError otherwise.
-        auto card_it = bsim4_cards.find(m.model_name);
-        if (card_it == bsim4_cards.end()) {
-            try {
-                card_it = bsim4_cards.emplace(m.model_name,
-                                              to_bsim4_card(it->second)).first;
-            } catch (const ParseError& e) {
-                throw ParseError("Line " + std::to_string(m.line_number) +
-                                 ": " + e.what());
+
+        // Detect MOSFET level (cached per model name)
+        int level;
+        auto lev_it = mosfet_levels.find(m.model_name);
+        if (lev_it != mosfet_levels.end()) {
+            level = lev_it->second;
+        } else {
+            level = detect_mosfet_level(it->second);
+            mosfet_levels[m.model_name] = level;
+        }
+
+        if (level == 1) {
+            // MOS1 Level 1 Shichman-Hodges
+            auto card_it = mos1_cards.find(m.model_name);
+            if (card_it == mos1_cards.end()) {
+                try {
+                    card_it = mos1_cards.emplace(m.model_name,
+                                                  to_mos1_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
             }
+            MOS1Device::Geom mos1_geom;
+            mos1_geom.W   = m.geom.W;
+            mos1_geom.L   = m.geom.L;
+            mos1_geom.AD  = m.geom.AD;
+            mos1_geom.AS  = m.geom.AS;
+            mos1_geom.PD  = m.geom.PD;
+            mos1_geom.PS  = m.geom.PS;
+            mos1_geom.NRD = m.geom.NRD;
+            mos1_geom.NRS = m.geom.NRS;
+            mos1_geom.M   = m.geom.M;
+            auto dev = MOS1Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                        mos1_geom, *card_it->second);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else if (level == 14) {
+            // BSIM4v7 (LEVEL=14 or default)
+            auto card_it = bsim4_cards.find(m.model_name);
+            if (card_it == bsim4_cards.end()) {
+                try {
+                    card_it = bsim4_cards.emplace(m.model_name,
+                                                  to_bsim4_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            auto dev = BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                           m.geom, *card_it->second);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else {
+            throw ParseError("Line " + std::to_string(m.line_number) +
+                             ": Unsupported MOSFET LEVEL=" +
+                             std::to_string(level) + " for model '" +
+                             m.model_name + "'");
         }
-        auto dev = BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
-                                       m.geom, *card_it->second);
-        // Must happen before finalize() — setup() clears ic fields when !Given.
-        if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
-            dev->set_ic(m.ic_vds, m.ic_vds_given,
-                        m.ic_vgs, m.ic_vgs_given,
-                        m.ic_vbs, m.ic_vbs_given);
-        }
-        ckt.add_device(std::move(dev));
     }
     // Transfer card ownership to the Circuit (cards must outlive the devices).
     for (auto& [name, card] : bsim4_cards) {
         ckt.add_bsim4_model_card(std::move(card));
+    }
+    for (auto& [name, card] : mos1_cards) {
+        ckt.add_mos1_model_card(std::move(card));
     }
 
     // Resolve deferred BJTs

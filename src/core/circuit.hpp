@@ -14,6 +14,7 @@ namespace neospice {
 // Full definitions live in devices/*/device.hpp; we only need
 // the complete type in circuit.cpp (for unique_ptr destruction).
 struct BSIM4v7ModelCard;
+struct MOS1ModelCard;
 struct BJTModelCard;
 struct JFETModelCard;
 struct DIOModelCard;
@@ -104,6 +105,7 @@ public:
     /// Take ownership of a JFETModelCard so it outlives any JFETDevice
     /// that holds a non-owning pointer to it.
     void add_jfet_model_card(std::unique_ptr<JFETModelCard> card);
+    void add_mos1_model_card(std::unique_ptr<MOS1ModelCard> card);
     void add_dio_model_card(std::unique_ptr<DIOModelCard> card);
 
     /// Assign branch indices, build sparsity pattern, assign offsets.
@@ -155,6 +157,7 @@ private:
     // Owns model card instances for the lifetime of the Circuit so
     // device non-owning model_ pointers stay valid.
     std::vector<std::unique_ptr<BSIM4v7ModelCard>> bsim4_model_cards_;
+    std::vector<std::unique_ptr<MOS1ModelCard>> mos1_model_cards_;
     std::vector<std::unique_ptr<BJTModelCard>> bjt_model_cards_;
     std::vector<std::unique_ptr<JFETModelCard>> jfet_model_cards_;
     std::vector<std::unique_ptr<DIOModelCard>> dio_model_cards_;
