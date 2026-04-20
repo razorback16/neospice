@@ -17,8 +17,8 @@ namespace neospice {
 // of control node voltage columns).
 //
 // MNA stamps (KCL contributions):
-//   At np (current leaves): mat[np, sense_branch] += -gain
-//   At nn (current enters): mat[nn, sense_branch] += +gain
+//   At np (current leaves): mat[np, sense_branch] += +gain
+//   At nn (current enters): mat[nn, sense_branch] += -gain
 //
 // No RHS contribution.  extra_vars() returns 0 (no branch variable).
 // ---------------------------------------------------------------------------

@@ -13,10 +13,10 @@ namespace neospice {
 // transconductance is stamped directly into 4 matrix positions.
 //
 // MNA stamps (KCL contributions):
-//   At np (current leaves): mat[np,  ncp] += -gm
-//                           mat[np,  ncn] +=  gm
-//   At nn (current enters): mat[nn,  ncp] +=  gm
-//                           mat[nn,  ncn] += -gm
+//   At np (current leaves): mat[np,  ncp] += +gm
+//                           mat[np,  ncn] += -gm
+//   At nn (current enters): mat[nn,  ncp] += -gm
+//                           mat[nn,  ncn] += +gm
 //
 // No RHS contribution.  extra_vars() returns 0 (no branch variable).
 // ---------------------------------------------------------------------------
