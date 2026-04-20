@@ -23,6 +23,7 @@ public:
     /// Time-domain waveforms.
     void set_pulse(PulseParams p);
     void set_sin(SinParams p);
+    void set_pwl(PwlParams p);
 
     /// Resolve unspecified PULSE/SIN defaults using .tran parameters.
     void resolve_defaults(double tstep, double tstop);
@@ -55,6 +56,7 @@ private:
     SourceFunction func_ = SourceFunction::DC;
     PulseParams    pulse_;
     SinParams      sin_;
+    PwlParams      pwl_;
     double         current_time_ = 0.0;
 };
 

@@ -27,6 +27,11 @@ void VSource::set_sin(SinParams p) {
     sin_  = p;
 }
 
+void VSource::set_pwl(PwlParams p) {
+    func_ = SourceFunction::PWL;
+    pwl_  = std::move(p);
+}
+
 void VSource::resolve_defaults(double tstep, double tstop) {
     if (func_ == SourceFunction::PULSE) {
         // ngspice (vsrcload.c): TR/TF default to CKTstep when 0 or unspecified,
@@ -76,6 +81,25 @@ double VSource::value_at(double t) const {
         double dt = t - s.td;
         return s.v0 + s.va * std::sin(2.0 * M_PI * s.freq * dt + phase_rad)
                            * std::exp(-s.theta * dt);
+    }
+
+    case SourceFunction::PWL: {
+        const auto& pts = pwl_.points;
+        if (pts.empty()) return dc_value_;
+        if (t <= pts.front().first) return pts.front().second;
+        if (t >= pts.back().first) return pts.back().second;
+        // Binary search for the interval containing t
+        // Find first point with time > t
+        size_t hi = 0;
+        for (hi = 1; hi < pts.size(); ++hi) {
+            if (pts[hi].first >= t) break;
+        }
+        size_t lo = hi - 1;
+        double t0 = pts[lo].first, v0 = pts[lo].second;
+        double t1 = pts[hi].first, v1 = pts[hi].second;
+        if (t1 == t0) return v1;  // degenerate segment
+        double frac = (t - t0) / (t1 - t0);
+        return v0 + (v1 - v0) * frac;
     }
     }
     return dc_value_;
@@ -127,6 +151,16 @@ void VSource::ac_stamp(const std::vector<double>& /*voltages*/,
 
 std::vector<double> VSource::get_breakpoints(double tstart, double tstop) const {
     std::vector<double> bps;
+
+    if (func_ == SourceFunction::PWL) {
+        for (const auto& [tp, vp] : pwl_.points) {
+            if (tp > tstart && tp <= tstop) {
+                bps.push_back(tp);
+            }
+        }
+        return bps;
+    }
+
     if (func_ != SourceFunction::PULSE) return bps;
 
     const auto& p = pulse_;

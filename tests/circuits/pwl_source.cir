@@ -1,0 +1,5 @@
+PWL source test
+V1 in 0 PWL(0 0 1n 0 2n 1 3n 1 4n 0 5n 0)
+R1 in 0 1k
+.tran 0.1n 5n
+.end
