@@ -3,6 +3,7 @@ add_subdirectory(devices/bjt)
 add_subdirectory(devices/jfet)
 add_subdirectory(devices/dio)
 add_subdirectory(devices/mos1)
+add_subdirectory(devices/vbic)
 
 add_library(neospice_lib
     core/types.cpp
@@ -46,6 +47,7 @@ add_library(neospice_lib
     $<TARGET_OBJECTS:jfet_obj>
     $<TARGET_OBJECTS:dio_obj>
     $<TARGET_OBJECTS:mos1_obj>
+    $<TARGET_OBJECTS:vbic_obj>
 )
 
 target_include_directories(neospice_lib PUBLIC

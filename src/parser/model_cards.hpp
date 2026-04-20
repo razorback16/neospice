@@ -5,6 +5,7 @@
 #include "devices/bjt/bjt_device.hpp"            // BJTModelCard
 #include "devices/jfet/jfet_device.hpp"          // JFETModelCard
 #include "devices/dio/dio_device.hpp"            // DIOModelCard
+#include "devices/vbic/vbic_device.hpp"          // VBICModelCard
 #include "parser/tokenizer.hpp"
 #include <memory>
 #include <string>
@@ -54,6 +55,10 @@ std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card);
 /// Returns 1 for MOS1, 14 (default) for BSIM4v7.
 /// Only valid for NMOS/PMOS type cards.
 int detect_mosfet_level(const ModelCard& card);
+
+/// Translate a parsed .model card (NPN/PNP) into a VBICModelCard using
+/// the UCB VBICmParam dispatcher.  Used for VBIC model levels (4, 9, 12, 13).
+std::unique_ptr<VBICModelCard> to_vbic_card(const ModelCard& card);
 
 /// Translate a parsed .model card (SW or CSW) into a SwitchModel.
 /// card.type must be "sw" (voltage-controlled) or "csw" (current-controlled).
