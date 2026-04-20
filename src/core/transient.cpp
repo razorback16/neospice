@@ -263,8 +263,13 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     // quadratic interpolation (sol_prev2 lives at t - dt - prev_prev_dt).
     double prev_prev_dt = dt;
 
+    // saved_delta: the "natural" dt the solver wanted before it was cut to
+    // reach a breakpoint.  Set only when clamp_to_breakpoint shortens dt.
+    // (ngspice: CKTsaveDelta, dctran.c ~line 584)
+    double saved_delta = dt;
+
     // Counter: accepted steps since last source breakpoint crossing.
-    // Used to hold order at 1 (BE) for a few steps after a discontinuity.
+    // Used to guard global node-voltage LTE (which ngspice doesn't have).
     int steps_after_bp = 1000;
 
     int total_iterations = 0;
@@ -283,7 +288,11 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         // Clamp dt to not exceed tstop, breakpoints, or next output point
         dt = std::min(dt, dt_max);
         dt = std::max(dt, dt_min);
+        // Save "natural" dt before breakpoint clamping (ngspice CKTsaveDelta)
+        double unclamped_dt = dt;
         dt = ctrl.clamp_to_breakpoint(dt);
+        if (dt < unclamped_dt - 1e-18)
+            saved_delta = unclamped_dt;
         dt = ctrl.clamp_to_end(dt);
 
         if (dt < 1e-20) break;
@@ -370,8 +379,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         // Newton-Raphson solve
         auto nr = newton_solve(ckt, solver, solution, ckt.options);
         if (!nr.converged) {
-            // Newton failed — halve dt and retry
-            dt *= 0.5;
+            // Newton failed — cut dt by 8× (ngspice dctran.c ~802)
+            dt /= 8.0;
             if (dt < dt_min) {
                 // Clean up and throw
                 for (auto& dev : ckt.devices()) {
@@ -406,13 +415,14 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
 
         // Device-specific LTE — compute minimum suggested dt from charge
         // truncation error across all devices (BSIM4, MOS1, BJT, etc.).
-        // This always runs (matching ngspice's CKTtrunc default path).
+        // ngspice CKTtrunc (ckttrunc.c): device_dt = MIN(2*dt, timetemp).
         double device_dt = 1e30;
         if (step_count >= 2) {
             for (const auto& dev : ckt.devices()) {
                 device_dt = std::min(device_dt,
                     dev->compute_trunc(ckt.integrator_ctx, ckt.options));
             }
+            device_dt = std::min(2.0 * dt, device_dt);
             if (accepted && device_dt < dt * 0.9 && dt > dt_min * 1.01) {
                 accepted = false;
                 ctrl.record_rejection();
@@ -437,13 +447,16 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         step_count++;
         if (steps_after_bp < 1000) ++steps_after_bp;
 
-        // After crossing a source breakpoint, reset dt to tstep.
-        // Note: ngspice additionally resets order to 1 and reduces dt to
-        // 0.1 * min(saveDelta, bp_gap), but that interacts with device-specific
-        // charge integration differences. Keep the simpler approach.
+        // After crossing a source breakpoint: reduce dt to 0.1× the
+        // pre-breakpoint delta, matching ngspice (dctran.c ~561-562).
+        // Note: ngspice also resets order to 1 here, but our device charge
+        // integration diverges from ngspice at order 1 near switching edges,
+        // so we keep order 2 to avoid tripling the voltage error.
         if (ctrl.crossed_source_breakpoint() && step_count > 2) {
             steps_after_bp = 0;
-            dt = tstep;
+            double bp_gap = ctrl.next_breakpoint_gap();
+            dt = std::min(dt, 0.1 * std::min(saved_delta, bp_gap));
+            dt = std::max(dt, dt_min * 2.0);
         }
 
         // Advance to order 2 once two steps have been accepted
@@ -508,19 +521,18 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         sol_prev2 = sol_prev;
         sol_prev = solution;
 
-        // Propose next dt (constrained by LTE and device LTE).
-        // Require sab >= 4: LTE first evaluates at sab==3, so the
-        // proposed_dt from that evaluation is available at sab==4.
-        // ngspice: *timeStep = MIN(2 * *timeStep, timetemp) — cap growth at 2x.
-        if (step_count >= 2 && steps_after_bp >= 4) {
-            double proposed = ctrl.proposed_dt();
-            // Cap to 2x current dt (ngspice ckttrunc.c line 53)
+        // Propose next dt from device LTE (ngspice: CKTdelta = newdelta
+        // after CKTtrunc, dctran.c ~876).  Use device_dt which already
+        // incorporates the 2× growth cap from CKTtrunc.
+        // Also incorporate global LTE proposal when available.
+        if (step_count >= 2) {
+            double proposed = device_dt;
+            if (steps_after_bp >= 4) {
+                proposed = std::min(proposed, ctrl.proposed_dt());
+            }
             proposed = std::min(proposed, 2.0 * dt);
-            if (device_dt < proposed)
-                proposed = std::min(proposed, device_dt);
             dt = std::max(proposed, dt_min);
         }
-        // else keep dt = tstep for the first few steps post-breakpoint
     }
 
     // ---------------------------------------------------------------

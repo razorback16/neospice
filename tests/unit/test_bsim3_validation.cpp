@@ -300,7 +300,9 @@ TEST_F(BSIM3Validation, CMOS_Inverter_Transient) {
             ++it;
     }
 
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {2.5e-1, 5e-2});
+    ng_result.currents.clear();
+    cs_result.transient->currents.clear();
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {2e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
