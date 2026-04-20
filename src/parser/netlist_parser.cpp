@@ -20,6 +20,7 @@
 #include "devices/vccs_nonlinear.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/mos1/mos1_device.hpp"
+#include "devices/bsim3/bsim3_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
 #include "devices/vbic/vbic_device.hpp"
@@ -1713,13 +1714,14 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.add_dio_model_card(std::move(card));
     }
 
-    // Resolve deferred MOSFETs.  Level dispatch routes to different device
-    // implementations:  LEVEL=1 -> MOS1Device, LEVEL=14 (default) -> BSIM4v7Device.
-    // A single model card is created per distinct .model name (N:1 instance->card)
-    // and retained so all instances sharing the name share UCB's linked list.
+    // Resolve deferred MOSFETs.  Level dispatch:
+    //   LEVEL=1           -> MOS1 (Shichman-Hodges)
+    //   LEVEL=8 or 49     -> BSIM3v3
+    //   LEVEL=14 (default)-> BSIM4v7
     std::unordered_map<std::string, std::unique_ptr<BSIM4v7ModelCard>> bsim4_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS1ModelCard>> mos1_cards;
-    std::unordered_map<std::string, int> mosfet_levels;  // cache level per model
+    std::unordered_map<std::string, std::unique_ptr<BSIM3ModelCard>> bsim3_cards;
+    std::unordered_map<std::string, int> mosfet_levels;
     for (const auto& m : deferred_mosfets) {
         auto it = models.find(m.model_name);
         if (it == models.end()) {
@@ -1767,6 +1769,36 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                             m.ic_vbs, m.ic_vbs_given);
             }
             ckt.add_device(std::move(dev));
+        } else if (level == 8 || level == 49) {
+            // BSIM3v3
+            auto card_it = bsim3_cards.find(m.model_name);
+            if (card_it == bsim3_cards.end()) {
+                try {
+                    card_it = bsim3_cards.emplace(m.model_name,
+                                                  to_bsim3_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            BSIM3Device::Geom g3;
+            g3.W   = m.geom.W;
+            g3.L   = m.geom.L;
+            g3.AD  = m.geom.AD;
+            g3.AS  = m.geom.AS;
+            g3.PD  = m.geom.PD;
+            g3.PS  = m.geom.PS;
+            g3.NRD = m.geom.NRD;
+            g3.NRS = m.geom.NRS;
+            g3.M   = m.geom.M;
+            auto dev = BSIM3Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                         g3, *card_it->second);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
         } else if (level == 14) {
             // BSIM4v7 (LEVEL=14 or default)
             auto card_it = bsim4_cards.find(m.model_name);
@@ -1800,6 +1832,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     }
     for (auto& [name, card] : mos1_cards) {
         ckt.add_mos1_model_card(std::move(card));
+    }
+    for (auto& [name, card] : bsim3_cards) {
+        ckt.add_bsim3_model_card(std::move(card));
     }
 
     // Resolve deferred BJTs (Q-cards dispatch to BJT or VBIC based on LEVEL)

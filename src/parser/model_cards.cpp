@@ -5,6 +5,8 @@
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include "devices/mos1/mos1_def.hpp"
 #include "devices/mos1/mos1_shim.hpp"
+#include "devices/bsim3/bsim3_def.hpp"
+#include "devices/bsim3/bsim3_shim.hpp"
 #include "devices/bjt/bjt_def.hpp"
 #include "devices/bjt/bjt_shim.hpp"
 #include "devices/jfet/jfet_def.hpp"
@@ -210,6 +212,94 @@ std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card) {
         if (rc != bsim4v7::Shim::OK) {
             throw ParseError(
                 "Model '" + card.name + "': BSIM4mParam failed for '" +
+                lkey + "' (rc=" + std::to_string(rc) + ")");
+        }
+    }
+
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// to_bsim3_card — parse a .model LEVEL=8 or LEVEL=49 card into a
+// BSIM3ModelCard via the UCB BSIM3mParam dispatcher.
+// ---------------------------------------------------------------------------
+std::unique_ptr<BSIM3ModelCard> to_bsim3_card(const ModelCard& card) {
+    auto out = std::make_unique<BSIM3ModelCard>();
+    auto& ucb = out->ucb;
+
+    // Type check — .model TYPE field is lowercased at parse time.
+    if (card.type == "nmos") {
+        ucb.BSIM3type      = 1;
+        ucb.BSIM3typeGiven = 1;
+    } else if (card.type == "pmos") {
+        ucb.BSIM3type      = -1;
+        ucb.BSIM3typeGiven = 1;
+    } else {
+        throw ParseError(
+            "Model '" + card.name + "': unsupported MOS type '" + card.type +
+            "' (only NMOS/PMOS supported)");
+    }
+
+    // LEVEL check — BSIM3 uses levels 8 and 49.
+    auto level_it = card.params.find("level");
+    int level = (level_it == card.params.end()) ? 49
+                                                : static_cast<int>(level_it->second);
+    if (level != 8 && level != 49) {
+        throw ParseError(
+            "Model '" + card.name +
+            "': only LEVEL=8 or LEVEL=49 (BSIM3v3) is supported; got LEVEL=" +
+            std::to_string(level));
+    }
+
+    // Walk the BSIM3 model parameter table, dispatching each matching
+    // parsed key through BSIM3mParam.
+    for (const auto& [lkey, val] : card.params) {
+        if (lkey == "level") continue;
+
+        const bsim3::Shim::IfParm* entry = nullptr;
+        for (int i = 0; i < bsim3::BSIM3mPTSize; ++i) {
+            if (std::strcmp(bsim3::BSIM3mPTable[i].keyword, lkey.c_str()) == 0) {
+                entry = &bsim3::BSIM3mPTable[i];
+                break;
+            }
+        }
+        if (entry == nullptr) {
+            std::fprintf(stderr,
+                "Warning: model '%s': unknown BSIM3 parameter '%s' (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        bsim3::Shim::IfValue v{};
+        int dtype = entry->dataType & 0x1F;
+        if (dtype & bsim3::Shim::IF_REAL) {
+            v.rValue = val;
+        } else if (dtype & bsim3::Shim::IF_INTEGER) {
+            v.iValue = static_cast<int>(val);
+        } else if (dtype & bsim3::Shim::IF_FLAG) {
+            v.iValue = (val != 0.0) ? 1 : 0;
+        } else if (dtype & bsim3::Shim::IF_STRING) {
+            // VERSION is the only string param in BSIM3.  The adapter stamps
+            // VERSION="3.3.0" in BSIM3Device::make() so skip it here.
+            std::fprintf(stderr,
+                "Warning: model '%s': string parameter '%s' not supported via .model; "
+                "using adapter default\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        } else if (dtype & bsim3::Shim::IF_REALVEC) {
+            throw ParseError(
+                "Model '" + card.name + "': real-vector parameter '" + lkey +
+                "' not supported");
+        } else {
+            throw ParseError(
+                "Model '" + card.name + "': parameter '" + lkey +
+                "' has unrecognized data type in BSIM3mPTable");
+        }
+
+        int rc = bsim3::BSIM3mParam(entry->id, &v, &ucb);
+        if (rc != bsim3::Shim::OK) {
+            throw ParseError(
+                "Model '" + card.name + "': BSIM3mParam failed for '" +
                 lkey + "' (rc=" + std::to_string(rc) + ")");
         }
     }

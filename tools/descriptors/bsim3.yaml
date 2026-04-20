@@ -1,0 +1,66 @@
+model:
+  ngspice_prefix: "BSIM3"
+  neospice_name: "bsim3"
+  neospice_namespace: "bsim3"
+  instance_struct: "BSIM3instance"
+  model_struct: "BSIM3model"
+  instance_tag: "sBSIM3instance"
+  model_tag: "sBSIM3model"
+  cpp_instance: "BSIM3Instance"
+  cpp_model: "BSIM3Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "BSIM3dNode" }
+    - { name: "g", field: "BSIM3gNode" }
+    - { name: "s", field: "BSIM3sNode" }
+    - { name: "b", field: "BSIM3bNode" }
+  state_count: 17
+  state_base_field: "BSIM3states"
+  next_instance_field: "BSIM3nextInstance"
+  instances_field: "BSIM3instances"
+  next_model_field: "BSIM3nextModel"
+  model_ptr_field: "BSIM3modPtr"
+  name_field: "BSIM3name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "b3set.c"
+    load: "b3ld.c"
+    temp: "b3temp.c"
+    check: "b3check.c"
+    mpar: "b3mpar.c"
+    param: "b3par.c"
+    devsup: "b3.c"
+  skip_files:
+    - "b3acld.c"
+    - "b3noi.c"
+    - "b3pzld.c"
+    - "b3cvtest.c"
+    - "b3ask.c"
+    - "b3mask.c"
+    - "b3del.c"
+    - "b3dest.c"
+    - "b3getic.c"
+    - "b3trunc.c"
+    - "b3soachk.c"
+    - "bsim3init.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "BSIM3setup"
+  temp_function: "BSIM3temp"
+  load_function: "BSIM3load"
+  cleanup_linked_lists:
+    - { field: "pSizeDependParamKnot", next_field: "pNext" }
+  version_stamp:
+    field: "BSIM3version"
+    given_field: "BSIM3versionGiven"
+    value: "3.3.0"
+  geometry:
+    - { name: "W",   field: "BSIM3w",                given: "BSIM3wGiven",                default: "1e-6",  always_given: true }
+    - { name: "L",   field: "BSIM3l",                given: "BSIM3lGiven",                default: "1e-7",  always_given: true }
+    - { name: "AD",  field: "BSIM3drainArea",         given: "BSIM3drainAreaGiven",         default: "0.0" }
+    - { name: "AS",  field: "BSIM3sourceArea",        given: "BSIM3sourceAreaGiven",        default: "0.0" }
+    - { name: "PD",  field: "BSIM3drainPerimeter",    given: "BSIM3drainPerimeterGiven",    default: "0.0" }
+    - { name: "PS",  field: "BSIM3sourcePerimeter",   given: "BSIM3sourcePerimeterGiven",   default: "0.0" }
+    - { name: "NRD", field: "BSIM3drainSquares",      given: "BSIM3drainSquaresGiven",      default: "0.0" }
+    - { name: "NRS", field: "BSIM3sourceSquares",     given: "BSIM3sourceSquaresGiven",     default: "0.0" }
