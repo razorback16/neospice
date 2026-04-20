@@ -78,6 +78,25 @@ void TimeStepController::add_source_breakpoint(double t) {
     }
 }
 
+double TimeStepController::next_breakpoint_gap() const {
+    // Return the gap to the next source breakpoint from current time.
+    // If no source breakpoints remain, use the nearest regular breakpoint.
+    // If neither, return tstop - time.
+    if (!source_breakpoints_.empty()) {
+        double bp = *source_breakpoints_.begin();
+        if (bp > time_ + 1e-18) {
+            return bp - time_;
+        }
+    }
+    if (!breakpoints_.empty()) {
+        double bp = *breakpoints_.begin();
+        if (bp > time_ + 1e-18) {
+            return bp - time_;
+        }
+    }
+    return tstop_ - time_;
+}
+
 double TimeStepController::clamp_to_breakpoint(double proposed_dt) const {
     double t_next = time_ + proposed_dt;
     if (!breakpoints_.empty()) {

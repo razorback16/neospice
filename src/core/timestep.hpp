@@ -30,6 +30,9 @@ public:
     /// True if the last advance() consumed one or more SOURCE breakpoints.
     bool crossed_source_breakpoint() const { return crossed_src_bp_; }
 
+    /// Distance from current_time to the next source breakpoint (or tstop if none).
+    double next_breakpoint_gap() const;
+
     int rejected_count() const { return rejected_; }
     void record_rejection() { ++rejected_; }
 

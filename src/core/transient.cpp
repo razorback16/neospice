@@ -253,12 +253,18 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     // ---------------------------------------------------------------
     // 8. Adaptive time-stepping loop
     // ---------------------------------------------------------------
-    double dt = tstep;
+    // ngspice: delta = MIN(finalTime/100, step)/10  (dctran.c ~line 112)
+    // Then at the first breakpoint (t=0): delta /= 10  (dctran.c ~line 569)
+    // Combined: initial dt = MIN(tstop/100, tstep) / 100
+    double dt = std::min(tstop / 100.0, tstep) / 100.0;
     ckt.integrator_ctx.integrate_method = use_gear ? 1 : 0;
 
+    // prev_prev_dt: the dt of the step before the current one, needed for
+    // quadratic interpolation (sol_prev2 lives at t - dt - prev_prev_dt).
+    double prev_prev_dt = dt;
+
     // Counter: accepted steps since last source breakpoint crossing.
-    // Used to hold order at 1 (BE) for 2 steps after a discontinuity
-    // so the second-difference LTE doesn't see the edge.
+    // Used to hold order at 1 (BE) for a few steps after a discontinuity.
     int steps_after_bp = 1000;
 
     int total_iterations = 0;
@@ -386,8 +392,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         }
         solution = nr.solution;
 
-        // LTE check — skip first 2 steps (need 3 points) and skip
-        // 3 steps after a source breakpoint so the second-difference
+        // Global node-voltage LTE check — skip first 2 steps (need 3 points)
+        // and skip 3 steps after a source breakpoint so the second-difference
         // history is fully populated from uniform post-edge steps.
         bool accepted = true;
         if (step_count >= 2 && steps_after_bp >= 3) {
@@ -400,6 +406,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
 
         // Device-specific LTE — compute minimum suggested dt from charge
         // truncation error across all devices (BSIM4, MOS1, BJT, etc.).
+        // This always runs (matching ngspice's CKTtrunc default path).
         double device_dt = 1e30;
         if (step_count >= 2) {
             for (const auto& dev : ckt.devices()) {
@@ -423,14 +430,17 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         }
 
         // Accept step
+        prev_prev_dt = ctrl.prev_dt();  // save before overwriting
         ctrl.set_prev_dt(dt);
         ctrl.advance(dt);
         ctrl.set_dt(dt);
         step_count++;
         if (steps_after_bp < 1000) ++steps_after_bp;
 
-        // After crossing a source breakpoint, reduce dt and skip LTE
-        // for a few steps to let the solution settle after the edge.
+        // After crossing a source breakpoint, reset dt to tstep.
+        // Note: ngspice additionally resets order to 1 and reduces dt to
+        // 0.1 * min(saveDelta, bp_gap), but that interacts with device-specific
+        // charge integration differences. Keep the simpler approach.
         if (ctrl.crossed_source_breakpoint() && step_count > 2) {
             steps_after_bp = 0;
             dt = tstep;
@@ -465,8 +475,24 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             if (std::abs(ctrl.current_time() - next_output_time) < 1e-18) {
                 // Landed exactly on output point
                 store_point(next_output_time, solution);
+            } else if (step_count >= 2 && prev_prev_dt > 1e-20) {
+                // Quadratic (Lagrange) interpolation using 3 history points:
+                //   sol_prev2 at t0, sol_prev at t1, solution at t2
+                double t2 = ctrl.current_time();
+                double t1 = t2 - dt;
+                double t0 = t1 - prev_prev_dt;  // dt of step before this one
+                double t_out = next_output_time;
+                // Lagrange basis values (same for all variables)
+                double L0 = ((t_out - t1) * (t_out - t2)) / ((t0 - t1) * (t0 - t2));
+                double L1 = ((t_out - t0) * (t_out - t2)) / ((t1 - t0) * (t1 - t2));
+                double L2 = ((t_out - t0) * (t_out - t1)) / ((t2 - t0) * (t2 - t1));
+                std::vector<double> interp(n);
+                for (int32_t i = 0; i < n; ++i) {
+                    interp[i] = L0 * sol_prev2[i] + L1 * sol_prev[i] + L2 * solution[i];
+                }
+                store_point(next_output_time, interp);
             } else {
-                // Interpolate between sol_prev (at t-dt) and solution (at t)
+                // Linear interpolation for first 2 steps (only 2 history points)
                 double alpha = (next_output_time - (ctrl.current_time() - dt)) / dt;
                 alpha = std::max(0.0, std::min(1.0, alpha));
                 std::vector<double> interp(n);
@@ -485,13 +511,16 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
         // Propose next dt (constrained by LTE and device LTE).
         // Require sab >= 4: LTE first evaluates at sab==3, so the
         // proposed_dt from that evaluation is available at sab==4.
+        // ngspice: *timeStep = MIN(2 * *timeStep, timetemp) — cap growth at 2x.
         if (step_count >= 2 && steps_after_bp >= 4) {
             double proposed = ctrl.proposed_dt();
+            // Cap to 2x current dt (ngspice ckttrunc.c line 53)
+            proposed = std::min(proposed, 2.0 * dt);
             if (device_dt < proposed)
-                proposed = device_dt;
+                proposed = std::min(proposed, device_dt);
             dt = std::max(proposed, dt_min);
         }
-        // else keep dt = tstep for the first few steps
+        // else keep dt = tstep for the first few steps post-breakpoint
     }
 
     // ---------------------------------------------------------------
