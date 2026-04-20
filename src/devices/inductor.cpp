@@ -1,4 +1,6 @@
 #include "devices/inductor.hpp"
+#include <cmath>
+#include <algorithm>
 #include <stdexcept>
 
 namespace neospice {
@@ -85,6 +87,12 @@ void Inductor::set_integration_method(int method) {
 }
 
 void Inductor::accept_step(double i_branch, double v_across) {
+    // Track flux history for LTE (before i_prev_ is overwritten)
+    phi_prev3_ = phi_prev2_;
+    phi_prev2_ = phi_prev_;
+    phi_prev_ = inductance_ * i_prev_;
+    dt_prev_ = dt_;
+
     v_prev2_ = v_prev_;
     i_prev2_ = i_prev_;
     i_prev_ = i_branch;
@@ -110,6 +118,11 @@ void Inductor::init_dc_state(const std::vector<double>& sol) {
     i_prev2_ = i;
     v_prev2_ = va - vc;
     gear_ready_ = false;
+
+    // Initialize flux history
+    phi_prev_ = inductance_ * i_prev_;
+    phi_prev2_ = phi_prev_;
+    phi_prev3_ = phi_prev_;
 }
 
 void Inductor::init_dc_state_gear(double i_prev, double v_prev,
@@ -123,6 +136,56 @@ void Inductor::init_dc_state_gear(double i_prev, double v_prev,
 
 std::vector<std::string> Inductor::output_currents() const {
     return { "i(" + name_ + ")" };
+}
+
+// ---------------------------------------------------------------------------
+// compute_trunc — LTE-based timestep control for inductor flux
+//
+// Mirrors ngspice CKTterr(INDflux, ckt, timeStep) in cktterr.c.
+// Uses divided differences of flux history to estimate local truncation
+// error, then limits the next timestep so LTE stays within tolerance.
+// ---------------------------------------------------------------------------
+double Inductor::compute_trunc(const IntegratorCtx& ctx,
+                               const SimOptions& opts) const {
+    if (!transient_ || ctx.order < 2 || ctx.delta <= 0.0)
+        return 1e30;
+
+    const double h0 = ctx.delta;              // current timestep
+    const double h1 = ctx.delta_old[1];       // previous timestep
+    if (h1 <= 0.0) return 1e30;
+
+    // Current flux
+    double phi0 = inductance_ * i_prev_;    // flux at current accepted solution
+    double phi1 = phi_prev_;                 // flux at previous step
+    double phi2 = phi_prev2_;                // flux at two steps ago
+
+    // Second divided difference of flux (CKTterr divided-difference loop)
+    double dd1 = (phi0 - phi1) / h0;
+    double dd2 = ((phi0 - phi1) / h0 - (phi1 - phi2) / h1) / (h0 + h1);
+
+    // Tolerance (matches CKTterr):
+    //   volttol = abstol + reltol * max(|v_branch0|, |v_branch1|)
+    //   chargetol = reltol * max(|phi0|, chgtol) / delta
+    //   tol = max(volttol, chargetol)
+    // For inductor, the "voltage" on the state variable is the voltage across
+    // the inductor (v_prev_), which is the derivative of flux.
+    double volttol = opts.abstol + opts.reltol *
+                     std::max(std::abs(v_prev_), std::abs(dd1));
+    double chargetol = opts.reltol *
+                       std::max(std::abs(phi0), opts.chgtol) / h0;
+    double tol = std::max(volttol, chargetol);
+    if (tol <= 0.0) return 1e30;
+
+    // LTE coefficient: trap order 2 = 1/12, gear order 2 = 2/9
+    const double lte_coeff = ctx.lte_coefficient();
+
+    double lte_abs = lte_coeff * std::abs(dd2);
+    if (lte_abs <= opts.abstol) return 1e30;   // ngspice: max(abstol, factor*|diff|)
+
+    double del = opts.trtol * tol / lte_abs;
+    del = std::sqrt(del);    // order == 2
+
+    return del;
 }
 
 } // namespace neospice

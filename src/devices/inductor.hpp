@@ -35,6 +35,10 @@ public:
 
     std::vector<std::string> output_currents() const override;
 
+    // LTE-based timestep control
+    double compute_trunc(const IntegratorCtx& ctx,
+                         const SimOptions& opts) const override;
+
 private:
     int32_t np_, nn_;
     int32_t branch_idx_ = -1;
@@ -47,6 +51,12 @@ private:
     double v_prev2_ = 0.0;
     double i_prev2_ = 0.0;
     bool gear_ready_ = false;
+
+    // Flux history for LTE-based timestep control (compute_trunc)
+    double phi_prev_ = 0.0;       // flux(n-1) = L * i_prev
+    double phi_prev2_ = 0.0;      // flux(n-2)
+    double phi_prev3_ = 0.0;      // flux(n-3)
+    double dt_prev_ = 0.0;        // timestep at previous accepted step
 
     MatrixOffset off_p_br_  = -1;  // (np, branch)
     MatrixOffset off_n_br_  = -1;  // (nn, branch)

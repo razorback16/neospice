@@ -28,6 +28,10 @@ public:
     // Initialize with explicit history for Gear BDF-2 (marks gear_ready)
     void init_dc_state_gear(double v_prev, double i_prev, double v_prev2, double i_prev2);
 
+    // LTE-based timestep control
+    double compute_trunc(const IntegratorCtx& ctx,
+                         const SimOptions& opts) const override;
+
 private:
     int32_t np_, nn_;
     double cap_;
@@ -39,6 +43,12 @@ private:
     bool gear_ready_ = false;
     double v_prev2_ = 0.0;        // two-step-back voltage for Gear
     double i_prev2_ = 0.0;        // two-step-back current for Gear
+
+    // Charge history for LTE-based timestep control (compute_trunc)
+    double q_prev_ = 0.0;         // Q(n-1) = C * v_prev
+    double q_prev2_ = 0.0;        // Q(n-2)
+    double q_prev3_ = 0.0;        // Q(n-3)
+    double dt_prev_ = 0.0;        // timestep at previous accepted step
 
     MatrixOffset off_pp_ = -1, off_pn_ = -1, off_np_ = -1, off_nn_ = -1;
 };

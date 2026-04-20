@@ -1,4 +1,6 @@
 #include "devices/capacitor.hpp"
+#include <cmath>
+#include <algorithm>
 
 namespace neospice {
 
@@ -70,6 +72,12 @@ void Capacitor::set_integration_method(int method) {
 }
 
 void Capacitor::accept_step(double v_across) {
+    // Track charge history for LTE (before v_prev_ is overwritten)
+    q_prev3_ = q_prev2_;
+    q_prev2_ = q_prev_;
+    q_prev_ = cap_ * v_prev_;
+    dt_prev_ = dt_;
+
     if (integration_method_ == 1 && gear_ready_) {
         double i_new = (cap_ / (2.0 * dt_)) * (3.0 * v_across - 4.0 * v_prev_ + v_prev2_);
         v_prev2_ = v_prev_;
@@ -104,6 +112,11 @@ void Capacitor::init_dc_state(const std::vector<double>& sol) {
     v_prev2_ = v_prev_;
     i_prev2_ = 0.0;
     gear_ready_ = false;
+
+    // Initialize charge history
+    q_prev_ = cap_ * v_prev_;
+    q_prev2_ = q_prev_;
+    q_prev3_ = q_prev_;
 }
 
 void Capacitor::init_dc_state_gear(double v_prev, double i_prev,
@@ -113,6 +126,56 @@ void Capacitor::init_dc_state_gear(double v_prev, double i_prev,
     v_prev2_ = v_prev2;
     i_prev2_ = i_prev2;
     gear_ready_ = true;
+}
+
+// ---------------------------------------------------------------------------
+// compute_trunc — LTE-based timestep control for capacitor charge
+//
+// Mirrors ngspice CKTterr(CAPqcap, ckt, timeStep) in cktterr.c.
+// Uses divided differences of charge history to estimate local truncation
+// error, then limits the next timestep so LTE stays within tolerance.
+// ---------------------------------------------------------------------------
+double Capacitor::compute_trunc(const IntegratorCtx& ctx,
+                                const SimOptions& opts) const {
+    if (!transient_ || ctx.order < 2 || ctx.delta <= 0.0)
+        return 1e30;
+
+    const double h0 = ctx.delta;              // current timestep
+    const double h1 = ctx.delta_old[1];       // previous timestep
+    if (h1 <= 0.0) return 1e30;
+
+    // Current charge and current (dQ/dt companion model)
+    double q0 = cap_ * v_prev_;    // charge at current accepted solution
+    // Note: q_prev_ was saved BEFORE v_prev_ was updated, so it holds Q(n-1)
+    double q1 = q_prev_;           // charge at previous step
+    double q2 = q_prev2_;          // charge at two steps ago
+
+    // Second divided difference of charge (CKTterr divided-difference loop)
+    double dd1 = (q0 - q1) / h0;
+    double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
+
+    // Tolerance (matches CKTterr):
+    //   volttol = abstol + reltol * max(|ccap0|, |ccap1|)
+    //   chargetol = reltol * max(|q0|, chgtol) / delta
+    //   tol = max(volttol, chargetol)
+    // The current (ccap) is i_prev_ after the step was accepted.
+    double volttol = opts.abstol + opts.reltol *
+                     std::max(std::abs(i_prev_), std::abs(dd1));
+    double chargetol = opts.reltol *
+                       std::max(std::abs(q0), opts.chgtol) / h0;
+    double tol = std::max(volttol, chargetol);
+    if (tol <= 0.0) return 1e30;
+
+    // LTE coefficient: trap order 2 = 1/12, gear order 2 = 2/9
+    const double lte_coeff = ctx.lte_coefficient();
+
+    double lte_abs = lte_coeff * std::abs(dd2);
+    if (lte_abs <= opts.abstol) return 1e30;   // ngspice: max(abstol, factor*|diff|)
+
+    double del = opts.trtol * tol / lte_abs;
+    del = std::sqrt(del);    // order == 2
+
+    return del;
 }
 
 } // namespace neospice
