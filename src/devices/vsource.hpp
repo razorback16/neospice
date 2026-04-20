@@ -60,7 +60,7 @@ public:
     /// Also treats explicit 0 as "unspecified" (matching ngspice behaviour).
     void resolve_defaults(double tstep, double tstop);
 
-    /// Return PULSE edge breakpoints in [tstart, tstop].
+    /// Return source breakpoints in (tstart, tstop].
     std::vector<double> get_breakpoints(double tstart, double tstop) const;
 
     // Device interface

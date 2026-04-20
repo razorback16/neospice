@@ -88,8 +88,6 @@ double VSource::value_at(double t) const {
         if (pts.empty()) return dc_value_;
         if (t <= pts.front().first) return pts.front().second;
         if (t >= pts.back().first) return pts.back().second;
-        // Binary search for the interval containing t
-        // Find first point with time > t
         size_t hi = 0;
         for (hi = 1; hi < pts.size(); ++hi) {
             if (pts[hi].first >= t) break;

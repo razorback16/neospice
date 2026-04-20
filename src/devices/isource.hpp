@@ -34,7 +34,7 @@ public:
     /// Evaluate the source value at time t.
     double value_at(double t) const;
 
-    /// Return PULSE edge breakpoints in [tstart, tstop].
+    /// Return source breakpoints in (tstart, tstop].
     std::vector<double> get_breakpoints(double tstart, double tstop) const;
 
     // Device interface — no matrix entries, RHS only
