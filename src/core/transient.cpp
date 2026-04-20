@@ -22,6 +22,16 @@ static std::string to_lower(std::string s) {
     return s;
 }
 
+static std::string make_branch_key(const std::string& dname) {
+    std::string lower = to_lower(dname);
+    auto dot = lower.rfind('.');
+    if (dot != std::string::npos && dot + 1 < lower.size()) {
+        char type_letter = lower[dot + 1];
+        return "i(" + std::string(1, type_letter) + "." + lower + ")";
+    }
+    return "i(" + lower + ")";
+}
+
 // Collect PULSE/SIN breakpoints from sources
 static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double tstop) {
     for (auto& dev : ckt.devices()) {
@@ -129,7 +139,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
     auto add_tran_slot = [&](int32_t br, const std::string& dname) {
         if (br >= 0 && br < n)
-            c_slots.push_back({"i(" + to_lower(dname) + ")", br});
+            c_slots.push_back({make_branch_key(dname), br});
     };
     for (const auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<const VSource*>(dev.get()))

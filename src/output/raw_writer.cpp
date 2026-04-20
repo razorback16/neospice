@@ -1,4 +1,5 @@
 #include "output/raw_writer.hpp"
+#include "api/neospice.hpp"
 #include <cstdio>
 #include <ctime>
 #include <cstring>
@@ -14,12 +15,12 @@ static std::string current_date_string() {
     return buf;
 }
 
-void write_raw(const std::string& filepath, const TransientResult& result) {
-    FILE* fp = std::fopen(filepath.c_str(), "wb");
-    if (!fp) return;
-    char stream_buf[256 * 1024];
-    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
+// ---------------------------------------------------------------------------
+// Internal helpers that write a single plot to an already-open FILE*.
+// ---------------------------------------------------------------------------
 
+static void write_plot_transient(FILE* fp, const TransientResult& result,
+                                 const std::string& title) {
     std::vector<std::string> var_names;
     std::vector<int> var_types;
     var_names.push_back("time");
@@ -37,7 +38,7 @@ void write_raw(const std::string& filepath, const TransientResult& result) {
     std::size_t npoints = result.time.size();
     std::size_t nvars = var_names.size();
 
-    std::fprintf(fp, "Title: neospice Transient Analysis\n");
+    std::fprintf(fp, "Title: %s\n", title.c_str());
     std::fprintf(fp, "Date: %s\n", current_date_string().c_str());
     std::fprintf(fp, "Plotname: Transient Analysis\n");
     std::fprintf(fp, "Flags: real\n");
@@ -64,13 +65,10 @@ void write_raw(const std::string& filepath, const TransientResult& result) {
             row[c] = (*col_ptrs[c])[pt];
         std::fwrite(row.data(), sizeof(double), nvars, fp);
     }
-    std::fclose(fp);
 }
 
-void write_raw(const std::string& filepath, const DCResult& result) {
-    FILE* fp = std::fopen(filepath.c_str(), "wb");
-    if (!fp) return;
-
+static void write_plot_dc(FILE* fp, const DCResult& result,
+                          const std::string& title) {
     std::vector<std::string> var_names;
     std::vector<int> var_types;
 
@@ -85,9 +83,9 @@ void write_raw(const std::string& filepath, const DCResult& result) {
 
     std::size_t nvars = var_names.size();
 
-    std::fprintf(fp, "Title: neospice DC Analysis\n");
+    std::fprintf(fp, "Title: %s\n", title.c_str());
     std::fprintf(fp, "Date: %s\n", current_date_string().c_str());
-    std::fprintf(fp, "Plotname: DC Operating Point\n");
+    std::fprintf(fp, "Plotname: Operating Point\n");
     std::fprintf(fp, "Flags: real\n");
     std::fprintf(fp, "No. Variables: %zu\n", nvars);
     std::fprintf(fp, "No. Points: 1\n");
@@ -106,15 +104,10 @@ void write_raw(const std::string& filepath, const DCResult& result) {
         double v = val;
         std::fwrite(&v, sizeof(double), 1, fp);
     }
-    std::fclose(fp);
 }
 
-void write_raw(const std::string& filepath, const ACResult& result) {
-    FILE* fp = std::fopen(filepath.c_str(), "wb");
-    if (!fp) return;
-    char stream_buf[256 * 1024];
-    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
-
+static void write_plot_ac(FILE* fp, const ACResult& result,
+                          const std::string& title) {
     std::vector<std::string> var_names;
     std::vector<int> var_types;
     var_names.push_back("frequency");
@@ -132,7 +125,7 @@ void write_raw(const std::string& filepath, const ACResult& result) {
     std::size_t npoints = result.frequency.size();
     std::size_t nvars = var_names.size();
 
-    std::fprintf(fp, "Title: neospice AC Analysis\n");
+    std::fprintf(fp, "Title: %s\n", title.c_str());
     std::fprintf(fp, "Date: %s\n", current_date_string().c_str());
     std::fprintf(fp, "Plotname: AC Analysis\n");
     std::fprintf(fp, "Flags: complex\n");
@@ -142,7 +135,10 @@ void write_raw(const std::string& filepath, const ACResult& result) {
     for (std::size_t i = 0; i < nvars; ++i) {
         const char* type_str = (var_types[i] == 0) ? "frequency" :
                                (var_types[i] == 1) ? "voltage" : "current";
-        std::fprintf(fp, "\t%zu\t%s\t%s\n", i, var_names[i].c_str(), type_str);
+        if (var_types[i] == 0)
+            std::fprintf(fp, "\t%zu\t%s\t%s\tgrid=3\n", i, var_names[i].c_str(), type_str);
+        else
+            std::fprintf(fp, "\t%zu\t%s\t%s\n", i, var_names[i].c_str(), type_str);
     }
     std::fprintf(fp, "Binary:\n");
 
@@ -162,15 +158,10 @@ void write_raw(const std::string& filepath, const ACResult& result) {
         }
         std::fwrite(row.data(), sizeof(double), 2 * nvars, fp);
     }
-    std::fclose(fp);
 }
 
-void write_raw(const std::string& filepath, const DCSweepResult& result) {
-    FILE* fp = std::fopen(filepath.c_str(), "wb");
-    if (!fp) return;
-    char stream_buf[256 * 1024];
-    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
-
+static void write_plot_dc_sweep(FILE* fp, const DCSweepResult& result,
+                                const std::string& title) {
     std::vector<std::string> var_names;
     std::vector<int> var_types;
     var_names.push_back(result.sweep_var);
@@ -188,7 +179,7 @@ void write_raw(const std::string& filepath, const DCSweepResult& result) {
     std::size_t npoints = result.sweep_values.size();
     std::size_t nvars = var_names.size();
 
-    std::fprintf(fp, "Title: neospice DC Sweep Analysis\n");
+    std::fprintf(fp, "Title: %s\n", title.c_str());
     std::fprintf(fp, "Date: %s\n", current_date_string().c_str());
     std::fprintf(fp, "Plotname: DC Transfer Characteristic\n");
     std::fprintf(fp, "Flags: real\n");
@@ -215,6 +206,73 @@ void write_raw(const std::string& filepath, const DCSweepResult& result) {
             row[c] = (*col_ptrs[c])[pt];
         std::fwrite(row.data(), sizeof(double), nvars, fp);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Public API: single-analysis overloads (open file, write one plot, close).
+// ---------------------------------------------------------------------------
+
+void write_raw(const std::string& filepath, const TransientResult& result,
+               const std::string& title) {
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
+    char stream_buf[256 * 1024];
+    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
+    write_plot_transient(fp, result, title.empty() ? "neospice Transient Analysis" : title);
+    std::fclose(fp);
+}
+
+void write_raw(const std::string& filepath, const DCResult& result,
+               const std::string& title) {
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
+    write_plot_dc(fp, result, title.empty() ? "neospice DC Analysis" : title);
+    std::fclose(fp);
+}
+
+void write_raw(const std::string& filepath, const ACResult& result,
+               const std::string& title) {
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
+    char stream_buf[256 * 1024];
+    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
+    write_plot_ac(fp, result, title.empty() ? "neospice AC Analysis" : title);
+    std::fclose(fp);
+}
+
+void write_raw(const std::string& filepath, const DCSweepResult& result,
+               const std::string& title) {
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
+    char stream_buf[256 * 1024];
+    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
+    write_plot_dc_sweep(fp, result, title.empty() ? "neospice DC Sweep Analysis" : title);
+    std::fclose(fp);
+}
+
+// ---------------------------------------------------------------------------
+// Multi-plot: writes all present analyses to a single concatenated raw file.
+// Plot order matches ngspice: AC/Tran/DCSweep first, then Operating Point.
+// ---------------------------------------------------------------------------
+
+void write_raw(const std::string& filepath, const SimulationResult& result,
+               const std::string& title) {
+    FILE* fp = std::fopen(filepath.c_str(), "wb");
+    if (!fp) return;
+    char stream_buf[256 * 1024];
+    std::setvbuf(fp, stream_buf, _IOFBF, sizeof(stream_buf));
+
+    std::string t = title.empty() ? "neospice" : title;
+
+    if (result.ac)
+        write_plot_ac(fp, *result.ac, t);
+    if (result.transient)
+        write_plot_transient(fp, *result.transient, t);
+    if (result.dc_sweep)
+        write_plot_dc_sweep(fp, *result.dc_sweep, t);
+    if (result.dc)
+        write_plot_dc(fp, *result.dc, t);
+
     std::fclose(fp);
 }
 

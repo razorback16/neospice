@@ -260,7 +260,20 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     while (start < netlist.size() &&
            std::isspace(static_cast<unsigned char>(netlist[start])))
         ++start;
-    auto lines = tokenize(netlist.substr(start));
+    std::string trimmed = netlist.substr(start);
+
+    // Extract the title (first non-empty line) before tokenization discards it.
+    {
+        auto nl = trimmed.find('\n');
+        std::string first_line = (nl != std::string::npos) ? trimmed.substr(0, nl) : trimmed;
+        while (!first_line.empty() && (first_line.back() == '\r' || first_line.back() == ' ' || first_line.back() == '\t'))
+            first_line.pop_back();
+        std::transform(first_line.begin(), first_line.end(), first_line.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        ckt.title = first_line;
+    }
+
+    auto lines = tokenize(trimmed);
 
     // Pass 0: extract .subckt/.ends blocks into subcircuit_defs_
     // This must run before Pass 1 and Pass 2 so subcircuit body lines are
@@ -725,8 +738,21 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 // .save V(out) I(V1) ...
                 for (size_t i = 1; i < tokens.size(); ++i) {
                     std::string sig = to_lower(tokens[i]);
-                    if (!sig.empty())
-                        ckt.save_signals.push_back(sig);
+                    if (sig.empty()) continue;
+                    // Normalize branch current names to ngspice format:
+                    // i(x1.ehf) → i(e.x1.ehf) for hierarchical devices
+                    if (sig.size() > 3 && sig[0] == 'i' && sig[1] == '(') {
+                        std::string inner = sig.substr(2, sig.size() - 3);
+                        auto dot = inner.rfind('.');
+                        if (dot != std::string::npos && dot + 1 < inner.size()) {
+                            char tl = inner[dot + 1];
+                            // Only normalize if not already in ngspice format
+                            // (ngspice format has type letter, dot, then subckt path)
+                            if (inner.find('.') != 1)
+                                sig = "i(" + std::string(1, tl) + "." + inner + ")";
+                        }
+                    }
+                    ckt.save_signals.push_back(sig);
                 }
             } else if (first == ".meas" || first == ".measure") {
                 // .meas analysis_type name measure_spec...

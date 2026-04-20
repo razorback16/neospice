@@ -7,16 +7,19 @@
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: neospice <netlist.cir> [-o output.raw]\n";
+        std::cerr << "Usage: neospice <netlist.cir> [-o output.raw] [--split]\n";
         return 1;
     }
 
     std::string input_path = argv[1];
     std::string output_path;
+    bool split = false;
 
     for (int i = 2; i < argc; ++i) {
         if (std::string(argv[i]) == "-o" && i + 1 < argc) {
             output_path = argv[++i];
+        } else if (std::string(argv[i]) == "--split") {
+            split = true;
         }
     }
 
@@ -34,35 +37,52 @@ int main(int argc, char* argv[]) {
         auto result = sim.run(ckt);
         auto t_sim = Clock::now();
 
-        int written = 0;
-        if (result.dc) {
-            auto dc_path = output_path;
-            if (result.ac || result.transient)
-                dc_path = std::filesystem::path(output_path).replace_extension(".dc.raw").string();
-            neospice::write_raw(dc_path, *result.dc);
-            std::cout << "DC results written to " << dc_path << "\n";
-            ++written;
-        }
-        if (result.ac) {
-            auto ac_path = output_path;
-            if (result.dc || result.transient)
-                ac_path = std::filesystem::path(output_path).replace_extension(".ac.raw").string();
-            neospice::write_raw(ac_path, *result.ac);
-            std::cout << "AC results written to " << ac_path << "\n";
-            ++written;
-        }
-        if (result.transient) {
-            auto tran_path = output_path;
-            if (result.dc || result.ac)
-                tran_path = std::filesystem::path(output_path).replace_extension(".tran.raw").string();
-            neospice::write_raw(tran_path, *result.transient);
-            std::cout << "Transient results written to " << tran_path << "\n";
-            ++written;
-        }
-        if (written == 0) {
+        bool has_any = result.dc || result.ac || result.transient || result.dc_sweep;
+        if (!has_any) {
             std::cerr << "No analysis commands found in netlist\n";
             return 1;
         }
+
+        if (split) {
+            int written = 0;
+            bool multi = (!!result.dc + !!result.ac + !!result.transient + !!result.dc_sweep) > 1;
+            if (result.dc) {
+                auto path = multi
+                    ? std::filesystem::path(output_path).replace_extension(".dc.raw").string()
+                    : output_path;
+                neospice::write_raw(path, *result.dc, ckt.title);
+                std::cout << "DC results written to " << path << "\n";
+                ++written;
+            }
+            if (result.ac) {
+                auto path = multi
+                    ? std::filesystem::path(output_path).replace_extension(".ac.raw").string()
+                    : output_path;
+                neospice::write_raw(path, *result.ac, ckt.title);
+                std::cout << "AC results written to " << path << "\n";
+                ++written;
+            }
+            if (result.transient) {
+                auto path = multi
+                    ? std::filesystem::path(output_path).replace_extension(".tran.raw").string()
+                    : output_path;
+                neospice::write_raw(path, *result.transient, ckt.title);
+                std::cout << "Transient results written to " << path << "\n";
+                ++written;
+            }
+            if (result.dc_sweep) {
+                auto path = multi
+                    ? std::filesystem::path(output_path).replace_extension(".dcsweep.raw").string()
+                    : output_path;
+                neospice::write_raw(path, *result.dc_sweep, ckt.title);
+                std::cout << "DC sweep results written to " << path << "\n";
+                ++written;
+            }
+        } else {
+            neospice::write_raw(output_path, result, ckt.title);
+            std::cout << "Results written to " << output_path << "\n";
+        }
+
         auto t_write = Clock::now();
         auto parse_us = std::chrono::duration<double, std::micro>(t_loaded - t_parse).count();
         auto sim_us = std::chrono::duration<double, std::micro>(t_sim - t_loaded).count();

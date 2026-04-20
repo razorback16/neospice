@@ -1,5 +1,8 @@
 build/
 build-asan/
+build-release/
+bsim4.out
+third_party/
 .cache/
 *.o
 *.a

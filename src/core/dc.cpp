@@ -18,6 +18,18 @@ static std::string to_lower(std::string s) {
     return s;
 }
 
+// ngspice-compatible branch current key: for hierarchical device names
+// (e.g. "x1.ehf"), prefix the element type letter → "i(e.x1.ehf)".
+static std::string make_branch_key(const std::string& dname) {
+    std::string lower = to_lower(dname);
+    auto dot = lower.rfind('.');
+    if (dot != std::string::npos && dot + 1 < lower.size()) {
+        char type_letter = lower[dot + 1];
+        return "i(" + std::string(1, type_letter) + "." + lower + ")";
+    }
+    return "i(" + lower + ")";
+}
+
 DCResult solve_dc(Circuit& ckt) {
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
@@ -95,7 +107,7 @@ DCResult solve_dc(Circuit& ckt) {
     // Branch currents for all devices with MNA branch variables
     auto add_dc_current = [&](int32_t br, const std::string& dname) {
         if (br >= 0 && br < n)
-            dc_result.branch_currents["i(" + to_lower(dname) + ")"] = solution[br];
+            dc_result.branch_currents[make_branch_key(dname)] = solution[br];
     };
     for (const auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
@@ -230,7 +242,7 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     }
     auto add_sweep_slot = [&](int32_t br, const std::string& dname) {
         if (br >= 0 && br < n)
-            sc_slots.push_back({"i(" + to_lower(dname) + ")", br});
+            sc_slots.push_back({make_branch_key(dname), br});
     };
     for (const auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<const VSource*>(dev.get()))

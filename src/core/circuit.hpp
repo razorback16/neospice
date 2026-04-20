@@ -126,6 +126,7 @@ public:
     void mark_internal_node(int32_t idx);
     bool is_internal_node(int32_t idx) const;
 
+    std::string                         title;
     SimOptions                          options;
     std::vector<AnalysisCommand>        analyses;
     std::unordered_map<int32_t, double> ic;       // .ic

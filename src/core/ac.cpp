@@ -18,6 +18,16 @@ static std::string to_lower(std::string s) {
     return s;
 }
 
+static std::string make_branch_key(const std::string& dname) {
+    std::string lower = to_lower(dname);
+    auto dot = lower.rfind('.');
+    if (dot != std::string::npos && dot + 1 < lower.size()) {
+        char type_letter = lower[dot + 1];
+        return "i(" + std::string(1, type_letter) + "." + lower + ")";
+    }
+    return "i(" + lower + ")";
+}
+
 ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
                   int npoints, double fstart, double fstop) {
     const int32_t n = ckt.num_vars();
@@ -158,7 +168,7 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     std::vector<CurrentSlot> current_slots;
     auto add_current = [&](int32_t br, const std::string& dname) {
         if (br >= 0 && br < n)
-            current_slots.push_back({"i(" + to_lower(dname) + ")", br});
+            current_slots.push_back({make_branch_key(dname), br});
     };
     for (auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<VSource*>(dev.get()))
