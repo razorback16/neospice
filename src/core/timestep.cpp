@@ -16,11 +16,9 @@ void TimeStepController::init(double initial_dt, double tstop) {
 
 void TimeStepController::advance(double dt) {
     time_ += dt;
-    crossed_bp_ = false;
     crossed_src_bp_ = false;
     while (!breakpoints_.empty() && *breakpoints_.begin() <= time_ + 1e-18) {
         breakpoints_.erase(breakpoints_.begin());
-        crossed_bp_ = true;
     }
     while (!source_breakpoints_.empty() && *source_breakpoints_.begin() <= time_ + 1e-18) {
         source_breakpoints_.erase(source_breakpoints_.begin());
@@ -36,7 +34,8 @@ bool TimeStepController::evaluate_step(const std::vector<double>& sol,
     double max_ratio = 0.0;
     for (int32_t i = 0; i < num_nodes; ++i) {
         double delta2 = sol[i] - 2.0 * sol_prev[i] + sol_prev2[i];
-        double lte = std::abs(delta2) / 12.0;
+        double lte_coeff = (opts.method == "gear") ? (2.0 / 9.0) : (1.0 / 12.0);
+        double lte = std::abs(delta2) * lte_coeff;
         double tol = opts.reltol * std::abs(sol[i]) + opts.vntol;
         if (tol > 0.0) {
             max_ratio = std::max(max_ratio, lte / tol);

@@ -33,7 +33,7 @@ public:
     int rejected_count() const { return rejected_; }
     void record_rejection() { ++rejected_; }
 
-    /// Integration order: 1 = Backward Euler, 2 = Gear-2.
+    /// Integration order: 1 = Backward Euler, 2 = Trapezoidal or Gear-2.
     /// Starts at 1; caller increments once a second accepted step is available.
     int order() const { return order_; }
     void set_order(int o) { order_ = o; }
@@ -50,7 +50,6 @@ private:
     int rejected_ = 0;
     int order_ = 1;
     double prev_dt_ = 0.0;
-    bool crossed_bp_ = false;
     bool crossed_src_bp_ = false;
     std::set<double> breakpoints_;
     std::set<double> source_breakpoints_;

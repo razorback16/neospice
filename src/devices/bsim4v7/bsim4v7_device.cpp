@@ -985,13 +985,7 @@ double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
     if (!state0_ || !state1_ || !state2_)
         return 1e30;
 
-    // Gear-2 LTE coefficient:  for BDF2, the leading error term is
-    // (2/9) * h^3 * y'''  ≈  factor * dd[0]  where dd[0] is the 3rd
-    // divided difference scaled by step sizes.  ngspice uses:
-    //   gearCoeff = {0.5, 2.0/9.0}   (indices 0,1 for order 1,2)
-    //   trapCoeff = {0.5, 1.0/12.0}
-    // We use Gear-2 (the simulator's method after 2 steps).
-    const double lte_coeff = 2.0 / 9.0;
+    const double lte_coeff = ctx.lte_coefficient();
 
     const double h  = ctx.delta;
     const double h1 = ctx.delta_old[1];

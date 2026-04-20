@@ -585,7 +585,7 @@ double BSIM3Device::compute_trunc(const IntegratorCtx& ctx,
     if (!state0_ || !state1_ || !state2_)
         return 1e30;
 
-    const double lte_coeff = 2.0 / 9.0;  // Gear-2
+    const double lte_coeff = ctx.lte_coefficient();
 
     const double h  = ctx.delta;
     const double h1 = ctx.delta_old[1];

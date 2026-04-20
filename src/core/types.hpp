@@ -49,7 +49,12 @@ struct IntegratorCtx {
     double delta_old[8] = {};
     int    order = 1;
     int    integrate_method = 0;  // 0=trapezoidal, 1=gear
-    double current_time = 0.0;  // Current simulation time (set by transient solver)
+    double current_time = 0.0;
+
+    double lte_coefficient() const {
+        if (order <= 1) return 0.5;
+        return (integrate_method == 0) ? (1.0 / 12.0) : (2.0 / 9.0);
+    }
 
     // Published by the analysis driver (dc.cpp / transient.cpp) before the
     // Newton stamp loop so state-storing devices can read user-configured

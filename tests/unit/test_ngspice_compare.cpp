@@ -54,10 +54,10 @@ TEST_F(NgspiceCompareTest, RCACAnalysis) {
 }
 
 // ---------------------------------------------------------------------------
-// Transient tests — we use adaptive Gear BDF-2 integration which eliminates
-// the trapezoidal ringing that plagued RLC circuits.  Remaining error sources:
-//   1. Slight amplitude damping inherent to BDF-2 (L-stable)
-//   2. Interpolation mismatch near zero crossings vs ngspice adaptive steps
+// Transient tests — both neospice and ngspice use trapezoidal integration.
+// Remaining error sources:
+//   1. Interpolation mismatch near zero crossings vs ngspice adaptive steps
+//   2. Slight timestep control differences affecting switching edges
 // We compare at our time grid and use tightened tolerances where possible.
 // ---------------------------------------------------------------------------
 
@@ -208,8 +208,8 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
         else
             ++it;
     }
-    // Gear-2 vs Trap mismatch + resistance-model RC delay — use same
-    // tolerance as the intrinsic CMOS inverter test.
+    // Resistance-model RC delay — use same tolerance as the intrinsic
+    // CMOS inverter test.
     auto cmp = compare_transient(ng_result, *cs_result.transient, {5e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
@@ -219,19 +219,12 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
 //
 // Enabled with compare_transient_oscillator: ring oscillators are
 // phase-sensitive, and small differences in the DC-settled initial node
-// voltages between our Gear BDF-2 integrator and ngspice's default
-// trapezoidal method produce a phase offset that grows into arbitrarily-
-// large point-wise sample error.  Rather than mask that with a loose
+// voltages produce a phase offset that grows into arbitrarily-large
+// point-wise sample error.  Rather than mask that with a loose
 // sample-wise tolerance (which is not a correctness signal), we compare
 // the two scalar metrics that *are* physically meaningful for a
 // free-running oscillator: period (from rising-edge zero-crossings about
 // each node's midpoint) and peak-to-peak amplitude.
-//
-// Measured agreement between neospice (Gear BDF-2) and ngspice
-// (trapezoidal) on the 5-stage ring oscillator:
-//   * Period:    T_neospice = 300.9 ps, T_ngspice = 300.6 ps
-//                (relative error ~ 1.0e-3)
-//   * Amplitude: 1.99 V on both sides (peak-to-peak, rail-to-rail)
 //   * vdd correctly classified as DC, matched exactly
 // Tolerances are set to ~10x the observed agreement so the test is
 // robust to minor refactors without masking a real regression:

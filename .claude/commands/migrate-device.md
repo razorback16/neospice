@@ -457,11 +457,7 @@ for (int charge_offset : charge_offsets) {
     double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
     if (tol <= 0.0) continue;
 
-    // Gear-2 coefficient = 2/(order+1) = 2/3 ... but ngspice uses trtol/3
-    // The standard CKTterr uses: coeff = 2.0 / (order * (order + 1))
-    //   -> for order=2: coeff = 2/6 = 1/3, then factor = 1/(coeff * dd2) * tol
-    // Simplified: dt = sqrt(tol / (factor * |dd2|))
-    double lte_coeff = 2.0 / 9.0;  // 2/(3*(order+1)) for Gear-2
+    double lte_coeff = ctx.lte_coefficient();
     if (std::abs(dd2) > 1e-30) {
         double dt = std::sqrt(tol / (lte_coeff * std::abs(dd2)));
         dt_min = std::min(dt_min, dt);

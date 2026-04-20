@@ -315,7 +315,7 @@ double DIODevice::compute_trunc(const IntegratorCtx& ctx,
     if (tol <= 0.0 || std::abs(dd2) <= 1e-30)
         return 1e30;
 
-    const double lte_coeff = 2.0 / 9.0;
+    const double lte_coeff = ctx.lte_coefficient();
     return std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2)));
 }
 

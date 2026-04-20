@@ -381,8 +381,7 @@ TEST_F(MOS1Validation, NmosTransientPulse) {
 
     // Compare at ngspice's time grid with interpolation of neospice.
     // Tolerance: 55% relative, 50mV absolute — MOS1 Meyer capacitance model
-    // is sensitive to integration method differences (BDF-2 vs trapezoidal)
-    // near switching edges, matching tolerance used for CMOS inverter tests.
+    // is sensitive to timestep control differences near switching edges.
     auto cmp = compare_transient(ng_filtered, cs_result, {5.5e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Transient comparison failed. Worst: " << cmp.worst_signal

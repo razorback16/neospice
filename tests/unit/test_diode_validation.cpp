@@ -229,9 +229,8 @@ TEST_F(DiodeValidation, TransientSwitchingNgspice) {
     // Do not include currents — i(v1) has the same sharp-edge issue.
 
     // Compare at ngspice's time grid with interpolation of neospice.
-    // Tolerance: 10% relative, 50mV absolute — accounts for BDF-2 vs
-    // trapezoidal integration method differences (Gear-2 damps slightly
-    // more than trapezoidal near switching edges, giving ~8% peak error).
+    // Tolerance: 10% relative, 50mV absolute — accounts for timestep
+    // control differences near switching edges.
     auto cmp = compare_transient(ng_filtered, cs_result, {1e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Transient comparison failed. Worst: " << cmp.worst_signal
