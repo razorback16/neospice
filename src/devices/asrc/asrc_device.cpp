@@ -234,7 +234,9 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
     double f_val = expr_.evaluate(var_values_, derivs_);
 
     // Store for convergence test
-    prev_value_ = f_val;
+    prev_value_ = current_value_;
+    current_value_ = f_val;
+    has_prev_value_ = true;
 
     // Store derivatives for AC analysis
     ac_derivs_ = derivs_;
@@ -387,11 +389,9 @@ void ASRCDevice::ac_stamp(const std::vector<double>& voltages,
 // ===========================================================================
 
 bool ASRCDevice::device_converged() const {
-    // Newton solver's node-voltage convergence handles most cases.
-    // A device-specific test could re-evaluate and compare with prev_value_,
-    // but that requires the solution vector which isn't passed here.
-    // For now, rely on the global convergence criteria.
-    return true;
+    if (!has_prev_value_) return true;
+    double tol = 1e-3 * std::max(std::abs(prev_value_), std::abs(current_value_)) + 1e-6;
+    return std::abs(current_value_ - prev_value_) <= tol;
 }
 
 } // namespace neospice

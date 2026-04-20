@@ -638,12 +638,15 @@ CompiledExpression::eval_node(const ASTNode* node,
     case NodeType::DIV: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
         auto b = eval_node(node->right.get(), var_values, nv, need_grad);
-        result.val = a.val / b.val;
+        double denom = b.val;
+        if (std::abs(denom) < 1e-32)
+            denom = std::copysign(1e-32, denom == 0.0 ? 1.0 : denom);
+        result.val = a.val / denom;
         if (need_grad) {
             // d(a/b)/dx = (a'b - ab') / b^2
-            double b2 = b.val * b.val;
+            double b2 = denom * denom;
             for (int i = 0; i < nv; ++i)
-                result.grad[i] = (a.grad[i] * b.val - a.val * b.grad[i]) / b2;
+                result.grad[i] = (a.grad[i] * denom - a.val * b.grad[i]) / b2;
         }
         return result;
     }
@@ -652,13 +655,28 @@ CompiledExpression::eval_node(const ASTNode* node,
     case NodeType::POW_FN: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
         auto b = eval_node(node->right.get(), var_values, nv, need_grad);
-        result.val = std::pow(a.val, b.val);
-        if (need_grad) {
-            // d(a^b)/dx = a^b * (b * a'/a + b' * ln(a))
-            double da_coeff = b.val * std::pow(a.val, b.val - 1.0);
-            double db_coeff = (a.val > 0.0) ? result.val * std::log(a.val) : 0.0;
-            for (int i = 0; i < nv; ++i)
-                result.grad[i] = da_coeff * a.grad[i] + db_coeff * b.grad[i];
+        if (a.val < 0.0) {
+            // Negative base: use |base|^exp with sign preservation
+            double abs_base = std::abs(a.val);
+            double raw = std::pow(abs_base, b.val);
+            result.val = std::copysign(raw, a.val);
+            if (need_grad) {
+                double da_coeff = b.val * std::pow(abs_base, b.val - 1.0);
+                // db_coeff uses log(|base|) for negative base
+                double db_coeff = (abs_base > 0.0) ? raw * std::log(abs_base) : 0.0;
+                // Sign of da_coeff follows sign of result
+                for (int i = 0; i < nv; ++i)
+                    result.grad[i] = da_coeff * a.grad[i] + std::copysign(db_coeff, a.val) * b.grad[i];
+            }
+        } else {
+            result.val = std::pow(a.val, b.val);
+            if (need_grad) {
+                // d(a^b)/dx = a^b * (b * a'/a + b' * ln(a))
+                double da_coeff = b.val * std::pow(a.val, b.val - 1.0);
+                double db_coeff = (a.val > 0.0) ? result.val * std::log(a.val) : 0.0;
+                for (int i = 0; i < nv; ++i)
+                    result.grad[i] = da_coeff * a.grad[i] + db_coeff * b.grad[i];
+            }
         }
         return result;
     }
@@ -737,9 +755,10 @@ CompiledExpression::eval_node(const ASTNode* node,
 
     case NodeType::LOG: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
-        result.val = std::log(a.val);
+        double safe_arg = std::max(std::abs(a.val), 1e-300);
+        result.val = std::log(safe_arg);
         if (need_grad) {
-            double d = 1.0 / a.val;
+            double d = 1.0 / safe_arg;
             for (int i = 0; i < nv; ++i) result.grad[i] = d * a.grad[i];
         }
         return result;
@@ -747,9 +766,10 @@ CompiledExpression::eval_node(const ASTNode* node,
 
     case NodeType::LOG10: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
-        result.val = std::log10(a.val);
+        double safe_arg = std::max(std::abs(a.val), 1e-300);
+        result.val = std::log10(safe_arg);
         if (need_grad) {
-            double d = 1.0 / (a.val * std::log(10.0));
+            double d = 1.0 / (safe_arg * std::log(10.0));
             for (int i = 0; i < nv; ++i) result.grad[i] = d * a.grad[i];
         }
         return result;
@@ -757,9 +777,9 @@ CompiledExpression::eval_node(const ASTNode* node,
 
     case NodeType::SQRT: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
-        result.val = std::sqrt(a.val);
+        result.val = std::sqrt(std::abs(a.val));
         if (need_grad) {
-            double d = 0.5 / result.val;
+            double d = (result.val > 0.0) ? 0.5 / result.val : 0.0;
             for (int i = 0; i < nv; ++i) result.grad[i] = d * a.grad[i];
         }
         return result;

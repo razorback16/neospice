@@ -99,6 +99,8 @@ private:
 
     // Convergence test
     mutable double prev_value_ = 0.0;
+    mutable double current_value_ = 0.0;
+    mutable bool has_prev_value_ = false;
 
     // Simulation time
     double current_time_ = 0.0;
