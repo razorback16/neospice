@@ -156,6 +156,9 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             add_tran_slot(enl->branch_index(), dev->name());
         else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
             add_tran_slot(etbl->branch_index(), dev->name());
+        else if (auto* bs = dynamic_cast<const ASRCDevice*>(dev.get()))
+            if (bs->mode() == ASRCDevice::Mode::VOLTAGE)
+                add_tran_slot(bs->branch_index(), dev->name());
     }
 
     std::vector<std::vector<double>*> v_ptrs, c_ptrs;

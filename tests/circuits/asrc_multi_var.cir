@@ -1,0 +1,7 @@
+ASRC Multi Variable
+V1 a 0 DC 2.0
+V2 b 0 DC 3.0
+R1 out 0 1k
+B1 out 0 V={V(a)*V(a) + V(b)*2}
+.op
+.end

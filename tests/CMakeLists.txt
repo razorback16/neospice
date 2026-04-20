@@ -84,6 +84,8 @@ add_executable(neospice_tests
     unit/test_nonlinear_sources.cpp
     unit/test_asrc.cpp
     unit/test_mos1_validation.cpp
+    unit/test_ltra_validation.cpp
+    unit/test_asrc_validation.cpp
     unit/test_ths4131.cpp
     unit/test_bsim3_validation.cpp
     unit/test_vbic_validation.cpp

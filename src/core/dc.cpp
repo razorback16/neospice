@@ -7,6 +7,7 @@
 #include "devices/vcvs.hpp"
 #include "devices/ccvs.hpp"
 #include "devices/vcvs_nonlinear.hpp"
+#include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -122,6 +123,9 @@ DCResult solve_dc(Circuit& ckt) {
             add_dc_current(enl->branch_index(), dev->name());
         else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
             add_dc_current(etbl->branch_index(), dev->name());
+        else if (auto* bs = dynamic_cast<const ASRCDevice*>(dev.get()))
+            if (bs->mode() == ASRCDevice::Mode::VOLTAGE)
+                add_dc_current(bs->branch_index(), dev->name());
     }
 
     return dc_result;
@@ -257,6 +261,9 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
             add_sweep_slot(enl->branch_index(), dev->name());
         else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
             add_sweep_slot(etbl->branch_index(), dev->name());
+        else if (auto* bs = dynamic_cast<const ASRCDevice*>(dev.get()))
+            if (bs->mode() == ASRCDevice::Mode::VOLTAGE)
+                add_sweep_slot(bs->branch_index(), dev->name());
     }
 
     std::vector<std::vector<double>*> sv_ptrs, sc_ptrs;

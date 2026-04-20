@@ -1,0 +1,6 @@
+ASRC Squaring Function
+V1 in 0 DC 3.0
+R1 out 0 1k
+B1 out 0 V={V(in)*V(in)}
+.op
+.end
