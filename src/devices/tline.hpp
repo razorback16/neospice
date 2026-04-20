@@ -23,13 +23,9 @@ namespace neospice {
 /// accept_step() to push the new record.  evaluate() interpolates the
 /// delayed values from this list.
 ///
-/// DC: the companion model degenerates to a large conductance (G0) between
-/// each pair of port nodes — effectively a pair of 50-Ω resistors to ground
-/// (or between the + and − nodes).  Since the two ports are isolated in the
-/// companion model, the standard way to maintain DC connectivity is to stamp a
-/// small (1e-9 Ω) resistive tie between p1+ and p2+ and between p1- and p2-.
-/// We instead stamp the full Norton model with e1=e2=0, which places a G0
-/// shunt on each port.
+/// DC: a lossless transmission line is a short circuit at DC.  We model this
+/// by stamping a large conductance (1e9 S) that ties p1+ to p2+ and p1- to
+/// p2-.  This ensures correct DC coupling between the two ports.
 ///
 /// AC: the exact frequency-domain description of a lossless TL is a two-port
 /// Y-matrix with hyperbolic functions.  Since our AC framework uses the G+jωC
@@ -59,6 +55,9 @@ public:
     // Enable or disable the transient companion model.
     // When false (DC mode), a shunt conductance is stamped on each port.
     void set_transient(bool enable);
+
+    // Initialize the delay-line history from the DC operating point solution.
+    void init_dc_state(const std::vector<double>& sol);
 
     double z0() const { return z0_; }
     double td() const { return td_; }
@@ -93,6 +92,12 @@ private:
     MatrixOffset off_p1pp_ = -1, off_p1pn_ = -1, off_p1np_ = -1, off_p1nn_ = -1;
     // Port-2 matrix offsets: conductance shunt between p2p and p2n
     MatrixOffset off_p2pp_ = -1, off_p2pn_ = -1, off_p2np_ = -1, off_p2nn_ = -1;
+
+    // Cross-port matrix offsets (for DC short-circuit model: p1+↔p2+ and p1-↔p2-)
+    MatrixOffset off_p1p_p2p_ = -1, off_p1p_p2n_ = -1;
+    MatrixOffset off_p1n_p2p_ = -1, off_p1n_p2n_ = -1;
+    MatrixOffset off_p2p_p1p_ = -1, off_p2p_p1n_ = -1;
+    MatrixOffset off_p2n_p1p_ = -1, off_p2n_p1n_ = -1;
 
     /// Interpolate delayed wave values from the history buffer.
     /// Sets e1_ and e2_ for use in the next evaluate() call.

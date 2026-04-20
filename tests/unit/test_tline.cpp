@@ -24,31 +24,32 @@ TEST(TLine, ConstructionBasic) {
 TEST(TLine, StampPattern) {
     // Port1: nodes 1 (pos) and 0 (neg=ground), Port2: nodes 2 (pos) and 0 (neg=ground)
     // System size 3 (0,1,2).  Ground is not stamped.
-    // Port1: (1,1)  only (since node 0 is ground)
-    // Port2: (2,2)  only
+    // Port1 self: (1,1) only (since node 0 is ground)
+    // Port2 self: (2,2) only
+    // Cross-port: (1,2) and (2,1) for DC short-circuit coupling
     TransmissionLine tl("T1", 1, GROUND_INTERNAL, 2, GROUND_INTERNAL, 50.0, 1e-9);
     SparsityBuilder builder(3);
     tl.stamp_pattern(builder);
     auto pattern = builder.build();
-    // Each port with one grounded node contributes 1 diagonal entry
-    EXPECT_EQ(pattern.nnz(), 2);
+    // 2 self-port diagonals + 2 cross-port entries = 4
+    EXPECT_EQ(pattern.nnz(), 4);
 }
 
 TEST(TLine, StampPatternBothPortsFloating) {
-    // Port1: nodes 1,2; Port2: nodes 3,4 — 4 entries per port = 8 total
+    // Port1: nodes 1,2; Port2: nodes 3,4
+    // Self-port: 4 entries per port = 8
+    // Cross-port: 8 entries (p1p↔p2p, p1p↔p2n, p1n↔p2p, p1n↔p2n, symmetric) = 8
+    // Total = 16
     TransmissionLine tl("T1", 1, 2, 3, 4, 50.0, 1e-9);
     SparsityBuilder builder(5);
     tl.stamp_pattern(builder);
     auto pattern = builder.build();
-    EXPECT_EQ(pattern.nnz(), 8);
+    EXPECT_EQ(pattern.nnz(), 16);
 }
 
-TEST(TLine, DCStampShuntsOnly) {
-    // At DC, only G0 shunt conductances are stamped (no RHS history sources).
-    TransmissionLine tl("T1", 1, 0, 2, 0, 50.0, 1e-9);
-    // Node 1 and node 2 are against ground (node 0 = GROUND).
-    // Use internal node indices: p1p=0, p1n=-1(gnd), p2p=1, p2n=-1(gnd)
-    // Build a 2-node system (nodes 0 and 1 internally)
+TEST(TLine, DCStampShortCircuit) {
+    // At DC, the TL is a short circuit. Large conductance ties p1+↔p2+ and p1-↔p2-.
+    // With both neg nodes grounded: stamps g_dc on (0,0) and (1,1), -g_dc on (0,1) and (1,0).
     TransmissionLine tl2("T1", 0, GROUND_INTERNAL, 1, GROUND_INTERNAL, 50.0, 1e-9);
 
     SparsityBuilder builder(2);
@@ -61,9 +62,11 @@ TEST(TLine, DCStampShuntsOnly) {
     std::vector<double> voltages(2, 0.0);
     tl2.evaluate(voltages, mat, rhs);
 
-    double g0 = 1.0 / 50.0;
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 0)), g0);
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 1)), g0);
+    double g_dc = 1e9;
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 0)), g_dc);
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 1)), g_dc);
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 1)), -g_dc);
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 0)), -g_dc);
     // RHS should be zero at DC (no history)
     EXPECT_DOUBLE_EQ(rhs[0], 0.0);
     EXPECT_DOUBLE_EQ(rhs[1], 0.0);
@@ -198,19 +201,14 @@ r1 out 0 50
 }
 
 // ---------------------------------------------------------------------------
-// DC analysis: TL acts like a load (G0 shunt on each port)
+// DC analysis: TL is a short circuit at DC (passes DC between ports)
 // ---------------------------------------------------------------------------
 
 TEST(TLineDC, MatchedLoad) {
     // V1 = 1V, TL with Z0=50, port2 loaded with R=50
-    // DC: each port stamped as G0=0.02 S shunt
-    // Port 1: sees voltage divider between V1 source and G0 shunt
-    // V(in) = 1V (source), V(out) is node at port2+ with G0 to ground and R=50 to ground
-    // V(out) = 0 because port1 shunt pulls "in" toward 0 through the source...
-    // Actually: V1 fixes v(in)=1V; port1 stamps G0 from "in" to 0 which draws current
-    // from V1. Port2 stamps G0 from "out" to 0. R1 also connects "out" to 0.
-    // At DC "in" and "out" are NOT directly connected (TL provides no DC path between ports).
-    // So v(out) = 0 (only G0 + R1 are connected to "out", and no voltage source drives it).
+    // DC: TL is a short circuit, so v(in) = v(out) = 1V
+    // v(out) = 1V because the TL directly connects port1+ to port2+.
+    // The load R1=50 to ground draws 20mA from V1, but voltage is fixed.
     const char* netlist = R"(
 TLine DC test
 V1 in 0 DC 1
@@ -224,29 +222,28 @@ R1 out 0 50
     auto result = solve_dc(ckt);
     // v(in) is driven by V1 to 1V
     EXPECT_NEAR(result.node_voltages.at("v(in)"), 1.0, 1e-6);
-    // v(out) = 0 — no DC path from port1 to port2 through TL companion model
-    EXPECT_NEAR(result.node_voltages.at("v(out)"), 0.0, 1e-6);
+    // v(out) = 1V — TL passes DC (short circuit at DC)
+    EXPECT_NEAR(result.node_voltages.at("v(out)"), 1.0, 1e-6);
 }
 
-TEST(TLineDC, MatchedLoadBothPorts) {
-    // V1 drives "in" through Rs=50 to port1+; port1- to gnd; port2+ to "out"; port2- to gnd
-    // R_load = 50 at out.
-    // At DC: port1 shunt G0=0.02 pulls "in" node toward 0.
-    // Since V1 fixes v(in) = 1V: I_V1 = (1V) * G0 = 20mA drawn through port1 shunt.
-    // v(out) = 0 (isolated).
+TEST(TLineDC, VoltageDivider) {
+    // V1=10V through R1=50 into TL, TL output loaded with R2=100 to ground.
+    // DC: TL is a short circuit, so the circuit is a simple voltage divider:
+    // V(b) = V1 * R2/(R1+R2) = 10 * 100/150 = 6.667V
     const char* netlist = R"(
-TLine DC both ports
-V1 in 0 DC 1
-T1 in 0 out 0 Z0=50 TD=1n
-R1 out 0 50
+TLine DC voltage divider
+V1 in 0 DC 10
+R1 in a 50
+T1 a 0 b 0 Z0=50 TD=10n
+R2 b 0 100
 .op
 .end
 )";
     NetlistParser parser;
     auto ckt = parser.parse(netlist);
     auto result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages.at("v(in)"), 1.0, 1e-6);
-    EXPECT_NEAR(result.node_voltages.at("v(out)"), 0.0, 1e-6);
+    EXPECT_NEAR(result.node_voltages.at("v(a)"), 10.0 * 100.0 / 150.0, 1e-3);
+    EXPECT_NEAR(result.node_voltages.at("v(b)"), 10.0 * 100.0 / 150.0, 1e-3);
 }
 
 // ---------------------------------------------------------------------------

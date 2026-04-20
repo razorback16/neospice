@@ -31,6 +31,24 @@ TEST_F(NgspiceCompareTest, ResistorDividerDC) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, TlineDC) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/tline_dc.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run_dc(ckt);
+    // Strip ngspice internal nodes (containing '#') that neospice doesn't expose.
+    for (auto it = ng_result.node_voltages.begin();
+         it != ng_result.node_voltages.end(); ) {
+        if (it->first.find('#') != std::string::npos)
+            it = ng_result.node_voltages.erase(it);
+        else
+            ++it;
+    }
+    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-6});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 TEST_F(NgspiceCompareTest, DiodeDC) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/diode_iv.cir";
     auto ng_result = ngspice_->run_dc(path);

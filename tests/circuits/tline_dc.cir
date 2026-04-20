@@ -1,0 +1,7 @@
+* TL should pass DC: V(out) should equal V(in) * R2/(R1+R2)
+V1 in 0 DC 10
+R1 in a 50
+T1 a 0 b 0 Z0=50 TD=10n
+R2 b 0 100
+.op
+.end

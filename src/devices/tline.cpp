@@ -36,6 +36,16 @@ void TransmissionLine::stamp_pattern(SparsityBuilder& builder) const {
     stamp_if_not_ground(builder, p2p_, p2n_);
     stamp_if_not_ground(builder, p2n_, p2p_);
     stamp_if_not_ground(builder, p2n_, p2n_);
+
+    // Cross-port coupling (for DC short-circuit model: p1+↔p2+ and p1-↔p2-)
+    stamp_if_not_ground(builder, p1p_, p2p_);
+    stamp_if_not_ground(builder, p1p_, p2n_);
+    stamp_if_not_ground(builder, p1n_, p2p_);
+    stamp_if_not_ground(builder, p1n_, p2n_);
+    stamp_if_not_ground(builder, p2p_, p1p_);
+    stamp_if_not_ground(builder, p2p_, p1n_);
+    stamp_if_not_ground(builder, p2n_, p1p_);
+    stamp_if_not_ground(builder, p2n_, p1n_);
 }
 
 void TransmissionLine::assign_offsets(const SparsityPattern& pattern) {
@@ -48,6 +58,16 @@ void TransmissionLine::assign_offsets(const SparsityPattern& pattern) {
     off_p2pn_ = offset_if_not_ground(pattern, p2p_, p2n_);
     off_p2np_ = offset_if_not_ground(pattern, p2n_, p2p_);
     off_p2nn_ = offset_if_not_ground(pattern, p2n_, p2n_);
+
+    // Cross-port offsets (DC short-circuit model)
+    off_p1p_p2p_ = offset_if_not_ground(pattern, p1p_, p2p_);
+    off_p1p_p2n_ = offset_if_not_ground(pattern, p1p_, p2n_);
+    off_p1n_p2p_ = offset_if_not_ground(pattern, p1n_, p2p_);
+    off_p1n_p2n_ = offset_if_not_ground(pattern, p1n_, p2n_);
+    off_p2p_p1p_ = offset_if_not_ground(pattern, p2p_, p1p_);
+    off_p2p_p1n_ = offset_if_not_ground(pattern, p2p_, p1n_);
+    off_p2n_p1p_ = offset_if_not_ground(pattern, p2n_, p1p_);
+    off_p2n_p1n_ = offset_if_not_ground(pattern, p2n_, p1n_);
 }
 
 // ---------------------------------------------------------------------------
@@ -108,20 +128,32 @@ void TransmissionLine::update_delayed_values(double t_delayed) {
 
 void TransmissionLine::evaluate(const std::vector<double>& voltages,
                                 NumericMatrix& mat, std::vector<double>& rhs) {
-    // Compute delayed wave sources from history.
-    if (transient_ && tls_integrator_ctx) {
-        double t_now = tls_integrator_ctx->current_time;
-        update_delayed_values(t_now - td_);
-    } else {
-        // DC: no delay — lossless TL at DC is a short.
-        // We model it as G0 shunts on each port (Norton model with e1=e2=0
-        // plus a DC tie handled via large conductance).
+    if (!transient_) {
+        // DC: TL is a short circuit. Tie p1+↔p2+ and p1-↔p2- with large conductance.
+        double g_dc = 1e9;
+        // Tie p1p to p2p:
+        add_if_valid(mat, off_p1pp_,    g_dc);   // (p1p,p1p) += g_dc
+        add_if_valid(mat, off_p2pp_,    g_dc);   // (p2p,p2p) += g_dc
+        add_if_valid(mat, off_p1p_p2p_, -g_dc);  // (p1p,p2p) -= g_dc
+        add_if_valid(mat, off_p2p_p1p_, -g_dc);  // (p2p,p1p) -= g_dc
+        // Tie p1n to p2n:
+        add_if_valid(mat, off_p1nn_,    g_dc);   // (p1n,p1n) += g_dc
+        add_if_valid(mat, off_p2nn_,    g_dc);   // (p2n,p2n) += g_dc
+        add_if_valid(mat, off_p1n_p2n_, -g_dc);  // (p1n,p2n) -= g_dc
+        add_if_valid(mat, off_p2n_p1n_, -g_dc);  // (p2n,p1n) -= g_dc
         e1_ = 0.0;
         e2_ = 0.0;
+        return;
+    }
+
+    // Transient: compute delayed wave sources from history.
+    if (tls_integrator_ctx) {
+        double t_now = tls_integrator_ctx->current_time;
+        update_delayed_values(t_now - td_);
     }
 
     // Stamp port-1 Norton companion: conductance G0 + current source e1/Z0
-    // The Norton current source injects current from p1n to p1p: +e1/Z0 at p1p, −e1/Z0 at p1n.
+    // The Norton current source injects current from p1n to p1p: +e1/Z0 at p1p, -e1/Z0 at p1n.
     add_if_valid(mat, off_p1pp_,  g0_);
     add_if_valid(mat, off_p1pn_, -g0_);
     add_if_valid(mat, off_p1np_, -g0_);
@@ -133,17 +165,14 @@ void TransmissionLine::evaluate(const std::vector<double>& voltages,
     add_if_valid(mat, off_p2np_, -g0_);
     add_if_valid(mat, off_p2nn_,  g0_);
 
-    if (transient_) {
-        // RHS current sources: I_hist = e/Z0 = e * G0
-        double i_h1 = e1_ * g0_;
-        double i_h2 = e2_ * g0_;
+    // RHS current sources: I_hist = e/Z0 = e * G0
+    double i_h1 = e1_ * g0_;
+    double i_h2 = e2_ * g0_;
 
-        add_rhs_if_valid(rhs, p1p_,  i_h1);
-        add_rhs_if_valid(rhs, p1n_, -i_h1);
-        add_rhs_if_valid(rhs, p2p_,  i_h2);
-        add_rhs_if_valid(rhs, p2n_, -i_h2);
-    }
-    // At DC: e1=e2=0, so no history current sources — just G0 shunts.
+    add_rhs_if_valid(rhs, p1p_,  i_h1);
+    add_rhs_if_valid(rhs, p1n_, -i_h1);
+    add_rhs_if_valid(rhs, p2p_,  i_h2);
+    add_rhs_if_valid(rhs, p2n_, -i_h2);
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +242,30 @@ void TransmissionLine::accept_step(double time,
                 history_.erase(history_.begin());
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// init_dc_state
+// ---------------------------------------------------------------------------
+
+void TransmissionLine::init_dc_state(const std::vector<double>& sol) {
+    double vp1p = (p1p_ >= 0) ? sol[p1p_] : 0.0;
+    double vp1n = (p1n_ >= 0) ? sol[p1n_] : 0.0;
+    double vp2p = (p2p_ >= 0) ? sol[p2p_] : 0.0;
+    double vp2n = (p2n_ >= 0) ? sol[p2n_] : 0.0;
+    double v1 = vp1p - vp1n;
+    double v2 = vp2p - vp2n;
+    // At DC steady-state with short-circuit model, i1 ~ 0, i2 ~ 0 through TL
+    // (current flows through the external R network, not "through" the TL)
+    // Seed history with these DC values
+    history_.clear();
+    for (int k = 2; k >= 0; --k) {
+        HistoryPoint hp;
+        hp.time = -static_cast<double>(k) * td_;
+        hp.v1 = v1; hp.i1 = 0.0;
+        hp.v2 = v2; hp.i2 = 0.0;
+        history_.push_back(hp);
     }
 }
 
