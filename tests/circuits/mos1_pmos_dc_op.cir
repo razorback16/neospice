@@ -1,0 +1,8 @@
+MOS1 PMOS DC Operating Point
+Vdd vdd 0 5
+Vgs gate 0 3.0
+Rload drain 0 1k
+M1 drain gate vdd vdd PMOD W=20u L=1u
+.model PMOD PMOS LEVEL=1 VTO=-0.7 KP=55U GAMMA=0.4 PHI=0.65
+.op
+.end

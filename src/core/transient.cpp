@@ -293,7 +293,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             ckt.integrator_ctx.order = cur_order;
             ckt.integrator_ctx.delta = dt;
             ckt.integrator_ctx.current_time = t;
-            ckt.integrator_ctx.delta_old[1] = ctrl.prev_dt();
+            ckt.integrator_ctx.delta_old[1] = first_step ? dt : ctrl.prev_dt();
             ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
 
             if (cur_order == 1) {
