@@ -22,6 +22,7 @@
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
 #include "devices/tline.hpp"
+#include "devices/ltra.hpp"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -541,6 +542,15 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int line_number;
     };
     std::vector<DeferredCSwitch> deferred_cswitches;
+
+    // Deferred LTRA (O elements): resolved after all .model cards are known.
+    struct DeferredLTRA {
+        std::string name;
+        int32_t p1p, p1n, p2p, p2n;
+        std::string model_name;
+        int line_number;
+    };
+    std::vector<DeferredLTRA> deferred_ltras;
 
     // Pass 1: collect .model and .param cards
     std::vector<std::pair<std::string, std::string>> raw_params;
@@ -1609,6 +1619,22 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             ckt.add_device(std::make_unique<TransmissionLine>(
                 tname, tp1p, tp1n, tp2p, tp2n, tz0, ttd));
 
+        } else if (elem_type == 'o') {
+            // O name p1+ p1- p2+ p2- modelname
+            if (tokens.size() < 6) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": O element requires name, p1+, p1-, p2+, p2-, modelname");
+            }
+            DeferredLTRA ol;
+            ol.name       = tokens[0];
+            ol.p1p        = ckt.node(tokens[1]);
+            ol.p1n        = ckt.node(tokens[2]);
+            ol.p2p        = ckt.node(tokens[3]);
+            ol.p2n        = ckt.node(tokens[4]);
+            ol.model_name = tokens[5];
+            ol.line_number = line.line_number;
+            deferred_ltras.push_back(std::move(ol));
+
         } else if (elem_type == 's') {
             // S name n+ n- nc+ nc- modelname
             if (tokens.size() < 6) {
@@ -1913,6 +1939,62 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                              "' references unknown voltage source '" + wd.vsense_name + "'");
         }
         ckt.add_device(std::make_unique<CSwitch>(wd.name, wd.np, wd.nn, vs, sm));
+    }
+
+    // Resolve deferred LTRA (O elements) — lossy transmission lines
+    std::unordered_map<std::string, std::shared_ptr<LTRAModel>> ltra_models;
+    for (const auto& ol : deferred_ltras) {
+        auto it = models.find(ol.model_name);
+        if (it == models.end()) {
+            auto it2 = models.find(to_lower(ol.model_name));
+            if (it2 == models.end()) {
+                throw ParseError("Line " + std::to_string(ol.line_number) +
+                                 ": Unknown model '" + ol.model_name + "'");
+            }
+            it = it2;
+        }
+        std::string model_type = to_lower(it->second.type);
+        if (model_type != "ltra") {
+            throw ParseError("Line " + std::to_string(ol.line_number) +
+                             ": O element references non-LTRA model '" + ol.model_name + "'");
+        }
+
+        // Get or create the shared LTRA model
+        auto& lmodel = ltra_models[ol.model_name];
+        if (!lmodel) {
+            lmodel = std::make_shared<LTRAModel>();
+            // Parse model parameters
+            for (const auto& [key, val] : it->second.params) {
+                if      (key == "r")   { lmodel->R = val; lmodel->R_given = true; }
+                else if (key == "l")   { lmodel->L = val; lmodel->L_given = true; }
+                else if (key == "g")   { lmodel->G = val; lmodel->G_given = true; }
+                else if (key == "c")   { lmodel->C = val; lmodel->C_given = true; }
+                else if (key == "len") { lmodel->len = val; lmodel->len_given = true; }
+                else if (key == "rel") { lmodel->reltol = val; }
+                else if (key == "abs") { lmodel->abstol = val; }
+                else if (key == "compactrel") { lmodel->stLineReltol = val; }
+                else if (key == "compactabs") { lmodel->stLineAbstol = val; }
+                else if (key == "choprel") { lmodel->chopReltol = val; }
+                else if (key == "chopabs") { lmodel->chopAbstol = val; }
+                else if (key == "nocontrol") { lmodel->lteConType = LTRA_CTRL_NONE; }
+                else if (key == "fullcontrol") { lmodel->lteConType = LTRA_CTRL_FULL; }
+                else if (key == "halfcontrol") { lmodel->lteConType = LTRA_CTRL_HALF; }
+                else if (key == "steplimit") { lmodel->stepLimit = LTRA_STEP_LIMIT; }
+                else if (key == "nosteplimit") { lmodel->stepLimit = LTRA_STEP_NOLIMIT; }
+                else if (key == "lininterp") { lmodel->howToInterp = LTRA_INTERP_LIN; }
+                else if (key == "quadinterp") { lmodel->howToInterp = LTRA_INTERP_QUAD; }
+                else if (key == "mixedinterp") { lmodel->howToInterp = LTRA_INTERP_MIXED; }
+                else if (key == "truncnr") { lmodel->truncNR = true; }
+                else if (key == "truncdontcut") { lmodel->truncDontCut = true; }
+            }
+            if (!lmodel->setup(1e-3, 1e-12)) {
+                throw ParseError("Line " + std::to_string(ol.line_number) +
+                                 ": Invalid LTRA model parameters for '" + ol.model_name + "'");
+            }
+        }
+
+        ckt.add_device(std::make_unique<LossyTransmissionLine>(
+            ol.name, ol.p1p, ol.p1n, ol.p2p, ol.p2n, lmodel));
     }
 
     ckt.finalize();

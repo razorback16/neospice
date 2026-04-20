@@ -1,0 +1,60 @@
+# LTRA (Lossy Transmission Line) descriptor
+# NOTE: LTRA is NOT a compact semiconductor model - it's a distributed element
+# using convolution-based transient analysis. The auto-migration tool designed
+# for compact models (bsim4v7, dio, bjt, jfet) is NOT suitable for LTRA.
+# This device was migrated manually as a native C++ Device subclass, following
+# the pattern of the lossless TransmissionLine (tline.cpp).
+
+model:
+  ngspice_prefix: "LTRA"
+  neospice_name: "ltra"
+  neospice_namespace: "ltra"
+  instance_struct: "LTRAinstance"
+  model_struct: "LTRAmodel"
+  instance_tag: "sLTRAinstance"
+  model_tag: "sLTRAmodel"
+  cpp_instance: "LossyTransmissionLine"
+  cpp_model: "LTRAModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+
+  terminals:
+    - { name: "p1_pos", field: "LTRAposNode1" }
+    - { name: "p1_neg", field: "LTRAnegNode1" }
+    - { name: "p2_pos", field: "LTRAposNode2" }
+    - { name: "p2_neg", field: "LTRAnegNode2" }
+
+  # LTRA does NOT use the standard state ring buffer - it has its own
+  # dynamic history arrays (v1, i1, v2, i2) managed by accept_step()
+  state_count: 0
+  has_internal_nodes: true  # Creates 2 branch equations (brEq1, brEq2)
+
+  # Element prefix: O (e.g., O1 p1+ p1- p2+ p2- modelname)
+  spice_prefix: "O"
+
+  # Model parameters: R, L, G, C (per unit length), LEN
+  # Line types: LC, RLC, RC, RG (RL not supported)
+
+  # These source files were studied but NOT auto-translated:
+  source_files:
+    setup: "ltraset.c"      # Node/matrix allocation
+    load: "ltraload.c"      # DC + transient stamps + convolution
+    temp: "ltratemp.c"      # Derived parameter computation
+    param: "ltrapar.c"      # Instance parameter setting (IC)
+    mpar: "ltrampar.c"      # Model parameter setting
+    devsup: "ltra.c"        # Device support / tables
+    misc: "ltramisc.c"      # Bessel functions, convolution coefficients, LTE
+
+  skip_files:
+    - "ltraacld.c"          # AC load - frequency-dependent (manual)
+    - "ltraacct.c"          # Accept - history management (manual)
+    - "ltratrun.c"          # Truncation (manual)
+    - "ltraask.c"           # Parameter ask (manual)
+    - "ltramask.c"          # Model ask (not needed)
+    - "ltradel.c"           # Delete (C++ RAII)
+    - "ltradest.c"          # Destroy (C++ RAII)
+    - "ltrainit.c"          # Init table (C++ registration)
+
+  # No geometry, no traditional semiconductor state variables
+  geometry: []
+  defines: []

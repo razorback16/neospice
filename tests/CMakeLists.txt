@@ -69,6 +69,7 @@ add_executable(neospice_tests
     unit/test_diode_validation.cpp
     unit/test_coupled_inductor.cpp
     unit/test_tline.cpp
+    unit/test_ltra.cpp
     unit/test_jfet.cpp
     unit/test_switch.cpp
     unit/test_noise.cpp

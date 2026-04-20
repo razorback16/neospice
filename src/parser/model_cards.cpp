@@ -91,15 +91,21 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
             ptokens.push_back(tok);
         }
 
-        // Parse key=value pairs: expect key, =, value
-        for (size_t i = 0; i + 2 < ptokens.size(); i += 3) {
+        // Parse key=value pairs: expect key, =, value.
+        // Bare tokens without '=' are treated as flag parameters (value = 1.0).
+        // This handles LTRA flags like nocontrol, steplimit, lininterp, etc.
+        for (size_t i = 0; i < ptokens.size(); ) {
             std::string key = to_lower(ptokens[i]);
-            // ptokens[i+1] should be "="
-            if (ptokens[i + 1] != "=") {
-                throw ParseError(".model: expected '=' after key '" + ptokens[i] + "'");
+            if (i + 2 < ptokens.size() && ptokens[i + 1] == "=") {
+                // key = value triplet
+                double val = parse_spice_number(ptokens[i + 2]);
+                card.params[key] = val;
+                i += 3;
+            } else {
+                // Bare token — flag parameter (e.g., nocontrol, steplimit)
+                card.params[key] = 1.0;
+                i += 1;
             }
-            double val = parse_spice_number(ptokens[i + 2]);
-            card.params[key] = val;
         }
     }
 
