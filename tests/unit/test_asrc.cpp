@@ -162,6 +162,7 @@ TEST(ASRCExpr, MinMaxDerivative) {
 
 TEST(ASRCExpr, IfFunction) {
     auto expr = CompiledExpression::compile("if(V(x), V(y), V(z))");
+    // Positive condition -> then branch
     {
         std::vector<double> vals = {1.0, 10.0, 20.0};
         std::vector<double> derivs;
@@ -170,8 +171,18 @@ TEST(ASRCExpr, IfFunction) {
         EXPECT_DOUBLE_EQ(derivs[1], 1.0);
         EXPECT_DOUBLE_EQ(derivs[2], 0.0);
     }
+    // Negative condition (non-zero) -> then branch (ngspice: any non-zero is true)
     {
         std::vector<double> vals = {-1.0, 10.0, 20.0};
+        std::vector<double> derivs;
+        double result = expr.evaluate(vals, derivs);
+        EXPECT_DOUBLE_EQ(result, 10.0);
+        EXPECT_DOUBLE_EQ(derivs[1], 1.0);
+        EXPECT_DOUBLE_EQ(derivs[2], 0.0);
+    }
+    // Zero condition -> else branch
+    {
+        std::vector<double> vals = {0.0, 10.0, 20.0};
         std::vector<double> derivs;
         double result = expr.evaluate(vals, derivs);
         EXPECT_DOUBLE_EQ(result, 20.0);

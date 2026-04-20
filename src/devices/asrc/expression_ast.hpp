@@ -16,7 +16,9 @@
 // Supported operators:  + - * / ^ (or **)
 // Supported functions:  sin cos tan asin acos atan atan2
 //                       exp log log10 sqrt abs pow min max
-//                       sinh cosh tanh limit if
+//                       sinh cosh tanh acosh asinh atanh
+//                       sgn u ustep uramp ceil floor nint pwr
+//                       limit if
 // Numeric literals with SPICE suffixes (1k, 2.5m, 100u, etc.)
 // ---------------------------------------------------------------------------
 
@@ -52,10 +54,13 @@ enum class NodeType {
     SIN, COS, TAN, ASIN, ACOS, ATAN,
     EXP, LOG, LOG10, SQRT, ABS,
     SINH, COSH, TANH,
+    ACOSH, ASINH, ATANH,
+    SGN, USTEP, URAMP,
+    CEIL, FLOOR, NINT,
     // Functions (binary)
-    ATAN2, POW_FN, MIN, MAX,
+    ATAN2, POW_FN, MIN, MAX, PWR,
     // Ternary
-    IF_FN,          // if(cond, then, else) — cond > 0 selects then
+    IF_FN,          // if(cond, then, else) — cond != 0 selects then
     LIMIT,          // limit(x, lo, hi) = min(max(x, lo), hi)
 };
 

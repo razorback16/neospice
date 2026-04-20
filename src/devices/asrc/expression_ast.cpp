@@ -514,10 +514,21 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     if (name == "sinh")  return make_unary(NodeType::SINH);
     if (name == "cosh")  return make_unary(NodeType::COSH);
     if (name == "tanh")  return make_unary(NodeType::TANH);
+    if (name == "acosh") return make_unary(NodeType::ACOSH);
+    if (name == "asinh") return make_unary(NodeType::ASINH);
+    if (name == "atanh") return make_unary(NodeType::ATANH);
+    if (name == "sgn")   return make_unary(NodeType::SGN);
+    if (name == "u" || name == "ustep")
+                         return make_unary(NodeType::USTEP);
+    if (name == "uramp") return make_unary(NodeType::URAMP);
+    if (name == "ceil")  return make_unary(NodeType::CEIL);
+    if (name == "floor") return make_unary(NodeType::FLOOR);
+    if (name == "nint")  return make_unary(NodeType::NINT);
 
     // Binary functions
     if (name == "atan2") return make_binary(NodeType::ATAN2);
     if (name == "pow")   return make_binary(NodeType::POW_FN);
+    if (name == "pwr")   return make_binary(NodeType::PWR);
     if (name == "min")   return make_binary(NodeType::MIN);
     if (name == "max")   return make_binary(NodeType::MAX);
 
@@ -826,6 +837,85 @@ CompiledExpression::eval_node(const ASTNode* node,
         return result;
     }
 
+    case NodeType::ACOSH: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        double safe_arg = std::max(1.0, a.val);
+        result.val = std::acosh(safe_arg);
+        if (need_grad) {
+            double denom = std::sqrt(a.val * a.val - 1.0);
+            double d = (denom > 1e-300) ? 1.0 / denom : 0.0;
+            for (int i = 0; i < nv; ++i) result.grad[i] = d * a.grad[i];
+        }
+        return result;
+    }
+
+    case NodeType::ASINH: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        result.val = std::asinh(a.val);
+        if (need_grad) {
+            double d = 1.0 / std::sqrt(a.val * a.val + 1.0);
+            for (int i = 0; i < nv; ++i) result.grad[i] = d * a.grad[i];
+        }
+        return result;
+    }
+
+    case NodeType::ATANH: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        double clamped = std::max(-0.9999, std::min(0.9999, a.val));
+        result.val = std::atanh(clamped);
+        if (need_grad) {
+            double denom = 1.0 - a.val * a.val;
+            double d = (std::abs(denom) > 1e-300) ? 1.0 / denom : 0.0;
+            for (int i = 0; i < nv; ++i) result.grad[i] = d * a.grad[i];
+        }
+        return result;
+    }
+
+    case NodeType::SGN: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        result.val = (a.val > 0.0) ? 1.0 : ((a.val < 0.0) ? -1.0 : 0.0);
+        // Derivative is 0 (piecewise constant)
+        return result;
+    }
+
+    case NodeType::USTEP: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        result.val = (a.val >= 0.0) ? 1.0 : 0.0;
+        // Derivative is 0 (piecewise constant)
+        return result;
+    }
+
+    case NodeType::URAMP: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        result.val = std::max(0.0, a.val);
+        if (need_grad) {
+            double d = (a.val > 0.0) ? 1.0 : 0.0;
+            for (int i = 0; i < nv; ++i) result.grad[i] = d * a.grad[i];
+        }
+        return result;
+    }
+
+    case NodeType::CEIL: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        result.val = std::ceil(a.val);
+        // Derivative is 0 (piecewise constant)
+        return result;
+    }
+
+    case NodeType::FLOOR: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        result.val = std::floor(a.val);
+        // Derivative is 0 (piecewise constant)
+        return result;
+    }
+
+    case NodeType::NINT: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        result.val = std::round(a.val);
+        // Derivative is 0 (piecewise constant)
+        return result;
+    }
+
     // --- Binary functions ---
 
     case NodeType::ATAN2: {
@@ -868,11 +958,30 @@ CompiledExpression::eval_node(const ASTNode* node,
         return result;
     }
 
+    case NodeType::PWR: {
+        // pwr(x,y) = sgn(x) * |x|^y
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        auto b = eval_node(node->right.get(), var_values, nv, need_grad);
+        double abs_x = std::abs(a.val);
+        double raw = std::pow(abs_x, b.val);
+        result.val = std::copysign(raw, a.val);
+        if (need_grad) {
+            // d/dx[sgn(x)*|x|^y] = y * |x|^(y-1)   (sign-preserving)
+            double da_coeff = b.val * std::pow(abs_x, b.val - 1.0);
+            // d/dy[sgn(x)*|x|^y] = sgn(x) * |x|^y * ln(|x|)
+            double db_coeff = (abs_x > 0.0) ? raw * std::log(abs_x) : 0.0;
+            double sign = (a.val >= 0.0) ? 1.0 : -1.0;
+            for (int i = 0; i < nv; ++i)
+                result.grad[i] = da_coeff * a.grad[i] + sign * db_coeff * b.grad[i];
+        }
+        return result;
+    }
+
     // --- Ternary ---
 
     case NodeType::IF_FN: {
         auto cond = eval_node(node->left.get(), var_values, nv, false);
-        if (cond.val > 0.0) {
+        if (cond.val != 0.0) {
             auto then_val = eval_node(node->mid.get(), var_values, nv, need_grad);
             result.val = then_val.val;
             if (need_grad) result.grad = std::move(then_val.grad);
