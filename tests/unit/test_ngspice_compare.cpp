@@ -485,3 +485,17 @@ TEST_F(NgspiceCompareTest, AsrcTemper) {
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
+
+// ---------------------------------------------------------------------------
+// ASRC HERTZ variable test
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, AsrcHertz) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/asrc_hertz.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run_dc(ckt);
+    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}

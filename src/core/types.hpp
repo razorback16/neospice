@@ -50,6 +50,7 @@ struct IntegratorCtx {
     int    order = 1;
     int    integrate_method = 0;  // 0=trapezoidal, 1=gear
     double current_time = 0.0;
+    double ac_freq = 0.0;
 
     double lte_coefficient() const {
         if (order <= 1) return 0.5;

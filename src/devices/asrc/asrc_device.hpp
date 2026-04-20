@@ -111,6 +111,9 @@ private:
     // Temperature variable index (-1 if expression doesn't use TEMPER)
     int temper_var_idx_ = -1;
 
+    // Frequency variable index (-1 if expression doesn't use HERTZ)
+    int hertz_var_idx_ = -1;
+
     // -- Matrix offsets --
 
     // Voltage mode: MNA branch stamps

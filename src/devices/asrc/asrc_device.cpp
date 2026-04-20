@@ -47,6 +47,15 @@ ASRCDevice::ASRCDevice(std::string name, int32_t node_pos, int32_t node_neg,
             break;
         }
     }
+
+    // Find the HERTZ variable index
+    for (int i = 0; i < nv; ++i) {
+        if (expr_.var_refs()[i].kind == asrc::VarKind::NODE_VOLTAGE &&
+            expr_.var_refs()[i].name1 == "__hertz__") {
+            hertz_var_idx_ = i;
+            break;
+        }
+    }
 }
 
 // ===========================================================================
@@ -99,6 +108,7 @@ void ASRCDevice::stamp_pattern(SparsityBuilder& builder) const {
         for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
             if (time_var_idx_ == i) continue;
             if (temper_var_idx_ == i) continue;
+            if (hertz_var_idx_ == i) continue;
 
             switch (refs[i].kind) {
             case asrc::VarKind::NODE_VOLTAGE:
@@ -120,6 +130,7 @@ void ASRCDevice::stamp_pattern(SparsityBuilder& builder) const {
         for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
             if (time_var_idx_ == i) continue;
             if (temper_var_idx_ == i) continue;
+            if (hertz_var_idx_ == i) continue;
 
             switch (refs[i].kind) {
             case asrc::VarKind::NODE_VOLTAGE:
@@ -161,6 +172,7 @@ void ASRCDevice::assign_offsets(const SparsityPattern& pattern) {
     for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
         if (time_var_idx_ == i) continue;
         if (temper_var_idx_ == i) continue;
+        if (hertz_var_idx_ == i) continue;
 
         if (mode_ == Mode::VOLTAGE) {
             switch (refs[i].kind) {
@@ -217,6 +229,11 @@ void ASRCDevice::fill_var_values(const std::vector<double>& voltages) {
             if (tls_integrator_ctx && tls_integrator_ctx->options)
                 temp_celsius = tls_integrator_ctx->options->temp - 273.15;
             var_values_[i] = temp_celsius;
+            continue;
+        }
+
+        if (i == hertz_var_idx_) {
+            var_values_[i] = tls_integrator_ctx ? tls_integrator_ctx->ac_freq : 0.0;
             continue;
         }
 
@@ -290,6 +307,7 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
         for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
             if (i == time_var_idx_) continue;
             if (i == temper_var_idx_) continue;
+            if (i == hertz_var_idx_) continue;
 
             double d = derivs_[i];
             rhs_val -= d * var_values_[i];
@@ -327,6 +345,7 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
         for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
             if (i == time_var_idx_) continue;
             if (i == temper_var_idx_) continue;
+            if (i == hertz_var_idx_) continue;
 
             double d = derivs_[i];
             companion -= d * var_values_[i];
@@ -375,6 +394,7 @@ void ASRCDevice::ac_stamp(const std::vector<double>& voltages,
         for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
             if (i == time_var_idx_) continue;
             if (i == temper_var_idx_) continue;
+            if (i == hertz_var_idx_) continue;
             double d = ac_derivs_[i];
             switch (refs[i].kind) {
             case asrc::VarKind::NODE_VOLTAGE:
@@ -391,6 +411,7 @@ void ASRCDevice::ac_stamp(const std::vector<double>& voltages,
         for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
             if (i == time_var_idx_) continue;
             if (i == temper_var_idx_) continue;
+            if (i == hertz_var_idx_) continue;
             double d = ac_derivs_[i];
             switch (refs[i].kind) {
             case asrc::VarKind::NODE_VOLTAGE:

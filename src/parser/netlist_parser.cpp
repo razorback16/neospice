@@ -1826,6 +1826,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     node_indices[i] = -2;  // TEMPER sentinel
                     continue;
                 }
+                if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                    ref.name1 == "__hertz__") {
+                    node_indices[i] = -2;  // HERTZ sentinel
+                    continue;
+                }
 
                 switch (ref.kind) {
                 case asrc::VarKind::NODE_VOLTAGE: {

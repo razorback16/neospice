@@ -229,6 +229,7 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     // 11. Frequency sweep
     for (size_t fi = 0; fi < freqs.size(); ++fi) {
         double omega = 2.0 * M_PI * freqs[fi];
+        ckt.integrator_ctx.ac_freq = freqs[fi];
 
         for (int32_t k = 0; k < nnz; ++k) {
             ax[2 * k]     = g_vals[k];
