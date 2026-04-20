@@ -6,6 +6,9 @@
 #include "devices/dio/dio_device.hpp"           // complete DIOModelCard for unique_ptr
 #include "devices/vbic/vbic_device.hpp"         // complete VBICModelCard for unique_ptr
 #include "devices/bsim3/bsim3_device.hpp"      // complete BSIM3ModelCard for unique_ptr
+#include "devices/resistor.hpp"
+#include "devices/capacitor.hpp"
+#include "devices/inductor.hpp"
 #include <cassert>
 #include <stdexcept>
 
@@ -135,7 +138,18 @@ void Circuit::finalize() {
         dev->assign_offsets(*pattern_);
     }
 
-    // 5. Allocate state ring buffers and bind per-device base offsets.
+    // 5. Process temperature-dependent parameters for R/C/L devices.
+    //    This mirrors ngspice's REStemp/CAPtemp/INDtemp calls.
+    for (auto& dev : devices_) {
+        if (auto* r = dynamic_cast<Resistor*>(dev.get()))
+            r->process_temperature(options.temp, options.tnom);
+        else if (auto* c = dynamic_cast<Capacitor*>(dev.get()))
+            c->process_temperature(options.temp, options.tnom);
+        else if (auto* l = dynamic_cast<Inductor*>(dev.get()))
+            l->process_temperature(options.temp, options.tnom);
+    }
+
+    // 6. Allocate state ring buffers and bind per-device base offsets.
     num_states_ = 0;
     for (auto& dev : devices_) num_states_ += dev->state_vars();
     state0_.assign(num_states_, 0.0);

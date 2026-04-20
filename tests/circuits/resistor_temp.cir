@@ -1,0 +1,10 @@
+* Resistor with temperature coefficients
+* At temp=50C (323.15K), tnom=27C (300.15K):
+*   dt = 23, factor = 1 + 0.01*23 + 0.001*23^2 = 1 + 0.23 + 0.529 = 1.759
+*   R_eff = 1k * 1.759 = 1759 ohm
+*   V(in) = 10V, I = 10/1759 = 5.685 mA, V(in) = 10V
+R1 in 0 1k TC1=0.01 TC2=0.001
+V1 in 0 DC 10
+.options temp=50
+.op
+.end

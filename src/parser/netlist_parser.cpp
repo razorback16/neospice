@@ -996,7 +996,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         }
 
         if (elem_type == 'r') {
-            // R name n+ n- value
+            // R name n+ n- value [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
             if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": Resistor requires name, n+, n-, value");
@@ -1005,9 +1005,24 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t np = ckt.node(tokens[1]);
             int32_t nn = ckt.node(tokens[2]);
             double val = parse_spice_number(tokens[3]);
-            ckt.add_device(std::make_unique<Resistor>(name, np, nn, val));
+            auto r = std::make_unique<Resistor>(name, np, nn, val);
+            for (size_t k = 4; k < tokens.size(); ++k) {
+                std::string tok = to_lower(tokens[k]);
+                if (tok.starts_with("tc1="))
+                    r->set_tc1(parse_spice_number(tok.substr(4)));
+                else if (tok.starts_with("tc2="))
+                    r->set_tc2(parse_spice_number(tok.substr(4)));
+                else if (tok.starts_with("scale="))
+                    r->set_scale(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("temp="))
+                    r->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
+                else if (tok.starts_with("dtemp="))
+                    r->set_dtemp(parse_spice_number(tok.substr(6)));
+            }
+            ckt.add_device(std::move(r));
 
         } else if (elem_type == 'c') {
+            // C name n+ n- value [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
             if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": Capacitor requires name, n+, n-, value");
@@ -1016,9 +1031,24 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t np = ckt.node(tokens[1]);
             int32_t nn = ckt.node(tokens[2]);
             double val = parse_spice_number(tokens[3]);
-            ckt.add_device(std::make_unique<Capacitor>(name, np, nn, val));
+            auto c = std::make_unique<Capacitor>(name, np, nn, val);
+            for (size_t k = 4; k < tokens.size(); ++k) {
+                std::string tok = to_lower(tokens[k]);
+                if (tok.starts_with("tc1="))
+                    c->set_tc1(parse_spice_number(tok.substr(4)));
+                else if (tok.starts_with("tc2="))
+                    c->set_tc2(parse_spice_number(tok.substr(4)));
+                else if (tok.starts_with("scale="))
+                    c->set_scale(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("temp="))
+                    c->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
+                else if (tok.starts_with("dtemp="))
+                    c->set_dtemp(parse_spice_number(tok.substr(6)));
+            }
+            ckt.add_device(std::move(c));
 
         } else if (elem_type == 'l') {
+            // L name n+ n- value [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
             if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": Inductor requires name, n+, n-, value");
@@ -1027,7 +1057,21 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t np = ckt.node(tokens[1]);
             int32_t nn = ckt.node(tokens[2]);
             double val = parse_spice_number(tokens[3]);
-            ckt.add_device(std::make_unique<Inductor>(name, np, nn, val));
+            auto l = std::make_unique<Inductor>(name, np, nn, val);
+            for (size_t k = 4; k < tokens.size(); ++k) {
+                std::string tok = to_lower(tokens[k]);
+                if (tok.starts_with("tc1="))
+                    l->set_tc1(parse_spice_number(tok.substr(4)));
+                else if (tok.starts_with("tc2="))
+                    l->set_tc2(parse_spice_number(tok.substr(4)));
+                else if (tok.starts_with("scale="))
+                    l->set_scale(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("temp="))
+                    l->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
+                else if (tok.starts_with("dtemp="))
+                    l->set_dtemp(parse_spice_number(tok.substr(6)));
+            }
+            ckt.add_device(std::move(l));
 
         } else if (elem_type == 'v') {
             // V name n+ n- [DC val] [AC mag [phase]] [PULSE(...)] [SIN(...)]

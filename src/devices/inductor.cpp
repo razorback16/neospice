@@ -6,7 +6,8 @@
 namespace neospice {
 
 Inductor::Inductor(std::string name, int32_t node_pos, int32_t node_neg, double inductance)
-    : Device(std::move(name)), np_(node_pos), nn_(node_neg), inductance_(inductance)
+    : Device(std::move(name)), np_(node_pos), nn_(node_neg),
+      inductance_nom_(inductance), inductance_eff_(inductance)
 {}
 
 void Inductor::set_branch_index(int32_t idx) {
@@ -52,12 +53,12 @@ void Inductor::evaluate(const std::vector<double>& /*voltages*/,
             //   ag2 = 1/((1+r)*r*dt)
             double r = (dt_prev_ > 0.0) ? dt_prev_ / dt_ : 1.0;
             double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
-            r_eq = ag0 * inductance_;
+            r_eq = ag0 * inductance_eff_;
             double ag1 = -(1.0 + r) / (r * dt_);
             double ag2 = 1.0 / ((1.0 + r) * r * dt_);
-            v_eq = -inductance_ * (ag1 * i_prev_ + ag2 * i_prev2_);
+            v_eq = -inductance_eff_ * (ag1 * i_prev_ + ag2 * i_prev2_);
         } else {
-            r_eq = 2.0 * inductance_ / dt_;
+            r_eq = 2.0 * inductance_eff_ / dt_;
             v_eq = r_eq * i_prev_ + v_prev_;
         }
 
@@ -77,7 +78,7 @@ void Inductor::ac_stamp(const std::vector<double>& /*voltages*/,
     add_if_valid(G, off_br_n_, -1.0);
     // Inductance into C: branch equation gets -L at (branch, branch)
     // This represents V(np)-V(nn) = jwL * I_branch in frequency domain
-    C.add(off_br_br_, -inductance_);
+    C.add(off_br_br_, -inductance_eff_);
 }
 
 void Inductor::set_transient(double dt) {
@@ -99,7 +100,7 @@ void Inductor::accept_step(double i_branch, double v_across) {
     // Track flux history for LTE (before i_prev_ is overwritten)
     phi_prev3_ = phi_prev2_;
     phi_prev2_ = phi_prev_;
-    phi_prev_ = inductance_ * i_prev_;
+    phi_prev_ = inductance_eff_ * i_prev_;
     dt_prev_ = dt_;
 
     v_prev2_ = v_prev_;
@@ -129,7 +130,7 @@ void Inductor::init_dc_state(const std::vector<double>& sol) {
     gear_ready_ = false;
 
     // Initialize flux history
-    phi_prev_ = inductance_ * i_prev_;
+    phi_prev_ = inductance_eff_ * i_prev_;
     phi_prev2_ = phi_prev_;
     phi_prev3_ = phi_prev_;
 }
@@ -164,7 +165,7 @@ double Inductor::compute_trunc(const IntegratorCtx& ctx,
     if (h1 <= 0.0) return 1e30;
 
     // Current flux
-    double phi0 = inductance_ * i_prev_;    // flux at current accepted solution
+    double phi0 = inductance_eff_ * i_prev_;    // flux at current accepted solution
     double phi1 = phi_prev_;                 // flux at previous step
     double phi2 = phi_prev2_;                // flux at two steps ago
 
@@ -195,6 +196,19 @@ double Inductor::compute_trunc(const IntegratorCtx& ctx,
     del = std::sqrt(del);    // order == 2
 
     return del;
+}
+
+void Inductor::process_temperature(double sim_temp, double sim_tnom) {
+    // Follows ngspice indtemp.c exactly:
+    //   difference = (device_temp + dtemp) - tnom
+    //   factor = 1 + tc1*diff + tc2*diff^2
+    //   induct = induct * factor * scale
+    double tnom = sim_tnom;
+    double temp = (temp_ > 0) ? temp_ : sim_temp;
+    double dtemp = (temp_ > 0) ? 0.0 : dtemp_;
+    double difference = (temp + dtemp) - tnom;
+    double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
+    inductance_eff_ = inductance_nom_ * factor * scale_;
 }
 
 } // namespace neospice

@@ -31,7 +31,18 @@ public:
     void init_dc_state_gear(double i_prev, double v_prev,
                             double i_prev2, double v_prev2);
 
-    double inductance() const { return inductance_; }
+    double inductance() const { return inductance_eff_; }
+    double inductance_nom() const { return inductance_nom_; }
+
+    /// Temperature coefficient setters (instance-level parameters)
+    void set_tc1(double tc1) { tc1_ = tc1; }
+    void set_tc2(double tc2) { tc2_ = tc2; }
+    void set_scale(double s) { scale_ = s; }
+    void set_temp(double t) { temp_ = t; }
+    void set_dtemp(double dt) { dtemp_ = dt; }
+
+    /// Apply temperature-dependent adjustment to effective inductance.
+    void process_temperature(double sim_temp, double sim_tnom);
 
     std::vector<std::string> output_currents() const override;
 
@@ -42,7 +53,14 @@ public:
 private:
     int32_t np_, nn_;
     int32_t branch_idx_ = -1;
-    double inductance_;
+    double inductance_nom_;    // original (nominal) inductance
+    double inductance_eff_;    // effective value after temperature/scale adjustment
+
+    double tc1_ = 0.0;
+    double tc2_ = 0.0;
+    double scale_ = 1.0;
+    double temp_ = -1.0;      // device temperature in K (-1 = use simulation default)
+    double dtemp_ = 0.0;      // delta temperature in K
     bool transient_ = false;
     double dt_ = 0.0;
     double v_prev_ = 0.0;

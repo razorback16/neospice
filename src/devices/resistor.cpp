@@ -6,7 +6,8 @@
 namespace neospice {
 
 Resistor::Resistor(std::string name, int32_t node_pos, int32_t node_neg, double resistance)
-    : Device(std::move(name)), np_(node_pos), nn_(node_neg), resistance_(resistance)
+    : Device(std::move(name)), np_(node_pos), nn_(node_neg),
+      resistance_nom_(resistance), resistance_eff_(resistance)
 {}
 
 void Resistor::stamp_pattern(SparsityBuilder& builder) const {
@@ -30,7 +31,7 @@ void Resistor::evaluate(const std::vector<double>& /*voltages*/,
         if (ic->options) sim_temp_ = ic->options->temp;
     }
 
-    const double g = 1.0 / resistance_;
+    const double g = 1.0 / resistance_eff_;
     add_if_valid(mat, off_pp_,  g);
     add_if_valid(mat, off_pn_, -g);
     add_if_valid(mat, off_np_, -g);
@@ -40,7 +41,7 @@ void Resistor::evaluate(const std::vector<double>& /*voltages*/,
 void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
                         NumericMatrix& G, NumericMatrix& /*C*/) {
     // Pure conductance: same stamp as DC, no capacitance contribution
-    const double g = 1.0 / resistance_;
+    const double g = 1.0 / resistance_eff_;
     add_if_valid(G, off_pp_,  g);
     add_if_valid(G, off_pn_, -g);
     add_if_valid(G, off_np_, -g);
@@ -49,14 +50,14 @@ void Resistor::ac_stamp(const std::vector<double>& /*voltages*/,
 
 std::vector<Device::NoiseSource> Resistor::noise_sources(
     double freq, const std::vector<double>& dc_solution) const {
-    const double G = 1.0 / resistance_;
+    const double G = 1.0 / resistance_eff_;
     double spectral_density = 4.0 * BOLTZMANN * sim_temp_ * G;
 
     // Flicker (1/f) noise: S = Kf * |I_dc|^Af / f
     if (noise_kf != 0.0 && freq > 0.0) {
         const double v_np = (np_ >= 0) ? dc_solution[np_] : 0.0;
         const double v_nn = (nn_ >= 0) ? dc_solution[nn_] : 0.0;
-        const double i_dc = (v_np - v_nn) / resistance_;
+        const double i_dc = (v_np - v_nn) / resistance_eff_;
         const double i_abs = std::abs(i_dc);
         const double i_af = (i_abs > 0.0 || noise_af == 0.0)
                             ? std::pow(i_abs, noise_af) : 0.0;
@@ -64,6 +65,22 @@ std::vector<Device::NoiseSource> Resistor::noise_sources(
     }
 
     return {{np_, nn_, spectral_density}};
+}
+
+void Resistor::process_temperature(double sim_temp, double sim_tnom) {
+    // Follows ngspice restemp.c exactly:
+    //   difference = (device_temp + dtemp) - tnom
+    //   factor = 1 + tc1*diff + tc2*diff^2
+    //   conduct = 1/(resist * factor * scale)
+    double tnom = sim_tnom;
+    double temp = (temp_ > 0) ? temp_ : sim_temp;
+    // If temp was explicitly given, dtemp is ignored (ngspice behavior)
+    double dtemp = (temp_ > 0) ? 0.0 : dtemp_;
+    double difference = (temp + dtemp) - tnom;
+    double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
+    resistance_eff_ = resistance_nom_ * factor * scale_;
+    // Guard against zero or negative resistance
+    if (resistance_eff_ < 1e-3) resistance_eff_ = 1e-3;
 }
 
 } // namespace neospice

@@ -18,7 +18,19 @@ public:
     std::vector<NoiseSource> noise_sources(
         double freq, const std::vector<double>& dc_solution) const override;
 
-    double resistance() const { return resistance_; }
+    double resistance() const { return resistance_eff_; }
+    double resistance_nom() const { return resistance_nom_; }
+
+    /// Temperature coefficient setters (instance-level parameters)
+    void set_tc1(double tc1) { tc1_ = tc1; }
+    void set_tc2(double tc2) { tc2_ = tc2; }
+    void set_scale(double s) { scale_ = s; }
+    void set_temp(double t) { temp_ = t; }
+    void set_dtemp(double dt) { dtemp_ = dt; }
+
+    /// Apply temperature-dependent adjustment to effective resistance.
+    /// Called once during circuit finalize (or whenever temperature changes).
+    void process_temperature(double sim_temp, double sim_tnom);
 
     /// Optional flicker (1/f) noise parameters.
     /// If noise_kf == 0 (default), no flicker noise is added (backward compatible).
@@ -28,7 +40,14 @@ public:
 private:
     int32_t np_;          // positive node (GROUND_INTERNAL = -1 for ground)
     int32_t nn_;          // negative node (GROUND_INTERNAL = -1 for ground)
-    double resistance_;
+    double resistance_nom_;    // original (nominal) resistance value
+    double resistance_eff_;    // effective value after temperature/scale adjustment
+
+    double tc1_ = 0.0;        // temperature coefficient 1 (1/K)
+    double tc2_ = 0.0;        // temperature coefficient 2 (1/K^2)
+    double scale_ = 1.0;      // instance scale factor
+    double temp_ = -1.0;      // device temperature in K (-1 = use simulation default)
+    double dtemp_ = 0.0;      // delta temperature in K
 
     MatrixOffset off_pp_ = -1;
     MatrixOffset off_pn_ = -1;

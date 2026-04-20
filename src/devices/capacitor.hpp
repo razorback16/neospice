@@ -32,9 +32,29 @@ public:
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
 
+    double capacitance() const { return cap_eff_; }
+    double capacitance_nom() const { return cap_nom_; }
+
+    /// Temperature coefficient setters (instance-level parameters)
+    void set_tc1(double tc1) { tc1_ = tc1; }
+    void set_tc2(double tc2) { tc2_ = tc2; }
+    void set_scale(double s) { scale_ = s; }
+    void set_temp(double t) { temp_ = t; }
+    void set_dtemp(double dt) { dtemp_ = dt; }
+
+    /// Apply temperature-dependent adjustment to effective capacitance.
+    void process_temperature(double sim_temp, double sim_tnom);
+
 private:
     int32_t np_, nn_;
-    double cap_;
+    double cap_nom_;       // original (nominal) capacitance
+    double cap_eff_;       // effective value after temperature/scale adjustment
+
+    double tc1_ = 0.0;
+    double tc2_ = 0.0;
+    double scale_ = 1.0;
+    double temp_ = -1.0;  // device temperature in K (-1 = use simulation default)
+    double dtemp_ = 0.0;  // delta temperature in K
     bool transient_ = false;
     double dt_ = 0.0;
     double v_prev_ = 0.0;

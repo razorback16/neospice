@@ -5,7 +5,8 @@
 namespace neospice {
 
 Capacitor::Capacitor(std::string name, int32_t node_pos, int32_t node_neg, double capacitance)
-    : Device(std::move(name)), np_(node_pos), nn_(node_neg), cap_(capacitance)
+    : Device(std::move(name)), np_(node_pos), nn_(node_neg),
+      cap_nom_(capacitance), cap_eff_(capacitance)
 {}
 
 void Capacitor::stamp_pattern(SparsityBuilder& builder) const {
@@ -36,13 +37,13 @@ void Capacitor::evaluate(const std::vector<double>& /*voltages*/,
         //   ag2 = 1/((1+r)*r*dt)
         double r = (dt_prev_ > 0.0) ? dt_prev_ / dt_ : 1.0;
         double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
-        g_eq = ag0 * cap_;
+        g_eq = ag0 * cap_eff_;
         double ag1 = -(1.0 + r) / (r * dt_);
         double ag2 = 1.0 / ((1.0 + r) * r * dt_);
-        i_eq = -cap_ * (ag1 * v_prev_ + ag2 * v_prev2_);
+        i_eq = -cap_eff_ * (ag1 * v_prev_ + ag2 * v_prev2_);
     } else {
         // Trapezoidal
-        g_eq = 2.0 * cap_ / dt_;
+        g_eq = 2.0 * cap_eff_ / dt_;
         i_eq = g_eq * v_prev_ + i_prev_;
     }
 
@@ -58,10 +59,10 @@ void Capacitor::evaluate(const std::vector<double>& /*voltages*/,
 void Capacitor::ac_stamp(const std::vector<double>& /*voltages*/,
                          NumericMatrix& /*G*/, NumericMatrix& C) {
     // Capacitance stamps into C matrix only; G matrix gets no contribution
-    add_if_valid(C, off_pp_,  cap_);
-    add_if_valid(C, off_pn_, -cap_);
-    add_if_valid(C, off_np_, -cap_);
-    add_if_valid(C, off_nn_,  cap_);
+    add_if_valid(C, off_pp_,  cap_eff_);
+    add_if_valid(C, off_pn_, -cap_eff_);
+    add_if_valid(C, off_np_, -cap_eff_);
+    add_if_valid(C, off_nn_,  cap_eff_);
 }
 
 void Capacitor::set_transient(double dt) {
@@ -83,7 +84,7 @@ void Capacitor::accept_step(double v_across) {
     // Track charge history for LTE (before v_prev_ is overwritten)
     q_prev3_ = q_prev2_;
     q_prev2_ = q_prev_;
-    q_prev_ = cap_ * v_prev_;
+    q_prev_ = cap_eff_ * v_prev_;
     dt_prev_ = dt_;
 
     if (integration_method_ == 1 && gear_ready_) {
@@ -92,13 +93,13 @@ void Capacitor::accept_step(double v_across) {
         double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
         double ag1 = -(1.0 + r) / (r * dt_);
         double ag2 = 1.0 / ((1.0 + r) * r * dt_);
-        double i_new = cap_ * (ag0 * v_across + ag1 * v_prev_ + ag2 * v_prev2_);
+        double i_new = cap_eff_ * (ag0 * v_across + ag1 * v_prev_ + ag2 * v_prev2_);
         v_prev2_ = v_prev_;
         i_prev2_ = i_prev_;
         v_prev_ = v_across;
         i_prev_ = i_new;
     } else {
-        double g_eq = 2.0 * cap_ / dt_;
+        double g_eq = 2.0 * cap_eff_ / dt_;
         double i_eq = g_eq * v_prev_ + i_prev_;
         double i_new = g_eq * v_across - i_eq;
         v_prev2_ = v_prev_;
@@ -127,7 +128,7 @@ void Capacitor::init_dc_state(const std::vector<double>& sol) {
     gear_ready_ = false;
 
     // Initialize charge history
-    q_prev_ = cap_ * v_prev_;
+    q_prev_ = cap_eff_ * v_prev_;
     q_prev2_ = q_prev_;
     q_prev3_ = q_prev_;
 }
@@ -158,7 +159,7 @@ double Capacitor::compute_trunc(const IntegratorCtx& ctx,
     if (h1 <= 0.0) return 1e30;
 
     // Current charge and current (dQ/dt companion model)
-    double q0 = cap_ * v_prev_;    // charge at current accepted solution
+    double q0 = cap_eff_ * v_prev_;    // charge at current accepted solution
     // Note: q_prev_ was saved BEFORE v_prev_ was updated, so it holds Q(n-1)
     double q1 = q_prev_;           // charge at previous step
     double q2 = q_prev2_;          // charge at two steps ago
@@ -189,6 +190,19 @@ double Capacitor::compute_trunc(const IntegratorCtx& ctx,
     del = std::sqrt(del);    // order == 2
 
     return del;
+}
+
+void Capacitor::process_temperature(double sim_temp, double sim_tnom) {
+    // Follows ngspice captemp.c exactly:
+    //   difference = (device_temp + dtemp) - tnom
+    //   factor = 1 + tc1*diff + tc2*diff^2
+    //   capac = capac * factor * scale
+    double tnom = sim_tnom;
+    double temp = (temp_ > 0) ? temp_ : sim_temp;
+    double dtemp = (temp_ > 0) ? 0.0 : dtemp_;
+    double difference = (temp + dtemp) - tnom;
+    double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
+    cap_eff_ = cap_nom_ * factor * scale_;
 }
 
 } // namespace neospice
