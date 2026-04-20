@@ -183,6 +183,9 @@ DIOsetup(Shim::Matrix *matrix, DIOModel *inModel, Shim::Ckt *ckt, int *states)
         if(!model->DIOfNexpGiven) {
             model->DIOfNexp = 1.0;
         }
+        if(!model->DIOfNfreqExpGiven) {
+            model->DIOfNfreqExp = 1.0;
+        }
         if(!model->DIOresistTemp1Given) {
             model->DIOresistTemp1 = 0.0;
         }

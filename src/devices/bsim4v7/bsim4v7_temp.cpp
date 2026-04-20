@@ -1985,7 +1985,8 @@ int Size_Not_Found, i;
                  else
                  {
                      here->BSIM4v7sourceConductance = 1.0e3; /* mho */
-                     printf ("Warning: Source conductance reset to 1.0e3 mho.\n");
+                     if (!model->BSIM4v7rdsMod)
+                         printf ("Warning: Source conductance reset to 1.0e3 mho.\n");
                  }
               } else
               {
@@ -2016,7 +2017,8 @@ int Size_Not_Found, i;
                  else
                  {
                      here->BSIM4v7drainConductance = 1.0e3; /* mho */
-                     printf ("Warning: Drain conductance reset to 1.0e3 mho.\n");
+                     if (!model->BSIM4v7rdsMod)
+                         printf ("Warning: Drain conductance reset to 1.0e3 mho.\n");
                   }
               } else
               {

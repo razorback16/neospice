@@ -218,6 +218,7 @@ struct DIOModel {       /* model structure for a diode */
     unsigned DIOnomTempGiven : 1;
     unsigned DIOfNcoefGiven : 1;
     unsigned DIOfNexpGiven : 1;
+    unsigned DIOfNfreqExpGiven : 1;
     unsigned DIOareaGiven : 1;
     unsigned DIOpjGiven : 1;
 
@@ -273,6 +274,7 @@ struct DIOModel {       /* model structure for a diode */
     double DIOnomTemp;  /* nominal temperature at which parms measured */
     double DIOfNcoef;
     double DIOfNexp;
+    double DIOfNfreqExp;
 
     double DIOtunSatCur;        /* tunneling saturation current (JTUN) */
     double DIOtunSatSWCur;      /* sidewall tunneling saturation current (JTUNSW) */
@@ -357,8 +359,9 @@ struct DIOModel {       /* model structure for a diode */
 #define DIO_MOD_NTUN 144
 #define DIO_MOD_XTITUN 145
 #define DIO_MOD_KEG 146
-#define DIO_MOD_FV_MAX 147
-#define DIO_MOD_BV_MAX 148
+#define DIO_MOD_EF 147
+#define DIO_MOD_FV_MAX 148
+#define DIO_MOD_BV_MAX 149
 
 // --- Parameter tables and dispatchers (defined in devsup/mpar) ------
 namespace Shim { struct IfParm; struct IfValue; }

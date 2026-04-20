@@ -240,6 +240,10 @@ DIOmParam(int param, Shim::IfValue *value, DIOModel *inModel)
             model->DIOfNexp = value->rValue;
             model->DIOfNexpGiven = TRUE;
             break;
+        case DIO_MOD_EF:
+            model->DIOfNfreqExp = value->rValue;
+            model->DIOfNfreqExpGiven = TRUE;
+            break;
         case DIO_MOD_JTUN:
             model->DIOtunSatCur = value->rValue;
             model->DIOtunSatCurGiven = TRUE;

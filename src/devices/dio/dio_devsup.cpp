@@ -174,6 +174,7 @@ Shim::IfParm DIOmPTable[] = { /* model parameters */
 
  IOP( "kf",   DIO_MOD_KF,  IF_REAL, "flicker noise coefficient"),
  IOP( "af",   DIO_MOD_AF,  IF_REAL, "flicker noise exponent"),
+ IOP( "ef",   DIO_MOD_EF,  IF_REAL, "flicker noise frequency exponent"),
  IOP( "fc",  DIO_MOD_FC,  IF_REAL, "Forward bias junction fit parameter"),
  IOP( "fcs",  DIO_MOD_FCS,  IF_REAL, "Forward bias sidewall junction fit parameter"),
  IOP( "bv",  DIO_MOD_BV,  IF_REAL, "Reverse breakdown voltage"),

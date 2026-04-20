@@ -390,12 +390,14 @@ std::vector<Device::NoiseSource> DIODevice::noise_sources(
     sources.push_back({pos_prime_node, neg_node,
                        2.0 * CHARGE_Q * std::abs(Id)});
 
-    // Flicker (1/f) noise: S = KF * |Id/m|^AF / f * m
+    // Flicker noise: S = KF * |Id/m|^AF / f^EF * m
     const double KF = model_->DIOfNcoef;
     const double AF = model_->DIOfNexp;
+    const double EF = model_->DIOfNfreqExp;
     if (KF > 0.0 && freq > 0.0) {
         const double Iabs = std::abs(Id / m);
-        double S_flicker = KF * std::pow(std::max(Iabs, 1e-38), AF) / freq * m;
+        double S_flicker = KF * std::pow(std::max(Iabs, 1e-38), AF)
+                         / std::pow(freq, EF) * m;
         sources.push_back({pos_prime_node, neg_node, S_flicker});
     }
 

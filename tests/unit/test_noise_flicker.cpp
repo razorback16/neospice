@@ -385,29 +385,16 @@ TEST(FlickerNoise, NgspiceCompareDiodeFlicker) {
     EXPECT_GT(low_freq_noise, high_freq_noise)
         << "Flicker diode: noise at low freq should exceed noise at high freq";
 
-    // Compare against ngspice at matching frequencies with generous tolerance
-    // (10% relative) since diode DC operating point may differ slightly.
     size_t min_pts = std::min(result.frequency.size(), ng_result.frequency.size());
     ASSERT_GT(min_pts, 0u);
 
-    int mismatches = 0;
     for (size_t i = 0; i < min_pts; ++i) {
-        // ng_result stores V/sqrt(Hz), square to get V^2/Hz
         double ng_psd = ng_result.onoise_spectrum[i] * ng_result.onoise_spectrum[i];
         double cs_psd = result.output_noise_density[i];
-
         if (ng_psd <= 0.0 || cs_psd <= 0.0) continue;
 
-        // Compare in log space: allow factor of 3 (reasonable for flicker noise)
-        double ratio = cs_psd / ng_psd;
-        if (ratio < 0.33 || ratio > 3.0) {
-            ++mismatches;
-        }
+        EXPECT_NEAR(cs_psd, ng_psd, ng_psd * 0.01)
+            << "at freq=" << result.frequency[i]
+            << " Hz, ratio=" << cs_psd / ng_psd;
     }
-
-    // Allow up to 20% of points to fall outside factor-of-3 band
-    // (ngspice uses slightly different flicker model details)
-    EXPECT_LE(mismatches, static_cast<int>(min_pts) / 5)
-        << mismatches << "/" << min_pts
-        << " frequency points deviate by more than 3x from ngspice";
 }
