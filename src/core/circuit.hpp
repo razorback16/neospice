@@ -17,6 +17,7 @@ struct BSIM4v7ModelCard;
 struct BJTModelCard;
 struct JFETModelCard;
 struct DIOModelCard;
+struct VBICModelCard;
 
 struct DCSweepParam {
     std::string source_name;
@@ -105,6 +106,7 @@ public:
     /// that holds a non-owning pointer to it.
     void add_jfet_model_card(std::unique_ptr<JFETModelCard> card);
     void add_dio_model_card(std::unique_ptr<DIOModelCard> card);
+    void add_vbic_model_card(std::unique_ptr<VBICModelCard> card);
 
     /// Assign branch indices, build sparsity pattern, assign offsets.
     void finalize();
@@ -158,6 +160,7 @@ private:
     std::vector<std::unique_ptr<BJTModelCard>> bjt_model_cards_;
     std::vector<std::unique_ptr<JFETModelCard>> jfet_model_cards_;
     std::vector<std::unique_ptr<DIOModelCard>> dio_model_cards_;
+    std::vector<std::unique_ptr<VBICModelCard>> vbic_model_cards_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     std::vector<bool>                        internal_nodes_;

@@ -1,0 +1,54 @@
+model:
+  ngspice_prefix: "VBIC"
+  neospice_name: "vbic"
+  neospice_namespace: "vbic"
+  instance_struct: "VBICinstance"
+  model_struct: "VBICmodel"
+  instance_tag: "sVBICinstance"
+  model_tag: "sVBICmodel"
+  cpp_instance: "VBICInstance"
+  cpp_model: "VBICModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "coll", field: "VBICcollNode" }
+    - { name: "base", field: "VBICbaseNode" }
+    - { name: "emit", field: "VBICemitNode" }
+    - { name: "subs", field: "VBICsubsNode" }
+  state_count: 66
+  state_base_field: "VBICstate"
+  next_instance_field: "VBICnextInstance"
+  instances_field: "VBICinstances"
+  next_model_field: "VBICnextModel"
+  model_ptr_field: "VBICmodPtr"
+  name_field: "VBICname"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "vbicsetup.c"
+    load: "vbicload.c"
+    temp: "vbictemp.c"
+    param: "vbicparam.c"
+    mpar: "vbicmpar.c"
+    devsup: "vbic.c"
+  skip_files:
+    - "vbicacld.c"
+    - "vbicask.c"
+    - "vbicconv.c"
+    - "vbicdel.c"
+    - "vbicdest.c"
+    - "vbicgetic.c"
+    - "vbicinit.c"
+    - "vbicmask.c"
+    - "vbicmdel.c"
+    - "vbicnoise.c"
+    - "vbicpzld.c"
+    - "vbicsoachk.c"
+    - "vbictrunc.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "VBICsetup"
+  temp_function: "VBICtemp"
+  load_function: "VBICload"
+  geometry:
+    - { name: "area", field: "VBICarea", given: "VBICareaGiven", default: "1.0" }
+    - { name: "m", field: "VBICm", given: "VBICmGiven", default: "1.0" }

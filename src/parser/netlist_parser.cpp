@@ -21,6 +21,7 @@
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
+#include "devices/vbic/vbic_device.hpp"
 #include "devices/tline.hpp"
 #include <algorithm>
 #include <cctype>
@@ -1750,8 +1751,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.add_bsim4_model_card(std::move(card));
     }
 
-    // Resolve deferred BJTs
+    // Resolve deferred BJTs (Q-cards dispatch to BJT or VBIC based on LEVEL)
+    // LEVEL=1 (default, or unspecified) -> BJT (Gummel-Poon)
+    // LEVEL=4 or LEVEL=9               -> VBIC
     std::unordered_map<std::string, std::unique_ptr<BJTModelCard>> bjt_cards;
+    std::unordered_map<std::string, std::unique_ptr<VBICModelCard>> vbic_cards;
     for (const auto& q : deferred_bjts) {
         auto it = models.find(q.model_name);
         if (it == models.end()) {
@@ -1768,25 +1772,60 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             throw ParseError("Line " + std::to_string(q.line_number) +
                              ": Q card references non-BJT model '" + q.model_name + "'");
         }
-        auto card_it = bjt_cards.find(q.model_name);
-        if (card_it == bjt_cards.end()) {
-            try {
-                card_it = bjt_cards.emplace(q.model_name,
-                                            to_bjt_card(it->second)).first;
-            } catch (const ParseError& e) {
-                throw ParseError("Line " + std::to_string(q.line_number) +
-                                 ": " + e.what());
+
+        // Determine level: default=1 (BJT), 4 or 9 = VBIC
+        auto level_it = it->second.params.find("level");
+        int level = (level_it == it->second.params.end()) ? 1
+                    : static_cast<int>(level_it->second);
+
+        if (level == 4 || level == 9 || level == 12 || level == 13) {
+            // VBIC model
+            auto card_it = vbic_cards.find(q.model_name);
+            if (card_it == vbic_cards.end()) {
+                try {
+                    card_it = vbic_cards.emplace(q.model_name,
+                                                  to_vbic_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(q.line_number) +
+                                     ": " + e.what());
+                }
             }
+            VBICDevice::Geom vgeom;
+            vgeom.area = q.geom.area;
+            vgeom.area_given = q.geom.area_given;
+            vgeom.m = q.geom.m;
+            vgeom.m_given = q.geom.m_given;
+            auto dev = VBICDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
+                                        vgeom, *card_it->second);
+            if (q.ic_vbe_given || q.ic_vce_given) {
+                dev->set_ic(q.ic_vbe, q.ic_vbe_given, q.ic_vce, q.ic_vce_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else {
+            // Standard BJT (level 1 or unspecified)
+            auto card_it = bjt_cards.find(q.model_name);
+            if (card_it == bjt_cards.end()) {
+                try {
+                    card_it = bjt_cards.emplace(q.model_name,
+                                                to_bjt_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(q.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            auto dev = BJTDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
+                                       q.geom, *card_it->second);
+            if (q.ic_vbe_given || q.ic_vce_given) {
+                dev->set_ic(q.ic_vbe, q.ic_vbe_given, q.ic_vce, q.ic_vce_given);
+            }
+            ckt.add_device(std::move(dev));
         }
-        auto dev = BJTDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
-                                   q.geom, *card_it->second);
-        if (q.ic_vbe_given || q.ic_vce_given) {
-            dev->set_ic(q.ic_vbe, q.ic_vbe_given, q.ic_vce, q.ic_vce_given);
-        }
-        ckt.add_device(std::move(dev));
     }
     for (auto& [name, card] : bjt_cards) {
         ckt.add_bjt_model_card(std::move(card));
+    }
+    for (auto& [name, card] : vbic_cards) {
+        ckt.add_vbic_model_card(std::move(card));
     }
 
     // Resolve deferred JFETs

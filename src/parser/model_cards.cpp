@@ -9,6 +9,8 @@
 #include "devices/jfet/jfet_shim.hpp"
 #include "devices/dio/dio_def.hpp"
 #include "devices/dio/dio_shim.hpp"
+#include "devices/vbic/vbic_def.hpp"
+#include "devices/vbic/vbic_shim.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -431,6 +433,73 @@ SwitchModel to_switch_model(const ModelCard& card) {
     }
 
     return model;
+}
+
+// ---------------------------------------------------------------------------
+// to_vbic_card — parse a .model NPN/PNP card into a VBICModelCard via
+// the UCB VBICmParam dispatcher.  Used for VBIC model levels.
+// ---------------------------------------------------------------------------
+std::unique_ptr<VBICModelCard> to_vbic_card(const ModelCard& card) {
+    auto out = std::make_unique<VBICModelCard>();
+    auto& ucb = out->ucb;
+
+    // Type check — card.type is lowercased at parse time.
+    if (card.type == "npn") {
+        ucb.VBICtype = 1;   // NPN
+    } else if (card.type == "pnp") {
+        ucb.VBICtype = -1;  // PNP
+    } else {
+        throw ParseError(
+            "Model '" + card.name + "': unsupported VBIC type '" + card.type +
+            "' (only NPN/PNP supported)");
+    }
+
+    // Walk the VBIC model parameter table, dispatching each matching
+    // parsed key through VBICmParam.
+    for (const auto& [lkey, val] : card.params) {
+        // Skip "level" — not a VBIC model parameter.
+        if (lkey == "level") continue;
+
+        const vbic::Shim::IfParm* entry = nullptr;
+        for (int i = 0; i < vbic::VBICmPTSize; ++i) {
+            if (std::strcmp(vbic::VBICmPTable[i].keyword, lkey.c_str()) == 0) {
+                entry = &vbic::VBICmPTable[i];
+                break;
+            }
+        }
+        if (entry == nullptr) {
+            std::fprintf(stderr,
+                "Warning: model '%s': unknown VBIC parameter '%s' (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        vbic::Shim::IfValue v{};
+        int dtype = entry->dataType & 0x1F;
+        if (dtype & vbic::Shim::IF_REAL) {
+            v.rValue = val;
+        } else if (dtype & vbic::Shim::IF_INTEGER) {
+            v.iValue = static_cast<int>(val);
+        } else if (dtype & vbic::Shim::IF_FLAG) {
+            v.iValue = (val != 0.0) ? 1 : 0;
+        } else if (dtype & vbic::Shim::IF_STRING) {
+            continue;
+        } else {
+            std::fprintf(stderr,
+                "Warning: model '%s': parameter '%s' has unrecognized data type (ignored)\n",
+                card.name.c_str(), lkey.c_str());
+            continue;
+        }
+
+        int rc = vbic::VBICmParam(entry->id, &v, &ucb);
+        if (rc != vbic::Shim::OK) {
+            throw ParseError(
+                "Model '" + card.name + "': VBICmParam failed for '" +
+                lkey + "' (rc=" + std::to_string(rc) + ")");
+        }
+    }
+
+    return out;
 }
 
 } // namespace neospice

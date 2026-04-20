@@ -3,6 +3,7 @@
 #include "devices/bjt/bjt_device.hpp"           // complete BJTModelCard for unique_ptr
 #include "devices/jfet/jfet_device.hpp"         // complete JFETModelCard for unique_ptr
 #include "devices/dio/dio_device.hpp"           // complete DIOModelCard for unique_ptr
+#include "devices/vbic/vbic_device.hpp"         // complete VBICModelCard for unique_ptr
 #include <cassert>
 #include <stdexcept>
 
@@ -84,6 +85,10 @@ void Circuit::add_jfet_model_card(std::unique_ptr<JFETModelCard> card) {
 
 void Circuit::add_dio_model_card(std::unique_ptr<DIOModelCard> card) {
     dio_model_cards_.push_back(std::move(card));
+}
+
+void Circuit::add_vbic_model_card(std::unique_ptr<VBICModelCard> card) {
+    vbic_model_cards_.push_back(std::move(card));
 }
 
 void Circuit::finalize() {
