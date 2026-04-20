@@ -144,6 +144,18 @@ void Inductor::init_dc_state_gear(double i_prev, double v_prev,
     gear_ready_ = true;
 }
 
+void Inductor::apply_ic_override(std::vector<double>& sol) {
+    if (!has_ic()) return;
+    i_prev_ = ic_;
+    i_prev2_ = ic_;
+    // Also update solution vector so the initial branch current is correct
+    if (branch_idx_ >= 0 && branch_idx_ < static_cast<int32_t>(sol.size()))
+        sol[branch_idx_] = ic_;
+    phi_prev_ = inductance_eff_ * ic_;
+    phi_prev2_ = phi_prev_;
+    phi_prev3_ = phi_prev_;
+}
+
 std::vector<std::string> Inductor::output_currents() const {
     return { "i(" + name_ + ")" };
 }

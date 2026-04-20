@@ -47,7 +47,8 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
     }
 }
 
-TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
+TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
+                                bool uic) {
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
@@ -218,6 +219,19 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             tl->init_dc_state(solution);
         }
         // BSIM4 state1 is seeded by rotate_state() below.
+    }
+
+    // ---------------------------------------------------------------
+    // 6a. Apply IC= overrides when UIC is active
+    // ---------------------------------------------------------------
+    if (uic) {
+        for (auto& dev : ckt.devices()) {
+            if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
+                cap->apply_ic_override();
+            } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
+                ind->apply_ic_override(solution);
+            }
+        }
     }
 
     // ---------------------------------------------------------------

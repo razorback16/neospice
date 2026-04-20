@@ -136,7 +136,8 @@ SimulationResult Simulator::run(Circuit& ckt) {
             break;
         }
         case AnalysisCommand::TRAN: {
-            auto tran = solve_transient(ckt, cmd.tran_tstep, cmd.tran_tstop);
+            auto tran = solve_transient(ckt, cmd.tran_tstep, cmd.tran_tstop,
+                                        cmd.tran_uic);
             apply_save_filter(tran, ckt.save_signals);
             result.transient = std::move(tran);
             break;

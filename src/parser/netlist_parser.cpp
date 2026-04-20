@@ -621,6 +621,12 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 cmd.type = AnalysisCommand::TRAN;
                 cmd.tran_tstep = parse_spice_number(tokens[1]);
                 cmd.tran_tstop = parse_spice_number(tokens[2]);
+                // Check remaining tokens for UIC keyword
+                for (size_t k = 3; k < tokens.size(); ++k) {
+                    if (to_lower(tokens[k]) == "uic") {
+                        cmd.tran_uic = true;
+                    }
+                }
                 ckt.analyses.push_back(cmd);
             } else if (first == ".ac") {
                 if (tokens.size() < 5) {
@@ -1049,6 +1055,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     c->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
                 else if (tok.starts_with("dtemp="))
                     c->set_dtemp(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("ic="))
+                    c->set_ic(parse_spice_number(tok.substr(3)));
             }
             ckt.add_device(std::move(c));
 
@@ -1077,6 +1085,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     l->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
                 else if (tok.starts_with("dtemp="))
                     l->set_dtemp(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("ic="))
+                    l->set_ic(parse_spice_number(tok.substr(3)));
             }
             ckt.add_device(std::move(l));
 

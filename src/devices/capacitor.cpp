@@ -192,6 +192,17 @@ double Capacitor::compute_trunc(const IntegratorCtx& ctx,
     return del;
 }
 
+void Capacitor::apply_ic_override() {
+    if (!has_ic()) return;
+    v_prev_ = ic_;
+    v_prev2_ = ic_;
+    i_prev_ = 0.0;
+    i_prev2_ = 0.0;
+    q_prev_ = cap_eff_ * ic_;
+    q_prev2_ = q_prev_;
+    q_prev3_ = q_prev_;
+}
+
 void Capacitor::process_temperature(double sim_temp, double sim_tnom) {
     // Follows ngspice captemp.c exactly:
     //   difference = (device_temp + dtemp) - tnom

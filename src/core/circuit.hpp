@@ -70,6 +70,7 @@ struct AnalysisCommand {
     enum Type { OP, TRAN, AC, DC_SWEEP, NOISE };
     Type type;
     double tran_tstep = 0, tran_tstop = 0;
+    bool tran_uic = false;   // Use Initial Conditions
     enum ACMode { DEC, OCT, LIN };
     ACMode ac_mode = DEC;
     int ac_npoints = 10;

@@ -1,5 +1,7 @@
 #pragma once
 #include "devices/device.hpp"
+#include <cmath>
+#include <limits>
 
 namespace neospice {
 
@@ -42,6 +44,12 @@ public:
     void set_temp(double t) { temp_ = t; }
     void set_dtemp(double dt) { dtemp_ = dt; }
 
+    /// Initial condition (IC=) support
+    void set_ic(double i) { ic_ = i; }
+    bool has_ic() const { return !std::isnan(ic_); }
+    double ic() const { return ic_; }
+    void apply_ic_override(std::vector<double>& sol);  // Override i_prev/solution with IC value
+
     /// Apply temperature-dependent adjustment to effective inductance.
     void process_temperature(double sim_temp, double sim_tnom);
 
@@ -63,6 +71,7 @@ private:
     double m_ = 1.0;          // multiplier (m instances in parallel)
     double temp_ = -1.0;      // device temperature in K (-1 = use simulation default)
     double dtemp_ = 0.0;      // delta temperature in K
+    double ic_ = std::numeric_limits<double>::quiet_NaN();  // IC= initial current (NaN = not specified)
     bool transient_ = false;
     double dt_ = 0.0;
     double v_prev_ = 0.0;

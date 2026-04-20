@@ -35,6 +35,7 @@ struct TransientResult {
     }
 };
 
-TransientResult solve_transient(Circuit& ckt, double tstep, double tstop);
+TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
+                                bool uic = false);
 
 } // namespace neospice
