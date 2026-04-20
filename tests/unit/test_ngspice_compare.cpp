@@ -408,3 +408,19 @@ TEST_F(NgspiceCompareTest, DiodeNoise) {
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
+
+// ---------------------------------------------------------------------------
+// PULSE/SIN default parameter tests — verify ngspice-compatible defaults.
+// When TR/TF/PW/PER are omitted from PULSE, ngspice uses tstep/tstop.
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, PulseDefaultsTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/pulse_defaults.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-2, 1e-3});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}

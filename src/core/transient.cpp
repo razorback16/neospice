@@ -221,6 +221,20 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
     }
 
     // ---------------------------------------------------------------
+    // 6b. Resolve PULSE/SIN default parameters
+    // ---------------------------------------------------------------
+    // ngspice resolves unspecified PULSE parameters (TR/TF → tstep, PW/PER →
+    // tstop) and SIN freq (→ 1/tstop) at evaluation time.  We do it once here
+    // before breakpoint collection so that get_breakpoints sees the resolved
+    // values.
+    for (auto& dev : ckt.devices()) {
+        if (auto* vs = dynamic_cast<VSource*>(dev.get()))
+            vs->resolve_defaults(tstep, tstop);
+        else if (auto* is = dynamic_cast<ISource*>(dev.get()))
+            is->resolve_defaults(tstep, tstop);
+    }
+
+    // ---------------------------------------------------------------
     // 7. Set up time step controller
     // ---------------------------------------------------------------
     TimeStepController ctrl;

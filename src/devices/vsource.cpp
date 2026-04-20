@@ -27,6 +27,20 @@ void VSource::set_sin(SinParams p) {
     sin_  = p;
 }
 
+void VSource::resolve_defaults(double tstep, double tstop) {
+    if (func_ == SourceFunction::PULSE) {
+        // ngspice (vsrcload.c): TR/TF default to CKTstep when 0 or unspecified,
+        // PW/PER default to CKTfinalTime when 0 or unspecified.
+        if (pulse_.tr <= 0) pulse_.tr = tstep;
+        if (pulse_.tf <= 0) pulse_.tf = tstep;
+        if (pulse_.pw <= 0) pulse_.pw = tstop;
+        if (pulse_.per <= 0) pulse_.per = tstop;
+    } else if (func_ == SourceFunction::SIN) {
+        // ngspice (vsrcload.c): FREQ defaults to 1/CKTfinalTime when 0 or unspecified.
+        if (sin_.freq <= 0) sin_.freq = (tstop > 0) ? 1.0 / tstop : 0.0;
+    }
+}
+
 double VSource::value_at(double t) const {
     switch (func_) {
     case SourceFunction::DC:

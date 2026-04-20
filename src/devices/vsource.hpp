@@ -12,11 +12,11 @@ namespace neospice {
 enum class SourceFunction { DC, PULSE, SIN };
 
 struct PulseParams {
-    double v1 = 0, v2 = 0, td = 0, tr = 0, tf = 0, pw = 0, per = 0;
+    double v1 = 0, v2 = 0, td = 0, tr = -1, tf = -1, pw = -1, per = -1;
 };
 
 struct SinParams {
-    double v0 = 0, va = 0, freq = 0, td = 0, theta = 0, phase = 0;
+    double v0 = 0, va = 0, freq = -1, td = 0, theta = 0, phase = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -49,6 +49,11 @@ public:
 
     /// Evaluate the source value at time t.
     double value_at(double t) const;
+
+    /// Resolve unspecified PULSE/SIN defaults using .tran parameters.
+    /// ngspice: TR/TF default to tstep, PW/PER default to tstop, FREQ to 1/tstop.
+    /// Also treats explicit 0 as "unspecified" (matching ngspice behaviour).
+    void resolve_defaults(double tstep, double tstop);
 
     /// Return PULSE edge breakpoints in [tstart, tstop].
     std::vector<double> get_breakpoints(double tstart, double tstop) const;

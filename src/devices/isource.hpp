@@ -24,6 +24,9 @@ public:
     void set_pulse(PulseParams p);
     void set_sin(SinParams p);
 
+    /// Resolve unspecified PULSE/SIN defaults using .tran parameters.
+    void resolve_defaults(double tstep, double tstop);
+
     /// Called before evaluate() during transient analysis.
     void set_time(double t) { current_time_ = t; }
 
