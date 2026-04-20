@@ -728,18 +728,7 @@ int Size_Not_Found, error;
                               fprintf(stdout, "Warning: k2 should be specified with k1.\n");
                           pParam->BSIM3k2 = -0.0186;
                       }
-                      if ((!ckt->CKTcurJob) || (ckt->CKTcurJob->JOBtype < 9)) { /* don't print in sensitivity */
-                          if (model->BSIM3nsubGiven)
-                              fprintf(stdout, "Warning: nsub is ignored because k1 or k2 is given.\n");
-                          if (model->BSIM3xtGiven)
-                              fprintf(stdout, "Warning: xt is ignored because k1 or k2 is given.\n");
-                          if (model->BSIM3vbxGiven)
-                              fprintf(stdout, "Warning: vbx is ignored because k1 or k2 is given.\n");
-                          if (model->BSIM3gamma1Given)
-                              fprintf(stdout, "Warning: gamma1 is ignored because k1 or k2 is given.\n");
-                          if (model->BSIM3gamma2Given)
-                              fprintf(stdout, "Warning: gamma2 is ignored because k1 or k2 is given.\n");
-                      }
+                      (void)0; /* nsub, xt, vbx, gamma1, gamma2 ignored when k1/k2 given */
                   }
                   else
                   {   if (!model->BSIM3vbxGiven)

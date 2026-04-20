@@ -287,10 +287,6 @@ std::unique_ptr<BSIM3ModelCard> to_bsim3_card(const ModelCard& card) {
         } else if (dtype & bsim3::Shim::IF_STRING) {
             // VERSION is the only string param in BSIM3.  The adapter stamps
             // VERSION="3.3.0" in BSIM3Device::make() so skip it here.
-            std::fprintf(stderr,
-                "Warning: model '%s': string parameter '%s' not supported via .model; "
-                "using adapter default\n",
-                card.name.c_str(), lkey.c_str());
             continue;
         } else if (dtype & bsim3::Shim::IF_REALVEC) {
             throw ParseError(

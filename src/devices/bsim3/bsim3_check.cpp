@@ -256,13 +256,9 @@ FILE *fplog;
               if (here->BSIM3drainPerimeter < pParam->BSIM3weff)
               {   fprintf(fplog, "Warning: Pd = %g is less than W.\n",
                           here->BSIM3drainPerimeter);
-                  printf("Warning: Pd = %g is less than W.\n",
-                          here->BSIM3drainPerimeter);
               }
               if (here->BSIM3sourcePerimeter < pParam->BSIM3weff)
               {   fprintf(fplog, "Warning: Ps = %g is less than W.\n",
-                          here->BSIM3sourcePerimeter);
-                  printf("Warning: Ps = %g is less than W.\n",
                           here->BSIM3sourcePerimeter);
               }
             }
