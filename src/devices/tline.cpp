@@ -382,4 +382,23 @@ void TransmissionLine::set_transient(bool enable) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// get_breakpoints — return multiples of TD in (tstart, tstop]
+// ---------------------------------------------------------------------------
+
+std::vector<double> TransmissionLine::get_breakpoints(double tstart, double tstop) const {
+    std::vector<double> bps;
+    if (td_ <= 0.0) return bps;
+
+    // k*TD for k = 1, 2, ... while k*TD <= tstop
+    int kmax = static_cast<int>(tstop / td_);
+    for (int k = 1; k <= kmax; ++k) {
+        double t = k * td_;
+        if (t > tstart && t <= tstop) {
+            bps.push_back(t);
+        }
+    }
+    return bps;
+}
+
 } // namespace neospice

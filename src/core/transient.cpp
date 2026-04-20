@@ -43,6 +43,9 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
         } else if (auto* is = dynamic_cast<ISource*>(dev.get())) {
             auto bps = is->get_breakpoints(0.0, tstop);
             for (double bp : bps) ctrl.add_source_breakpoint(bp);
+        } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
+            auto bps = tl->get_breakpoints(0.0, tstop);
+            for (double bp : bps) ctrl.add_source_breakpoint(bp);
         }
     }
 }

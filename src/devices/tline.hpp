@@ -63,6 +63,9 @@ public:
     // Initialize the delay-line history from the DC operating point solution.
     void init_dc_state(const std::vector<double>& sol);
 
+    /// Return breakpoints at t = k*TD for k = 1, 2, ... up to tstop.
+    std::vector<double> get_breakpoints(double tstart, double tstop) const;
+
     double z0() const { return z0_; }
     double td() const { return td_; }
 
