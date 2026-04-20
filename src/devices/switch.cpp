@@ -165,8 +165,10 @@ void VSwitch::evaluate(const std::vector<double>& voltages,
     // CKTstates[0] -> CKTstates[1] rotation that happens before the Newton
     // loop for each timestep.  During DC init, bootstrap both to the same
     // value.
-    if (mode & (MODEINITTRAN_BIT | MODEINITPRED_BIT))
+    if (mode & (MODEINITTRAN_BIT | MODEINITPRED_BIT)) {
+        prev_state_changed_ = state_changed_;
         previous_state_ = current_state_;
+    }
 
     SwitchState old_current = current_state_;
 
@@ -258,8 +260,10 @@ void CSwitch::evaluate(const std::vector<double>& voltages,
         mode = tls_integrator_ctx->mode;
 
     // State rotation: predictor phase saves current as previous
-    if (mode & (MODEINITTRAN_BIT | MODEINITPRED_BIT))
+    if (mode & (MODEINITTRAN_BIT | MODEINITPRED_BIT)) {
+        prev_state_changed_ = state_changed_;
         previous_state_ = current_state_;
+    }
 
     SwitchState old_current = current_state_;
 
@@ -299,6 +303,26 @@ void CSwitch::ac_stamp(const std::vector<double>& /*voltages*/,
     add_if_valid(G, off_pn_, -g);
     add_if_valid(G, off_np_, -g);
     add_if_valid(G, off_nn_,  g);
+}
+
+// ===========================================================================
+// compute_trunc — reduce timestep after switch state changes
+// ===========================================================================
+
+double VSwitch::compute_trunc(const IntegratorCtx& ctx,
+                              const SimOptions& /*opts*/) const {
+    if (prev_state_changed_) {
+        return 0.1 * ctx.delta;
+    }
+    return 1e30;
+}
+
+double CSwitch::compute_trunc(const IntegratorCtx& ctx,
+                              const SimOptions& /*opts*/) const {
+    if (prev_state_changed_) {
+        return 0.1 * ctx.delta;
+    }
+    return 1e30;
 }
 
 } // namespace neospice

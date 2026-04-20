@@ -60,6 +60,8 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
     bool device_converged() const override { return !state_changed_; }
+    double compute_trunc(const IntegratorCtx& ctx,
+                         const SimOptions& opts) const override;
 
     const SwitchModel& model() const { return model_; }
 
@@ -72,6 +74,7 @@ private:
     SwitchState current_state_;
     SwitchState previous_state_;
     bool state_changed_ = false;
+    bool prev_state_changed_ = false;
     double last_g_ = 0.0;   // cached conductance from last evaluate() for AC
 
     MatrixOffset off_pp_ = -1;
@@ -105,6 +108,8 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
     bool device_converged() const override { return !state_changed_; }
+    double compute_trunc(const IntegratorCtx& ctx,
+                         const SimOptions& opts) const override;
 
     const SwitchModel& model() const { return model_; }
 
@@ -117,6 +122,7 @@ private:
     SwitchState current_state_;
     SwitchState previous_state_;
     bool state_changed_ = false;
+    bool prev_state_changed_ = false;
     double last_g_ = 0.0;   // cached conductance from last evaluate() for AC
 
     MatrixOffset off_pp_ = -1;
