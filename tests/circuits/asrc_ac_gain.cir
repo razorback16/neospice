@@ -1,0 +1,6 @@
+ASRC AC Gain
+V1 in 0 DC 0 AC 1
+R1 out 0 1k
+B1 out 0 V={V(in)*5}
+.ac dec 10 100 1g
+.end

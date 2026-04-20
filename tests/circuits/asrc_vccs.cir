@@ -1,0 +1,6 @@
+ASRC VCCS
+V1 in 0 DC 5.0
+R1 out 0 1k
+B1 0 out I={V(in)*1e-3}
+.op
+.end

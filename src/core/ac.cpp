@@ -8,6 +8,7 @@
 #include "devices/vcvs.hpp"
 #include "devices/ccvs.hpp"
 #include "devices/vcvs_nonlinear.hpp"
+#include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -183,6 +184,9 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
             add_current(enl->branch_index(), dev->name());
         else if (auto* etbl = dynamic_cast<TableVCVS*>(dev.get()))
             add_current(etbl->branch_index(), dev->name());
+        else if (auto* bs = dynamic_cast<ASRCDevice*>(dev.get()))
+            if (bs->mode() == ASRCDevice::Mode::VOLTAGE)
+                add_current(bs->branch_index(), dev->name());
     }
 
     // Prepare result + cache direct pointers for zero-lookup frequency loop

@@ -1,0 +1,6 @@
+ASRC Trig Function
+V1 in 0 DC 0.5235987755983
+R1 out 0 1k
+B1 out 0 V={sin(V(in))}
+.op
+.end

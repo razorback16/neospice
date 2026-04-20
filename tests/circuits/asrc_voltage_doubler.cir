@@ -1,0 +1,6 @@
+ASRC Voltage Doubler
+V1 in 0 DC 1.5
+R1 out 0 1k
+B1 out 0 V={V(in)*2}
+.op
+.end

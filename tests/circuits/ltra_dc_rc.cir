@@ -1,0 +1,7 @@
+LTRA DC RC Line
+V1 in 0 DC 1
+R1 out 0 1k
+O1 in 0 out 0 TMOD
+.model TMOD LTRA R=50 C=100p LEN=0.01
+.op
+.end
