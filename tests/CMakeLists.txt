@@ -86,6 +86,7 @@ add_executable(neospice_tests
     unit/test_mos1_validation.cpp
     unit/test_ths4131.cpp
     unit/test_bsim3_validation.cpp
+    unit/test_vbic_validation.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )

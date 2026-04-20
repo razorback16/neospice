@@ -1,0 +1,15 @@
+VBIC NPN DC Operating Point
+Vcc vcc 0 5
+Rc vcc col 2k
+Rb vcc base 100k
+Q1 col base 0 0 QMOD
+.model QMOD NPN LEVEL=4 IS=1e-16 NF=1.0 NR=1.0
++ IBEI=1e-18 NEI=1.0 IBEN=1e-15 NEN=2.0
++ IBCI=1e-17 NCI=1.0 IBCN=1e-15 NCN=2.0
++ RBI=50 RBX=10 RE=1 RCI=20 RCX=10 RS=0.1
++ VEF=100 VER=20 IKF=0.01 IKR=0.01
++ CJE=1e-13 PE=0.75 ME=0.33
++ CJC=5e-14 PC=0.75 MC=0.33
++ TF=1e-11 TR=1e-9
+.op
+.end
