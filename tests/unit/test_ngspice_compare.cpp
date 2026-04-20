@@ -99,7 +99,7 @@ TEST_F(NgspiceCompareTest, RCLowpassTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-3, 1e-4});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-4, 1e-4});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -121,7 +121,7 @@ TEST_F(NgspiceCompareTest, RLCSeriesTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-2, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-3, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -132,7 +132,7 @@ TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-3, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {2e-3, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -439,7 +439,7 @@ TEST_F(NgspiceCompareTest, PulseDefaultsTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-2, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-3, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
