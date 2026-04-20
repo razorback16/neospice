@@ -12,6 +12,7 @@
 #include "devices/ccvs.hpp"
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/tline.hpp"
+#include "devices/ltra.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -190,6 +191,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             ki->set_integration_method(1);  // Gear
         } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
             tl->set_transient(true);
+        } else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get())) {
+            ltl->set_transient(true);
         }
         // BSIM4 uses the circuit state ring (rotate_state + set_state_ptrs)
         // rather than these per-device hooks.
@@ -343,6 +346,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                         ki->clear_transient();
                     else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get()))
                         tl->set_transient(false);
+                    else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get()))
+                        ltl->set_transient(false);
                 }
                 throw ConvergenceError("Transient failed to converge at t=" + std::to_string(t));
             }
@@ -415,6 +420,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
                 ki->accept_step_from_solution(solution);
             } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
                 tl->accept_step(t, solution);
+            } else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get())) {
+                ltl->accept_step(t, solution);
             }
             // BSIM4 state advance happens via ckt.rotate_state() on the next step.
         }
@@ -463,6 +470,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             ki->clear_transient();
         else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get()))
             tl->set_transient(false);
+        else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get()))
+            ltl->set_transient(false);
     }
 
     tran_result.rejected_steps = ctrl.rejected_count();
