@@ -1,0 +1,6 @@
+* Resistor with m=2 (should act like R/2 = 500 ohm)
+* Expected: V(in)=10, I=10/500=20mA
+R1 in 0 1k m=2
+V1 in 0 DC 10
+.op
+.end

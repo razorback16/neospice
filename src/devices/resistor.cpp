@@ -78,7 +78,7 @@ void Resistor::process_temperature(double sim_temp, double sim_tnom) {
     double dtemp = (temp_ > 0) ? 0.0 : dtemp_;
     double difference = (temp + dtemp) - tnom;
     double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
-    resistance_eff_ = resistance_nom_ * factor * scale_;
+    resistance_eff_ = resistance_nom_ * factor * scale_ / m_;
     // Guard against zero or negative resistance
     if (resistance_eff_ < 1e-3) resistance_eff_ = 1e-3;
 }

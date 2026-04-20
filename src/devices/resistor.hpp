@@ -25,6 +25,7 @@ public:
     void set_tc1(double tc1) { tc1_ = tc1; }
     void set_tc2(double tc2) { tc2_ = tc2; }
     void set_scale(double s) { scale_ = s; }
+    void set_multiplier(double m) { m_ = m; }
     void set_temp(double t) { temp_ = t; }
     void set_dtemp(double dt) { dtemp_ = dt; }
 
@@ -46,6 +47,7 @@ private:
     double tc1_ = 0.0;        // temperature coefficient 1 (1/K)
     double tc2_ = 0.0;        // temperature coefficient 2 (1/K^2)
     double scale_ = 1.0;      // instance scale factor
+    double m_ = 1.0;          // multiplier (m instances in parallel)
     double temp_ = -1.0;      // device temperature in K (-1 = use simulation default)
     double dtemp_ = 0.0;      // delta temperature in K
 

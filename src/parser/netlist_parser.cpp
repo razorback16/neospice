@@ -472,6 +472,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int32_t np, nn;
         std::string vsense_name;
         double gain;
+        double m = 1.0;
         int line_number;
     };
     std::vector<DeferredCCCS> deferred_cccs;
@@ -1014,6 +1015,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     r->set_tc2(parse_spice_number(tok.substr(4)));
                 else if (tok.starts_with("scale="))
                     r->set_scale(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("m="))
+                    r->set_multiplier(parse_spice_number(tok.substr(2)));
                 else if (tok.starts_with("temp="))
                     r->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
                 else if (tok.starts_with("dtemp="))
@@ -1040,6 +1043,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     c->set_tc2(parse_spice_number(tok.substr(4)));
                 else if (tok.starts_with("scale="))
                     c->set_scale(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("m="))
+                    c->set_multiplier(parse_spice_number(tok.substr(2)));
                 else if (tok.starts_with("temp="))
                     c->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
                 else if (tok.starts_with("dtemp="))
@@ -1066,6 +1071,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     l->set_tc2(parse_spice_number(tok.substr(4)));
                 else if (tok.starts_with("scale="))
                     l->set_scale(parse_spice_number(tok.substr(6)));
+                else if (tok.starts_with("m="))
+                    l->set_multiplier(parse_spice_number(tok.substr(2)));
                 else if (tok.starts_with("temp="))
                     l->set_temp(parse_spice_number(tok.substr(5)) + 273.15);
                 else if (tok.starts_with("dtemp="))
@@ -1455,7 +1462,13 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 int32_t ncp = ckt.node(tokens[3]);
                 int32_t ncn = ckt.node(tokens[4]);
                 double  gm  = parse_spice_number(tokens[5]);
-                ckt.add_device(std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm));
+                auto vccs = std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm);
+                for (size_t k = 6; k < tokens.size(); ++k) {
+                    std::string tok = to_lower(tokens[k]);
+                    if (tok.starts_with("m="))
+                        vccs->set_multiplier(parse_spice_number(tok.substr(2)));
+                }
+                ckt.add_device(std::move(vccs));
             }
 
         } else if (elem_type == 'h') {
@@ -1486,6 +1499,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             fd.vsense_name = tokens[3];
             fd.gain        = parse_spice_number(tokens[4]);
             fd.line_number = line.line_number;
+            for (size_t k = 5; k < tokens.size(); ++k) {
+                std::string tok = to_lower(tokens[k]);
+                if (tok.starts_with("m="))
+                    fd.m = parse_spice_number(tok.substr(2));
+            }
             deferred_cccs.push_back(std::move(fd));
 
         } else if (elem_type == 'q') {
@@ -1871,7 +1889,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                              ": CCCS '" + fd.name + "' references unknown voltage source '" +
                              fd.vsense_name + "'");
         }
-        ckt.add_device(std::make_unique<CCCS>(fd.name, fd.np, fd.nn, fd.gain, vs));
+        auto cccs = std::make_unique<CCCS>(fd.name, fd.np, fd.nn, fd.gain, vs);
+        if (fd.m != 1.0) cccs->set_multiplier(fd.m);
+        ckt.add_device(std::move(cccs));
     }
 
     // Resolve deferred diodes — UCB DIO adapter

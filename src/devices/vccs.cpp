@@ -35,18 +35,20 @@ void VCCS::evaluate(const std::vector<double>& /*voltages*/,
     // SPICE convention: I = gm * (V(ncp) - V(ncn)) leaves N+ (np).
     // Current leaving np = +gm*(V(ncp)-V(ncn))  → mat[np,ncp] += +gm
     // Current leaving nn = -gm*(V(ncp)-V(ncn))  → mat[nn,ncp] += -gm
-    add_if_valid(mat, off_np_ncp_,  gm_);
-    add_if_valid(mat, off_np_ncn_, -gm_);
-    add_if_valid(mat, off_nn_ncp_, -gm_);
-    add_if_valid(mat, off_nn_ncn_,  gm_);
+    const double gm = gm_ * m_;
+    add_if_valid(mat, off_np_ncp_,  gm);
+    add_if_valid(mat, off_np_ncn_, -gm);
+    add_if_valid(mat, off_nn_ncp_, -gm);
+    add_if_valid(mat, off_nn_ncn_,  gm);
 }
 
 void VCCS::ac_stamp(const std::vector<double>& /*voltages*/,
                     NumericMatrix& G, NumericMatrix& /*C*/) {
-    add_if_valid(G, off_np_ncp_,  gm_);
-    add_if_valid(G, off_np_ncn_, -gm_);
-    add_if_valid(G, off_nn_ncp_, -gm_);
-    add_if_valid(G, off_nn_ncn_,  gm_);
+    const double gm = gm_ * m_;
+    add_if_valid(G, off_np_ncp_,  gm);
+    add_if_valid(G, off_np_ncn_, -gm);
+    add_if_valid(G, off_nn_ncp_, -gm);
+    add_if_valid(G, off_nn_ncn_,  gm);
 }
 
 } // namespace neospice

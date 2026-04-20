@@ -40,14 +40,16 @@ void CCCS::evaluate(const std::vector<double>& /*voltages*/,
     // SPICE convention: I = gain * I(Vsense) leaves N+ (np).
     // Current leaving np = +gain*I_sense → mat[np, sense_branch] += +gain
     // Current leaving nn = -gain*I_sense → mat[nn, sense_branch] += -gain
-    add_if_valid(mat, off_np_sense_,  gain_);
-    add_if_valid(mat, off_nn_sense_, -gain_);
+    const double gain = gain_ * m_;
+    add_if_valid(mat, off_np_sense_,  gain);
+    add_if_valid(mat, off_nn_sense_, -gain);
 }
 
 void CCCS::ac_stamp(const std::vector<double>& /*voltages*/,
                     NumericMatrix& G, NumericMatrix& /*C*/) {
-    add_if_valid(G, off_np_sense_,  gain_);
-    add_if_valid(G, off_nn_sense_, -gain_);
+    const double gain = gain_ * m_;
+    add_if_valid(G, off_np_sense_,  gain);
+    add_if_valid(G, off_nn_sense_, -gain);
 }
 
 } // namespace neospice

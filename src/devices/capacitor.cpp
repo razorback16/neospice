@@ -202,7 +202,7 @@ void Capacitor::process_temperature(double sim_temp, double sim_tnom) {
     double dtemp = (temp_ > 0) ? 0.0 : dtemp_;
     double difference = (temp + dtemp) - tnom;
     double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
-    cap_eff_ = cap_nom_ * factor * scale_;
+    cap_eff_ = cap_nom_ * factor * scale_ * m_;
 }
 
 } // namespace neospice

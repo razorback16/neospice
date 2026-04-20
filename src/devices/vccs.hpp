@@ -38,12 +38,15 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 
+    void set_multiplier(double m) { m_ = m; }
+
 private:
     int32_t np_;   // output positive node  (GROUND_INTERNAL = -1)
     int32_t nn_;   // output negative node  (GROUND_INTERNAL = -1)
     int32_t ncp_;  // control positive node (GROUND_INTERNAL = -1)
     int32_t ncn_;  // control negative node (GROUND_INTERNAL = -1)
     double  gm_;
+    double  m_ = 1.0;  // multiplier (m instances in parallel)
 
     // Cached matrix offsets for the 4 stamp positions
     MatrixOffset off_np_ncp_  = -1;  // (np,  ncp)

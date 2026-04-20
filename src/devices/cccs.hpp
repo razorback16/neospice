@@ -41,10 +41,13 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 
+    void set_multiplier(double m) { m_ = m; }
+
 private:
     int32_t        np_;      // output positive node  (GROUND_INTERNAL = -1)
     int32_t        nn_;      // output negative node  (GROUND_INTERNAL = -1)
     double         gain_;    // current gain (dimensionless)
+    double         m_ = 1.0; // multiplier (m instances in parallel)
     const VSource* vsense_;  // sensing VSource (non-owning)
 
     // Cached matrix offsets for the 2 stamp positions

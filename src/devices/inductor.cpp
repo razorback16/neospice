@@ -208,7 +208,7 @@ void Inductor::process_temperature(double sim_temp, double sim_tnom) {
     double dtemp = (temp_ > 0) ? 0.0 : dtemp_;
     double difference = (temp + dtemp) - tnom;
     double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
-    inductance_eff_ = inductance_nom_ * factor * scale_;
+    inductance_eff_ = inductance_nom_ * factor * scale_ / m_;
 }
 
 } // namespace neospice
