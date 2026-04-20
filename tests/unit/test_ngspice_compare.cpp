@@ -2,6 +2,9 @@
 #include "api/neospice.hpp"
 #include "framework/ngspice_runner.hpp"
 #include "framework/comparator.hpp"
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 using namespace neospice;
 
@@ -114,6 +117,81 @@ TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
     auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-3, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+// ---------------------------------------------------------------------------
+// Switch hysteresis tests
+// ---------------------------------------------------------------------------
+
+// Helper: extract transition times from a switch waveform
+static std::vector<double> find_transitions(
+    const std::vector<double>& time,
+    const std::vector<double>& values,
+    double threshold)
+{
+    std::vector<double> transitions;
+    for (size_t i = 1; i < values.size(); ++i) {
+        if (std::abs(values[i] - values[i-1]) > threshold)
+            transitions.push_back(time[i]);
+    }
+    return transitions;
+}
+
+// Helper: interpolate a piecewise-linear series at time t
+static double interp_at(const std::vector<double>& time,
+                        const std::vector<double>& vals, double t)
+{
+    if (t <= time.front()) return vals.front();
+    if (t >= time.back())  return vals.back();
+    auto it = std::lower_bound(time.begin(), time.end(), t);
+    size_t i = std::distance(time.begin(), it);
+    if (i == 0) return vals[0];
+    double frac = (t - time[i-1]) / (time[i] - time[i-1]);
+    return vals[i-1] + frac * (vals[i] - vals[i-1]);
+}
+
+TEST_F(NgspiceCompareTest, SwitchHysteresisTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/switch_hysteresis.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+
+    auto& cs_tr = *cs_result.transient;
+
+    // 1. Check that both have v(out)
+    auto cs_it = cs_tr.voltages.find("v(out)");
+    auto ng_it = ng_result.voltages.find("v(out)");
+    ASSERT_NE(cs_it, cs_tr.voltages.end());
+    ASSERT_NE(ng_it, ng_result.voltages.end());
+
+    // 2. Compare transition times (hard switch: jump > 1V)
+    auto cs_trans = find_transitions(cs_tr.time, cs_it->second, 1.0);
+    auto ng_trans = find_transitions(ng_result.time, ng_it->second, 1.0);
+    ASSERT_EQ(cs_trans.size(), ng_trans.size())
+        << "Different number of transitions: neospice=" << cs_trans.size()
+        << " ngspice=" << ng_trans.size();
+    for (size_t i = 0; i < cs_trans.size(); ++i) {
+        EXPECT_NEAR(cs_trans[i], ng_trans[i], 2e-7)  // within 0.2us
+            << "Transition " << i << " time mismatch";
+    }
+
+    // 3. Compare steady-state levels away from edges (sample at mid-period)
+    // ON level: sample at 50% between first ON transition and next OFF transition
+    if (cs_trans.size() >= 2) {
+        double t_mid_on = 0.5 * (cs_trans[0] + cs_trans[1]);
+        double cs_val = interp_at(cs_tr.time, cs_it->second, t_mid_on);
+        double ng_val = interp_at(ng_result.time, ng_it->second, t_mid_on);
+        EXPECT_NEAR(cs_val, ng_val, 1e-3)
+            << "ON-state level mismatch at t=" << t_mid_on;
+    }
+    if (cs_trans.size() >= 3) {
+        double t_mid_off = 0.5 * (cs_trans[1] + cs_trans[2]);
+        double cs_val = interp_at(cs_tr.time, cs_it->second, t_mid_off);
+        double ng_val = interp_at(ng_result.time, ng_it->second, t_mid_off);
+        EXPECT_NEAR(cs_val, ng_val, 1e-3)
+            << "OFF-state level mismatch at t=" << t_mid_off;
+    }
 }
 
 // ---------------------------------------------------------------------------

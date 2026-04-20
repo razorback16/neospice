@@ -15,28 +15,32 @@ struct SwitchModel {
     double Vt  = 0.0;    // threshold voltage (SW) / threshold current (CSW)
     double Vh  = 0.0;    // hysteresis voltage (SW) / hysteresis current (CSW)
     double Ron  = 1.0;   // on-state resistance (Ohm)
-    double Roff = 1e6;   // off-state resistance (Ohm)
+    double Roff = 1e12;  // off-state resistance (Ohm) — ngspice default
 };
 
 // ---------------------------------------------------------------------------
-// Smooth transition helper (cubic hermite step function)
-//
-// x is the normalized control variable: x = (ctrl - Vt) / max(|Vh|, 1e-12)
-// Returns 0 when x <= -1, 1 when x >= 1, cubic blend in between.
+// 4-state hysteresis model (matches ngspice swload.c / cswload.c)
 // ---------------------------------------------------------------------------
-inline double switch_smooth_step(double x) {
-    if (x <= -1.0) return 0.0;
-    if (x >=  1.0) return 1.0;
-    return 0.5 + x * (0.75 - 0.25 * x * x);
+
+enum class SwitchState : int {
+    REALLY_OFF = 0,
+    REALLY_ON  = 1,
+    HYST_OFF   = 2,
+    HYST_ON    = 3,
+};
+
+/// Returns true when the switch state means the switch is conducting.
+inline bool switch_is_on(SwitchState s) {
+    return s == SwitchState::REALLY_ON || s == SwitchState::HYST_ON;
 }
 
 // ---------------------------------------------------------------------------
 // VSwitch — Voltage-controlled switch (S element)
 //
-// Netlist syntax: S<name> n+ n- nc+ nc- modelname
+// Netlist syntax: S<name> n+ n- nc+ nc- modelname [ON|OFF]
 //
 // Stamps a variable conductance G between n+ and n-.
-// G is determined by the smooth transition function applied to
+// G is determined by the 4-state hysteresis model applied to
 //   Vc = V(nc+) - V(nc-)
 // with threshold Vt and hysteresis Vh from the model card.
 // ---------------------------------------------------------------------------
@@ -46,7 +50,8 @@ public:
     VSwitch(std::string name,
             int32_t node_pos, int32_t node_neg,
             int32_t node_ctrl_pos, int32_t node_ctrl_neg,
-            const SwitchModel& model);
+            const SwitchModel& model,
+            bool initial_on = false);
 
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
@@ -54,6 +59,7 @@ public:
                   NumericMatrix& mat, std::vector<double>& rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
+    bool device_converged() const override { return !state_changed_; }
 
     const SwitchModel& model() const { return model_; }
 
@@ -61,21 +67,23 @@ private:
     int32_t np_, nn_;       // output nodes
     int32_t ncp_, ncn_;     // control voltage nodes
     SwitchModel model_;
+    bool initial_on_;
 
+    SwitchState current_state_;
+    SwitchState previous_state_;
+    bool state_changed_ = false;
     double last_g_ = 0.0;   // cached conductance from last evaluate() for AC
 
     MatrixOffset off_pp_ = -1;
     MatrixOffset off_pn_ = -1;
     MatrixOffset off_np_ = -1;
     MatrixOffset off_nn_ = -1;
-
-    double compute_conductance(const std::vector<double>& voltages) const;
 };
 
 // ---------------------------------------------------------------------------
 // CSwitch — Current-controlled switch (W element)
 //
-// Netlist syntax: W<name> n+ n- Vsense modelname
+// Netlist syntax: W<name> n+ n- Vsense modelname [ON|OFF]
 //
 // Same as VSwitch but the control variable is the branch current of the
 // sense voltage source (same mechanism as CCCS/CCVS).
@@ -87,7 +95,8 @@ public:
     CSwitch(std::string name,
             int32_t node_pos, int32_t node_neg,
             const VSource* sense,
-            const SwitchModel& model);
+            const SwitchModel& model,
+            bool initial_on = false);
 
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
@@ -95,6 +104,7 @@ public:
                   NumericMatrix& mat, std::vector<double>& rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
+    bool device_converged() const override { return !state_changed_; }
 
     const SwitchModel& model() const { return model_; }
 
@@ -102,15 +112,17 @@ private:
     int32_t np_, nn_;       // output nodes
     const VSource* sense_;  // sensing VSource (non-owning)
     SwitchModel model_;
+    bool initial_on_;
 
+    SwitchState current_state_;
+    SwitchState previous_state_;
+    bool state_changed_ = false;
     double last_g_ = 0.0;   // cached conductance from last evaluate() for AC
 
     MatrixOffset off_pp_ = -1;
     MatrixOffset off_pn_ = -1;
     MatrixOffset off_np_ = -1;
     MatrixOffset off_nn_ = -1;
-
-    double compute_conductance(const std::vector<double>& voltages) const;
 };
 
 } // namespace neospice

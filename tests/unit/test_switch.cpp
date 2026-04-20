@@ -22,7 +22,7 @@ TEST(SwitchModel, DefaultsSW) {
     EXPECT_DOUBLE_EQ(m.Vt,   0.0);
     EXPECT_DOUBLE_EQ(m.Vh,   0.0);
     EXPECT_DOUBLE_EQ(m.Ron,  1.0);
-    EXPECT_DOUBLE_EQ(m.Roff, 1e6);
+    EXPECT_DOUBLE_EQ(m.Roff, 1e12);  // ngspice default
 }
 
 TEST(SwitchModel, DefaultsCSW) {
@@ -33,40 +33,33 @@ TEST(SwitchModel, DefaultsCSW) {
     EXPECT_DOUBLE_EQ(m.Vt,   0.0);
     EXPECT_DOUBLE_EQ(m.Vh,   0.0);
     EXPECT_DOUBLE_EQ(m.Ron,  1.0);
-    EXPECT_DOUBLE_EQ(m.Roff, 1e6);
+    EXPECT_DOUBLE_EQ(m.Roff, 1e12);  // ngspice default
 }
 
 // ===========================================================================
-// switch_smooth_step function tests
+// SwitchState enum and switch_is_on helper
 // ===========================================================================
 
-TEST(SwitchSmoothStep, BelowMinus1ReturnZero) {
-    EXPECT_DOUBLE_EQ(switch_smooth_step(-2.0), 0.0);
-    EXPECT_DOUBLE_EQ(switch_smooth_step(-1.0), 0.0);
-}
-
-TEST(SwitchSmoothStep, AbovePlus1ReturnOne) {
-    EXPECT_DOUBLE_EQ(switch_smooth_step(1.0), 1.0);
-    EXPECT_DOUBLE_EQ(switch_smooth_step(2.0), 1.0);
-}
-
-TEST(SwitchSmoothStep, AtZeroReturnHalf) {
-    EXPECT_DOUBLE_EQ(switch_smooth_step(0.0), 0.5);
-}
-
-TEST(SwitchSmoothStep, MonotonicallyIncreasing) {
-    double prev = switch_smooth_step(-1.0);
-    for (int i = -10; i <= 10; ++i) {
-        double x = i * 0.1;
-        double cur = switch_smooth_step(x);
-        EXPECT_GE(cur, prev);
-        prev = cur;
-    }
+TEST(SwitchStateHelper, IsOnReturnsCorrectly) {
+    EXPECT_FALSE(switch_is_on(SwitchState::REALLY_OFF));
+    EXPECT_TRUE (switch_is_on(SwitchState::REALLY_ON));
+    EXPECT_FALSE(switch_is_on(SwitchState::HYST_OFF));
+    EXPECT_TRUE (switch_is_on(SwitchState::HYST_ON));
 }
 
 // ===========================================================================
 // VSwitch unit tests
 // ===========================================================================
+
+// Helper RAII guard for setting up integrator context in unit tests
+struct UnitTestIntegratorGuard {
+    IntegratorCtx ctx;
+    UnitTestIntegratorGuard(int mode) {
+        ctx.mode = mode;
+        tls_integrator_ctx = &ctx;
+    }
+    ~UnitTestIntegratorGuard() { tls_integrator_ctx = nullptr; }
+};
 
 TEST(VSwitch, Construction) {
     SwitchModel m;
@@ -115,7 +108,10 @@ TEST(VSwitch, EvaluateOffState) {
     NumericMatrix mat(pattern);
     sw.assign_offsets(pattern);
 
-    // Control voltage = 0.0 < Vt - Vh = 0.9  → OFF state
+    // Use init mode so state gets evaluated
+    UnitTestIntegratorGuard guard(0x200);  // MODEINITJCT
+
+    // Control voltage = 0.0 < Vt - Vh = 0.9  -> OFF state
     std::vector<double> voltages = {0.0, 0.0, 0.0};
     std::vector<double> rhs(3, 0.0);
     sw.evaluate(voltages, mat, rhs);
@@ -131,7 +127,8 @@ TEST(VSwitch, EvaluateOnState) {
     SwitchModel m;
     m.Vt = 1.0; m.Vh = 0.1; m.Ron = 1.0; m.Roff = 1e6;
 
-    VSwitch sw("S1", 0, 1, 2, GROUND_INTERNAL, m);
+    // Use initial_on=true so that in init mode with ctrl >> Vt+Vh we get REALLY_ON
+    VSwitch sw("S1", 0, 1, 2, GROUND_INTERNAL, m, /*initial_on=*/true);
     SparsityBuilder builder(3);
     sw.stamp_pattern(builder);
     builder.add(2, 2);
@@ -140,7 +137,10 @@ TEST(VSwitch, EvaluateOnState) {
     NumericMatrix mat(pattern);
     sw.assign_offsets(pattern);
 
-    // Control voltage = 5.0 >> Vt + Vh = 1.1 → ON state
+    // Use init mode so state gets evaluated
+    UnitTestIntegratorGuard guard(0x200);  // MODEINITJCT
+
+    // Control voltage = 5.0 >> Vt + Vh = 1.1 -> ON state (REALLY_ON)
     std::vector<double> voltages = {0.0, 0.0, 5.0};
     std::vector<double> rhs(3, 0.0);
     sw.evaluate(voltages, mat, rhs);
@@ -152,7 +152,9 @@ TEST(VSwitch, EvaluateOnState) {
     EXPECT_NEAR(mat.value(pattern.offset(1, 1)),  Gon, 1e-9);
 }
 
-TEST(VSwitch, EvaluateTransitionAtThreshold) {
+TEST(VSwitch, EvaluateHysteresisRegion) {
+    // With Vh > 0, control voltage between Vt-Vh and Vt+Vh should stay
+    // in the initial state (HYST_OFF for default off)
     SwitchModel m;
     m.Vt = 1.0; m.Vh = 0.5; m.Ron = 1.0; m.Roff = 1e6;
 
@@ -165,16 +167,17 @@ TEST(VSwitch, EvaluateTransitionAtThreshold) {
     NumericMatrix mat(pattern);
     sw.assign_offsets(pattern);
 
-    // Control voltage = Vt = 1.0 → exactly at threshold → f=0.5
+    // Use init mode: Vctrl=1.0 is between Vt-Vh=0.5 and Vt+Vh=1.5
+    // Default initial_on=false -> HYST_OFF -> OFF conductance
+    UnitTestIntegratorGuard guard(0x200);  // MODEINITJCT
+
     std::vector<double> voltages = {0.0, 0.0, 1.0};
     std::vector<double> rhs(3, 0.0);
     sw.evaluate(voltages, mat, rhs);
 
-    double Gon  = 1.0 / 1.0;
     double Goff = 1.0 / 1e6;
-    double G_mid = Goff + 0.5 * (Gon - Goff);
-    EXPECT_NEAR(mat.value(pattern.offset(0, 0)),  G_mid, 1e-9);
-    EXPECT_NEAR(mat.value(pattern.offset(0, 1)), -G_mid, 1e-9);
+    EXPECT_NEAR(mat.value(pattern.offset(0, 0)),  Goff, 1e-15);
+    EXPECT_NEAR(mat.value(pattern.offset(0, 1)), -Goff, 1e-15);
 }
 
 // ===========================================================================
@@ -215,7 +218,10 @@ TEST(CSwitch, EvaluateOffState) {
     NumericMatrix mat(pattern);
     csw.assign_offsets(pattern);
 
-    // Branch current at index 2 = 0.0 < It - Ih = 0.005 → OFF
+    // Use init mode
+    UnitTestIntegratorGuard guard(0x200);  // MODEINITJCT
+
+    // Branch current at index 2 = 0.0 < It - Ih = 0.005 -> OFF
     std::vector<double> voltages = {0.0, 0.0, 0.0};
     std::vector<double> rhs(3, 0.0);
     csw.evaluate(voltages, mat, rhs);
@@ -231,7 +237,8 @@ TEST(CSwitch, EvaluateOnState) {
 
     VSource vsense("Vsense", 2, GROUND_INTERNAL, 0.0);
     vsense.set_branch_index(2);
-    CSwitch csw("W1", 0, 1, &vsense, m);
+    // Use initial_on=true so that in init mode with ctrl >> It+Ih we get REALLY_ON
+    CSwitch csw("W1", 0, 1, &vsense, m, /*initial_on=*/true);
 
     SparsityBuilder builder(3);
     csw.stamp_pattern(builder);
@@ -241,7 +248,10 @@ TEST(CSwitch, EvaluateOnState) {
     NumericMatrix mat(pattern);
     csw.assign_offsets(pattern);
 
-    // Branch current at index 2 = 1.0 >> It + Ih = 0.015 → ON
+    // Use init mode
+    UnitTestIntegratorGuard guard(0x200);  // MODEINITJCT
+
+    // Branch current at index 2 = 1.0 >> It + Ih = 0.015 -> ON
     std::vector<double> voltages = {0.0, 0.0, 1.0};
     std::vector<double> rhs(3, 0.0);
     csw.evaluate(voltages, mat, rhs);
@@ -257,8 +267,8 @@ TEST(CSwitch, EvaluateOnState) {
 
 TEST(VSwitchIntegration, SwitchON) {
     // S1 is ON (Vctrl=5V >> Vt+Vh=1.1V)
-    // Circuit: Vin=5V → R1=1k → out → S1(Ron=1) → GND
-    // V(out) = 5 * Ron / (R1 + Ron) = 5 * 1 / 1001 ≈ 4.995e-3 V
+    // Circuit: Vin=5V -> R1=1k -> out -> S1(Ron=1) -> GND
+    // V(out) = 5 * Ron / (R1 + Ron) = 5 * 1 / 1001
     Simulator sim;
     std::string netlist = R"(
 VSwitch ON test
@@ -273,14 +283,13 @@ S1 out 0 ctrl 0 SMOD
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // V(out) ≈ 5 * 1/(1000+1) = 4.995e-3 V
     double expected = 5.0 * 1.0 / (1000.0 + 1.0);
     EXPECT_NEAR(result.dc->node_voltages["v(out)"], expected, 1e-3);
 }
 
 TEST(VSwitchIntegration, SwitchOFF) {
     // S1 is OFF (Vctrl=0V << Vt-Vh=0.9V)
-    // Circuit: Vin=5V → R1=1k → out → S1(Roff=1Meg) → GND
+    // Circuit: Vin=5V -> R1=1k -> out -> S1(Roff=1Meg) -> GND
     // V(out) = 5 * 1e6 / (1000 + 1e6) ≈ 4.995 V
     Simulator sim;
     std::string netlist = R"(
@@ -296,17 +305,16 @@ S1 out 0 ctrl 0 SMOD
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // V(out) ≈ 5 * 1e6/(1000+1e6) ≈ 4.995 V
     double expected = 5.0 * 1e6 / (1000.0 + 1e6);
     EXPECT_NEAR(result.dc->node_voltages["v(out)"], expected, 0.01);
 }
 
-TEST(VSwitchIntegration, SwitchAtThreshold) {
-    // S1 at threshold (Vctrl=Vt=1.0V, Vh=0.5V, x=0 → f=0.5)
-    // G = Goff + 0.5*(Gon - Goff)
+TEST(VSwitchIntegration, SwitchHysteresisRegion) {
+    // Vctrl = 1.0 V = Vt, Vh = 0.5, so Vctrl is in [Vt-Vh=0.5, Vt+Vh=1.5]
+    // Default initial_on=false -> HYST_OFF -> OFF state
     Simulator sim;
     std::string netlist = R"(
-VSwitch threshold test
+VSwitch hysteresis OFF test
 Vin in 0 DC 5.0
 Vctrl ctrl 0 DC 1.0
 R1 in out 1k
@@ -318,12 +326,10 @@ S1 out 0 ctrl 0 SMOD
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    double Gon  = 1.0 / 1.0;
-    double Goff = 1.0 / 1e6;
-    double G_mid = Goff + 0.5 * (Gon - Goff);
-    double R_mid = 1.0 / G_mid;
-    double expected = 5.0 * R_mid / (1000.0 + R_mid);
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], expected, 1e-3);
+    // In hysteresis region, switch defaults to off -> Roff=1Meg
+    double Roff = 1e6;
+    double expected = 5.0 * Roff / (1000.0 + Roff);
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], expected, 0.01);
 }
 
 TEST(VSwitchIntegration, ACStamp) {
@@ -363,9 +369,8 @@ S1 out 0 ctrl 0 SMOD
 
 TEST(CSwitchIntegration, SwitchON) {
     // Vsense carries I = 5mA (Vin=5V, R=1k)
-    // It=0.001A, Ih=0.0001A → threshold range [0.9mA, 1.1mA]
-    // I=5mA >> 1.1mA → ON  (Ron=1)
-    // V(out) = 5 * Ron / (R1 + Ron) where R1 connects in to out
+    // It=0.001A, Ih=0.0001A -> threshold range [0.9mA, 1.1mA]
+    // I=5mA >> 1.1mA -> ON  (Ron=1)
     Simulator sim;
     std::string netlist = R"(
 CSwitch ON test
@@ -381,8 +386,6 @@ W1 out 0 Vsense WMOD
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // I through Vsense ≈ 5V/1k = 5mA >> threshold → ON
-    // V(out) = 5 * 1 / (1000 + 1) ≈ 4.995e-3 V
     double expected = 5.0 * 1.0 / (1000.0 + 1.0);
     EXPECT_NEAR(result.dc->node_voltages["v(out)"], expected, 1e-3);
 }
@@ -405,8 +408,6 @@ W1 out 0 Vsense WMOD
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // I through Vsense = 5V / 100Meg = 50nA << threshold → OFF
-    // V(out) ≈ 5 * 1e6 / (1000 + 1e6) ≈ 4.995 V
     double expected = 5.0 * 1e6 / (1000.0 + 1e6);
     EXPECT_NEAR(result.dc->node_voltages["v(out)"], expected, 0.01);
 }
@@ -416,7 +417,6 @@ W1 out 0 Vsense WMOD
 // ===========================================================================
 
 TEST(SwitchParser, ParseSElement) {
-    // Verify S element parses without error
     Simulator sim;
     std::string netlist = R"(
 S element parser test
@@ -432,7 +432,6 @@ S1 out 0 ctrl 0 SMOD
 }
 
 TEST(SwitchParser, ParseWElement) {
-    // Verify W element parses without error
     Simulator sim;
     std::string netlist = R"(
 W element parser test
@@ -451,7 +450,7 @@ W1 out 0 Vsense WMOD
 TEST(SwitchParser, ParseSWModelParameters) {
     // Verify SW model parameters are parsed correctly via a simulation
     // Use Vt=2.0 Vh=0.5 so we can distinguish from defaults
-    // Vctrl=5.0V >> Vt+Vh=2.5V → switch is ON (Ron=2)
+    // Vctrl=5.0V >> Vt+Vh=2.5V -> switch is ON (Ron=2)
     Simulator sim;
     std::string netlist = R"(
 SW model parameter test
@@ -466,13 +465,11 @@ S1 out 0 ctrl 0 MYMOD
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(result.dc.has_value());
-    // V(out) = 5 * Ron / (R1 + Ron) = 5 * 2 / (500 + 2) ≈ 0.0199 V
     double expected = 5.0 * 2.0 / (500.0 + 2.0);
     EXPECT_NEAR(result.dc->node_voltages["v(out)"], expected, 1e-3);
 }
 
 TEST(SwitchParser, ParseCSWModelParameters) {
-    // Verify CSW model parameters (It/Ih vs Vt/Vh key names)
     Simulator sim;
     std::string netlist = R"(
 CSW model parameter test
@@ -543,7 +540,6 @@ W1 out 0 Vsense
 }
 
 TEST(SwitchParser, ErrorWrongModelTypeForSElement) {
-    // S element with a CSW model should throw
     Simulator sim;
     std::string netlist = R"(
 S element with wrong model type
@@ -559,7 +555,6 @@ S1 out 0 ctrl 0 WRONGMOD
 }
 
 TEST(SwitchParser, ErrorWrongModelTypeForWElement) {
-    // W element with an SW model should throw
     Simulator sim;
     std::string netlist = R"(
 W element with wrong model type
@@ -580,8 +575,6 @@ W1 out 0 Vsense WRONGMOD
 // ===========================================================================
 
 TEST(VSwitchNgspice, RelaySwitchON) {
-    // Simple relay: S1 ON (Vctrl >> Vt+Vh)
-    // V(out) ≈ Vin * Ron/(R1+Ron) = 5 * 1/1001 ≈ 4.995e-3 V
     Simulator sim;
     std::string netlist = R"(
 VSwitch relay ON
@@ -601,8 +594,6 @@ S1 out 0 ctrl 0 SMOD
 }
 
 TEST(VSwitchNgspice, RelaySwitchOFF) {
-    // Simple relay: S1 OFF (Vctrl << Vt-Vh)
-    // V(out) ≈ Vin * Roff/(R1+Roff) = 5 * 1e6/1001000 ≈ 4.995 V
     Simulator sim;
     std::string netlist = R"(
 VSwitch relay OFF

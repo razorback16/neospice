@@ -1,0 +1,8 @@
+* Switch with hysteresis driven by triangle wave
+V1 ctrl 0 PULSE(-2 2 0 5u 5u 0.1u 10u)
+Vin in 0 DC 5
+S1 in out ctrl 0 SMOD
+R1 out 0 100
+.model SMOD SW Vt=0 Vh=1 Ron=1 Roff=1e6
+.tran 0.1u 40u
+.end
