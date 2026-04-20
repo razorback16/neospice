@@ -1,0 +1,8 @@
+Resistor model card test
+V1 in 0 1.0
+R1 in out 1k RMOD
+R2 out 0 1k
+.model RMOD R(TC1=3.9e-3 TC2=-5.8e-7)
+.options temp=85
+.op
+.end

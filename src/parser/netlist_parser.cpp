@@ -5,7 +5,9 @@
 #include "parser/expression.hpp"
 #include "parser/model_cards.hpp"
 #include "devices/resistor.hpp"
+#include "devices/resistor_model.hpp"
 #include "devices/capacitor.hpp"
+#include "devices/capacitor_model.hpp"
 #include "devices/inductor.hpp"
 #include "devices/coupled_inductor.hpp"
 #include "devices/vsource.hpp"
@@ -441,6 +443,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     // Storage for params and models
     std::unordered_map<std::string, double> params;
     std::unordered_map<std::string, ModelCard> models;
+    std::unordered_map<std::string, ResistorModel> res_models;
+    std::unordered_map<std::string, CapacitorModel> cap_models;
 
     struct DeferredDiode {
         std::string name;
@@ -582,6 +586,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         if (first == ".model") {
             auto card = parse_model_card(line.tokens);
             models[card.name] = card;
+            if (card.type == "r") {
+                res_models[to_lower(card.name)] = to_resistor_model(card);
+            } else if (card.type == "c") {
+                cap_models[to_lower(card.name)] = to_capacitor_model(card);
+            }
         } else if (first == ".param") {
             // .param key=value  or  .param key={expr}
             // Collect raw (name, expression) pairs; resolve later in dependency order.
@@ -1003,7 +1012,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         }
 
         if (elem_type == 'r') {
-            // R name n+ n- value [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
+            // R name n+ n- value [model] [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
             if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": Resistor requires name, n+, n-, value");
@@ -1013,6 +1022,24 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t nn = ckt.node(tokens[2]);
             double val = parse_spice_number(tokens[3]);
             auto r = std::make_unique<Resistor>(name, np, nn, val);
+
+            // First pass: apply model defaults (if model reference present)
+            for (size_t k = 4; k < tokens.size(); ++k) {
+                std::string tok_lower = to_lower(tokens[k]);
+                if (tok_lower.find('=') == std::string::npos) {
+                    auto mit = res_models.find(tok_lower);
+                    if (mit != res_models.end()) {
+                        const auto& rm = mit->second;
+                        r->set_tc1(rm.tc1);
+                        r->set_tc2(rm.tc2);
+                        if (rm.rac > 0.0) r->set_rac(rm.rac);
+                        if (rm.kf != 0.0) r->noise_kf = rm.kf;
+                        if (rm.af != 1.0) r->noise_af = rm.af;
+                    }
+                }
+            }
+
+            // Second pass: apply instance params (override model)
             for (size_t k = 4; k < tokens.size(); ++k) {
                 std::string tok = to_lower(tokens[k]);
                 if (tok.starts_with("tc1="))
@@ -1033,7 +1060,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             ckt.add_device(std::move(r));
 
         } else if (elem_type == 'c') {
-            // C name n+ n- value [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
+            // C name n+ n- value [model] [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
             if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": Capacitor requires name, n+, n-, value");
@@ -1043,6 +1070,21 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t nn = ckt.node(tokens[2]);
             double val = parse_spice_number(tokens[3]);
             auto c = std::make_unique<Capacitor>(name, np, nn, val);
+
+            // First pass: apply model defaults (if model reference present)
+            for (size_t k = 4; k < tokens.size(); ++k) {
+                std::string tok_lower = to_lower(tokens[k]);
+                if (tok_lower.find('=') == std::string::npos) {
+                    auto mit = cap_models.find(tok_lower);
+                    if (mit != cap_models.end()) {
+                        const auto& cm = mit->second;
+                        c->set_tc1(cm.tc1);
+                        c->set_tc2(cm.tc2);
+                    }
+                }
+            }
+
+            // Second pass: apply instance params (override model)
             for (size_t k = 4; k < tokens.size(); ++k) {
                 std::string tok = to_lower(tokens[k]);
                 if (tok.starts_with("tc1="))

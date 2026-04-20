@@ -526,6 +526,20 @@ TEST_F(NgspiceCompareTest, AsrcHertz) {
 }
 
 // ---------------------------------------------------------------------------
+// Resistor model card test — .model RMOD R(TC1=... TC2=...)
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, ResistorModelCard) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/resistor_model.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run_dc(ckt);
+    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-6});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+// ---------------------------------------------------------------------------
 // Resistor RAC= AC resistance test
 // RAC is a neospice extension (ngspice does not support it), so we verify
 // the expected voltage divider ratio directly instead of comparing to ngspice.

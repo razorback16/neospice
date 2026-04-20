@@ -673,4 +673,35 @@ std::unique_ptr<VBICModelCard> to_vbic_card(const ModelCard& card) {
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// to_resistor_model — parse a .model R card into a ResistorModel.
+// ---------------------------------------------------------------------------
+ResistorModel to_resistor_model(const ModelCard& card) {
+    ResistorModel m;
+    for (const auto& [key, val] : card.params) {
+        if (key == "tc1") m.tc1 = val;
+        else if (key == "tc2") m.tc2 = val;
+        else if (key == "rac") m.rac = val;
+        else if (key == "kf") m.kf = val;
+        else if (key == "af") m.af = val;
+        else if (key == "tnom") m.tnom = val + 273.15;
+    }
+    return m;
+}
+
+// ---------------------------------------------------------------------------
+// to_capacitor_model — parse a .model C card into a CapacitorModel.
+// ---------------------------------------------------------------------------
+CapacitorModel to_capacitor_model(const ModelCard& card) {
+    CapacitorModel m;
+    for (const auto& [key, val] : card.params) {
+        if (key == "tc1") m.tc1 = val;
+        else if (key == "tc2") m.tc2 = val;
+        else if (key == "vc1") m.vc1 = val;
+        else if (key == "vc2") m.vc2 = val;
+        else if (key == "tnom") m.tnom = val + 273.15;
+    }
+    return m;
+}
+
 } // namespace neospice

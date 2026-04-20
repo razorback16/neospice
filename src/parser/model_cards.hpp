@@ -1,5 +1,7 @@
 #pragma once
 #include "devices/switch.hpp"
+#include "devices/resistor_model.hpp"
+#include "devices/capacitor_model.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
 #include "devices/mos1/mos1_device.hpp"          // MOS1ModelCard
 #include "devices/bsim3/bsim3_device.hpp"       // BSIM3ModelCard
@@ -70,5 +72,11 @@ std::unique_ptr<VBICModelCard> to_vbic_card(const ModelCard& card);
 /// card.type must be "sw" (voltage-controlled) or "csw" (current-controlled).
 /// Throws ParseError for unsupported model types.
 SwitchModel to_switch_model(const ModelCard& card);
+
+/// Translate a parsed .model card (R) into a ResistorModel.
+ResistorModel to_resistor_model(const ModelCard& card);
+
+/// Translate a parsed .model card (C) into a CapacitorModel.
+CapacitorModel to_capacitor_model(const ModelCard& card);
 
 } // namespace neospice
