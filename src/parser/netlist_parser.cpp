@@ -26,6 +26,7 @@
 #include "devices/vbic/vbic_device.hpp"
 #include "devices/tline.hpp"
 #include "devices/ltra.hpp"
+#include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -554,6 +555,22 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int line_number;
     };
     std::vector<DeferredLTRA> deferred_ltras;
+
+    // Deferred ASRC (B elements): the expression is compiled immediately but
+    // I() references need VSource pointers resolved in a second pass.
+    struct DeferredASRC {
+        std::string name;
+        int32_t np, nn;
+        ASRCDevice::Mode mode;
+        asrc::CompiledExpression expr;
+        // Per-variable resolved data (filled at parse time for V() refs)
+        std::vector<int32_t> node_indices;   // -1 = ground, -2 = TIME
+        std::vector<int32_t> node_indices2;  // second node for V(n1,n2)
+        // Names of vsources for I() refs (resolved later)
+        std::vector<std::string> vsrc_names; // empty string if not I() ref
+        int line_number;
+    };
+    std::vector<DeferredASRC> deferred_asrcs;
 
     // Pass 1: collect .model and .param cards
     std::vector<std::pair<std::string, std::string>> raw_params;
@@ -1670,8 +1687,106 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             deferred_cswitches.push_back(std::move(wd));
 
         } else if (elem_type == 'b') {
-            throw ParseError("Line " + std::to_string(line.line_number) +
-                             ": Unsupported element type '" + std::string(1, elem_type) + "'");
+            // B name np nn V={expression} or I={expression}
+            // Syntax: Bname node+ node- V={expr} | I={expr}
+            if (tokens.size() < 4) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": B element requires name, np, nn, V={expr} or I={expr}");
+            }
+            std::string name = tokens[0];
+            int32_t np = ckt.node(tokens[1]);
+            int32_t nn = ckt.node(tokens[2]);
+
+            // Join remaining tokens to handle expressions split across tokens
+            std::string rest;
+            for (size_t i = 3; i < tokens.size(); ++i) {
+                if (!rest.empty()) rest += ' ';
+                rest += tokens[i];
+            }
+
+            // Determine mode (V= or I=) and extract expression
+            ASRCDevice::Mode mode;
+            std::string expr_str;
+            std::string rest_lower = to_lower(rest);
+
+            if (rest_lower.size() >= 2 && rest_lower[0] == 'v' && rest_lower[1] == '=') {
+                mode = ASRCDevice::Mode::VOLTAGE;
+                expr_str = rest.substr(2);
+            } else if (rest_lower.size() >= 2 && rest_lower[0] == 'i' && rest_lower[1] == '=') {
+                mode = ASRCDevice::Mode::CURRENT;
+                expr_str = rest.substr(2);
+            } else {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": B element requires V={expr} or I={expr}, got '" + rest + "'");
+            }
+
+            // Strip optional surrounding braces from expression
+            while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.front())))
+                expr_str.erase(0, 1);
+            while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.back())))
+                expr_str.pop_back();
+
+            // Compile the expression
+            asrc::CompiledExpression compiled;
+            try {
+                compiled = asrc::CompiledExpression::compile(expr_str);
+            } catch (const ParseError& e) {
+                throw ParseError("Line " + std::to_string(line.line_number) +
+                                 ": B element expression error: " + e.what());
+            }
+
+            // Resolve variable references: V() refs use ckt.node(), I() refs deferred
+            const auto& refs = compiled.var_refs();
+            int nv = compiled.num_vars();
+            std::vector<int32_t> node_indices(nv, -1);
+            std::vector<int32_t> node_indices2(nv, -1);
+            std::vector<std::string> vsrc_names(nv);
+
+            for (int i = 0; i < nv; ++i) {
+                const auto& ref = refs[i];
+                if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                    ref.name1 == "__time__") {
+                    node_indices[i] = -2;  // TIME sentinel
+                    continue;
+                }
+
+                switch (ref.kind) {
+                case asrc::VarKind::NODE_VOLTAGE: {
+                    std::string lname = ref.name1;
+                    if (lname == "0" || lname == "gnd") {
+                        node_indices[i] = GROUND_INTERNAL;
+                    } else {
+                        node_indices[i] = ckt.node(lname);
+                    }
+                    break;
+                }
+                case asrc::VarKind::DIFF_VOLTAGE: {
+                    std::string ln1 = ref.name1;
+                    std::string ln2 = ref.name2;
+                    node_indices[i]  = (ln1 == "0" || ln1 == "gnd")
+                                       ? GROUND_INTERNAL : ckt.node(ln1);
+                    node_indices2[i] = (ln2 == "0" || ln2 == "gnd")
+                                       ? GROUND_INTERNAL : ckt.node(ln2);
+                    break;
+                }
+                case asrc::VarKind::BRANCH_CURRENT:
+                    vsrc_names[i] = ref.name1;  // resolved in deferred pass
+                    break;
+                }
+            }
+
+            DeferredASRC bd;
+            bd.name = name;
+            bd.np = np;
+            bd.nn = nn;
+            bd.mode = mode;
+            bd.expr = std::move(compiled);
+            bd.node_indices = std::move(node_indices);
+            bd.node_indices2 = std::move(node_indices2);
+            bd.vsrc_names = std::move(vsrc_names);
+            bd.line_number = line.line_number;
+            deferred_asrcs.push_back(std::move(bd));
+
         }
         // Ignore unknown lines
     }
@@ -2120,6 +2235,42 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 
         ckt.add_device(std::make_unique<LossyTransmissionLine>(
             ol.name, ol.p1p, ol.p1n, ol.p2p, ol.p2n, lmodel));
+    }
+
+    // Resolve deferred ASRC (B elements) — find VSource pointers for I() refs
+    for (auto& bd : deferred_asrcs) {
+        const auto& refs = bd.expr.var_refs();
+        int nv = bd.expr.num_vars();
+        std::vector<const VSource*> vsource_ptrs(nv, nullptr);
+
+        for (int i = 0; i < nv; ++i) {
+            if (refs[i].kind == asrc::VarKind::BRANCH_CURRENT &&
+                !bd.vsrc_names[i].empty()) {
+                const VSource* vs = nullptr;
+                for (const auto& dev : ckt.devices()) {
+                    if (auto* v = dynamic_cast<const VSource*>(dev.get())) {
+                        if (to_lower(v->name()) == to_lower(bd.vsrc_names[i])) {
+                            vs = v;
+                            break;
+                        }
+                    }
+                }
+                if (!vs) {
+                    throw ParseError("Line " + std::to_string(bd.line_number) +
+                                     ": B element '" + bd.name +
+                                     "' references unknown voltage source '" +
+                                     bd.vsrc_names[i] + "' in I()");
+                }
+                vsource_ptrs[i] = vs;
+            }
+        }
+
+        ckt.add_device(std::make_unique<ASRCDevice>(
+            bd.name, bd.np, bd.nn, bd.mode,
+            std::move(bd.expr),
+            std::move(bd.node_indices),
+            std::move(bd.node_indices2),
+            std::move(vsource_ptrs)));
     }
 
     ckt.finalize();

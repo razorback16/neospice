@@ -13,6 +13,7 @@
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/tline.hpp"
 #include "devices/ltra.hpp"
+#include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -274,12 +275,14 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop) {
             // BSIM4 reads dt from integrator_ctx (CKTdelta).
         }
 
-        // Update time on sources
+        // Update time on sources and behavioral elements
         for (auto& dev : ckt.devices()) {
             if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
                 vs->set_time(t);
             } else if (auto* is = dynamic_cast<ISource*>(dev.get())) {
                 is->set_time(t);
+            } else if (auto* bs = dynamic_cast<ASRCDevice*>(dev.get())) {
+                bs->set_time(t);
             }
         }
 

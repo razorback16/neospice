@@ -1,0 +1,55 @@
+# ASRC (B element) — Behavioral/Arbitrary Source
+#
+# This device was implemented manually rather than via the auto-migration tool
+# because ASRC is fundamentally different from semiconductor compact models.
+# It relies on an expression parser/evaluator with automatic differentiation
+# rather than the typical setup/temp/load pattern.
+#
+# The neospice implementation uses:
+#   - A custom expression AST (expression_ast.hpp/cpp) with forward-mode AD
+#   - Direct MNA stamping for voltage mode (branch variable)
+#   - RHS-only stamping for current mode
+#   - Symbolic derivatives via dual numbers (no numerical perturbation)
+
+model:
+  ngspice_prefix: "ASRC"
+  neospice_name: "asrc"
+  neospice_namespace: "asrc"
+  instance_struct: "ASRCinstance"
+  model_struct: "ASRCmodel"
+  cpp_instance: "ASRCDevice"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "pos", field: "ASRCposNode" }
+    - { name: "neg", field: "ASRCnegNode" }
+  state_count: 0
+  source_files:
+    setup: "asrcset.c"
+    load: "asrcload.c"
+    temp: "asrctemp.c"
+    param: "asrcpar.c"
+    devsup: "asrc.c"
+  skip_files:
+    - "asrcacld.c"
+    - "asrcask.c"
+    - "asrcconv.c"
+    - "asrcdel.c"
+    - "asrcdest.c"
+    - "asrcfbr.c"
+    - "asrcinit.c"
+    - "asrcmdel.c"
+    - "asrcpzld.c"
+  defines: []
+  has_internal_nodes: false
+  migration_notes: |
+    ASRC was implemented manually. The auto-migration tool is designed for
+    semiconductor compact models with fixed equations, not for behavioral
+    sources that evaluate arbitrary expressions.
+
+    Key differences from auto-migrated devices:
+    - Expression AST replaces ngspice's IFparseTree
+    - Forward-mode AD replaces ngspice's IFeval + asrc_derivs
+    - No model card (B elements are instance-only)
+    - Voltage mode uses MNA branch (like VSource)
+    - Current mode stamps RHS directly (like ISource)

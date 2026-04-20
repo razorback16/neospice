@@ -69,16 +69,35 @@ D1 out 0 MYDIODE
     EXPECT_EQ(ckt.devices().size(), 3u);
 }
 
-TEST(Parser, UnsupportedElement) {
-    // 'b' (behavioural) is unsupported; 'x' (subcircuit instances) are
-    // silently ignored at this stage — they will be expanded in Task 7.2.
+TEST(Parser, BElementVoltageMode) {
+    // B element (behavioral voltage source) should parse without throwing.
     std::string netlist = R"(
-Bad Circuit
-B1 out 0 V=5
+B Element Test
+V1 in 0 DC 2.0
+R1 out 0 1k
+B1 out 0 V={V(in)*2}
+.op
 .end
 )";
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    auto ckt = parser.parse(netlist);
+    // V1 + R1 + B1 = 3 devices
+    EXPECT_EQ(ckt.devices().size(), 3u);
+}
+
+TEST(Parser, BElementCurrentMode) {
+    // B element (behavioral current source) should parse without throwing.
+    std::string netlist = R"(
+B Element Current Test
+V1 in 0 DC 1.0
+R1 out 0 1k
+B1 out 0 I={V(in)*1m}
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_EQ(ckt.devices().size(), 3u);
 }
 
 TEST(Parser, VCVSElement) {
