@@ -83,44 +83,81 @@ void TransmissionLine::update_delayed_values(double t_delayed) {
         return;
     }
 
-    // If t_delayed is before the first history entry, use zero initial state.
-    if (t_delayed <= history_.front().time) {
-        e1_ = 0.0;
-        e2_ = 0.0;
-        return;
-    }
-
-    // If t_delayed is beyond the last entry, extrapolate with the last entry
-    // (shouldn't happen in normal operation but be safe).
-    if (t_delayed >= history_.back().time) {
-        const auto& h = history_.back();
-        e1_ = h.v2 + z0_ * h.i2;
-        e2_ = h.v1 + z0_ * h.i1;
-        return;
-    }
-
-    // Linear interpolation between the two bounding history points.
-    // Binary search for the first entry with time > t_delayed.
+    // Find bounding history points for interpolation
     auto it = std::upper_bound(history_.begin(), history_.end(), t_delayed,
         [](double t, const HistoryPoint& hp) { return t < hp.time; });
 
-    // 'it' points to the first element with time > t_delayed.
-    // The element before it has time <= t_delayed.
-    const auto& h1 = *(it - 1);
-    const auto& h2 = *it;
+    if (it == history_.begin()) {
+        // t_delayed is before first point — use first point
+        e1_ = 0.0; e2_ = 0.0;
+        return;
+    }
 
-    double alpha = (h2.time - h1.time > 1e-300)
-                   ? (t_delayed - h1.time) / (h2.time - h1.time)
-                   : 0.0;
-    alpha = std::max(0.0, std::min(1.0, alpha));
+    // Quadratic (3-point Lagrange) if possible, else linear fallback
+    const HistoryPoint* p0;
+    const HistoryPoint* p1;
+    const HistoryPoint* p2;
 
-    double v1_d  = h1.v1  + alpha * (h2.v1  - h1.v1 );
-    double i1_d  = h1.i1  + alpha * (h2.i1  - h1.i1 );
-    double v2_d  = h1.v2  + alpha * (h2.v2  - h1.v2 );
-    double i2_d  = h1.i2  + alpha * (h2.i2  - h1.i2 );
+    bool use_quadratic = false;
 
-    e1_ = v2_d + z0_ * i2_d;   // wave arriving at port 1
-    e2_ = v1_d + z0_ * i1_d;   // wave arriving at port 2
+    if (it == history_.end()) {
+        // Extrapolate from last 3
+        if (history_.size() >= 3) {
+            p0 = &history_[history_.size()-3];
+            p1 = &history_[history_.size()-2];
+            p2 = &history_[history_.size()-1];
+            use_quadratic = true;
+        } else {
+            // Not enough points, use last point
+            const auto& h = history_.back();
+            e1_ = h.v2 + z0_ * h.i2;
+            e2_ = h.v1 + z0_ * h.i1;
+            return;
+        }
+    } else if (it - history_.begin() >= 2) {
+        // Normal case: it points past t_delayed, use (it-2, it-1, it)
+        p0 = &*(it - 2);
+        p1 = &*(it - 1);
+        p2 = &*it;
+        use_quadratic = true;
+    } else if (it - history_.begin() == 1 && it + 1 != history_.end()) {
+        // Only 1 point before it, grab one more after
+        p0 = &*(it - 1);
+        p1 = &*it;
+        p2 = &*(it + 1);
+        use_quadratic = true;
+    } else {
+        // Only 2 points total — linear fallback
+        const auto& h1 = *(it - 1);
+        const auto& h2 = *it;
+        double denom = h2.time - h1.time;
+        double alpha = (denom > 1e-300) ? (t_delayed - h1.time) / denom : 0.0;
+        alpha = std::max(0.0, std::min(1.0, alpha));
+        double v1_d = h1.v1 + alpha * (h2.v1 - h1.v1);
+        double i1_d = h1.i1 + alpha * (h2.i1 - h1.i1);
+        double v2_d = h1.v2 + alpha * (h2.v2 - h1.v2);
+        double i2_d = h1.i2 + alpha * (h2.i2 - h1.i2);
+        e1_ = v2_d + z0_ * i2_d;
+        e2_ = v1_d + z0_ * i1_d;
+        return;
+    }
+
+    if (use_quadratic) {
+        // 3-point Lagrange interpolation
+        double t0 = p0->time, t1 = p1->time, t2 = p2->time;
+        double t = t_delayed;
+        double f0 = ((t-t1)*(t-t2)) / ((t0-t1)*(t0-t2));
+        double f1 = ((t-t0)*(t-t2)) / ((t1-t0)*(t1-t2));
+        double f2 = ((t-t0)*(t-t1)) / ((t2-t0)*(t2-t1));
+
+        double v1_d = f0*p0->v1 + f1*p1->v1 + f2*p2->v1;
+        double i1_d = f0*p0->i1 + f1*p1->i1 + f2*p2->i1;
+        double v2_d = f0*p0->v2 + f1*p1->v2 + f2*p2->v2;
+        double i2_d = f0*p0->i2 + f1*p1->i2 + f2*p2->i2;
+
+        e1_ = v2_d + z0_ * i2_d;
+        e2_ = v1_d + z0_ * i1_d;
+    }
 }
 
 // ---------------------------------------------------------------------------
