@@ -1,0 +1,12 @@
+VBIC PNP DC Operating Point
+Vee emitter 0 5
+Rc 0 col 2k
+Rb 0 base 100k
+Q1 col base emitter 0 QMOD
+.model QMOD PNP LEVEL=4 IS=1e-16 NF=1.0 NR=1.0
++ IBEI=1e-18 NEI=1.0 IBEN=1e-15 NEN=2.0
++ IBCI=1e-17 NCI=1.0 IBCN=1e-15 NCN=2.0
++ RBI=50 RBX=10 RE=1 RCI=20 RCX=10 RS=0.1
++ VEF=100 VER=20 IKF=0.01 IKR=0.01
+.op
+.end
