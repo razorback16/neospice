@@ -19,6 +19,7 @@
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/vccs_nonlinear.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
+#include "devices/bsim3/bsim3_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
 #include "devices/tline.hpp"
@@ -1711,43 +1712,93 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.add_dio_model_card(std::move(card));
     }
 
-    // Resolve deferred MOSFETs.  A single BSIM4v7ModelCard is created per
-    // distinct .model name (N:1 instance→card) and retained so all instances
-    // that reference the same name share UCB's BSIM4instances linked list.
-    // Ownership is transferred to the Circuit after all devices are made,
-    // guaranteeing the cards outlive the BSIM4v7Device non-owning back-pointers.
+    // Resolve deferred MOSFETs.  Level dispatch:
+    //   LEVEL=14         → BSIM4v7
+    //   LEVEL=8 or 49    → BSIM3v3
+    //   default (absent) → BSIM4v7 (backwards-compatible)
+    // A single model card is created per distinct .model name (N:1
+    // instance→card).  Ownership transfers to the Circuit after all
+    // devices are made, so non-owning device back-pointers stay valid.
     std::unordered_map<std::string, std::unique_ptr<BSIM4v7ModelCard>> bsim4_cards;
+    std::unordered_map<std::string, std::unique_ptr<BSIM3ModelCard>>  bsim3_cards;
+    // Cache resolved level per model name to avoid re-lookup.
+    std::unordered_map<std::string, int> model_level_cache;
     for (const auto& m : deferred_mosfets) {
         auto it = models.find(m.model_name);
         if (it == models.end()) {
             throw ParseError("Line " + std::to_string(m.line_number) +
                              ": Unknown model '" + m.model_name + "'");
         }
-        // Lazy-create BSIM4v7ModelCard — to_bsim4_card validates LEVEL=14
-        // and NMOS/PMOS type, throws ParseError otherwise.
-        auto card_it = bsim4_cards.find(m.model_name);
-        if (card_it == bsim4_cards.end()) {
-            try {
-                card_it = bsim4_cards.emplace(m.model_name,
-                                              to_bsim4_card(it->second)).first;
-            } catch (const ParseError& e) {
-                throw ParseError("Line " + std::to_string(m.line_number) +
-                                 ": " + e.what());
+        // Determine MOSFET level from the model card.
+        int level;
+        auto lc_it = model_level_cache.find(m.model_name);
+        if (lc_it != model_level_cache.end()) {
+            level = lc_it->second;
+        } else {
+            auto lvl_it = it->second.params.find("level");
+            level = (lvl_it == it->second.params.end()) ? 14
+                                                        : static_cast<int>(lvl_it->second);
+            model_level_cache[m.model_name] = level;
+        }
+
+        if (level == 8 || level == 49) {
+            // BSIM3v3
+            auto card_it = bsim3_cards.find(m.model_name);
+            if (card_it == bsim3_cards.end()) {
+                try {
+                    card_it = bsim3_cards.emplace(m.model_name,
+                                                  to_bsim3_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
             }
+            BSIM3Device::Geom g3;
+            g3.W   = m.geom.W;
+            g3.L   = m.geom.L;
+            g3.AD  = m.geom.AD;
+            g3.AS  = m.geom.AS;
+            g3.PD  = m.geom.PD;
+            g3.PS  = m.geom.PS;
+            g3.NRD = m.geom.NRD;
+            g3.NRS = m.geom.NRS;
+            g3.M   = m.geom.M;
+            auto dev = BSIM3Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                         g3, *card_it->second);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else {
+            // BSIM4v7 (level 14 or default)
+            auto card_it = bsim4_cards.find(m.model_name);
+            if (card_it == bsim4_cards.end()) {
+                try {
+                    card_it = bsim4_cards.emplace(m.model_name,
+                                                  to_bsim4_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            auto dev = BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                           m.geom, *card_it->second);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
         }
-        auto dev = BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
-                                       m.geom, *card_it->second);
-        // Must happen before finalize() — setup() clears ic fields when !Given.
-        if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
-            dev->set_ic(m.ic_vds, m.ic_vds_given,
-                        m.ic_vgs, m.ic_vgs_given,
-                        m.ic_vbs, m.ic_vbs_given);
-        }
-        ckt.add_device(std::move(dev));
     }
     // Transfer card ownership to the Circuit (cards must outlive the devices).
     for (auto& [name, card] : bsim4_cards) {
         ckt.add_bsim4_model_card(std::move(card));
+    }
+    for (auto& [name, card] : bsim3_cards) {
+        ckt.add_bsim3_model_card(std::move(card));
     }
 
     // Resolve deferred BJTs

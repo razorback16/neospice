@@ -1,6 +1,7 @@
 #pragma once
 #include "devices/switch.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
+#include "devices/bsim3/bsim3_device.hpp"       // BSIM3ModelCard
 #include "devices/bjt/bjt_device.hpp"            // BJTModelCard
 #include "devices/jfet/jfet_device.hpp"          // JFETModelCard
 #include "devices/dio/dio_device.hpp"            // DIOModelCard
@@ -30,6 +31,11 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens);
 ///   * LEVEL != 14
 ///   * unknown BSIM4 parameter keys are WARNED on stderr, not thrown.
 std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card);
+
+/// Translate a parsed .model card (LEVEL=8 or LEVEL=49 NMOS/PMOS) into a
+/// BSIM3ModelCard using the UCB BSIM3mParam dispatcher.  Same ownership
+/// semantics as to_bsim4_card.
+std::unique_ptr<BSIM3ModelCard> to_bsim3_card(const ModelCard& card);
 
 /// Translate a parsed .model card (NPN/PNP) into a BJTModelCard using
 /// the UCB BJTmParam dispatcher.  Ownership semantics are the same as
