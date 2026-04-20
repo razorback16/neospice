@@ -1821,6 +1821,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     node_indices[i] = -2;  // TIME sentinel
                     continue;
                 }
+                if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                    ref.name1 == "__temper__") {
+                    node_indices[i] = -2;  // TEMPER sentinel
+                    continue;
+                }
 
                 switch (ref.kind) {
                 case asrc::VarKind::NODE_VOLTAGE: {

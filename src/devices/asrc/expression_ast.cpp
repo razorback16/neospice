@@ -271,6 +271,18 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
             return node;
         }
 
+        // TEMPER (simulation temperature in Celsius) - same sentinel pattern as TIME
+        if (lname == "temper") {
+            VarRef ref;
+            ref.kind = VarKind::NODE_VOLTAGE;
+            ref.name1 = "__temper__";
+            int idx = get_or_add_var(ref);
+            auto node = std::make_unique<ASTNode>();
+            node->type = NodeType::VARIABLE;
+            node->var_idx = idx;
+            return node;
+        }
+
         // Function call
         skip_ws();
         if (pos_ < expr_.size() && expr_[pos_] == '(') {

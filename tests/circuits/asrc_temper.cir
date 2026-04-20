@@ -1,0 +1,6 @@
+ASRC TEMPER test
+V1 in 0 1.0
+B1 out 0 V={V(in)*(1+0.003*(TEMPER-27))}
+R1 out 0 1k
+.op
+.end

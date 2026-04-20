@@ -108,6 +108,9 @@ private:
     // Time variable index (-1 if expression doesn't use TIME)
     int time_var_idx_ = -1;
 
+    // Temperature variable index (-1 if expression doesn't use TEMPER)
+    int temper_var_idx_ = -1;
+
     // -- Matrix offsets --
 
     // Voltage mode: MNA branch stamps
