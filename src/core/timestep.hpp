@@ -56,6 +56,7 @@ private:
     bool crossed_src_bp_ = false;
     std::set<double> breakpoints_;
     std::set<double> source_breakpoints_;
+    std::vector<double> max_seen_;  // per-node max |value| for lte_ref_mode==2
 };
 
 } // namespace neospice

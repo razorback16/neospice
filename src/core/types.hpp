@@ -34,6 +34,7 @@ struct SimOptions {
     int itl1      = 100;    // DC iteration limit (alias for max_iter)
     int itl4      = 50;     // transient iteration limit per timepoint
     std::string method = "trap"; // integration method: "trap" or "gear"
+    int lte_ref_mode = 0;       // LTE reference mode: 0=per-node, 1=max-all, 2=max-per-signal-over-time
     bool verbose  = false;
 };
 

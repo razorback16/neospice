@@ -928,6 +928,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                             ckt.options.max_iter = ckt.options.itl1;
                         } else if (key == "itl4") {
                             ckt.options.itl4 = static_cast<int>(val);
+                        } else if (key == "lte_ref_mode") {
+                            ckt.options.lte_ref_mode = static_cast<int>(val);
                         }
                         // Silently ignore unrecognised option keys
                     }

@@ -233,6 +233,47 @@ R2 out 0 1k
     });
 }
 
+TEST(Options, ParseLteRefMode) {
+    std::string netlist = R"(
+Options lte_ref_mode test
+V1 a 0 1
+R1 a 0 1k
+.options lte_ref_mode=1
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_EQ(ckt.options.lte_ref_mode, 1);
+}
+
+TEST(Options, ParseLteRefMode2) {
+    std::string netlist = R"(
+Options lte_ref_mode=2 test
+V1 a 0 1
+R1 a 0 1k
+.options lte_ref_mode=2
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_EQ(ckt.options.lte_ref_mode, 2);
+}
+
+TEST(Options, DefaultLteRefModeIsZero) {
+    std::string netlist = R"(
+Default lte_ref_mode test
+V1 a 0 1
+R1 a 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_EQ(ckt.options.lte_ref_mode, 0);
+}
+
 TEST(Options, DefaultTempNoOptionsCard) {
     // When no .options card is present, temp defaults to T_NOMINAL (300.15 K).
     std::string netlist = R"(

@@ -12,6 +12,7 @@ void TimeStepController::init(double initial_dt, double tstop) {
     rejected_ = 0;
     breakpoints_.clear();
     source_breakpoints_.clear();
+    max_seen_.clear();
 }
 
 void TimeStepController::advance(double dt) {
@@ -31,12 +32,38 @@ bool TimeStepController::evaluate_step(const std::vector<double>& sol,
                                         const std::vector<double>& sol_prev2,
                                         int32_t num_nodes,
                                         const SimOptions& opts) {
+    // Pre-compute reference values based on LTE reference mode
+    double max_abs = 0.0;
+    if (opts.lte_ref_mode == 1) {
+        for (int32_t i = 0; i < num_nodes; ++i) {
+            max_abs = std::max(max_abs, std::abs(sol[i]));
+        }
+    } else if (opts.lte_ref_mode == 2) {
+        if (static_cast<int32_t>(max_seen_.size()) < num_nodes) {
+            max_seen_.resize(num_nodes, 0.0);
+        }
+        for (int32_t i = 0; i < num_nodes; ++i) {
+            max_seen_[i] = std::max(max_seen_[i], std::abs(sol[i]));
+        }
+    }
+
     double max_ratio = 0.0;
     for (int32_t i = 0; i < num_nodes; ++i) {
         double delta2 = sol[i] - 2.0 * sol_prev[i] + sol_prev2[i];
         double lte_coeff = (opts.method == "gear") ? (2.0 / 9.0) : (1.0 / 12.0);
         double lte = std::abs(delta2) * lte_coeff;
-        double tol = opts.reltol * std::abs(sol[i]) + opts.vntol;
+        double tol;
+        switch (opts.lte_ref_mode) {
+        case 1:
+            tol = opts.reltol * max_abs + opts.vntol;
+            break;
+        case 2:
+            tol = opts.reltol * max_seen_[i] + opts.vntol;
+            break;
+        default: // mode 0
+            tol = opts.reltol * std::abs(sol[i]) + opts.vntol;
+            break;
+        }
         if (tol > 0.0) {
             max_ratio = std::max(max_ratio, lte / tol);
         }
