@@ -639,6 +639,23 @@ TEST_F(NgspiceCompareTest, ResistorModelCard) {
 }
 
 // ---------------------------------------------------------------------------
+// Inductor model card test — .model LMOD L(TC1=... TC2=...)
+// Uses an RL AC divider at elevated temperature to verify that the
+// temperature-adjusted inductance matches ngspice.
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, InductorModelCard) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/inductor_model.cir";
+    auto ng_result = ngspice_->run_ac(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.ac.has_value());
+    auto cmp = compare_ac(ng_result, *cs_result.ac, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+// ---------------------------------------------------------------------------
 // Resistor RAC= AC resistance test
 // RAC is a neospice extension (ngspice does not support it), so we verify
 // the expected voltage divider ratio directly instead of comparing to ngspice.

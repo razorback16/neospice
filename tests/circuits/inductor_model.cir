@@ -1,0 +1,8 @@
+Inductor model card test — RL AC divider at elevated temperature
+V1 in 0 AC 1
+R1 in out 1k
+L1 out 0 LMOD 10m
+.model LMOD L(TC1=3.9e-3 TC2=-5.8e-7)
+.options temp=85
+.ac dec 10 100 100k
+.end

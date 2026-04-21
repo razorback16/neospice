@@ -2,6 +2,7 @@
 #include "devices/switch.hpp"
 #include "devices/resistor_model.hpp"
 #include "devices/capacitor_model.hpp"
+#include "devices/inductor_model.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
 #include "devices/mos1/mos1_device.hpp"          // MOS1ModelCard
 #include "devices/bsim3/bsim3_device.hpp"       // BSIM3ModelCard
@@ -78,5 +79,8 @@ ResistorModel to_resistor_model(const ModelCard& card);
 
 /// Translate a parsed .model card (C) into a CapacitorModel.
 CapacitorModel to_capacitor_model(const ModelCard& card);
+
+/// Translate a parsed .model card (L) into an InductorModel.
+InductorModel to_inductor_model(const ModelCard& card);
 
 } // namespace neospice

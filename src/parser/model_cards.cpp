@@ -704,4 +704,17 @@ CapacitorModel to_capacitor_model(const ModelCard& card) {
     return m;
 }
 
+// ---------------------------------------------------------------------------
+// to_inductor_model — parse a .model L card into an InductorModel.
+// ---------------------------------------------------------------------------
+InductorModel to_inductor_model(const ModelCard& card) {
+    InductorModel m;
+    for (const auto& [key, val] : card.params) {
+        if (key == "tc1") m.tc1 = val;
+        else if (key == "tc2") m.tc2 = val;
+        else if (key == "tnom") m.tnom = val + 273.15;
+    }
+    return m;
+}
+
 } // namespace neospice

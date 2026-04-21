@@ -9,6 +9,7 @@
 #include "devices/capacitor.hpp"
 #include "devices/capacitor_model.hpp"
 #include "devices/inductor.hpp"
+#include "devices/inductor_model.hpp"
 #include "devices/coupled_inductor.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
@@ -584,6 +585,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     std::unordered_map<std::string, ModelCard> models;
     std::unordered_map<std::string, ResistorModel> res_models;
     std::unordered_map<std::string, CapacitorModel> cap_models;
+    std::unordered_map<std::string, InductorModel> ind_models;
 
     struct DeferredDiode {
         std::string name;
@@ -747,6 +749,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 res_models[to_lower(card.name)] = to_resistor_model(card);
             } else if (card.type == "c") {
                 cap_models[to_lower(card.name)] = to_capacitor_model(card);
+            } else if (card.type == "l") {
+                ind_models[to_lower(card.name)] = to_inductor_model(card);
             }
         } else if (first == ".param") {
             // .param key=value  or  .param key={expr}
@@ -1262,7 +1266,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             ckt.add_device(std::move(c));
 
         } else if (elem_type == 'l') {
-            // L name n+ n- value [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
+            // L name n+ n- [model] value [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
+            // ngspice allows:  L name n+ n- model value   (model before value)
+            //                  L name n+ n- value          (no model)
             if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": Inductor requires name, n+, n-, value");
@@ -1270,9 +1276,50 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             std::string name = tokens[0];
             int32_t np = ckt.node(tokens[1]);
             int32_t nn = ckt.node(tokens[2]);
-            double val = parse_spice_number(tokens[3]);
+
+            // Detect whether tokens[3] is a model name or a numeric value.
+            // If it looks like a model name (found in ind_models), the value
+            // is the next token; otherwise tokens[3] is the value.
+            double val;
+            size_t param_start;
+            std::string tok3_lower = to_lower(tokens[3]);
+            auto model_it = ind_models.find(tok3_lower);
+            if (model_it != ind_models.end()) {
+                // tokens[3] is a model name
+                if (tokens.size() < 5) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": Inductor with model requires a value");
+                }
+                val = parse_spice_number(tokens[4]);
+                param_start = 5;
+            } else {
+                val = parse_spice_number(tokens[3]);
+                param_start = 4;
+            }
             auto l = std::make_unique<Inductor>(name, np, nn, val);
-            for (size_t k = 4; k < tokens.size(); ++k) {
+
+            // First pass: apply model defaults (if model reference present)
+            // Check tokens[3] (already checked above) and also scan remaining
+            // tokens for bare model names.
+            if (model_it != ind_models.end()) {
+                const auto& im = model_it->second;
+                l->set_tc1(im.tc1);
+                l->set_tc2(im.tc2);
+            }
+            for (size_t k = param_start; k < tokens.size(); ++k) {
+                std::string tok_lower = to_lower(tokens[k]);
+                if (tok_lower.find('=') == std::string::npos) {
+                    auto mit = ind_models.find(tok_lower);
+                    if (mit != ind_models.end()) {
+                        const auto& im = mit->second;
+                        l->set_tc1(im.tc1);
+                        l->set_tc2(im.tc2);
+                    }
+                }
+            }
+
+            // Second pass: apply instance params (override model)
+            for (size_t k = param_start; k < tokens.size(); ++k) {
                 std::string tok = to_lower(tokens[k]);
                 if (tok.starts_with("tc1="))
                     l->set_tc1(parse_spice_number(tok.substr(4)));
