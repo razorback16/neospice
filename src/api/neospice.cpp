@@ -195,6 +195,12 @@ SimulationResult Simulator::run(Circuit& ckt) {
             result.sens = solve_sens(ckt, cmd.sens_output);
             break;
         }
+        case AnalysisCommand::PZ: {
+            result.pz = solve_pz(ckt, cmd.pz_in_pos, cmd.pz_in_neg,
+                                 cmd.pz_out_pos, cmd.pz_out_neg,
+                                 cmd.pz_transfer, cmd.pz_type);
+            break;
+        }
         default:
             break;
         }

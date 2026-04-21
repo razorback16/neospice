@@ -1,6 +1,7 @@
 #pragma once
 #include "core/types.hpp"
 #include "core/matrix.hpp"
+#include "core/pz.hpp"
 #include "devices/device.hpp"
 #include <memory>
 #include <string>
@@ -76,7 +77,7 @@ struct FourierCommand {
 };
 
 struct AnalysisCommand {
-    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE, TF, SENS };
+    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE, TF, SENS, PZ };
     Type type;
     double tran_tstep = 0, tran_tstop = 0;
     bool tran_uic = false;   // Use Initial Conditions
@@ -94,6 +95,10 @@ struct AnalysisCommand {
     std::string tf_input_src;      // e.g., "vin" — the input source name
     // SENS analysis parameters
     std::string sens_output;       // e.g., "v(out)" — the output variable
+    // PZ analysis parameters
+    std::string pz_in_pos, pz_in_neg, pz_out_pos, pz_out_neg;
+    PZTransferType pz_transfer = PZTransferType::VOLTAGE;
+    PZType pz_type = PZType::BOTH;
 };
 
 // IntegratorCtx is defined in core/types.hpp (included above) so that

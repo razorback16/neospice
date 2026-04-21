@@ -1188,6 +1188,34 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 cmd.type = AnalysisCommand::SENS;
                 cmd.sens_output = to_lower(tokens[1]);
                 ckt.analyses.push_back(cmd);
+            } else if (first == ".pz") {
+                // .pz node1 node2 node3 node4 VOL|CUR POL|ZER|PZ
+                if (tokens.size() < 7) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .pz requires 6 arguments: n1 n2 n3 n4 VOL|CUR POL|ZER|PZ");
+                }
+                AnalysisCommand cmd;
+                cmd.type = AnalysisCommand::PZ;
+                cmd.pz_in_pos  = to_lower(tokens[1]);
+                cmd.pz_in_neg  = to_lower(tokens[2]);
+                cmd.pz_out_pos = to_lower(tokens[3]);
+                cmd.pz_out_neg = to_lower(tokens[4]);
+                std::string transfer = to_lower(tokens[5]);
+                if (transfer == "vol")
+                    cmd.pz_transfer = PZTransferType::VOLTAGE;
+                else if (transfer == "cur")
+                    cmd.pz_transfer = PZTransferType::CURRENT;
+                else
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .pz transfer type must be VOL or CUR");
+                std::string pz = to_lower(tokens[6]);
+                if (pz == "pol")      cmd.pz_type = PZType::POLES;
+                else if (pz == "zer") cmd.pz_type = PZType::ZEROS;
+                else if (pz == "pz")  cmd.pz_type = PZType::BOTH;
+                else
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .pz type must be POL, ZER, or PZ");
+                ckt.analyses.push_back(cmd);
             } else if (first == ".four" || first == ".fourier") {
                 // .four freq signal1 [signal2 ...]
                 if (tokens.size() >= 3) {

@@ -6,6 +6,7 @@
 #include "core/noise.hpp"
 #include "core/tf.hpp"
 #include "core/sens.hpp"
+#include "core/pz.hpp"
 #include "core/measure.hpp"
 #include <string>
 #include <optional>
@@ -24,6 +25,7 @@ struct SimulationResult {
     std::optional<NoiseResult> noise;
     std::optional<TFResult> tf;
     std::optional<SensResult> sens;
+    std::optional<PZResult> pz;
     std::optional<MeasureResult> measures;
     std::vector<std::string> print_output;  // formatted .print/.plot output
     std::unique_ptr<StepResult> step;       // non-null when .step sweep ran

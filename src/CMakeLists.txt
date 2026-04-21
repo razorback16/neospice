@@ -20,6 +20,7 @@ add_library(neospice_lib
     core/transient.cpp
     core/ac.cpp
     core/noise.cpp
+    core/pz.cpp
     core/fourier.cpp
     core/measure.cpp
     core/timestep.cpp
