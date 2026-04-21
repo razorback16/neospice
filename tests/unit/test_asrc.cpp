@@ -538,3 +538,100 @@ R2 out 0 1Meg
     EXPECT_NEAR(v_last, 10.0 + t_last, 1e-3)
         << "IDT(1, 10) at t=" << t_last << ": expected " << (10.0 + t_last) << " got " << v_last;
 }
+
+// ===========================================================================
+// .func user-defined function support
+// ===========================================================================
+
+TEST(ASRC, FuncInBehavioralSource) {
+    // .func gain(x) {2*x}
+    // B1 out 0 V={gain(V(in))}
+    // Expected: V(out) = 2 * V(in) = 2.0
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Func gain test
+.func gain(x) {2*x}
+V1 in 0 DC 1.0
+R1 out 0 1k
+B1 out 0 V={gain(V(in))}
+.op
+.end
+)");
+    auto dc = sim.run_dc(ckt);
+    EXPECT_NEAR(dc.voltage("out"), 2.0, 1e-6);
+}
+
+TEST(ASRC, FuncSquareInBehavioralSource) {
+    // .func square(a) {a*a}
+    // B1 out 0 V={square(V(in))}  with V(in) = 3V
+    // Expected: V(out) = 9.0
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Func square in ASRC
+.func square(a) {a*a}
+V1 in 0 DC 3.0
+R1 out 0 1k
+B1 out 0 V={square(V(in))}
+.op
+.end
+)");
+    auto dc = sim.run_dc(ckt);
+    EXPECT_NEAR(dc.voltage("out"), 9.0, 1e-6);
+}
+
+TEST(ASRC, FuncTwoArgsInBehavioralSource) {
+    // .func myfunc(x, y) {x*y+1}
+    // B1 out 0 V={myfunc(V(in1), V(in2))}  with V(in1)=3, V(in2)=4
+    // Expected: V(out) = 3*4+1 = 13.0
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Func two args in ASRC
+.func myfunc(x, y) {x*y+1}
+V1 in1 0 DC 3.0
+V2 in2 0 DC 4.0
+R1 out 0 1k
+B1 out 0 V={myfunc(V(in1), V(in2))}
+.op
+.end
+)");
+    auto dc = sim.run_dc(ckt);
+    EXPECT_NEAR(dc.voltage("out"), 13.0, 1e-6);
+}
+
+TEST(ASRC, NestedFuncCallsInASRC) {
+    // .func square(x) {x*x}
+    // .func mydouble(x) {2*x}
+    // B1 out 0 V={mydouble(square(V(in)))}  with V(in) = 3V
+    // Expected: V(out) = 2*(3*3) = 18.0
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Nested func calls in ASRC
+.func square(x) {x*x}
+.func mydouble(x) {2*x}
+V1 in 0 DC 3.0
+R1 out 0 1k
+B1 out 0 V={mydouble(square(V(in)))}
+.op
+.end
+)");
+    auto dc = sim.run_dc(ckt);
+    EXPECT_NEAR(dc.voltage("out"), 18.0, 1e-6);
+}
+
+TEST(ASRC, FuncComposedInExpr) {
+    // .func square(x) {x*x}
+    // B1 out 0 V={square(V(in))+1}  with V(in) = 4V
+    // Expected: V(out) = 16+1 = 17
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Func composed in expression
+.func square(x) {x*x}
+V1 in 0 DC 4.0
+R1 out 0 1k
+B1 out 0 V={square(V(in))+1}
+.op
+.end
+)");
+    auto dc = sim.run_dc(ckt);
+    EXPECT_NEAR(dc.voltage("out"), 17.0, 1e-6);
+}

@@ -365,3 +365,85 @@ TEST(Expression, WrongArgCount) {
     EXPECT_THROW(eval("min(1)"), ParseError);
     EXPECT_THROW(eval("if(1, 2)"), ParseError);
 }
+
+// ============================================================
+// .func expansion (expand_funcs)
+// ============================================================
+
+TEST(ExpandFuncs, BasicExpansion) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["square"] = FuncDef{{"x"}, "x*x"};
+    EXPECT_EQ(expand_funcs("square(3)", fdefs), "((3)*(3))");
+    // The expanded result should evaluate to 9
+    EXPECT_DOUBLE_EQ(eval(expand_funcs("square(3)", fdefs)), 9.0);
+}
+
+TEST(ExpandFuncs, TwoArgFunction) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["myfunc"] = FuncDef{{"x", "y"}, "x*y+1"};
+    std::string expanded = expand_funcs("myfunc(3, 4)", fdefs);
+    EXPECT_DOUBLE_EQ(eval(expanded), 13.0);
+}
+
+TEST(ExpandFuncs, NestedFuncCalls) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["square"] = FuncDef{{"x"}, "x*x"};
+    fdefs["double"] = FuncDef{{"x"}, "2*x"};
+    // double(square(3)) = double(9) = 18
+    std::string expanded = expand_funcs("double(square(3))", fdefs);
+    EXPECT_DOUBLE_EQ(eval(expanded), 18.0);
+}
+
+TEST(ExpandFuncs, CaseInsensitive) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["square"] = FuncDef{{"x"}, "x*x"};
+    // SQUARE should match square (case-insensitive)
+    EXPECT_DOUBLE_EQ(eval(expand_funcs("SQUARE(5)", fdefs)), 25.0);
+    EXPECT_DOUBLE_EQ(eval(expand_funcs("Square(4)", fdefs)), 16.0);
+}
+
+TEST(ExpandFuncs, NoExpansionWhenNoMatch) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["square"] = FuncDef{{"x"}, "x*x"};
+    // "squares" should not match "square"
+    EXPECT_EQ(expand_funcs("squares(3)", fdefs), "squares(3)");
+    // "asquare" should not match "square"
+    EXPECT_EQ(expand_funcs("asquare(3)", fdefs), "asquare(3)");
+}
+
+TEST(ExpandFuncs, WordBoundaryInBody) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    // param name "a" should not match "abs" in body
+    fdefs["myfunc"] = FuncDef{{"a"}, "abs(a)"};
+    std::string expanded = expand_funcs("myfunc(5)", fdefs);
+    // Should expand to (abs((5))) not ((5)bs((5)))
+    EXPECT_DOUBLE_EQ(eval(expanded), 5.0);
+}
+
+TEST(ExpandFuncs, EmptyFuncDefs) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    EXPECT_EQ(expand_funcs("1+2", fdefs), "1+2");
+}
+
+TEST(ExpandFuncs, ExpressionWithBraces) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["gain"] = FuncDef{{"x"}, "2*x"};
+    // Test with braces around expression
+    EXPECT_DOUBLE_EQ(eval(expand_funcs("{gain(5)}", fdefs)), 10.0);
+}
+
+TEST(ExpandFuncs, ArgPrecedence) {
+    // Make sure parenthesization of args prevents precedence bugs
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["square"] = FuncDef{{"x"}, "x*x"};
+    // square(1+2) should be (1+2)*(1+2) = 9, not 1+2*1+2 = 5
+    EXPECT_DOUBLE_EQ(eval(expand_funcs("square(1+2)", fdefs)), 9.0);
+}
+
+TEST(ExpandFuncs, WrongArgCountSkipped) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["myfunc"] = FuncDef{{"x", "y"}, "x+y"};
+    // Wrong number of args — should not expand
+    std::string result = expand_funcs("myfunc(3)", fdefs);
+    EXPECT_EQ(result, "myfunc(3)");
+}

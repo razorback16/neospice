@@ -294,6 +294,124 @@ std::unordered_set<std::string> scan_dependencies(const std::string& expr) {
 // Public API
 // ---------------------------------------------------------------------------
 
+std::string expand_funcs(const std::string& expr,
+                         const std::unordered_map<std::string, FuncDef>& func_defs) {
+    if (func_defs.empty()) return expr;
+
+    // Work on a lowercase copy for matching, but substitute in the original
+    std::string result = expr;
+
+    // Iterate until no more expansions happen (handles nested func calls)
+    for (int pass = 0; pass < 10; ++pass) {
+        bool expanded = false;
+        for (const auto& [fname, fdef] : func_defs) {
+            size_t pos = 0;
+            // Build a lowercase version for case-insensitive matching
+            std::string result_lower;
+            result_lower.resize(result.size());
+            std::transform(result.begin(), result.end(), result_lower.begin(), ::tolower);
+
+            while ((pos = result_lower.find(fname, pos)) != std::string::npos) {
+                // Ensure word boundary before the match
+                if (pos > 0 && (std::isalnum(static_cast<unsigned char>(result[pos - 1])) ||
+                                result[pos - 1] == '_')) {
+                    pos += fname.size();
+                    continue;
+                }
+                size_t after = pos + fname.size();
+                // Ensure word boundary after the match (should be '(' or whitespace then '(')
+                size_t paren_pos = after;
+                while (paren_pos < result.size() && std::isspace(static_cast<unsigned char>(result[paren_pos])))
+                    ++paren_pos;
+                if (paren_pos >= result.size() || result[paren_pos] != '(') {
+                    pos = after;
+                    continue;
+                }
+
+                // Found func_name( — parse arguments respecting nested parens
+                int depth = 1;
+                size_t p = paren_pos + 1;
+                std::vector<std::string> call_args;
+                size_t arg_start = p;
+                while (p < result.size() && depth > 0) {
+                    if (result[p] == '(') ++depth;
+                    else if (result[p] == ')') {
+                        --depth;
+                        if (depth == 0) break;
+                    } else if (result[p] == ',' && depth == 1) {
+                        call_args.push_back(result.substr(arg_start, p - arg_start));
+                        arg_start = p + 1;
+                    }
+                    ++p;
+                }
+                if (depth != 0) {
+                    // Unmatched parenthesis — skip
+                    pos = p;
+                    continue;
+                }
+                call_args.push_back(result.substr(arg_start, p - arg_start));
+
+                if (call_args.size() != fdef.args.size()) {
+                    pos = p + 1;
+                    continue;
+                }
+
+                // Build substituted body
+                std::string sub_body = fdef.body;
+                for (size_t i = 0; i < fdef.args.size(); ++i) {
+                    const std::string& param = fdef.args[i];
+                    std::string arg_val = call_args[i];
+                    // Trim whitespace from argument value
+                    while (!arg_val.empty() && std::isspace(static_cast<unsigned char>(arg_val.front())))
+                        arg_val.erase(0, 1);
+                    while (!arg_val.empty() && std::isspace(static_cast<unsigned char>(arg_val.back())))
+                        arg_val.pop_back();
+
+                    // Replace formal param with parenthesized actual arg (word-boundary)
+                    std::string replacement = "(" + arg_val + ")";
+                    std::string body_lower;
+                    size_t bp = 0;
+                    while (bp < sub_body.size()) {
+                        // Rebuild lowercase version each iteration since body changes
+                        body_lower.resize(sub_body.size());
+                        std::transform(sub_body.begin(), sub_body.end(), body_lower.begin(), ::tolower);
+
+                        size_t found = body_lower.find(param, bp);
+                        if (found == std::string::npos) break;
+
+                        bool is_word = true;
+                        if (found > 0 && (std::isalnum(static_cast<unsigned char>(sub_body[found - 1])) ||
+                                          sub_body[found - 1] == '_'))
+                            is_word = false;
+                        size_t end_pos = found + param.size();
+                        if (end_pos < sub_body.size() &&
+                            (std::isalnum(static_cast<unsigned char>(sub_body[end_pos])) ||
+                             sub_body[end_pos] == '_'))
+                            is_word = false;
+
+                        if (is_word) {
+                            sub_body.replace(found, param.size(), replacement);
+                            bp = found + replacement.size();
+                        } else {
+                            bp = found + param.size();
+                        }
+                    }
+                }
+
+                // Replace the function call in result with parenthesized expanded body
+                size_t call_len = (p + 1) - pos;
+                std::string expanded_str = "(" + sub_body + ")";
+                result.replace(pos, call_len, expanded_str);
+                expanded = true;
+                // Don't advance pos — re-check for nested expansions at same position
+                break; // restart inner loop since result_lower is now stale
+            }
+        }
+        if (!expanded) break;
+    }
+    return result;
+}
+
 double eval_expression(const std::string& expr,
                        const std::unordered_map<std::string, double>& params) {
     std::string e = strip_braces(expr);

@@ -143,3 +143,41 @@ R1 out 0 100
     auto ckt = parser.parse(netlist);
     EXPECT_EQ(ckt.devices().size(), 3u);
 }
+
+// ============================================================
+// .func directive support
+// ============================================================
+
+TEST(Parser, FuncInParam) {
+    // .func used in .param expression
+    std::string netlist = R"(
+Func in Param
+.func square(x) {x*x}
+.param myval=square(3)
+V1 out 0 DC 1
+R1 out 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_EQ(ckt.devices().size(), 2u);
+}
+
+TEST(Parser, FuncMultipleDefinitions) {
+    // Multiple .func definitions
+    std::string netlist = R"(
+Multiple Funcs
+.func square(x) {x*x}
+.func double(x) {2*x}
+.param a=square(3)
+.param b=double(a)
+V1 out 0 DC 1
+R1 out 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_EQ(ckt.devices().size(), 2u);
+}

@@ -47,6 +47,73 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+// Parse a .func directive from a tokenized line and add to func_defs.
+// .func name(arg1, arg2, ...) {body}
+// The tokenizer splits on whitespace, so tokens will be like:
+//   [".func", "name(arg1,arg2,...)", "{body}"] or with spaces in body
+//   [".func", "name(arg1,", "arg2,...)", "{body}"]
+void parse_func_def(const std::vector<std::string>& tokens,
+                    std::unordered_map<std::string, FuncDef>& func_defs) {
+    if (tokens.size() < 3) return;
+
+    // Join tokens 1..end to reconstruct the full signature + body string,
+    // since the tokenizer may have split the signature across multiple tokens.
+    std::string joined;
+    for (size_t i = 1; i < tokens.size(); ++i) {
+        if (!joined.empty()) joined += ' ';
+        joined += tokens[i];
+    }
+
+    // Find the function name: everything before '('
+    auto paren = joined.find('(');
+    if (paren == std::string::npos) return;
+    std::string fname = to_lower(joined.substr(0, paren));
+    // Trim trailing whitespace from fname
+    while (!fname.empty() && std::isspace(static_cast<unsigned char>(fname.back())))
+        fname.pop_back();
+    if (fname.empty()) return;
+
+    // Find closing ')' for the argument list
+    auto close_paren = joined.find(')', paren);
+    if (close_paren == std::string::npos) return;
+
+    // Extract argument names
+    std::string args_str = joined.substr(paren + 1, close_paren - paren - 1);
+    FuncDef def;
+    std::istringstream argss(args_str);
+    std::string arg;
+    while (std::getline(argss, arg, ',')) {
+        auto s = arg.find_first_not_of(" \t");
+        auto e = arg.find_last_not_of(" \t");
+        if (s != std::string::npos)
+            def.args.push_back(to_lower(arg.substr(s, e - s + 1)));
+    }
+
+    // Body is everything after ')' — skip optional '=' and whitespace
+    std::string body = joined.substr(close_paren + 1);
+    // Trim leading whitespace
+    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
+        body.erase(0, 1);
+    // Skip optional '='
+    if (!body.empty() && body.front() == '=') {
+        body.erase(0, 1);
+        while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
+            body.erase(0, 1);
+    }
+    // Strip surrounding braces if present
+    if (body.size() >= 2 && body.front() == '{' && body.back() == '}')
+        body = body.substr(1, body.size() - 2);
+    // Trim whitespace from body
+    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
+        body.erase(0, 1);
+    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.back())))
+        body.pop_back();
+
+    if (body.empty()) return;
+    def.body = body;
+    func_defs[fname] = std::move(def);
+}
+
 // Parse content between parentheses from token list starting at position idx.
 // Returns the values as doubles. Advances idx past the closing ')'.
 std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
@@ -447,10 +514,31 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         lines = std::move(remaining_lines);
     }
 
-    // Pass 0.25: Pre-collect top-level .param entries so that expansion
+    // Pass 0.25: Pre-collect .func definitions, expand func calls in all
+    // tokens, then collect top-level .param entries so that expansion
     // (Pass 0.5) can resolve parameter expressions like R={myR}.
+    std::unordered_map<std::string, FuncDef> func_defs;
     std::unordered_map<std::string, double> global_params;
     {
+        // First collect .func definitions
+        for (const auto& line : lines) {
+            if (line.tokens.empty()) continue;
+            std::string first = to_lower(line.tokens[0]);
+            if (first == ".func") {
+                parse_func_def(line.tokens, func_defs);
+            }
+        }
+
+        // Expand .func calls in all tokens (modifies lines in place)
+        if (!func_defs.empty()) {
+            for (auto& line : lines) {
+                for (auto& tok : line.tokens) {
+                    tok = expand_funcs(tok, func_defs);
+                }
+            }
+        }
+
+        // Then collect .param entries
         std::vector<std::pair<std::string, std::string>> pre_raw_params;
         for (const auto& line : lines) {
             if (line.tokens.empty()) continue;
@@ -614,7 +702,25 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     };
     std::vector<DeferredASRC> deferred_asrcs;
 
-    // Pass 1: collect .model and .param cards
+    // Pass 1: collect .model, .func, and .param cards
+    // Re-collect .func from post-expansion lines (subcircuit bodies may define .func)
+    for (const auto& line : lines) {
+        if (line.tokens.empty()) continue;
+        std::string first = to_lower(line.tokens[0]);
+        if (first == ".func") {
+            parse_func_def(line.tokens, func_defs);
+        }
+    }
+
+    // Expand .func calls in all tokens (post-subcircuit-expansion lines)
+    if (!func_defs.empty()) {
+        for (auto& line : lines) {
+            for (auto& tok : line.tokens) {
+                tok = expand_funcs(tok, func_defs);
+            }
+        }
+    }
+
     std::vector<std::pair<std::string, std::string>> raw_params;
     for (const auto& line : lines) {
         if (line.tokens.empty()) continue;
@@ -1904,6 +2010,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 expr_str.erase(0, 1);
             while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.back())))
                 expr_str.pop_back();
+
+            // Expand .func calls in the joined expression string
+            // (token-level expansion may miss multi-token func calls like myfunc(V(in1), V(in2)))
+            expr_str = expand_funcs(expr_str, func_defs);
 
             // Compile the expression
             asrc::CompiledExpression compiled;
