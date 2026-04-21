@@ -67,3 +67,61 @@ int DIOload(void *inModel, void *inCkt)
     assert "SENmode" not in result
     assert "TRANSEN" not in result
     assert "x = x + 1.0" in result
+
+
+def test_strip_braceless_sencond_goto():
+    """Braceless 'if(SenCond) goto next2;' is removed without eating the rest."""
+    cfg = _dio_config()
+    source = '''#include "diodefs.h"
+int DIOload(void *inModel, void *inCkt)
+{
+    double x = 1.0;
+    if(SenCond) goto next2;
+    x = x + 1.0;
+next2:
+    return 0;
+}
+'''
+    t = Transformer(cfg)
+    result = t.translate(source)
+    assert "SenCond" not in result
+    assert "x = x + 1.0" in result
+    assert "return 0" in result
+
+
+def test_strip_braceless_sencond_continue():
+    """Braceless 'if(SenCond) continue;' is removed without eating the rest."""
+    cfg = _dio_config()
+    source = '''#include "diodefs.h"
+int DIOload(void *inModel, void *inCkt)
+{
+    int i;
+    for (i = 0; i < 10; i++) {
+        if(SenCond) continue;
+        double x = 1.0;
+    }
+    return 0;
+}
+'''
+    t = Transformer(cfg)
+    result = t.translate(source)
+    assert "SenCond" not in result
+    assert "double x = 1.0" in result
+    assert "return 0" in result
+
+
+def test_strip_sencond_decl_no_initializer():
+    """'int SenCond;' (no initializer) is removed."""
+    cfg = _dio_config()
+    source = '''#include "diodefs.h"
+int DIOload(void *inModel, void *inCkt)
+{
+    int SenCond;
+    double x = 1.0;
+    return 0;
+}
+'''
+    t = Transformer(cfg)
+    result = t.translate(source)
+    assert "SenCond" not in result
+    assert "double x = 1.0" in result

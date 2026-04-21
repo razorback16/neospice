@@ -469,9 +469,9 @@ class Transformer:
         4. 'goto next1;' / 'goto next2;' statements
         5. 'next1:' / 'next2:' labels (when only used by sensitivity gotos)
         """
-        # Remove SenCond declarations
+        # Remove SenCond declarations (with or without initializer)
         text = re.sub(
-            r'^\s*int\s+SenCond\s*=\s*0\s*;\s*\n', '', text, flags=re.MULTILINE,
+            r'^\s*int\s+SenCond\s*(?:=\s*0\s*)?;\s*\n', '', text, flags=re.MULTILINE,
         )
 
         # Remove if (SenCond) { ... } blocks -- use brace-depth tracking
@@ -496,12 +496,22 @@ class Transformer:
 
     @staticmethod
     def _strip_guarded_block(text: str, guard_pattern: str) -> str:
-        """Remove an if-block matching *guard_pattern*, tracking brace depth."""
+        """Remove an if-block matching *guard_pattern*, tracking brace depth.
+
+        Handles both braced blocks (``if (...) { ... }``) and braceless
+        single-line statements (``if (...) goto next2;``).
+        """
         result: List[str] = []
         lines = text.split('\n')
         i = 0
         while i < len(lines):
             if re.search(guard_pattern, lines[i]):
+                # Check if the guard line contains an opening brace
+                has_brace = '{' in lines[i]
+                if not has_brace:
+                    # Braceless single-line if-statement: just skip this line
+                    i += 1
+                    continue
                 # Skip the entire if { ... } block using brace-depth tracking
                 depth = 0
                 started = False
