@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("output_dir", type=Path, help="Path to the output directory")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be generated without writing files")
     parser.add_argument("--gen-tests", action="store_true", help="Also generate test scaffolding")
+    parser.add_argument("--test-dir", type=Path, default=None, help="Override test output directory (default: inferred from output_dir)")
     args = parser.parse_args(argv)
 
     descriptor_path: Path = args.descriptor
@@ -175,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     # 9. Generate test scaffolding (optional)
     # ------------------------------------------------------------------
     if args.gen_tests:
-        test_dir = output_dir.parent.parent.parent / "tests" / "devices" / ns
+        test_dir = args.test_dir if args.test_dir else output_dir.parent.parent.parent / "tests" / "devices" / ns
         print(f"\nGenerating test scaffolding in {test_dir}:")
         circuits_dir = test_dir / "circuits"
         _write_file(test_dir / "CMakeLists.txt", generate_test_cmake(desc), dry_run=dry_run)
