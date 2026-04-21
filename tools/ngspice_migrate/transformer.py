@@ -455,6 +455,72 @@ class Transformer:
         )
         return src
 
+    # -----------------------------------------------------------------------
+    # Pass 1c: strip sensitivity analysis code
+    # -----------------------------------------------------------------------
+
+    def strip_sensitivity(self, text: str) -> str:
+        """Remove sensitivity analysis code blocks.
+
+        Patterns removed:
+        1. 'int SenCond = 0;' declarations
+        2. 'if (SenCond) { ... }' blocks (with brace matching)
+        3. 'if ((info = ckt->CKTsenInfo) ...) { ... }' blocks
+        4. 'goto next1;' / 'goto next2;' statements
+        5. 'next1:' / 'next2:' labels (when only used by sensitivity gotos)
+        """
+        # Remove SenCond declarations
+        text = re.sub(
+            r'^\s*int\s+SenCond\s*=\s*0\s*;\s*\n', '', text, flags=re.MULTILINE,
+        )
+
+        # Remove if (SenCond) { ... } blocks -- use brace-depth tracking
+        text = self._strip_guarded_block(text, r'if\s*\(\s*SenCond\s*\)')
+
+        # Remove if (... CKTsenInfo ...) { ... } blocks
+        text = self._strip_guarded_block(text, r'if\s*\([^)]*CKTsenInfo[^)]*\)')
+
+        # Remove goto next1/next2 statements
+        text = re.sub(
+            r'^\s*goto\s+next[12]\s*;\s*\n', '', text, flags=re.MULTILINE,
+        )
+
+        # Remove next1:/next2: labels (only if no other gotos reference them)
+        for label in ['next1', 'next2']:
+            if f'goto {label}' not in text:
+                text = re.sub(
+                    rf'^\s*{label}\s*:\s*\n', '', text, flags=re.MULTILINE,
+                )
+
+        return text
+
+    @staticmethod
+    def _strip_guarded_block(text: str, guard_pattern: str) -> str:
+        """Remove an if-block matching *guard_pattern*, tracking brace depth."""
+        result: List[str] = []
+        lines = text.split('\n')
+        i = 0
+        while i < len(lines):
+            if re.search(guard_pattern, lines[i]):
+                # Skip the entire if { ... } block using brace-depth tracking
+                depth = 0
+                started = False
+                while i < len(lines):
+                    for ch in lines[i]:
+                        if ch == '{':
+                            depth += 1
+                            started = True
+                        elif ch == '}':
+                            depth -= 1
+                    if started and depth <= 0:
+                        i += 1
+                        break
+                    i += 1
+            else:
+                result.append(lines[i])
+                i += 1
+        return '\n'.join(result)
+
     def apply_token_subs(self, src: str) -> str:
         for patt, repl in self._token_subs:
             src = patt.sub(repl, src)
@@ -812,6 +878,9 @@ class Transformer:
 
         # 1b. Strip ngspice front-end constructs (JOB, ft_curckt, etc.)
         src = self.strip_ngspice_frontend(src)
+
+        # 1c. Strip sensitivity analysis dead code.
+        src = self.strip_sensitivity(src)
 
         # 2. Split off banner.
         banner, rest = self.split_banner(src)
