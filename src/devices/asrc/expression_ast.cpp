@@ -548,6 +548,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     if (name == "ceil")  return make_unary(NodeType::CEIL);
     if (name == "floor") return make_unary(NodeType::FLOOR);
     if (name == "nint")  return make_unary(NodeType::NINT);
+    if (name == "db")    return make_unary(NodeType::DB);
     if (name == "ddt")   return make_unary(NodeType::DDT);
 
     // IDT(expr [, ic [, assert]]) — time integral with optional initial condition
@@ -591,7 +592,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
                          return make_ternary(NodeType::IF_FN);
     if (name == "limit") return make_ternary(NodeType::LIMIT);
 
-    if (name == "pwl") {
+    if (name == "pwl" || name == "table") {
         auto x_arg = parse_additive();
         std::vector<std::pair<double,double>> points;
         while (true) {
@@ -1000,6 +1001,21 @@ CompiledExpression::eval_node(const ASTNode* node,
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
         result.val = std::round(a.val);
         // Derivative is 0 (piecewise constant)
+        return result;
+    }
+
+    case NodeType::DB: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        double abs_a = std::abs(a.val);
+        double safe_a = std::max(abs_a, 1e-300);
+        result.val = 20.0 * std::log10(safe_a);
+        if (need_grad) {
+            // d(20*log10(|x|))/dx = 20 / (x * ln(10))
+            double denom = a.val * std::log(10.0);
+            double df = (std::abs(denom) > 1e-300) ? 20.0 / denom : 0.0;
+            for (int i = 0; i < nv; ++i)
+                result.grad[i] = df * a.grad[i];
+        }
         return result;
     }
 

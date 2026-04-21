@@ -18,7 +18,7 @@
 //                       exp log log10 sqrt abs pow min max
 //                       sinh cosh tanh acosh asinh atanh
 //                       sgn u ustep uramp ceil floor nint pwr
-//                       limit if ddt idt
+//                       limit if ddt idt db pwl table
 // Numeric literals with SPICE suffixes (1k, 2.5m, 100u, etc.)
 // ---------------------------------------------------------------------------
 
@@ -63,6 +63,7 @@ enum class NodeType {
     IF_FN,          // if(cond, then, else) — cond != 0 selects then
     LIMIT,          // limit(x, lo, hi) = min(max(x, lo), hi)
     PWL,            // PWL(x, x1,y1, x2,y2, ...) — piecewise linear
+    DB,             // DB(x) = 20 * log10(|x|) — decibel
     // Time-domain functions (stateful)
     DDT,            // DDT(expr) — time derivative via backward difference
     IDT,            // IDT(expr [, ic]) — time integral via trapezoidal accumulation
