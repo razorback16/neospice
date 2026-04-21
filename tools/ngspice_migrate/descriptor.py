@@ -59,6 +59,15 @@ class GeomParam:
     always_given: bool = False
 
 
+@dataclass
+class ModelType:
+    """SPICE model type mapping (e.g., 'nmos' → sets flag_field to flag_value)."""
+
+    spice_name: str     # e.g. "nmos", "pmos", "d", "npn", "pnp", "njf", "pjf"
+    flag_field: str     # e.g. "BSIM4v7type" — empty string if no type flag needed
+    flag_value: int     # e.g. 1 for NMOS, -1 for PMOS, 0 if no flag
+
+
 # ---------------------------------------------------------------------------
 # Main descriptor
 # ---------------------------------------------------------------------------
@@ -115,6 +124,12 @@ class ModelDescriptor:
 
     # Geometry parameters ----------------------------------------------------
     geometry: List[GeomParam] = field(default_factory=list)
+
+    # Model types (e.g. nmos/pmos → type flag) -------------------------------
+    model_types: List[ModelType] = field(default_factory=list)
+
+    # Charge state offsets for compute_trunc() generation --------------------
+    charge_states: List[int] = field(default_factory=list)
 
     # Matrix stamp suffix ----------------------------------------------------
     matrix_ptr_suffix: str = "Ptr"
@@ -223,6 +238,17 @@ def load_descriptor(path: Path) -> ModelDescriptor:
             value=str(version_stamp_raw["value"]),
         )
 
+    model_types = [
+        ModelType(
+            spice_name=mt["spice_name"],
+            flag_field=mt.get("flag_field", ""),
+            flag_value=int(mt.get("flag_value", 0)),
+        )
+        for mt in m.get("model_types", [])
+    ]
+
+    charge_states = [int(cs) for cs in m.get("charge_states", [])]
+
     return ModelDescriptor(
         prefix=prefix,
         neospice_name=neospice_name,
@@ -251,6 +277,8 @@ def load_descriptor(path: Path) -> ModelDescriptor:
         temp_function=m.get("temp_function", ""),
         load_function=m.get("load_function", ""),
         geometry=geometry,
+        model_types=model_types,
+        charge_states=charge_states,
         matrix_ptr_suffix=m.get("matrix_ptr_suffix", "Ptr"),
         cleanup_linked_lists=cleanup_linked_lists,
         version_stamp=version_stamp,

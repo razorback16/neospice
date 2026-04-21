@@ -12,6 +12,7 @@ from ngspice_migrate.descriptor import (
     CleanupLinkedList,
     GeomParam,
     ModelDescriptor,
+    ModelType,
     Terminal,
     VersionStamp,
     load_descriptor,
@@ -190,3 +191,106 @@ def test_bsim4v7_full_fields():
     assert desc.version_stamp is not None
     assert desc.version_stamp.field == "BSIM4v7version"
     assert desc.version_stamp.value == "4.7.0"
+
+
+# ---------------------------------------------------------------------------
+# test_model_types_parsing
+# ---------------------------------------------------------------------------
+
+
+def test_model_types_parsing(tmp_path):
+    """model_types YAML key is parsed into a list of ModelType objects."""
+    data = {
+        "model": {
+            "ngspice_prefix": "BSM",
+            "neospice_name": "bsm",
+            "terminals": [{"name": "d", "field": "BSMdNode"}],
+            "source_files": {"setup": "bsm_set.c"},
+            "state_count": 2,
+            "state_base_field": "BSMstates",
+            "model_types": [
+                {"spice_name": "nmos", "flag_field": "BSMtype", "flag_value": 1},
+                {"spice_name": "pmos", "flag_field": "BSMtype", "flag_value": -1},
+            ],
+        }
+    }
+    p = tmp_path / "model_types.yaml"
+    p.write_text(yaml.dump(data))
+    desc = load_descriptor(p)
+    assert len(desc.model_types) == 2
+    assert all(isinstance(mt, ModelType) for mt in desc.model_types)
+    assert desc.model_types[0].spice_name == "nmos"
+    assert desc.model_types[0].flag_field == "BSMtype"
+    assert desc.model_types[0].flag_value == 1
+    assert desc.model_types[1].spice_name == "pmos"
+    assert desc.model_types[1].flag_value == -1
+
+
+# ---------------------------------------------------------------------------
+# test_charge_states_parsing
+# ---------------------------------------------------------------------------
+
+
+def test_charge_states_parsing(tmp_path):
+    """charge_states YAML key is parsed into a list of ints."""
+    data = {
+        "model": {
+            "ngspice_prefix": "BSM",
+            "neospice_name": "bsm",
+            "terminals": [{"name": "d", "field": "BSMdNode"}],
+            "source_files": {"setup": "bsm_set.c"},
+            "state_count": 4,
+            "state_base_field": "BSMstates",
+            "charge_states": [3, 5, 7],
+        }
+    }
+    p = tmp_path / "charge_states.yaml"
+    p.write_text(yaml.dump(data))
+    desc = load_descriptor(p)
+    assert desc.charge_states == [3, 5, 7]
+    assert all(isinstance(cs, int) for cs in desc.charge_states)
+
+
+# ---------------------------------------------------------------------------
+# test_model_types_and_charge_states_default_empty
+# ---------------------------------------------------------------------------
+
+
+def test_model_types_and_charge_states_default_empty(tmp_path):
+    """model_types and charge_states default to empty lists when omitted."""
+    minimal = {
+        "model": {
+            "ngspice_prefix": "DIO",
+            "neospice_name": "dio",
+            "terminals": [{"name": "p", "field": "DIOpNode"}],
+            "source_files": {"setup": "dioset.c"},
+            "state_count": 5,
+            "state_base_field": "DIOstates",
+        }
+    }
+    p = tmp_path / "no_new_fields.yaml"
+    p.write_text(yaml.dump(minimal))
+    desc = load_descriptor(p)
+    assert desc.model_types == []
+    assert desc.charge_states == []
+
+
+# ---------------------------------------------------------------------------
+# test_existing_descriptors_still_load
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["dio", "bjt", "jfet", "mos1", "bsim3", "bsim4v7", "vbic"],
+)
+def test_existing_descriptors_still_load(name):
+    """All existing YAML descriptors load without error (regression guard)."""
+    path = FIXTURES / f"{name}.yaml"
+    if not path.exists():
+        pytest.skip(f"descriptor {name}.yaml not present")
+    desc = load_descriptor(path)
+    assert isinstance(desc, ModelDescriptor)
+    # New fields should have safe defaults
+    assert isinstance(desc.model_types, list)
+    assert isinstance(desc.charge_states, list)
