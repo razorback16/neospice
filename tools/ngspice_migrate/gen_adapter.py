@@ -89,6 +89,56 @@ def extract_tstalloc_fields(setup_source: str, ptr_suffix: str = "Ptr") -> List[
 
 
 # ---------------------------------------------------------------------------
+# NIintegrate charge offset extraction
+# ---------------------------------------------------------------------------
+
+def extract_charge_offsets(load_source: str, prefix: str) -> list[str]:
+    """Extract charge state offset field names from NIintegrate calls."""
+    pattern = rf'NIintegrate\s*\([^,]+,[^,]+,[^,]+,[^,]+,\s*here->({re.escape(prefix)}\w+)\s*\)'
+    return list(dict.fromkeys(re.findall(pattern, load_source)))
+
+
+# ---------------------------------------------------------------------------
+# compute_trunc body generator
+# ---------------------------------------------------------------------------
+
+def _gen_compute_trunc(desc, charge_offsets, charge_states_override):
+    """Generate compute_trunc() body with LTE calculation."""
+    if charge_states_override:
+        offset_exprs = [f"state_base_ + {off}" for off in charge_states_override]
+    elif charge_offsets:
+        offset_exprs = [f"inst_.{name}" for name in charge_offsets]
+    else:
+        return '    // TODO: no charge state offsets found — implement manually\n    return 1e30;\n'
+
+    lines = []
+    lines.append('    if (ctx.order < 2 || ctx.delta <= 0.0) return 1e30;')
+    lines.append('    if (!state0_ || !state1_ || !state2_) return 1e30;')
+    lines.append('')
+    lines.append('    const double h0 = ctx.delta;')
+    lines.append('    const double h1 = ctx.delta_old[1];')
+    lines.append('    if (h1 <= 0.0) return 1e30;')
+    lines.append('')
+    lines.append('    double dt_min = 1e30;')
+    lines.append('    const double lte_coeff = ctx.lte_coefficient();')
+    lines.append('')
+
+    for expr in offset_exprs:
+        lines.append(f'    {{ // charge offset: {expr}')
+        lines.append(f'        const int qcap = {expr};')
+        lines.append( '        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];')
+        lines.append( '        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);')
+        lines.append( '        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));')
+        lines.append( '        if (tol > 0.0 && std::abs(dd2) > 1e-30) {')
+        lines.append( '            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));')
+        lines.append( '        }')
+        lines.append( '    }')
+
+    lines.append('    return dt_min;')
+    return '\n'.join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Header generator
 # ---------------------------------------------------------------------------
 
@@ -208,7 +258,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
 # Implementation generator
 # ---------------------------------------------------------------------------
 
-def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str = "") -> str:
+def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str = "", load_source: str = "") -> str:
     """Return the complete text of the device adapter implementation file.
 
     Parameters
@@ -568,15 +618,21 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("}\n")
     parts.append("\n")
 
-    # --- compute_trunc (stub) ----------------------------------------------
+    # --- compute_trunc -----------------------------------------------------
+    charge_offsets = extract_charge_offsets(load_source, desc.prefix) if load_source else []
+    charge_states = desc.charge_states if hasattr(desc, 'charge_states') else []
+    trunc_body = _gen_compute_trunc(desc, charge_offsets, charge_states)
+
+    has_real_trunc = "TODO" not in trunc_body
+    ctx_param = "ctx" if has_real_trunc else "/*ctx*/"
+    opts_param = "opts" if has_real_trunc else "/*opts*/"
+
     parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append("// compute_trunc — TODO: implement LTE calculation from charge state variables\n")
+    parts.append("// compute_trunc\n")
     parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append(f"double {prefix}Device::compute_trunc(const IntegratorCtx& /*ctx*/,\n")
-    parts.append(f"        {' ' * len(prefix)}                  const SimOptions& /*opts*/) const {{\n")
-    parts.append("    // TODO: Identify charge state variables (from NIintegrate calls in load)\n")
-    parts.append("    // and compute LTE-based timestep. See bjt_device.cpp for the pattern.\n")
-    parts.append("    return 1e30;\n")
+    parts.append(f"double {prefix}Device::compute_trunc(const IntegratorCtx& {ctx_param},\n")
+    parts.append(f"        {' ' * len(prefix)}                  const SimOptions& {opts_param}) const {{\n")
+    parts.append(trunc_body + "\n")
     parts.append("}\n")
     parts.append("\n")
 
