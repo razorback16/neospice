@@ -171,6 +171,15 @@ void Circuit::rebind_device_states() {
     }
 }
 
+void Circuit::reset_state() {
+    std::fill(state0_.begin(), state0_.end(), 0.0);
+    std::fill(state1_.begin(), state1_.end(), 0.0);
+    std::fill(state2_.begin(), state2_.end(), 0.0);
+    for (auto& dev : devices_) {
+        dev->reset();
+    }
+}
+
 void Circuit::rotate_state() {
     // Rotate state history: state2 <- state1 <- state0.
     //

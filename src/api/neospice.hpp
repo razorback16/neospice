@@ -10,8 +10,11 @@
 #include <string>
 #include <optional>
 #include <vector>
+#include <memory>
 
 namespace neospice {
+
+struct StepResult;  // forward declaration
 
 struct SimulationResult {
     std::optional<DCResult> dc;
@@ -23,6 +26,13 @@ struct SimulationResult {
     std::optional<SensResult> sens;
     std::optional<MeasureResult> measures;
     std::vector<std::string> print_output;  // formatted .print/.plot output
+    std::unique_ptr<StepResult> step;       // non-null when .step sweep ran
+};
+
+struct StepResult {
+    std::vector<double> step_values;
+    std::string step_variable;
+    std::vector<SimulationResult> results;
 };
 
 struct SimulatorOptions {
@@ -56,6 +66,7 @@ public:
     SensResult run_sens(Circuit& ckt, const std::string& output_var);
 
     SimulationResult run(Circuit& ckt);
+    SimulationResult run_step_sweep(Circuit& ckt);
 
 private:
     Options opts_;

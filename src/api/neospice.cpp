@@ -2,9 +2,22 @@
 #include "core/fourier.hpp"
 #include "output/output.hpp"
 #include "parser/netlist_parser.hpp"
+#include "devices/vsource.hpp"
+#include "devices/isource.hpp"
 #include <unordered_set>
+#include <algorithm>
+#include <cctype>
 
 namespace neospice {
+
+namespace {
+std::string lower(const std::string& s) {
+    std::string r = s;
+    std::transform(r.begin(), r.end(), r.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return r;
+}
+} // anonymous namespace
 
 // ---------------------------------------------------------------------------
 // .save filtering helpers
@@ -135,6 +148,9 @@ SensResult Simulator::run_sens(Circuit& ckt, const std::string& output_var) {
 }
 
 SimulationResult Simulator::run(Circuit& ckt) {
+    if (!ckt.step_commands.empty()) {
+        return run_step_sweep(ckt);
+    }
     SimulationResult result;
     for (auto& cmd : ckt.analyses) {
         switch (cmd.type) {
@@ -221,6 +237,54 @@ SimulationResult Simulator::run(Circuit& ckt) {
     }
 
     return result;
+}
+
+SimulationResult Simulator::run_step_sweep(Circuit& ckt) {
+    SimulationResult outer;
+    const auto& sc = ckt.step_commands[0];
+
+    StepResult step_result;
+    step_result.step_variable = sc.name.empty() ? "temp" : sc.name;
+
+    double val = sc.start;
+    int direction = (sc.step > 0) ? 1 : -1;
+    while (direction > 0 ? val <= sc.stop + std::abs(sc.step) * 0.001
+                         : val >= sc.stop - std::abs(sc.step) * 0.001) {
+        step_result.step_values.push_back(val);
+
+        switch (sc.kind) {
+        case StepCommand::SOURCE: {
+            std::string target = lower(sc.name);
+            for (auto& dev : ckt.devices()) {
+                if (lower(dev->name()) == target) {
+                    if (auto* vs = dynamic_cast<VSource*>(dev.get()))
+                        vs->set_dc_value(val);
+                    else if (auto* is = dynamic_cast<ISource*>(dev.get()))
+                        is->set_dc_value(val);
+                }
+            }
+            break;
+        }
+        case StepCommand::TEMP:
+            ckt.options.temp = val + 273.15;
+            break;
+        case StepCommand::PARAM:
+            break;
+        }
+
+        ckt.reset_state();
+
+        auto saved_steps = std::move(ckt.step_commands);
+        ckt.step_commands.clear();
+        auto result = run(ckt);
+        ckt.step_commands = std::move(saved_steps);
+
+        step_result.results.push_back(std::move(result));
+        val += sc.step;
+    }
+
+    outer.step = std::make_unique<StepResult>(std::move(step_result));
+    return outer;
 }
 
 } // namespace neospice

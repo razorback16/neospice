@@ -1,0 +1,7 @@
+* Step sweep test: sweep V1 from 0 to 5V
+V1 in 0 1
+R1 in out 1k
+R2 out 0 1k
+.step V1 0 5 1
+.op
+.end

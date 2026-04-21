@@ -144,6 +144,9 @@ public:
     /// Rotate state history: state2 <- state1 <- state0 (buffer addresses stay stable).
     void rotate_state();
 
+    /// Reset all state buffers and device state for a fresh simulation pass.
+    void reset_state();
+
     std::string node_name(int32_t idx) const;
     int32_t     node_index(const std::string& name) const;
 

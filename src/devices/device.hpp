@@ -84,6 +84,10 @@ public:
         return std::nullopt;
     }
 
+    /// Reset device state for a fresh simulation pass (e.g. between .step
+    /// sweep iterations).  Subclasses override to clear internal caches.
+    virtual void reset() {}
+
     /// Clear any cached temperature-dependent parameters so they will be
     /// recomputed on the next evaluate() call.  Must be called whenever the
     /// simulation temperature changes (e.g. temperature sweep).
