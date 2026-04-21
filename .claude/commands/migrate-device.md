@@ -63,6 +63,13 @@ model:
   gen_instance: "GENinstance"              # always "GENinstance"
   gen_model: "GENmodel"                    # always "GENmodel"
 
+  # --- Model types (drives model card generation) ---
+  model_types:
+    - { spice_name: "d", flag_field: "DIOlevel", flag_value: 1 }
+
+  # --- Charge states (override for compute_trunc generation) ---
+  charge_states: [3]                       # state offsets holding charges (from NIintegrate calls)
+
   # --- Terminals ---
   terminals:
     - { name: "pos", field: "DIOposNode" }
@@ -152,20 +159,28 @@ model:
 python -m ngspice_migrate \
     tools/descriptors/<device>.yaml \
     /path/to/ngspice/src/spicelib/devices/<DEVICE>/ \
-    src/devices/<device>/
+    src/devices/<device>/ \
+    --gen-tests
 ```
+
+Additional CLI flags:
+- `--gen-tests` — generate test scaffolding (per-device test directory with CMakeLists.txt, DC test, and transient test skeletons)
+- `--test-dir PATH` — override test output directory (default: `tests/devices/<device>/`)
 
 This produces:
 - `<ns>_def.hpp` — translated struct definitions (from `*def*.h`)
 - `<ns>_shim.hpp` / `<ns>_shim.cpp` — compatibility shim (CKT, matrix wrappers)
 - `<ns>_device.hpp` / `<ns>_device.cpp` — adapter skeleton (Device interface bridge)
 - `<ns>_setup.cpp`, `<ns>_load.cpp`, `<ns>_temp.cpp`, etc. — translated C source
+- `<ns>_model_card.hpp` / `<ns>_model_card.cpp` — model card conversion with `to_<ns>_card()` (when `model_types` defined in descriptor)
+- `<ns>_parser.hpp` — parser integration helper with `create_<ns>_model_card()` (when `model_types` defined)
 - `CMakeLists.txt` — build integration
 
-### 8-Pass Translation Pipeline
+### Translation Pipeline
 
 The tool applies these transformations:
 1. **Strip OMP** — remove OpenMP pragmas and `#pragma omp` blocks
+1c. **Strip sensitivity** — automatically remove `SenCond` variables, `if(SenCond)` blocks, `CKTsenInfo` guard blocks, `goto next1/next2` statements, and orphaned labels (both braced and braceless patterns)
 2. **Split banner** — separate leading comment blocks
 3. **Protect literals** — shield string/char literals from token substitution
 4. **Token substitution** — `GENinstance` -> `<CppInstance>`, struct tags, pointer casts
@@ -189,28 +204,22 @@ The translated files may reference headers that don't exist. Fix includes:
 #include "devices/<ns>/<ns>_shim.hpp"
 ```
 
-### 3.2 Sensitivity analysis code (MUST strip)
+### 3.2 Sensitivity analysis code (Mostly automated)
 
-Many ngspice devices contain sensitivity analysis code that is dead in neospice (no
-sensitivity framework). This code will **not compile** and must be manually removed.
+The transformer now includes a `strip_sensitivity()` pass that automatically removes
+`SenCond` variables, `if(SenCond)` blocks, `CKTsenInfo` guard blocks, `goto next1/next2`
+statements, and orphaned labels. Both braced and braceless patterns are handled.
 
-**Indicators**: `SenCond`, `CKTsenInfo`, `info->SENnumDev`, `PERTURBATION`,
-`TRANSEN`, `SENSDEBUG`, `goto next1`, `goto next2`.
+**Verify the output is clean** after running the tool. In the vast majority of cases no
+manual stripping is needed, but unusual sensitivity patterns (e.g., deeply nested or
+interleaved with non-sensitivity logic) may leave residual code.
 
-**Where it appears**:
-- **Setup**: Sensitivity state allocation blocks — remove entirely
-- **Load**: Guard blocks like `if ((info = ckt->CKTsenInfo) && ckt->CKTsenInfo->SENmode == TRANSEN) { ... }` — remove the entire block
-- **Load**: `SenCond` variable declarations and the `if (SenCond) { ... }` blocks — remove
-- **Load**: `goto next1` / `goto next2` labels used only by sensitivity code — remove labels and the `goto`s
+**Indicators to search for** (should be absent after auto-stripping): `SenCond`,
+`CKTsenInfo`, `info->SENnumDev`, `PERTURBATION`, `TRANSEN`, `SENSDEBUG`,
+`goto next1`, `goto next2`.
 
-**Strategy**: Search for `SenCond` and `CKTsenInfo` in the translated file and remove
-all blocks that reference them. Also remove any `goto label` that only existed for
-the sensitivity flow. After stripping, verify the remaining control flow is correct.
-
-The shim provides a `void *CKTsenInfo = nullptr` stub so that **non-conditional**
-references to the field (like in struct access) don't cause errors, but the actual
-sensitivity logic must still be removed because it references functions and types
-that don't exist in neospice.
+The shim still provides a `void *CKTsenInfo = nullptr` stub so that any
+**non-conditional** references to the field (like in struct access) don't cause errors.
 
 ### 3.3 Untranslated macros
 
@@ -410,11 +419,15 @@ Convert: `neo_node = ucb_node - 1`.
 
 ---
 
-## Phase 5: Truncation Error (Manual)
+## Phase 5: Truncation Error (Auto-Generated, May Need Tuning)
 
-**Why manual**: The truncation error calculation uses charge state history to compute
-local truncation error (LTE) for timestep control. The ngspice version in `*trunc.c`
-calls `CKTterr()` which has framework dependencies the tool cannot translate.
+The tool now auto-generates a `compute_trunc()` implementation by extracting charge
+state offsets from `NIintegrate()` calls in the translated load source. The descriptor
+can also specify `charge_states: [3]` as a manual override. The generated code is a
+reasonable starting point for most devices. For complex devices with conditional charge
+checks or mode-dependent integration, the generated version may need hand-tuning.
+
+Manual work is only needed if the auto-generated version is not accurate enough.
 
 ### 5.1 Identify charge state variables
 
@@ -545,9 +558,13 @@ if (ic_it != params.end()) {
 
 ---
 
-## Phase 8: Parameter Query (Manual)
+## Phase 8: Parameter Query (Skeleton Auto-Generated)
 
-**Why manual**: ngspice's `*ask.c` uses a switch table that doesn't map to C++ patterns.
+The tool now auto-generates a `query_param()` skeleton when the translated devsup source
+is provided. It extracts parameter names from the `pTable` (IOP/OP/OPR macros) and
+generates a skeleton with direct field references for geometry params and TODO stubs
+for operating-point params. Manual work is filling in the TODO stubs with correct
+field mappings and m-scaling.
 
 ### 8.1 Implement `query_param()` override
 
@@ -598,7 +615,17 @@ std::optional<double> <Prefix>Device::query_param(const std::string& name) const
 
 ---
 
-## Phase 9: Parser Integration
+## Phase 9: Parser Integration (Partially Auto-Generated)
+
+The tool now generates `<ns>_model_card.hpp`, `<ns>_model_card.cpp`, and
+`<ns>_parser.hpp` when `model_types` is defined in the descriptor. The model card
+files contain the full `to_<ns>_card()` function (type dispatch, mPTable lookup,
+mParam dispatch). The parser header contains a `create_<ns>_model_card()` helper
+and device creation documentation.
+
+Manual work is reduced to:
+- Adding the include and `to_<ns>_card()` call in the main parser's model dispatch
+- Adding element parsing in `netlist_parser.cpp`
 
 ### 9.1 Register the element type
 
@@ -842,16 +869,19 @@ Before considering the migration complete, verify:
 | Parameter table macros (IOPA etc.) | **Yes** (in preamble) | - |
 | Adapter skeleton (Device interface) | Yes | - |
 | Convergence wiring (last_noncon_) | **Yes** (auto-wired) | - |
-| Setup (node alloc, matrix ptrs) | Yes | Strip sensitivity code |
-| Load (DC + transient stamps) | Yes | Strip sensitivity + fix `mat.add` context |
+| Sensitivity stripping | **Yes** (auto) | Verify output |
+| Setup (node alloc, matrix ptrs) | Yes | Fix `mat.add` context |
+| Load (DC + transient stamps) | Yes | Fix `mat.add` context |
 | Temp (temperature params) | Yes | Build fixes only |
 | Param/Mpar (parameter tables) | Yes | Build fixes only |
 | CMakeLists.txt | Yes | - |
 | AC stamp (G/C split) | Stub generated | **Fill in G/C entries** |
-| Truncation error (LTE) | Stub generated | **Fill in charge offsets + LTE formula** |
+| Truncation error (LTE) | **Auto-generated** (may need tuning) | Verify for complex devices |
 | Initial conditions (ic=) | - | **Parser + set_ic()** |
-| Parameter query | Stub generated | **Fill in parameter mappings** |
-| Parser integration | - | **Element/model registration + to_card()** |
+| Parameter query | **Skeleton generated** (fill TODOs) | **Fill in OP param mappings + m-scaling** |
+| Model card conversion | **Yes** (when `model_types` defined) | - |
+| Parser integration | **Model card + helper generated** | **Element parsing + model dispatch wiring** |
+| Test scaffolding | **Yes** (`--gen-tests`) | Add test circuits |
 | Voltage limiting | Inline in load | Override if external |
 | Noise model | Stub generated | **Fill in noise source physics** |
 | Pole-zero analysis | - | Not yet supported |
