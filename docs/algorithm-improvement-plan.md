@@ -239,21 +239,19 @@ documented limitation.
 
 ---
 
-## Implementation Order
+## Implementation Status
 
-| # | Improvement | Effort | Impact | Dependencies |
-|---|-------------|--------|--------|-------------|
-| 1 | True source stepping | Small | High | None |
-| 2 | Configurable LTE reference mode | Small | Medium | None |
-| 3 | Breakpoint step recovery | Medium | Medium | None |
-| 4 | Current variable LTE | Small | Medium | None |
-| 5 | Pseudo-transient continuation | Medium-large | Medium | #1 (should try source stepping first) |
-| 6 | Trap ringing detection | Medium | Low-medium | None |
-| 7 | NQS AC fallback | Medium | Low | None |
+| # | Improvement | Status | Commit |
+|---|-------------|--------|--------|
+| 1 | True source stepping | **Done** | `282ad8c` |
+| 2 | Configurable LTE reference mode | **Done** | `9f5a39f` |
+| 3 | Breakpoint step recovery | **Done** | `7fb4e64` |
+| 4 | Current variable LTE | **Done** | `07a9e17` |
+| 5 | Pseudo-transient continuation | **Done** | `04e29c8` |
+| 6 | Trap ringing detection | **Done** | `362d744` |
+| 7 | NQS AC fallback | Deferred | Requires BSIM4v7 NQS AC stamp |
 
-Items 1, 2, and 4 are independent and can be done in parallel. Item 1 should be
-done first as it fixes a known gap. Items 5-7 are enhancements that can be
-deferred.
+All 820 tests pass after implementation.
 
 ---
 
