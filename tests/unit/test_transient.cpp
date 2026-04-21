@@ -35,6 +35,59 @@ C1 out 0 1u
     EXPECT_NEAR(result.voltages["v(out)"].back(), 5.0, 0.05);
 }
 
+TEST(Transient, PulseSourceCompletes) {
+    // PULSE source should use HARD breakpoints — verify simulation completes
+    std::string netlist = R"(
+PULSE breakpoint test
+V1 in 0 PULSE(0 5 0 1n 1n 5u 10u)
+R1 in out 1k
+C1 out 0 100p
+.tran 100n 50u
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    auto result = solve_transient(ckt, 100e-9, 50e-6);
+    EXPECT_GT(result.time.size(), 10u);
+    EXPECT_NEAR(result.time.back(), 50e-6, 1e-9);
+}
+
+TEST(Transient, SinSourceCompletes) {
+    // SIN source should use SOFT breakpoints — verify simulation completes
+    std::string netlist = R"(
+SIN breakpoint test
+V1 in 0 SIN(0 5 1MEG)
+R1 in out 1k
+C1 out 0 100p
+.tran 100n 10u
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    auto result = solve_transient(ckt, 100e-9, 10e-6);
+    EXPECT_GT(result.time.size(), 10u);
+    EXPECT_NEAR(result.time.back(), 10e-6, 1e-9);
+}
+
+TEST(Transient, CustomRestartStepScale) {
+    // Verify custom restart_step_scale is parsed and simulation completes
+    std::string netlist = R"(
+Custom restart_step_scale
+V1 in 0 PULSE(0 5 0 1n 1n 5u 10u)
+R1 in out 1k
+C1 out 0 100p
+.options restart_step_scale=0.05
+.tran 100n 50u
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_DOUBLE_EQ(ckt.options.restart_step_scale, 0.05);
+    auto result = solve_transient(ckt, 100e-9, 50e-6);
+    EXPECT_GT(result.time.size(), 10u);
+    EXPECT_NEAR(result.time.back(), 50e-6, 1e-9);
+}
+
 TEST(Transient, ResultHasTimeVector) {
     std::string netlist = R"(
 Simple

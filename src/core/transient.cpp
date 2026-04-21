@@ -34,18 +34,34 @@ static std::string make_branch_key(const std::string& dname) {
     return "i(" + lower + ")";
 }
 
-// Collect PULSE/SIN breakpoints from sources
+// Classify a source function as HARD or SOFT breakpoint type.
+// HARD: PULSE, EXP, PWL (sharp edges / corners)
+// SOFT: SIN, AM, SFFM (smooth zero-crossings / envelope crossings)
+static TimeStepController::BreakpointType classify_source(SourceFunction func) {
+    switch (func) {
+    case SourceFunction::SIN:
+    case SourceFunction::AM:
+    case SourceFunction::SFFM:
+        return TimeStepController::BreakpointType::SOFT;
+    default:
+        return TimeStepController::BreakpointType::HARD;
+    }
+}
+
+// Collect PULSE/SIN breakpoints from sources with type classification
 static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double tstop) {
     for (auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
+            auto type = classify_source(vs->source_function());
             auto bps = vs->get_breakpoints(0.0, tstop);
-            for (double bp : bps) ctrl.add_source_breakpoint(bp);
+            for (double bp : bps) ctrl.add_source_breakpoint(bp, type);
         } else if (auto* is = dynamic_cast<ISource*>(dev.get())) {
+            auto type = classify_source(is->source_function());
             auto bps = is->get_breakpoints(0.0, tstop);
-            for (double bp : bps) ctrl.add_source_breakpoint(bp);
+            for (double bp : bps) ctrl.add_source_breakpoint(bp, type);
         } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
             auto bps = tl->get_breakpoints(0.0, tstop);
-            for (double bp : bps) ctrl.add_source_breakpoint(bp);
+            for (double bp : bps) ctrl.add_source_breakpoint(bp);  // TL breakpoints are HARD
         }
     }
 }
@@ -511,15 +527,22 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         step_count++;
         if (steps_after_bp < 1000) ++steps_after_bp;
 
-        // After crossing a source breakpoint: reduce dt to 0.1× the
-        // pre-breakpoint delta, matching ngspice (dctran.c ~561-562).
+        // After crossing a source breakpoint: reduce dt by a configurable
+        // scale factor (restart_step_scale, default 0.1×).  Soft breakpoints
+        // (SIN/AM/SFFM zero-crossings) use a milder reduction (sqrt of the
+        // hard scale) since their waveforms are smooth.
         // Note: ngspice also resets order to 1 here, but our device charge
         // integration diverges from ngspice at order 1 near switching edges,
         // so we keep order 2 to avoid tripling the voltage error.
         if (ctrl.crossed_source_breakpoint() && step_count > 2) {
             steps_after_bp = 0;
             double bp_gap = ctrl.next_breakpoint_gap();
-            dt = std::min(dt, 0.1 * std::min(saved_delta, bp_gap));
+            double scale = ckt.options.restart_step_scale;
+            // Soft breakpoints use a milder reduction (sqrt of the scale)
+            if (ctrl.last_bp_type() == TimeStepController::BreakpointType::SOFT) {
+                scale = std::sqrt(scale);  // e.g., 0.1 -> ~0.316
+            }
+            dt = std::min(dt, scale * std::min(saved_delta, bp_gap));
             dt = std::max(dt, dt_min * 2.0);
         }
 

@@ -82,6 +82,9 @@ public:
     /// Return source breakpoints in (tstart, tstop].
     std::vector<double> get_breakpoints(double tstart, double tstop) const;
 
+    /// Return the source function type (DC, PULSE, SIN, etc.).
+    SourceFunction source_function() const { return func_; }
+
     // Device interface
     int32_t extra_vars() const override { return 1; }
     void assign_branch_index(int32_t& next) override {

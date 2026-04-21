@@ -192,6 +192,58 @@ TEST(TimeStepController, Mode1UsesMaxOfAllSignals) {
     EXPECT_TRUE(accepted1);
 }
 
+// --- Breakpoint type classification tests ---
+
+TEST(TimeStepController, BreakpointTypeDefaultHard) {
+    TimeStepController ctrl;
+    ctrl.init(1e-6, 1e-3);
+
+    ctrl.add_source_breakpoint(5e-6);  // default type is HARD
+    ctrl.advance(5e-6);
+    EXPECT_TRUE(ctrl.crossed_source_breakpoint());
+    EXPECT_EQ(ctrl.last_bp_type(), TimeStepController::BreakpointType::HARD);
+}
+
+TEST(TimeStepController, BreakpointTypeSoft) {
+    TimeStepController ctrl;
+    ctrl.init(1e-6, 1e-3);
+
+    ctrl.add_source_breakpoint(5e-6, TimeStepController::BreakpointType::SOFT);
+    ctrl.advance(5e-6);
+    EXPECT_TRUE(ctrl.crossed_source_breakpoint());
+    EXPECT_EQ(ctrl.last_bp_type(), TimeStepController::BreakpointType::SOFT);
+}
+
+TEST(TimeStepController, BreakpointTypeHardPromotesOverSoft) {
+    // When both HARD and SOFT breakpoints are consumed in the same advance,
+    // the result should be HARD (the stricter type wins).
+    TimeStepController ctrl;
+    ctrl.init(1e-6, 1e-3);
+
+    ctrl.add_source_breakpoint(5e-6, TimeStepController::BreakpointType::SOFT);
+    ctrl.add_source_breakpoint(5e-6, TimeStepController::BreakpointType::HARD);
+    ctrl.advance(5e-6);
+    EXPECT_TRUE(ctrl.crossed_source_breakpoint());
+    EXPECT_EQ(ctrl.last_bp_type(), TimeStepController::BreakpointType::HARD);
+}
+
+TEST(TimeStepController, BreakpointTypeMultipleSoftRemainsSoft) {
+    TimeStepController ctrl;
+    ctrl.init(1e-6, 1e-3);
+
+    // Two soft breakpoints at different times, both consumed
+    ctrl.add_source_breakpoint(3e-6, TimeStepController::BreakpointType::SOFT);
+    ctrl.add_source_breakpoint(4e-6, TimeStepController::BreakpointType::SOFT);
+    ctrl.advance(5e-6);  // consumes both
+    EXPECT_TRUE(ctrl.crossed_source_breakpoint());
+    EXPECT_EQ(ctrl.last_bp_type(), TimeStepController::BreakpointType::SOFT);
+}
+
+TEST(TimeStepController, RestartStepScaleDefault) {
+    SimOptions opts;
+    EXPECT_DOUBLE_EQ(opts.restart_step_scale, 0.1);
+}
+
 TEST(TimeStepController, Mode2TracksHistoricalMax) {
     TimeStepController ctrl;
     ctrl.init(1e-6, 1e-3);

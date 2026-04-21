@@ -932,6 +932,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                             ckt.options.lte_ref_mode = static_cast<int>(val);
                         } else if (key == "mask_ivars") {
                             ckt.options.mask_ivars = (static_cast<int>(val) != 0);
+                        } else if (key == "restart_step_scale") {
+                            ckt.options.restart_step_scale = val;
                         }
                         // Silently ignore unrecognised option keys
                     }

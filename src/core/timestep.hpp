@@ -2,11 +2,16 @@
 #include "core/types.hpp"
 #include <vector>
 #include <set>
+#include <map>
 
 namespace neospice {
 
 class TimeStepController {
 public:
+    /// Breakpoint classification: HARD edges (PULSE, EXP, PWL) get full dt
+    /// reduction; SOFT crossings (SIN, AM, SFFM) use a milder scale.
+    enum class BreakpointType { HARD, SOFT };
+
     void init(double initial_dt, double tstop);
 
     double current_dt() const { return dt_; }
@@ -24,12 +29,15 @@ public:
                        const SimOptions& opts);
 
     void add_breakpoint(double t);
-    void add_source_breakpoint(double t);
+    void add_source_breakpoint(double t, BreakpointType type = BreakpointType::HARD);
     double clamp_to_breakpoint(double proposed_dt) const;
     double clamp_to_end(double proposed_dt) const;
 
     /// True if the last advance() consumed one or more SOURCE breakpoints.
     bool crossed_source_breakpoint() const { return crossed_src_bp_; }
+
+    /// Type of the last consumed source breakpoint (HARD if any consumed bp was HARD).
+    BreakpointType last_bp_type() const { return last_bp_type_; }
 
     /// Distance from current_time to the next source breakpoint (or tstop if none).
     double next_breakpoint_gap() const;
@@ -55,8 +63,9 @@ private:
     int order_ = 1;
     double prev_dt_ = 0.0;
     bool crossed_src_bp_ = false;
+    BreakpointType last_bp_type_ = BreakpointType::HARD;
     std::set<double> breakpoints_;
-    std::set<double> source_breakpoints_;
+    std::map<double, BreakpointType> source_breakpoints_;
     std::vector<double> max_seen_;  // per-node max |value| for lte_ref_mode==2
 };
 

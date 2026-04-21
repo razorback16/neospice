@@ -44,6 +44,9 @@ public:
     /// Return source breakpoints in (tstart, tstop].
     std::vector<double> get_breakpoints(double tstart, double tstop) const;
 
+    /// Return the source function type (DC, PULSE, SIN, etc.).
+    SourceFunction source_function() const { return func_; }
+
     // Device interface — no matrix entries, RHS only
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;

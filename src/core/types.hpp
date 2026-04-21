@@ -38,6 +38,7 @@ struct SimOptions {
     bool verbose  = false;
     bool mask_ivars = true;     // when true, exclude branch current variables from global LTE check
                                 // set to false (mask_ivars=0) to include current variables in LTE
+    double restart_step_scale = 0.1; // dt reduction factor after crossing a source breakpoint
 };
 
 /// Populated by the transient/DC driver before each Newton load, read by

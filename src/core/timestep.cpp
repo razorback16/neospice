@@ -18,10 +18,14 @@ void TimeStepController::init(double initial_dt, double tstop) {
 void TimeStepController::advance(double dt) {
     time_ += dt;
     crossed_src_bp_ = false;
+    last_bp_type_ = BreakpointType::SOFT;  // reset to mildest; promote to HARD if any consumed bp is HARD
     while (!breakpoints_.empty() && *breakpoints_.begin() <= time_ + 1e-18) {
         breakpoints_.erase(breakpoints_.begin());
     }
-    while (!source_breakpoints_.empty() && *source_breakpoints_.begin() <= time_ + 1e-18) {
+    while (!source_breakpoints_.empty() && source_breakpoints_.begin()->first <= time_ + 1e-18) {
+        if (source_breakpoints_.begin()->second == BreakpointType::HARD) {
+            last_bp_type_ = BreakpointType::HARD;
+        }
         source_breakpoints_.erase(source_breakpoints_.begin());
         crossed_src_bp_ = true;
     }
@@ -102,10 +106,18 @@ void TimeStepController::add_breakpoint(double t) {
     }
 }
 
-void TimeStepController::add_source_breakpoint(double t) {
+void TimeStepController::add_source_breakpoint(double t, BreakpointType type) {
     if (t > time_ && t <= tstop_) {
         breakpoints_.insert(t);
-        source_breakpoints_.insert(t);
+        // If a breakpoint already exists at this time, promote to HARD if needed
+        auto it = source_breakpoints_.find(t);
+        if (it != source_breakpoints_.end()) {
+            if (type == BreakpointType::HARD) {
+                it->second = BreakpointType::HARD;
+            }
+        } else {
+            source_breakpoints_.emplace(t, type);
+        }
     }
 }
 
@@ -114,7 +126,7 @@ double TimeStepController::next_breakpoint_gap() const {
     // If no source breakpoints remain, use the nearest regular breakpoint.
     // If neither, return tstop - time.
     if (!source_breakpoints_.empty()) {
-        double bp = *source_breakpoints_.begin();
+        double bp = source_breakpoints_.begin()->first;
         if (bp > time_ + 1e-18) {
             return bp - time_;
         }
