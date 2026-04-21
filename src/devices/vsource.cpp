@@ -32,6 +32,11 @@ void VSource::set_pwl(PwlParams p) {
     pwl_  = std::move(p);
 }
 
+void VSource::set_exp(ExpParams p) {
+    func_ = SourceFunction::EXP;
+    exp_  = p;
+}
+
 void VSource::resolve_defaults(double tstep, double tstop) {
     if (func_ == SourceFunction::PULSE) {
         // ngspice (vsrcload.c): TR/TF default to CKTstep when 0 or unspecified,
@@ -43,6 +48,13 @@ void VSource::resolve_defaults(double tstep, double tstop) {
     } else if (func_ == SourceFunction::SIN) {
         // ngspice (vsrcload.c): FREQ defaults to 1/CKTfinalTime when 0 or unspecified.
         if (sin_.freq <= 0) sin_.freq = (tstop > 0) ? 1.0 / tstop : 0.0;
+    } else if (func_ == SourceFunction::EXP) {
+        // ngspice (vsrcload.c): all EXP params treat explicit 0 as "unspecified".
+        // TD1 defaults to tstep, TAU1 to tstep, TD2 to TD1+tstep, TAU2 to tstep.
+        if (exp_.td1  <= 0) exp_.td1  = tstep;
+        if (exp_.tau1 <= 0) exp_.tau1 = tstep;
+        if (exp_.td2  <= 0) exp_.td2  = exp_.td1 + tstep;
+        if (exp_.tau2 <= 0) exp_.tau2 = tstep;
     }
 }
 
@@ -98,6 +110,18 @@ double VSource::value_at(double t) const {
         if (t1 == t0) return v1;  // degenerate segment
         double frac = (t - t0) / (t1 - t0);
         return v0 + (v1 - v0) * frac;
+    }
+
+    case SourceFunction::EXP: {
+        const auto& e = exp_;
+        if (t <= e.td1) {
+            return e.v1;
+        } else if (t <= e.td2) {
+            return e.v1 + (e.v2 - e.v1) * (1.0 - std::exp(-(t - e.td1) / e.tau1));
+        } else {
+            return e.v1 + (e.v2 - e.v1) * (1.0 - std::exp(-(t - e.td1) / e.tau1))
+                        + (e.v1 - e.v2) * (1.0 - std::exp(-(t - e.td2) / e.tau2));
+        }
     }
     }
     return dc_value_;

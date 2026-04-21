@@ -24,6 +24,7 @@ public:
     void set_pulse(PulseParams p);
     void set_sin(SinParams p);
     void set_pwl(PwlParams p);
+    void set_exp(ExpParams p);
 
     /// Resolve unspecified PULSE/SIN defaults using .tran parameters.
     void resolve_defaults(double tstep, double tstop);
@@ -57,6 +58,7 @@ private:
     PulseParams    pulse_;
     SinParams      sin_;
     PwlParams      pwl_;
+    ExpParams      exp_;
     double         current_time_ = 0.0;
 };
 

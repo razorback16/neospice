@@ -1,0 +1,6 @@
+EXP source test
+V1 in 0 EXP(0 5 2n 3n 7n 4n)
+R1 in out 1k
+C1 out 0 10p
+.tran 10p 20n
+.end

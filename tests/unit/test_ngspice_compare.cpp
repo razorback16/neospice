@@ -466,6 +466,24 @@ TEST_F(NgspiceCompareTest, PwlSourceTransient) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, ExpSourceTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/exp_source.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    // Drop currents — capacitive spike through voltage source at EXP edges
+    // is Dirac-delta-like and impossible to match point-wise.
+    ng_result.currents.clear();
+    cs_result.transient->currents.clear();
+    // Slightly relaxed tolerance: time-grid interpolation at the sharp EXP
+    // breakpoint edges (td1, td2) causes a small mismatch that inflates the
+    // relative error when the signal is near zero.
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {2e-1, 2e-2});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 // ---------------------------------------------------------------------------
 // Temperature coefficient tests
 // ---------------------------------------------------------------------------
