@@ -99,6 +99,60 @@ def extract_charge_offsets(load_source: str, prefix: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Output parameter extraction from devsup pTable
+# ---------------------------------------------------------------------------
+
+def extract_output_params(devsup_source: str, prefix: str) -> list[dict]:
+    """Extract parameter entries from instance pTable in devsup source.
+
+    Returns list of dicts: {'name': str, 'id': str, 'type': str, 'is_output': bool}
+    """
+    results: list[dict] = []
+    pattern = r'(IOP[ARU]*|OP[R]?)\s*\(\s*"(\w+)"\s*,\s*(\w+)\s*,\s*(\w+)'
+    for m in re.finditer(pattern, devsup_source):
+        macro, name, param_id, ptype = m.groups()
+        # OP / OPR are pure output (operating-point) parameters.
+        # IOP is input-or-output (geometry); treated as non-output for
+        # query_param generation so it gets a direct field reference.
+        is_output = macro in ("OP", "OPR")
+        results.append({
+            'name': name,
+            'id': param_id,
+            'type': ptype,
+            'is_output': is_output,
+        })
+    return results
+
+
+# ---------------------------------------------------------------------------
+# query_param body generator
+# ---------------------------------------------------------------------------
+
+def _gen_query_param(desc, output_params):
+    """Generate query_param() body from extracted parameter table."""
+    if not output_params:
+        return '    // TODO: no output parameters found — implement manually\n    return std::nullopt;\n'
+
+    lines = []
+    lines.append('    const std::string key = str_tolower(name);')
+    lines.append(f'    const double m = inst_.{desc.prefix}m;')
+    lines.append('')
+    lines.append('    if (state0_ && state_base_ >= 0) {')
+    for p in output_params:
+        if p['is_output']:
+            lines.append(f'        if (key == "{p["name"]}") return 0.0; // TODO: map {p["id"]} to state/inst field, apply m scaling')
+    lines.append('    }')
+    lines.append('')
+    lines.append('    // Geometry (not scaled by m)')
+    for p in output_params:
+        if not p['is_output']:
+            lines.append(f'    if (key == "{p["name"]}") return inst_.{desc.prefix}{p["name"]};')
+    lines.append('')
+    lines.append('    return std::nullopt;')
+    return '\n'.join(lines)
+
+
+# ---------------------------------------------------------------------------
 # compute_trunc body generator
 # ---------------------------------------------------------------------------
 
@@ -258,7 +312,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
 # Implementation generator
 # ---------------------------------------------------------------------------
 
-def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str = "", load_source: str = "") -> str:
+def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str = "", load_source: str = "", devsup_source: str = "") -> str:
     """Return the complete text of the device adapter implementation file.
 
     Parameters
@@ -645,13 +699,18 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("}\n")
     parts.append("\n")
 
-    # --- query_param (stub) ------------------------------------------------
+    # --- query_param -------------------------------------------------------
+    output_params = extract_output_params(devsup_source, desc.prefix) if devsup_source else []
+    query_body = _gen_query_param(desc, output_params)
+
+    has_real_query = "TODO: no output" not in query_body
+    name_param = "name" if has_real_query else "/*name*/"
+
     parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append("// query_param — TODO: add operating-point parameter mappings\n")
+    parts.append("// query_param\n")
     parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append(f"std::optional<double> {prefix}Device::query_param(const std::string& /*name*/) const {{\n")
-    parts.append("    // TODO: Map parameter names to instance fields. See bjt_device.cpp.\n")
-    parts.append("    return std::nullopt;\n")
+    parts.append(f"std::optional<double> {prefix}Device::query_param(const std::string& {name_param}) const {{\n")
+    parts.append(query_body + "\n")
     parts.append("}\n")
     parts.append("\n")
 

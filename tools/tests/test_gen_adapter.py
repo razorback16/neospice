@@ -8,6 +8,7 @@ from typing import List, Optional
 import pytest
 
 from ngspice_migrate.gen_adapter import (
+    extract_output_params,
     extract_tstalloc_fields,
     generate_adapter_cpp,
     generate_adapter_hpp,
@@ -556,3 +557,85 @@ class TestGeometryGiven:
         )
         cpp = generate_adapter_cpp(desc)
         assert "inst.ADGiven = (geom.AD != 0.0) ? 1 : 0;" in cpp
+
+
+# ---------------------------------------------------------------------------
+# extract_output_params tests
+# ---------------------------------------------------------------------------
+
+class TestExtractOutputParams:
+    def test_extract_output_params(self) -> None:
+        """Extract output parameter names and fields from devsup pTable."""
+        devsup_source = '''
+Shim::IfParm DIOmPTable[] = {
+ {"is",  DIO_IS,  IF_REAL, "model saturation current"},
+};
+Shim::IfParm DIOpTable[] = {
+ IOP("area",   DIO_AREA,   IF_REAL, "Area factor"),
+ OP("vd",      DIO_VOLTAGE, IF_REAL, "Diode voltage"),
+ OPR("id",     DIO_CURRENT, IF_REAL, "Diode current"),
+ OPR("gd",     DIO_CONDUCT, IF_REAL, "Diode conductance"),
+};
+'''
+        params = extract_output_params(devsup_source, "DIO")
+        names = [p['name'] for p in params]
+        assert "vd" in names
+        assert "id" in names
+        assert "gd" in names
+        assert "area" in names
+
+    def test_empty_source(self) -> None:
+        params = extract_output_params("", "DIO")
+        assert params == []
+
+    def test_is_output_flags(self) -> None:
+        devsup_source = '''
+ IOP("area",   DIO_AREA,   IF_REAL, "Area factor"),
+ OP("vd",      DIO_VOLTAGE, IF_REAL, "Diode voltage"),
+ OPR("id",     DIO_CURRENT, IF_REAL, "Diode current"),
+'''
+        params = extract_output_params(devsup_source, "DIO")
+        by_name = {p['name']: p for p in params}
+        assert by_name["area"]["is_output"] is False   # IOP is input-or-output (geometry)
+        assert by_name["vd"]["is_output"] is True      # OP is pure output
+        assert by_name["id"]["is_output"] is True      # OPR is pure output
+
+
+# ---------------------------------------------------------------------------
+# query_param generation tests
+# ---------------------------------------------------------------------------
+
+class TestQueryParamGeneration:
+    def test_query_param_stub_without_devsup(self, desc: StubDescriptor) -> None:
+        """Without devsup_source, query_param should have a TODO comment."""
+        cpp = generate_adapter_cpp(desc)
+        assert "query_param" in cpp
+        assert "std::nullopt" in cpp
+
+    def test_query_param_with_devsup(self, desc: StubDescriptor) -> None:
+        """With devsup_source, query_param should have parameter mappings."""
+        devsup_source = '''
+Shim::IfParm DIOpTable[] = {
+ IOP("area",   DIO_AREA,   IF_REAL, "Area factor"),
+ OP("vd",      DIO_VOLTAGE, IF_REAL, "Diode voltage"),
+ OPR("id",     DIO_CURRENT, IF_REAL, "Diode current"),
+};
+'''
+        cpp = generate_adapter_cpp(desc, devsup_source=devsup_source)
+        assert 'key == "vd"' in cpp
+        assert 'key == "id"' in cpp
+        assert 'key == "area"' in cpp
+        assert "str_tolower" in cpp
+        assert "std::nullopt" in cpp
+
+    def test_query_param_output_vs_geometry(self, desc: StubDescriptor) -> None:
+        """OP/OPR entries get TODO markers; IOP entries get direct field refs."""
+        devsup_source = '''
+ IOP("area",   DIO_AREA,   IF_REAL, "Area factor"),
+ OP("vd",      DIO_VOLTAGE, IF_REAL, "Diode voltage"),
+'''
+        cpp = generate_adapter_cpp(desc, devsup_source=devsup_source)
+        # OP entries should have TODO for field mapping
+        assert 'TODO: map DIO_VOLTAGE' in cpp
+        # IOP entries should reference inst_ field
+        assert 'inst_.DIOarea' in cpp
