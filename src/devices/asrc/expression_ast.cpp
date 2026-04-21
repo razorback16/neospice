@@ -548,6 +548,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     if (name == "ceil")  return make_unary(NodeType::CEIL);
     if (name == "floor") return make_unary(NodeType::FLOOR);
     if (name == "nint")  return make_unary(NodeType::NINT);
+    if (name == "ddt")   return make_unary(NodeType::DDT);
 
     // Binary functions
     if (name == "atan2") return make_binary(NodeType::ATAN2);
@@ -618,6 +619,7 @@ CompiledExpression CompiledExpression::compile(const std::string& expr) {
 double CompiledExpression::evaluate(const std::vector<double>& var_values,
                                     std::vector<double>& derivs) const {
     assert(static_cast<int>(var_values.size()) >= num_vars());
+    ddt_eval_idx_ = 0;  // reset DDT node counter for this evaluation
     auto dn = eval_node(root_.get(), var_values, num_vars(), true);
     derivs = std::move(dn.grad);
     return dn.val;
@@ -625,6 +627,7 @@ double CompiledExpression::evaluate(const std::vector<double>& var_values,
 
 double CompiledExpression::evaluate(const std::vector<double>& var_values) const {
     assert(static_cast<int>(var_values.size()) >= num_vars());
+    ddt_eval_idx_ = 0;  // reset DDT node counter for this evaluation
     auto dn = eval_node(root_.get(), var_values, num_vars(), false);
     return dn.val;
 }
@@ -1098,6 +1101,40 @@ CompiledExpression::eval_node(const ASTNode* node,
             for (int i = 0; i < nv; ++i)
                 result.grad[i] = dydx * x.grad[i];
         }
+        return result;
+    }
+
+    // --- Time-domain functions (stateful) ---
+
+    case NodeType::DDT: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+
+        // Each DDT node gets a unique index within an evaluation pass
+        int ddt_idx = ddt_eval_idx_++;
+        if (ddt_idx >= static_cast<int>(ddt_prev_values_.size())) {
+            ddt_prev_values_.resize(ddt_idx + 1, 0.0);
+            ddt_has_prev_.resize(ddt_idx + 1, false);
+            ddt_current_values_.resize(ddt_idx + 1, 0.0);
+            ddt_has_current_.resize(ddt_idx + 1, false);
+        }
+
+        double dt = current_dt_;
+        if (dt > 0.0 && ddt_has_prev_[ddt_idx]) {
+            result.val = (a.val - ddt_prev_values_[ddt_idx]) / dt;
+        } else {
+            result.val = 0.0;
+        }
+
+        // Gradient: d(DDT(f))/dx_i = (df/dx_i) / dt
+        if (need_grad && dt > 0.0 && ddt_has_prev_[ddt_idx]) {
+            for (int i = 0; i < nv; ++i)
+                result.grad[i] = a.grad[i] / dt;
+        }
+
+        // Store current value in tentative buffer (promoted to prev by accept_ddt())
+        ddt_current_values_[ddt_idx] = a.val;
+        ddt_has_current_[ddt_idx] = true;
+
         return result;
     }
 

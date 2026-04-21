@@ -585,6 +585,21 @@ TEST_F(NgspiceCompareTest, AsrcHertz) {
 }
 
 // ---------------------------------------------------------------------------
+// ASRC DDT() time derivative test
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, AsrcDdtTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/asrc_ddt.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-2, 1e-3});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+// ---------------------------------------------------------------------------
 // Resistor model card test — .model RMOD R(TC1=... TC2=...)
 // ---------------------------------------------------------------------------
 

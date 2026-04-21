@@ -268,6 +268,13 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
                           NumericMatrix& mat, std::vector<double>& rhs) {
     fill_var_values(voltages);
 
+    // Set dt for DDT() evaluation
+    if (tls_integrator_ctx) {
+        expr_.set_dt(tls_integrator_ctx->delta);
+    } else {
+        expr_.set_dt(0.0);
+    }
+
     // Evaluate expression and get derivatives
     double f_val = expr_.evaluate(var_values_, derivs_);
 

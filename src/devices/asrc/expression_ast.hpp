@@ -18,7 +18,7 @@
 //                       exp log log10 sqrt abs pow min max
 //                       sinh cosh tanh acosh asinh atanh
 //                       sgn u ustep uramp ceil floor nint pwr
-//                       limit if
+//                       limit if ddt
 // Numeric literals with SPICE suffixes (1k, 2.5m, 100u, etc.)
 // ---------------------------------------------------------------------------
 
@@ -63,6 +63,8 @@ enum class NodeType {
     IF_FN,          // if(cond, then, else) — cond != 0 selects then
     LIMIT,          // limit(x, lo, hi) = min(max(x, lo), hi)
     PWL,            // PWL(x, x1,y1, x2,y2, ...) — piecewise linear
+    // Time-domain functions (stateful)
+    DDT,            // DDT(expr) — time derivative via backward difference
 };
 
 struct ASTNode {
@@ -93,6 +95,17 @@ public:
     /// Evaluate without derivatives (for convergence test etc.)
     double evaluate(const std::vector<double>& var_values) const;
 
+    /// Set the current timestep for DDT evaluation.
+    /// Must be called before evaluate() when DDT nodes are present.
+    void set_dt(double dt) const { current_dt_ = dt; }
+
+    /// Accept the current DDT argument values as the "previous" for the
+    /// next timestep.  Call once per accepted timestep after evaluate().
+    void accept_ddt() const {
+        ddt_prev_values_ = ddt_current_values_;
+        ddt_has_prev_ = ddt_has_current_;
+    }
+
     /// Variable references discovered during parsing.
     const std::vector<VarRef>& var_refs() const { return var_refs_; }
     int num_vars() const { return static_cast<int>(var_refs_.size()); }
@@ -118,6 +131,14 @@ private:
     DualNumber eval_node(const ASTNode* node,
                          const std::vector<double>& var_values,
                          int num_vars, bool need_grad) const;
+
+    // DDT state — mutable because evaluate() is const but DDT needs history
+    mutable double current_dt_ = 0.0;
+    mutable std::vector<double> ddt_prev_values_;      // accepted previous argument values
+    mutable std::vector<bool>   ddt_has_prev_;          // whether we have accepted previous values
+    mutable std::vector<double> ddt_current_values_;    // current eval argument values (tentative)
+    mutable std::vector<bool>   ddt_has_current_;       // whether current values have been set
+    mutable int ddt_eval_idx_ = 0;                      // counter reset each evaluate call
 };
 
 // ---------------------------------------------------------------------------

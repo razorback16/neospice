@@ -1,0 +1,8 @@
+ASRC DDT test - differentiator
+* A linearly rising voltage V(in) = t should give DDT(V(in)) ~ 1
+V1 in 0 PWL(0 0 1 1)
+R1 in 0 1k
+B1 out 0 V={DDT(V(in))}
+R2 out 0 1k
+.tran 0.01 0.5
+.end
