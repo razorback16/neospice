@@ -118,4 +118,53 @@ NewtonResult source_stepping(Circuit& ckt, KLUSolver& solver,
     return result;
 }
 
+NewtonResult pseudo_transient(Circuit& ckt, KLUSolver& solver,
+                              std::vector<double>& solution,
+                              const SimOptions& opts) {
+    // Pseudo-transient continuation: add a fictitious conductance
+    // G_pseudo = C_pseudo / dt_pseudo to every diagonal, effectively turning
+    // the DC problem into a transient that can be solved incrementally.
+    // As dt_pseudo grows, G_pseudo decays to zero and the solution converges
+    // to the true DC operating point.
+
+    const double C_pseudo = 1e-3;       // fictitious capacitance (F)
+    double dt_pseudo      = 1e-6;       // initial pseudo-timestep (s)
+    const int max_steps   = 200;
+    const double target_gmin = opts.gmin;
+
+    SimOptions step_opts = opts;
+
+    for (int step = 0; step < max_steps; ++step) {
+        double G_pseudo = C_pseudo / dt_pseudo;
+        step_opts.gmin = target_gmin + G_pseudo;
+
+        auto result = newton_solve(ckt, solver, solution, step_opts);
+
+        if (result.converged) {
+            solution = result.solution;
+            dt_pseudo *= 2.0;  // grow pseudo-timestep (decay G_pseudo)
+
+            // When the pseudo-capacitor conductance is negligible compared
+            // to the baseline gmin, the solution is essentially the true DC
+            // operating point — break and confirm with a final solve.
+            if (G_pseudo < target_gmin * 0.01) {
+                break;
+            }
+        } else {
+            dt_pseudo *= 0.5;  // shrink on failure
+            if (dt_pseudo < 1e-15) {
+                return {false, 0, solution};
+            }
+        }
+    }
+
+    // Final solve with the true gmin (no pseudo-capacitor contribution)
+    step_opts.gmin = target_gmin;
+    auto result = newton_solve(ckt, solver, solution, step_opts);
+    if (result.converged) {
+        return result;
+    }
+    return {false, 0, solution};
+}
+
 } // namespace neospice

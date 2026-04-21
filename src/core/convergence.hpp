@@ -15,4 +15,8 @@ NewtonResult source_stepping(Circuit& ckt, KLUSolver& solver,
                              std::vector<double>& solution,
                              const SimOptions& opts);
 
+NewtonResult pseudo_transient(Circuit& ckt, KLUSolver& solver,
+                              std::vector<double>& solution,
+                              const SimOptions& opts);
+
 } // namespace neospice

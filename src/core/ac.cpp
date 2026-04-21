@@ -82,7 +82,13 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
             if (result.converged) {
                 dc_solution = result.solution;
             } else {
-                throw ConvergenceError("AC analysis: DC operating point failed to converge");
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                result = pseudo_transient(ckt, dc_solver, dc_solution, ckt.options);
+                if (result.converged) {
+                    dc_solution = result.solution;
+                } else {
+                    throw ConvergenceError("AC analysis: DC operating point failed to converge");
+                }
             }
         }
     }

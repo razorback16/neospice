@@ -86,7 +86,13 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
             if (result.converged) {
                 solution = result.solution;
             } else {
-                throw ConvergenceError("TF: DC operating point failed to converge");
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                result = pseudo_transient(ckt, solver, solution, ckt.options);
+                if (result.converged) {
+                    solution = result.solution;
+                } else {
+                    throw ConvergenceError("TF: DC operating point failed to converge");
+                }
             }
         }
     }

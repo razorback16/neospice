@@ -110,7 +110,13 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             if (result.converged) {
                 solution = result.solution;
             } else {
-                throw ConvergenceError("DC operating point failed to converge");
+                ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
+                result = pseudo_transient(ckt, solver, solution, ckt.options);
+                if (result.converged) {
+                    solution = result.solution;
+                } else {
+                    throw ConvergenceError("DC operating point failed to converge");
+                }
             }
         }
     }

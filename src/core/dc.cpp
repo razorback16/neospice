@@ -89,8 +89,15 @@ DCResult solve_dc(Circuit& ckt) {
             if (result.converged) {
                 solution = result.solution;
             } else {
-                // 6. All failed
-                throw ConvergenceError("DC operating point failed to converge");
+                // 6. Try pseudo-transient continuation
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                result = pseudo_transient(ckt, solver, solution, ckt.options);
+                if (result.converged) {
+                    solution = result.solution;
+                } else {
+                    // 7. All failed
+                    throw ConvergenceError("DC operating point failed to converge");
+                }
             }
         }
     }
@@ -301,6 +308,12 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
             return;
         }
         res = source_stepping(ckt, solver, solution, ckt.options);
+        if (res.converged) {
+            solution = res.solution;
+            first_point = false;
+            return;
+        }
+        res = pseudo_transient(ckt, solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
             first_point = false;

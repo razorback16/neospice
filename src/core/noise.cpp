@@ -102,7 +102,13 @@ NoiseResult solve_noise(Circuit& ckt,
             if (result.converged) {
                 dc_solution = result.solution;
             } else {
-                throw ConvergenceError("Noise analysis: DC operating point failed to converge");
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                result = pseudo_transient(ckt, dc_solver, dc_solution, ckt.options);
+                if (result.converged) {
+                    dc_solution = result.solution;
+                } else {
+                    throw ConvergenceError("Noise analysis: DC operating point failed to converge");
+                }
             }
         }
     }

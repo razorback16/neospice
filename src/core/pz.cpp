@@ -62,7 +62,13 @@ PZResult solve_pz(Circuit& ckt,
             if (dc_result.converged) {
                 dc_solution = dc_result.solution;
             } else {
-                throw ConvergenceError("PZ analysis: DC operating point failed to converge");
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                dc_result = pseudo_transient(ckt, dc_solver, dc_solution, ckt.options);
+                if (dc_result.converged) {
+                    dc_solution = dc_result.solution;
+                } else {
+                    throw ConvergenceError("PZ analysis: DC operating point failed to converge");
+                }
             }
         }
     }
