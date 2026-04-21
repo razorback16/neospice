@@ -21,6 +21,7 @@ from .transformer import Transformer
 from .gen_def import generate_def_hpp
 from .gen_shim import generate_shim_hpp, generate_shim_cpp
 from .gen_adapter import generate_adapter_hpp, generate_adapter_cpp
+from .gen_model_card import generate_model_card_hpp, generate_model_card_cpp
 from .gen_cmake import generate_cmake
 from .validation import validate_migration
 
@@ -70,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     generated_sources: list[str] = []
     setup_content: str = ""
     load_content: str = ""
+    devsup_content: str = ""
 
     print(f"\nTranslating source files (namespace={ns}):")
     for role, filename in desc.source_files.items():
@@ -86,11 +88,13 @@ def main(argv: list[str] | None = None) -> int:
         _write_file(out_path, translated, dry_run=dry_run)
         generated_sources.append(out_name)
 
-        # Keep setup/load content for validation later
+        # Keep setup/load/devsup content for generation & validation
         if role == "setup":
             setup_content = translated
         elif role == "load":
             load_content = translated
+        elif role == "devsup":
+            devsup_content = translated
 
     # ------------------------------------------------------------------
     # 4. Generate _def.hpp from *def*.h
@@ -122,10 +126,21 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     print("\nGenerating adapter files:")
     adapter_hpp = generate_adapter_hpp(desc)
-    adapter_cpp = generate_adapter_cpp(desc, setup_source=setup_content, def_content=def_content)
+    adapter_cpp = generate_adapter_cpp(desc, setup_source=setup_content, def_content=def_content, load_source=load_content, devsup_source=devsup_content)
     _write_file(output_dir / f"{ns}_device.hpp", adapter_hpp, dry_run=dry_run)
     _write_file(output_dir / f"{ns}_device.cpp", adapter_cpp, dry_run=dry_run)
     generated_sources.append(f"{ns}_device.cpp")
+
+    # ------------------------------------------------------------------
+    # 6b. Generate model card if model_types defined
+    # ------------------------------------------------------------------
+    if desc.model_types:
+        print("\nGenerating model card files:")
+        mc_hpp = generate_model_card_hpp(desc)
+        mc_cpp = generate_model_card_cpp(desc)
+        _write_file(output_dir / f"{ns}_model_card.hpp", mc_hpp, dry_run=dry_run)
+        _write_file(output_dir / f"{ns}_model_card.cpp", mc_cpp, dry_run=dry_run)
+        generated_sources.append(f"{ns}_model_card.cpp")
 
     # ------------------------------------------------------------------
     # 7. Generate CMakeLists.txt
