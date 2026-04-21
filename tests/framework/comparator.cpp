@@ -14,22 +14,44 @@ double relative_error(double expected, double actual, double abstol) {
 
 double interpolate(const std::vector<double>& xs, const std::vector<double>& ys, double x) {
     if (xs.empty()) return 0.0;
+    size_t n = xs.size();
     if (x <= xs.front()) return ys.front();
     if (x >= xs.back()) return ys.back();
 
-    // Binary search for the interval
     auto it = std::lower_bound(xs.begin(), xs.end(), x);
     if (it == xs.begin()) return ys.front();
-
     size_t idx = static_cast<size_t>(std::distance(xs.begin(), it));
-    size_t i0 = idx - 1;
-    size_t i1 = idx;
 
-    double x0 = xs[i0], x1 = xs[i1];
-    double y0 = ys[i0], y1 = ys[i1];
+    size_t ia = idx - 1, ib = idx;
+    double ya = ys[ia], yb = ys[ib];
+    double t = (x - xs[ia]) / (xs[ib] - xs[ia]);
+    double linear = ya + t * (yb - ya);
 
-    double t = (x - x0) / (x1 - x0);
-    return y0 + t * (y1 - y0);
+    // Cubic Lagrange using 4 surrounding points, with two guards:
+    // 1. Data must be monotonic across the 4 points (avoids inflection issues).
+    // 2. Result must stay within [min(ya,yb), max(ya,yb)] (avoids overshoot
+    //    even on monotonic data with strong curvature, e.g. exponential decay).
+    // Falls back to linear when either guard fails.
+    if (n >= 4 && idx >= 2 && idx + 1 < n) {
+        double y0 = ys[idx - 2], y1 = ya, y2 = yb, y3 = ys[idx + 1];
+        double d01 = y1 - y0, d12 = y2 - y1, d23 = y3 - y2;
+        bool monotone = (d01 >= 0 && d12 >= 0 && d23 >= 0) ||
+                        (d01 <= 0 && d12 <= 0 && d23 <= 0);
+        if (monotone) {
+            double x0 = xs[idx - 2], x1 = xs[ia], x2 = xs[ib], x3 = xs[idx + 1];
+            double L0 = ((x-x1)*(x-x2)*(x-x3)) / ((x0-x1)*(x0-x2)*(x0-x3));
+            double L1 = ((x-x0)*(x-x2)*(x-x3)) / ((x1-x0)*(x1-x2)*(x1-x3));
+            double L2 = ((x-x0)*(x-x1)*(x-x3)) / ((x2-x0)*(x2-x1)*(x2-x3));
+            double L3 = ((x-x0)*(x-x1)*(x-x2)) / ((x3-x0)*(x3-x1)*(x3-x2));
+            double cubic = L0*y0 + L1*y1 + L2*y2 + L3*y3;
+            double lo = std::min(ya, yb);
+            double hi = std::max(ya, yb);
+            if (cubic >= lo && cubic <= hi)
+                return cubic;
+        }
+    }
+
+    return linear;
 }
 
 } // anonymous namespace
@@ -85,6 +107,14 @@ CompareResult compare_dc(const DCResult& expected, const DCResult& actual, Toler
 CompareResult compare_transient(const TransientResult& expected, const TransientResult& actual, Tolerance tol) {
     CompareResult result{true, "", 0.0, 0};
 
+    // Determine which time grid is denser.  Cubic interpolation is accurate
+    // on a dense grid but overshoots on a sparse one, so always interpolate
+    // FROM the denser grid.  Signal-presence checks still use expected's
+    // signal set (all expected signals must exist in actual).
+    bool dense_is_actual = (actual.time.size() >= expected.time.size());
+    const auto& iter_time   = dense_is_actual ? expected.time : actual.time;
+    const auto& interp_time = dense_is_actual ? actual.time   : expected.time;
+
     // Compare voltages
     for (const auto& [name, exp_vec] : expected.voltages) {
         auto it = actual.voltages.find(name);
@@ -96,14 +126,15 @@ CompareResult compare_transient(const TransientResult& expected, const Transient
         }
 
         const auto& act_vec = it->second;
+        const auto& iter_vec   = dense_is_actual ? exp_vec  : act_vec;
+        const auto& interp_vec = dense_is_actual ? act_vec  : exp_vec;
 
-        // For each expected time point, interpolate actual value
-        for (size_t i = 0; i < expected.time.size(); ++i) {
-            double t = expected.time[i];
-            double exp_val = exp_vec[i];
-            double act_val = interpolate(actual.time, act_vec, t);
+        for (size_t i = 0; i < iter_time.size(); ++i) {
+            double t = iter_time[i];
+            double iter_val = iter_vec[i];
+            double interp_val = interpolate(interp_time, interp_vec, t);
 
-            double err = relative_error(exp_val, act_val, tol.absolute);
+            double err = relative_error(iter_val, interp_val, tol.absolute);
             result.num_points_compared++;
             if (err > result.worst_error) {
                 result.worst_error = err;
@@ -126,13 +157,15 @@ CompareResult compare_transient(const TransientResult& expected, const Transient
         }
 
         const auto& act_vec = it->second;
+        const auto& iter_vec   = dense_is_actual ? exp_vec  : act_vec;
+        const auto& interp_vec = dense_is_actual ? act_vec  : exp_vec;
 
-        for (size_t i = 0; i < expected.time.size(); ++i) {
-            double t = expected.time[i];
-            double exp_val = exp_vec[i];
-            double act_val = interpolate(actual.time, act_vec, t);
+        for (size_t i = 0; i < iter_time.size(); ++i) {
+            double t = iter_time[i];
+            double iter_val = iter_vec[i];
+            double interp_val = interpolate(interp_time, interp_vec, t);
 
-            double err = relative_error(exp_val, act_val, tol.absolute);
+            double err = relative_error(iter_val, interp_val, tol.absolute);
             result.num_points_compared++;
             if (err > result.worst_error) {
                 result.worst_error = err;
