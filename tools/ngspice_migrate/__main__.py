@@ -24,6 +24,7 @@ from .gen_adapter import generate_adapter_hpp, generate_adapter_cpp
 from .gen_model_card import generate_model_card_hpp, generate_model_card_cpp
 from .gen_parser import generate_parser_hpp
 from .gen_cmake import generate_cmake
+from .gen_test import generate_test_cmake, generate_test_dc, generate_test_transient
 from .validation import validate_migration
 
 
@@ -46,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("ngspice_dir", type=Path, help="Path to the ngspice device source directory")
     parser.add_argument("output_dir", type=Path, help="Path to the output directory")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be generated without writing files")
+    parser.add_argument("--gen-tests", action="store_true", help="Also generate test scaffolding")
     args = parser.parse_args(argv)
 
     descriptor_path: Path = args.descriptor
@@ -168,6 +170,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {issue}")
     else:
         print("  SKIP: setup or load file not available for validation")
+
+    # ------------------------------------------------------------------
+    # 9. Generate test scaffolding (optional)
+    # ------------------------------------------------------------------
+    if args.gen_tests:
+        test_dir = output_dir.parent.parent.parent / "tests" / "devices" / ns
+        print(f"\nGenerating test scaffolding in {test_dir}:")
+        circuits_dir = test_dir / "circuits"
+        _write_file(test_dir / "CMakeLists.txt", generate_test_cmake(desc), dry_run=dry_run)
+        _write_file(test_dir / f"test_{ns}_dc.cpp", generate_test_dc(desc), dry_run=dry_run)
+        _write_file(test_dir / f"test_{ns}_transient.cpp", generate_test_transient(desc), dry_run=dry_run)
+        if not dry_run:
+            circuits_dir.mkdir(parents=True, exist_ok=True)
+            print(f"  created {circuits_dir}/")
 
     print("\nDone.")
     return 0
