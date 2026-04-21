@@ -36,6 +36,8 @@ struct SimOptions {
     std::string method = "trap"; // integration method: "trap" or "gear"
     int lte_ref_mode = 0;       // LTE reference mode: 0=per-node, 1=max-all, 2=max-per-signal-over-time
     bool verbose  = false;
+    bool mask_ivars = true;     // when true, exclude branch current variables from global LTE check
+                                // set to false (mask_ivars=0) to include current variables in LTE
 };
 
 /// Populated by the transient/DC driver before each Newton load, read by

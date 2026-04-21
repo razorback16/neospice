@@ -31,37 +31,41 @@ bool TimeStepController::evaluate_step(const std::vector<double>& sol,
                                         const std::vector<double>& sol_prev,
                                         const std::vector<double>& sol_prev2,
                                         int32_t num_nodes,
+                                        int32_t num_vars,
                                         const SimOptions& opts) {
+    int32_t check_vars = opts.mask_ivars ? num_nodes : num_vars;
+
     // Pre-compute reference values based on LTE reference mode
     double max_abs = 0.0;
     if (opts.lte_ref_mode == 1) {
-        for (int32_t i = 0; i < num_nodes; ++i) {
+        for (int32_t i = 0; i < check_vars; ++i) {
             max_abs = std::max(max_abs, std::abs(sol[i]));
         }
     } else if (opts.lte_ref_mode == 2) {
-        if (static_cast<int32_t>(max_seen_.size()) < num_nodes) {
-            max_seen_.resize(num_nodes, 0.0);
+        if (static_cast<int32_t>(max_seen_.size()) < check_vars) {
+            max_seen_.resize(check_vars, 0.0);
         }
-        for (int32_t i = 0; i < num_nodes; ++i) {
+        for (int32_t i = 0; i < check_vars; ++i) {
             max_seen_[i] = std::max(max_seen_[i], std::abs(sol[i]));
         }
     }
 
     double max_ratio = 0.0;
-    for (int32_t i = 0; i < num_nodes; ++i) {
+    for (int32_t i = 0; i < check_vars; ++i) {
         double delta2 = sol[i] - 2.0 * sol_prev[i] + sol_prev2[i];
         double lte_coeff = (opts.method == "gear") ? (2.0 / 9.0) : (1.0 / 12.0);
         double lte = std::abs(delta2) * lte_coeff;
+        double abs_tol = (i < num_nodes) ? opts.vntol : opts.abstol;
         double tol;
         switch (opts.lte_ref_mode) {
         case 1:
-            tol = opts.reltol * max_abs + opts.vntol;
+            tol = opts.reltol * max_abs + abs_tol;
             break;
         case 2:
-            tol = opts.reltol * max_seen_[i] + opts.vntol;
+            tol = opts.reltol * max_seen_[i] + abs_tol;
             break;
-        default: // mode 0
-            tol = opts.reltol * std::abs(sol[i]) + opts.vntol;
+        default:
+            tol = opts.reltol * std::abs(sol[i]) + abs_tol;
             break;
         }
         if (tol > 0.0) {

@@ -20,6 +20,7 @@ public:
                        const std::vector<double>& sol_prev,
                        const std::vector<double>& sol_prev2,
                        int32_t num_nodes,
+                       int32_t num_vars,
                        const SimOptions& opts);
 
     void add_breakpoint(double t);

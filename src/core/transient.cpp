@@ -465,7 +465,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         bool accepted = true;
         if (step_count >= 2 && steps_after_bp >= 3) {
             ctrl.set_dt(dt);
-            accepted = ctrl.evaluate_step(solution, sol_prev, sol_prev2, num_nodes, ckt.options);
+            accepted = ctrl.evaluate_step(solution, sol_prev, sol_prev2, num_nodes, n, ckt.options);
             if (!accepted && dt <= dt_min * 1.01) {
                 accepted = true;
             }
