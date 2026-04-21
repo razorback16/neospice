@@ -1,6 +1,6 @@
-# Remaining Feature Gaps — Implementation Plan
+# Remaining Feature Gaps — Implementation Plan ✅ COMPLETE
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status:** All 4 tasks completed and merged to `main`. 785 tests passing. Executed 2026-04-21.
 
 **Goal:** Close the remaining feature gaps between neospice and ngspice, add the most impactful LTspice/HSPICE compatibility features, and document future work.
 

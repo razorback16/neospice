@@ -32,14 +32,17 @@
 | Noise analysis | **Done** — adjoint method, resistor/diode/BSIM4v7 noise, ngspice-validated | ~~Phase 9~~ Done |
 | `.measure` | **Done** — TRIG/TARG, FIND/WHEN, AVG/RMS/MIN/MAX/PP/INTEG, PARAM | ~~Phase 9~~ Done |
 | `.print`/`.plot` | **Done** — tabular ASCII output, ASCII waveform plots | ~~Phase 9~~ Done |
-| Flicker (1/f) noise | Not started — no devices have flicker noise | Phase 9.5 |
-| Full BSIM4v7 noise | Simplified (channel thermal only) — full b4v7noi.c not migrated | Phase 9.5 |
-| BJT/JFET noise | Not started — no noise models for Q/J devices | Phase 9.5 |
-| `.options` parsing | Not started — uses hardcoded defaults | Phase 9.5 |
-| `.four` (Fourier) | Not started | Phase 9.5 |
-| Switches (SW/CSW) | Not started | Phase 9.5 |
-| Nonlinear controlled sources | Not started — only linear E/G/H/F | Phase 9.5 |
-| Transmission lines (T/LTRA) | Not started | Phase 9.5 |
+| Flicker (1/f) noise | **Done** — Kf·I^Af/f in BJT, JFET, BSIM4v7, resistor | ~~Phase 9.5~~ Done |
+| Full BSIM4v7 noise | **Done** — channel thermal, flicker, Rg/Rb/Rd/Rs thermal | ~~Phase 9.5~~ Done |
+| BJT/JFET noise | **Done** — shot, thermal, flicker noise models | ~~Phase 9.5~~ Done |
+| `.options` parsing | **Done** — reltol, abstol, vntol, chgtol, trtol, itl1, itl4, gmin, temp, tnom, method | ~~Phase 9.5~~ Done |
+| `.four` (Fourier) | **Done** — DFT, harmonics, THD | ~~Phase 9.5~~ Done |
+| Switches (SW/CSW) | **Done** — voltage/current controlled, hysteresis, smooth transition | ~~Phase 9.5~~ Done |
+| Nonlinear controlled sources | **Done** — POLY, TABLE, B-element (ASRC) | ~~Phase 9.5~~ Done |
+| Transmission lines (T/LTRA) | **Done** — lossless TL, lossy LTRA (LC/RLC/RC/RG) | ~~Phase 9.5~~ Done |
+| `.step` parameter sweeping | **Done** — source, temp, param sweep over any analysis | ~~Phase 9.5~~ Done |
+| `.pz` pole-zero analysis | **Done** — LAPACK dggev generalized eigenvalue | ~~Phase 9.5~~ Done |
+| Random `.param` functions | **Done** — gauss/agauss/unif/aunif (ngspice numparam parity) | ~~Phase 9.5~~ Done |
 | GPU acceleration (CUDA) | Not started (design doc M2/M3) | Phase 10 |
 
 ---
@@ -341,7 +344,7 @@
 
 ---
 
-## Phase 9.5: ngspice Feature Parity (MOSTLY COMPLETE)
+## Phase 9.5: ngspice Feature Parity ✅ COMPLETE
 
 **Goal:** Close remaining gaps between neospice and ngspice for the feature set that real-world analog designers expect. After this phase, neospice should handle any netlist that uses only the devices and analyses ngspice supports in its "standard" (non-XSPICE) mode.
 
@@ -416,15 +419,17 @@
 - [ ] Extract shared `generate_frequencies()` from `ac.cpp` and `noise.cpp`
 - [x] All `Device::noise_sources()` use simulation temperature
 - [ ] Audit all TODO/FIXME comments in codebase
-- [x] Test: full regression suite passes (769 tests)
+- [x] Test: full regression suite passes (785 tests)
 
-### Remaining from 9.5 (not yet done):
+### Remaining from 9.5 (COMPLETE):
 
-- `.step` / `.temp` parameter sweeping
-- Random ASRC functions (gauss, unif, limit)
-- LTRA RL mode (enum exists, transient handler returns false)
+- ~~`.step` / `.temp` parameter sweeping~~ ✅ `.step` parsing and execution (source, temp, param)
+- ~~Random ASRC functions (gauss, unif, limit)~~ ✅ `gauss/agauss/unif/aunif` in `.param` expressions
+- ~~LTRA RL mode~~ Not a gap — ngspice also rejects RL with "not supported yet"
+- ✅ `.pz` pole-zero analysis (LAPACK dggev generalized eigenvalue)
+- 785 tests passing across 123 test suites
 
-See `docs/superpowers/plans/2026-04-20-remaining-feature-gaps.md` for the implementation plan.
+See `docs/superpowers/plans/2026-04-20-remaining-feature-gaps.md` (COMPLETE).
 
 ---
 
