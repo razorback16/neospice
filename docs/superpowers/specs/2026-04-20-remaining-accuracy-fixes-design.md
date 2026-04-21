@@ -1,4 +1,6 @@
-# Remaining Accuracy Fixes — Design Spec
+# Remaining Accuracy Fixes — Design Spec ✅ COMPLETE
+
+> **Status:** Design executed. All fixes implemented and merged to `main` on 2026-04-20.
 
 ## Goal
 

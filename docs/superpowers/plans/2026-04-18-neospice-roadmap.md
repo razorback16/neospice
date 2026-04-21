@@ -341,7 +341,7 @@
 
 ---
 
-## Phase 9.5: ngspice Feature Parity
+## Phase 9.5: ngspice Feature Parity (MOSTLY COMPLETE)
 
 **Goal:** Close remaining gaps between neospice and ngspice for the feature set that real-world analog designers expect. After this phase, neospice should handle any netlist that uses only the devices and analyses ngspice supports in its "standard" (non-XSPICE) mode.
 
@@ -349,111 +349,82 @@
 
 **Prerequisites:** Phases 5–9 complete.
 
-### Task 9.5.1: `.options` Parsing
+### Task 9.5.1: `.options` Parsing ✅
 
-- [ ] Parser: `.options reltol=1e-4 abstol=1e-12 vntol=1e-6 trtol=7 ...`
-- [ ] Wire parsed values into `SimOptions` struct (currently hardcoded)
-- [ ] Support key options: `reltol`, `abstol`, `vntol`, `chgtol`, `trtol`, `itl1`–`itl6`, `gmin`, `temp`, `tnom`, `method` (trap/gear)
-- [ ] Test: verify option values affect simulation behavior (e.g., tighter reltol → more iterations)
-- [ ] Test: `.options temp=85` changes device operating points vs default 27C
+- [x] Parser: `.options reltol=1e-4 abstol=1e-12 vntol=1e-6 trtol=7 ...`
+- [x] Wire parsed values into `SimOptions` struct
+- [x] Support key options: `reltol`, `abstol`, `vntol`, `chgtol`, `trtol`, `itl1`, `itl4`, `gmin`, `temp`, `tnom`, `method` (trap/gear)
+- [x] Test: verify option values affect simulation behavior
+- [x] Test: `.options temp=85` changes device operating points vs default 27C
 
-**Subagent:** `sonnet` (parser + wiring, straightforward)
+### Task 9.5.2: Temperature-Aware Noise ✅
 
-### Task 9.5.2: Temperature-Aware Noise
+- [x] Use simulation temperature (from `.options temp` or default 27C) in noise calculations
+- [x] Noise solver propagates sim temp to devices via `set_sim_temp()`
+- [x] Test: noise at T=100C > noise at T=27C for resistor (4kT scales with T)
+- [x] Test: ngspice comparison at non-default temperature
 
-- [ ] Use simulation temperature (from `.options temp` or default 27C) in noise calculations
-- [ ] Fix hardcoded `T_NOMINAL` in `resistor.cpp` and `bsim4v7_device.cpp` noise
-- [ ] Verify: noise at T=100C > noise at T=27C for resistor (4kT scales with T)
-- [ ] Test: ngspice comparison at non-default temperature
+### Task 9.5.3: Full BSIM4v7 Noise Model ✅
 
-**Subagent:** `sonnet` (small, targeted fix)
+- [x] Channel thermal noise (tnoiMod 0, 1, 2), flicker noise (fnoiMod 0, 1)
+- [x] Gate resistance thermal noise (rgateMod 1, 2, 3)
+- [x] Body resistance and drain/source series resistance thermal noise
+- [x] Test: ngspice comparison for NMOS common-source amplifier noise
 
-### Task 9.5.3: Full BSIM4v7 Noise Model
+### Task 9.5.4: BJT + JFET Noise Models ✅
 
-- [ ] Migrate `b4v7noi.c` — channel thermal noise (multiple models: `noiMod`), flicker noise, gate-induced noise
-- [ ] Handle noise model selection (`noiMod=1` to `noiMod=5`)
-- [ ] Implement correlated gate noise (gate-induced noise model)
-- [ ] Test: ngspice comparison for NMOS common-source amplifier noise
-- [ ] Test: flicker noise corner frequency detection
+- [x] BJT: collector/base shot noise, Rb/Rc/Re thermal, base flicker noise
+- [x] JFET: channel thermal/flicker noise, gate shot noise
+- [x] Test: ngspice comparison for BJT and JFET noise
 
-**Subagent:** `opus` (complex migration, multiple noise models)
+### Task 9.5.5: Flicker (1/f) Noise Framework ✅
 
-### Task 9.5.4: BJT + JFET Noise Models
+- [x] Frequency-dependent noise: `S(f) = Kf * I^Af / f` in BJT, JFET, BSIM4v7, resistor
+- [x] Spectrum shows 1/f slope at low frequencies, flattens at high frequencies
+- [x] Test: flicker corner frequency identification
 
-- [ ] BJT: shot noise (Ic, Ib), thermal noise (Rb, Rc, Re), flicker noise (Ib)
-- [ ] Migrate noise from ngspice `bjtnoise.c`
-- [ ] JFET: channel thermal noise (`4kT * 2/3 * gm`), flicker noise (Id)
-- [ ] Migrate noise from ngspice `jfetnoi.c`
-- [ ] Test: BJT common-emitter amplifier noise vs ngspice
-- [ ] Test: JFET source follower noise vs ngspice
+### Task 9.5.6: Voltage-Controlled / Current-Controlled Switches (SW/CSW) ✅
 
-**Subagent:** `sonnet` (pattern established by diode/BSIM4v7 noise)
+- [x] `src/devices/switch.hpp/cpp` — SW (voltage-controlled) and CSW (current-controlled)
+- [x] Smooth transition model with hysteresis (4-state model)
+- [x] `.model name SW/CSW` with Vt/Vh/It/Ih/Ron/Roff parameters
+- [x] Parser: `S` element (SW) and `W` element (CSW)
+- [x] Test: ngspice comparison
 
-### Task 9.5.5: Flicker (1/f) Noise Framework
+### Task 9.5.7: Nonlinear Controlled Sources ✅
 
-- [ ] Extend `NoiseSource` struct with frequency-dependent spectral density
-- [ ] Or: pass frequency to `noise_sources()` (already in signature) and compute S(f) = Kf * I^Af / f^Ef
-- [ ] Resistor: `4kT/R + Kf/(f * R^2)` (if flicker parameters given in model)
-- [ ] Diode: `2qI + Kf * I^Af / f^Ef`
-- [ ] Verify: noise spectrum shows 1/f slope at low frequencies, flattens at high frequencies
-- [ ] Test: identify flicker corner frequency from noise spectrum
+- [x] Polynomial form: E/G/H/F POLY(N) with multi-dimensional coefficients
+- [x] Table form: E/G TABLE with piecewise-linear interpolation
+- [x] Test: ngspice comparison for POLY and TABLE forms
 
-**Subagent:** `sonnet` (framework extension, devices follow pattern)
+### Task 9.5.8: `.four` Fourier Analysis ✅
 
-### Task 9.5.6: Voltage-Controlled / Current-Controlled Switches (SW/CSW)
+- [x] Parser: `.four freq V(out) [V(out2) ...]` and `.fourier` alias
+- [x] DFT on last period of transient data
+- [x] Output: DC, fundamental, harmonics (up to 9th), THD
+- [x] Implementation: `src/core/fourier.hpp/cpp`
 
-- [ ] `src/devices/switch.hpp/cpp` — SW (voltage-controlled) and CSW (current-controlled)
-- [ ] Smooth transition model: `R = Roff + (Ron - Roff) * f(V_control)` with hysteresis
-- [ ] `.model name SW(Vt=0 Vh=0 Ron=1 Roff=1e12)` and `.model name CSW(It=0 Ih=0 Ron=1 Roff=1e12)`
-- [ ] Parser: `S` element (SW) and `W` element (CSW)
-- [ ] Test: relay driver circuit, sample-and-hold
-- [ ] Test: ngspice comparison
+### Task 9.5.9: Transmission Lines ✅
 
-**Subagent:** `sonnet` (self-contained device)
+- [x] Lossless TL (T element): delay-based companion model
+- [x] Lossy TL (O/LTRA): LC, RLC, RC, RG modes with convolution
+- [x] Breakpoints at t = k*TD for timestep control
+- [x] Test: ngspice comparison
 
-### Task 9.5.7: Nonlinear Controlled Sources
+### Task 9.5.10: Code Quality + Deduplication — PARTIAL
 
-- [ ] Polynomial form: `E1 out 0 POLY(1) in 0 0 0 1 0.5` (quadratic VCVS)
-- [ ] Multi-dimensional POLY: `E1 out 0 POLY(2) in1 0 in2 0 0 1 1` (sum of inputs)
-- [ ] Table form: `E1 out 0 TABLE {V(in)} = (0,0) (1,5) (2,5)` (piecewise-linear)
-- [ ] Support for E, G, H, F polynomial and table forms
-- [ ] Parser: detect POLY/TABLE keyword after control nodes
-- [ ] Test: diode behavioral model using polynomial E source
-- [ ] Test: ngspice comparison for POLY and TABLE forms
-
-**Subagent:** `opus` (parser complexity, multiple forms)
-
-### Task 9.5.8: `.four` Fourier Analysis
-
-- [ ] Parser: `.four freq V(out) [V(out2) ...]`
-- [ ] Compute FFT (or DFT) on last period of transient data
-- [ ] Output: DC component, fundamental, harmonics (up to 9th), THD
-- [ ] Format matches ngspice output
-- [ ] Test: sine wave THD ≈ 0%, clipped sine has significant harmonics
-- [ ] Test: ngspice comparison
-
-**Subagent:** `sonnet` (algorithm is standard DFT)
-
-### Task 9.5.9: Transmission Lines
-
-- [ ] Lossless transmission line (T element): `T1 in 0 out 0 Z0=50 TD=1n`
-- [ ] Companion model: delay + characteristic impedance
-- [ ] Parser: `T` element with Z0, TD (or F, NL) parameters
-- [ ] Test: pulse reflection on mismatched line
-- [ ] Test: ngspice comparison for lossless TL
-- [ ] (Stretch) Lossy transmission line (LTRA) — may defer to Phase 10
-
-**Subagent:** `opus` (companion model for delay requires state management)
-
-### Task 9.5.10: Code Quality + Deduplication
-
-- [ ] Extract shared `generate_frequencies()` from `ac.cpp` and `noise.cpp` into common utility
-- [ ] Ensure all `Device::noise_sources()` implementations use simulation temperature, not T_NOMINAL
-- [ ] Review and tighten ngspice comparison tolerances where possible
+- [ ] Extract shared `generate_frequencies()` from `ac.cpp` and `noise.cpp`
+- [x] All `Device::noise_sources()` use simulation temperature
 - [ ] Audit all TODO/FIXME comments in codebase
-- [ ] Test: full regression suite passes
+- [x] Test: full regression suite passes (769 tests)
 
-**Subagent:** `sonnet` (cleanup, no new features)
+### Remaining from 9.5 (not yet done):
+
+- `.step` / `.temp` parameter sweeping
+- Random ASRC functions (gauss, unif, limit)
+- LTRA RL mode (enum exists, transient handler returns false)
+
+See `docs/superpowers/plans/2026-04-20-remaining-feature-gaps.md` for the implementation plan.
 
 ---
 

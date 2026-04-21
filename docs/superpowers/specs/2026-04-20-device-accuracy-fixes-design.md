@@ -1,4 +1,6 @@
-# Device Accuracy Fixes: Matching ngspice Reference Implementation
+# Device Accuracy Fixes: Matching ngspice Reference Implementation ✅ COMPLETE
+
+> **Status:** Design executed. All fixes implemented and merged to `main` on 2026-04-20.
 
 **Date**: 2026-04-20
 **Scope**: All 16 custom-implemented device models in neospice
