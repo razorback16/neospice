@@ -69,3 +69,6 @@ model:
     - { name: "SA",  field: "BSIM4v7sa",                given: "BSIM4v7saGiven",                default: "0.0" }
     - { name: "SB",  field: "BSIM4v7sb",                given: "BSIM4v7sbGiven",                default: "0.0" }
     - { name: "SD",  field: "BSIM4v7sd",                given: "BSIM4v7sdGiven",                default: "0.0" }
+  model_types:
+    - { spice_name: "nmos", flag_field: "BSIM4v7type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "BSIM4v7type", flag_value: -1 }

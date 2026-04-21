@@ -52,3 +52,6 @@ model:
   geometry:
     - { name: "area", field: "VBICarea", given: "VBICareaGiven", default: "1.0" }
     - { name: "m", field: "VBICm", given: "VBICmGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "npn", flag_field: "VBICtype", flag_value: 1 }
+    - { spice_name: "pnp", flag_field: "VBICtype", flag_value: -1 }

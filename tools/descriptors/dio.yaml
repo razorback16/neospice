@@ -60,3 +60,6 @@ model:
     - { name: "w", field: "DIOw", given: "DIOwGiven", default: "0.0" }
     - { name: "l", field: "DIOl", given: "DIOlGiven", default: "0.0" }
     - { name: "m", field: "DIOm", given: "DIOmGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "d", flag_field: "", flag_value: 0 }
+  charge_states: [3]  # DIOcapCharge

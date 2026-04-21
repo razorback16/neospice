@@ -65,3 +65,7 @@ model:
     - { name: "NRD", field: "MOS1drainSquares", given: "MOS1drainSquaresGiven", default: "0.0" }
     - { name: "NRS", field: "MOS1sourceSquares", given: "MOS1sourceSquaresGiven", default: "0.0" }
     - { name: "M", field: "MOS1m", given: "MOS1mGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "nmos", flag_field: "MOS1type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "MOS1type", flag_value: -1 }
+  charge_states: [5, 8, 11, 13, 15]  # qgs, qgd, qgb, qbd, qbs

@@ -64,3 +64,6 @@ model:
     - { name: "PS",  field: "BSIM3sourcePerimeter",   given: "BSIM3sourcePerimeterGiven",   default: "0.0" }
     - { name: "NRD", field: "BSIM3drainSquares",      given: "BSIM3drainSquaresGiven",      default: "0.0" }
     - { name: "NRS", field: "BSIM3sourceSquares",     given: "BSIM3sourceSquaresGiven",     default: "0.0" }
+  model_types:
+    - { spice_name: "nmos", flag_field: "BSIM3type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "BSIM3type", flag_value: -1 }

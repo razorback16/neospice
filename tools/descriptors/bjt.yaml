@@ -61,3 +61,7 @@ model:
     - { name: "areab", field: "BJTareab", given: "BJTareabGiven", default: "1.0" }
     - { name: "areac", field: "BJTareac", given: "BJTareacGiven", default: "1.0" }
     - { name: "m", field: "BJTm", given: "BJTmGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "npn", flag_field: "BJTtype", flag_value: 1 }
+    - { spice_name: "pnp", flag_field: "BJTtype", flag_value: -1 }
+  charge_states: [8, 10, 12, 14]  # qbe, qbc, qsub, qbx
