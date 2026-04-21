@@ -600,6 +600,31 @@ TEST_F(NgspiceCompareTest, AsrcDdtTransient) {
 }
 
 // ---------------------------------------------------------------------------
+// ASRC IDT() time integral test
+// IDT is a neospice/XSPICE extension (ngspice does not support idt() in B
+// sources), so we verify the expected analytical result directly:
+//   V(in)=1 constant  =>  IDT(V(in)) = integral(1, 0..t) = t
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, AsrcIdtTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/asrc_idt.cir";
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    const auto& tr = *cs_result.transient;
+    const auto& t = tr.time;
+    const auto& v_out = tr.voltage("out");
+    ASSERT_EQ(t.size(), v_out.size());
+    ASSERT_GT(t.size(), 2u);
+    // V(out) = IDT(1) = t at each timepoint (skip t=0 where integral is 0)
+    for (size_t i = 1; i < t.size(); ++i) {
+        EXPECT_NEAR(v_out[i], t[i], 1e-3)
+            << "IDT(1) mismatch at t=" << t[i]
+            << ": expected " << t[i] << " got " << v_out[i];
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Resistor model card test — .model RMOD R(TC1=... TC2=...)
 // ---------------------------------------------------------------------------
 

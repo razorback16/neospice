@@ -539,6 +539,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                 ltl->accept_step(t, solution);
             } else if (auto* asrc = dynamic_cast<ASRCDevice*>(dev.get())) {
                 asrc->expression().accept_ddt();
+                asrc->expression().accept_idt();
             }
             // BSIM4 state advance happens via ckt.rotate_state() on the next step.
         }

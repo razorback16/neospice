@@ -18,7 +18,7 @@
 //                       exp log log10 sqrt abs pow min max
 //                       sinh cosh tanh acosh asinh atanh
 //                       sgn u ustep uramp ceil floor nint pwr
-//                       limit if ddt
+//                       limit if ddt idt
 // Numeric literals with SPICE suffixes (1k, 2.5m, 100u, etc.)
 // ---------------------------------------------------------------------------
 
@@ -65,6 +65,7 @@ enum class NodeType {
     PWL,            // PWL(x, x1,y1, x2,y2, ...) — piecewise linear
     // Time-domain functions (stateful)
     DDT,            // DDT(expr) — time derivative via backward difference
+    IDT,            // IDT(expr [, ic]) — time integral via trapezoidal accumulation
 };
 
 struct ASTNode {
@@ -95,8 +96,8 @@ public:
     /// Evaluate without derivatives (for convergence test etc.)
     double evaluate(const std::vector<double>& var_values) const;
 
-    /// Set the current timestep for DDT evaluation.
-    /// Must be called before evaluate() when DDT nodes are present.
+    /// Set the current timestep for DDT/IDT evaluation.
+    /// Must be called before evaluate() when DDT/IDT nodes are present.
     void set_dt(double dt) const { current_dt_ = dt; }
 
     /// Accept the current DDT argument values as the "previous" for the
@@ -104,6 +105,14 @@ public:
     void accept_ddt() const {
         ddt_prev_values_ = ddt_current_values_;
         ddt_has_prev_ = ddt_has_current_;
+    }
+
+    /// Accept the current IDT integral values after an accepted timestep.
+    /// Commits the tentative accumulator and previous-argument state.
+    void accept_idt() const {
+        idt_committed_ = idt_accumulators_;
+        idt_committed_prev_arg_ = idt_prev_arg_values_;
+        idt_committed_has_prev_ = idt_has_prev_arg_;
     }
 
     /// Variable references discovered during parsing.
@@ -139,6 +148,16 @@ private:
     mutable std::vector<double> ddt_current_values_;    // current eval argument values (tentative)
     mutable std::vector<bool>   ddt_has_current_;       // whether current values have been set
     mutable int ddt_eval_idx_ = 0;                      // counter reset each evaluate call
+
+    // IDT state — two-buffer pattern mirroring DDT
+    mutable std::vector<double> idt_accumulators_;       // tentative integral values
+    mutable std::vector<double> idt_prev_arg_values_;    // tentative previous argument values
+    mutable std::vector<bool>   idt_has_prev_arg_;       // tentative has-previous flags
+    mutable std::vector<double> idt_committed_;           // committed integral values (after accept)
+    mutable std::vector<double> idt_committed_prev_arg_; // committed previous argument values
+    mutable std::vector<bool>   idt_committed_has_prev_; // committed has-previous flags
+    mutable std::vector<bool>   idt_initialized_;         // whether accumulator was initialized with IC
+    mutable int idt_eval_idx_ = 0;                        // counter reset each evaluate call
 };
 
 // ---------------------------------------------------------------------------

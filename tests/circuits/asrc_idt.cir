@@ -1,0 +1,8 @@
+ASRC IDT test - integrator
+* Constant input of 1V should integrate to a linear ramp V(out) ~ t
+V1 in 0 1
+R1 in 0 1k
+B1 out 0 V={IDT(V(in))}
+R2 out 0 1Meg
+.tran 0.01 0.5
+.end

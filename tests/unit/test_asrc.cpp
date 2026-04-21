@@ -466,3 +466,75 @@ B1 out 0 V={abs(V(in))}
     auto dc = sim.run_dc(ckt);
     EXPECT_NEAR(dc.voltage("out"), 3.0, 1e-6);
 }
+
+// ===========================================================================
+// IDT() function tests
+// ===========================================================================
+
+TEST(ASRCExpr, IdtParseNoIC) {
+    // IDT(V(in)) should parse without error
+    auto expr = CompiledExpression::compile("IDT(V(in))");
+    EXPECT_EQ(expr.num_vars(), 1);
+    EXPECT_EQ(expr.var_refs()[0].kind, VarKind::NODE_VOLTAGE);
+    EXPECT_EQ(expr.var_refs()[0].name1, "in");
+}
+
+TEST(ASRCExpr, IdtParseWithIC) {
+    // IDT(V(in), 5.0) should parse with IC = 5.0
+    auto expr = CompiledExpression::compile("IDT(V(in), 5.0)");
+    EXPECT_EQ(expr.num_vars(), 1);
+}
+
+TEST(ASRCExpr, IdtParseWithICAndAssert) {
+    // IDT(V(in), 1.0, 10.0) — third arg (assert) parsed and discarded
+    auto expr = CompiledExpression::compile("IDT(V(in), 1.0, 10.0)");
+    EXPECT_EQ(expr.num_vars(), 1);
+}
+
+TEST(ASRC, IdtConstantInput) {
+    // IDT(1) over 0.5s should yield V(out) ~ t (linear ramp)
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+IDT constant test
+V1 in 0 1
+R1 in 0 1k
+B1 out 0 V={IDT(V(in))}
+R2 out 0 1Meg
+.tran 0.01 0.5
+.end
+)");
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.transient.has_value());
+    const auto& tr = *result.transient;
+    const auto& t = tr.time;
+    const auto& v_out = tr.voltage("out");
+    // At the last timepoint (t ~ 0.5), V(out) should be ~ 0.5
+    double t_last = t.back();
+    double v_last = v_out.back();
+    EXPECT_NEAR(v_last, t_last, 1e-3)
+        << "IDT(1) at t=" << t_last << ": expected " << t_last << " got " << v_last;
+}
+
+TEST(ASRC, IdtWithInitialCondition) {
+    // IDT(1, 10.0) should start at 10.0 and ramp: V(out) ~ 10 + t
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+IDT IC test
+V1 in 0 1
+R1 in 0 1k
+B1 out 0 V={IDT(V(in), 10.0)}
+R2 out 0 1Meg
+.tran 0.01 0.5
+.end
+)");
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.transient.has_value());
+    const auto& tr = *result.transient;
+    const auto& t = tr.time;
+    const auto& v_out = tr.voltage("out");
+    // At the last timepoint (t ~ 0.5), V(out) should be ~ 10.5
+    double t_last = t.back();
+    double v_last = v_out.back();
+    EXPECT_NEAR(v_last, 10.0 + t_last, 1e-3)
+        << "IDT(1, 10) at t=" << t_last << ": expected " << (10.0 + t_last) << " got " << v_last;
+}

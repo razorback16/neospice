@@ -550,6 +550,35 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     if (name == "nint")  return make_unary(NodeType::NINT);
     if (name == "ddt")   return make_unary(NodeType::DDT);
 
+    // IDT(expr [, ic [, assert]]) — time integral with optional initial condition
+    if (name == "idt") {
+        auto arg = parse_additive();
+        double ic = 0.0;
+        skip_ws();
+        if (pos_ < expr_.size() && expr_[pos_] == ',') {
+            ++pos_;
+            auto ic_node = parse_additive();
+            if (ic_node->type != NodeType::CONSTANT)
+                throw ParseError("ASRC expression: IDT initial condition must be constant");
+            ic = ic_node->value;
+            // Skip optional third argument (assert value, ignored per ngspice)
+            skip_ws();
+            if (pos_ < expr_.size() && expr_[pos_] == ',') {
+                ++pos_;
+                parse_additive(); // parse and discard
+            }
+        }
+        skip_ws();
+        if (pos_ >= expr_.size() || expr_[pos_] != ')')
+            throw ParseError("ASRC expression: missing ')' for IDT");
+        ++pos_;
+        auto node = std::make_unique<ASTNode>();
+        node->type = NodeType::IDT;
+        node->left = std::move(arg);
+        node->value = ic;  // store IC in value field
+        return node;
+    }
+
     // Binary functions
     if (name == "atan2") return make_binary(NodeType::ATAN2);
     if (name == "pow")   return make_binary(NodeType::POW_FN);
@@ -620,6 +649,7 @@ double CompiledExpression::evaluate(const std::vector<double>& var_values,
                                     std::vector<double>& derivs) const {
     assert(static_cast<int>(var_values.size()) >= num_vars());
     ddt_eval_idx_ = 0;  // reset DDT node counter for this evaluation
+    idt_eval_idx_ = 0;  // reset IDT node counter for this evaluation
     auto dn = eval_node(root_.get(), var_values, num_vars(), true);
     derivs = std::move(dn.grad);
     return dn.val;
@@ -628,6 +658,7 @@ double CompiledExpression::evaluate(const std::vector<double>& var_values,
 double CompiledExpression::evaluate(const std::vector<double>& var_values) const {
     assert(static_cast<int>(var_values.size()) >= num_vars());
     ddt_eval_idx_ = 0;  // reset DDT node counter for this evaluation
+    idt_eval_idx_ = 0;  // reset IDT node counter for this evaluation
     auto dn = eval_node(root_.get(), var_values, num_vars(), false);
     return dn.val;
 }
@@ -1134,6 +1165,51 @@ CompiledExpression::eval_node(const ASTNode* node,
         // Store current value in tentative buffer (promoted to prev by accept_ddt())
         ddt_current_values_[ddt_idx] = a.val;
         ddt_has_current_[ddt_idx] = true;
+
+        return result;
+    }
+
+    case NodeType::IDT: {
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+
+        // Each IDT node gets a unique index within an evaluation pass
+        int idt_idx = idt_eval_idx_++;
+        if (idt_idx >= static_cast<int>(idt_accumulators_.size())) {
+            idt_accumulators_.resize(idt_idx + 1, 0.0);
+            idt_prev_arg_values_.resize(idt_idx + 1, 0.0);
+            idt_has_prev_arg_.resize(idt_idx + 1, false);
+            idt_committed_.resize(idt_idx + 1, 0.0);
+            idt_committed_prev_arg_.resize(idt_idx + 1, 0.0);
+            idt_committed_has_prev_.resize(idt_idx + 1, false);
+            idt_initialized_.resize(idt_idx + 1, false);
+        }
+
+        // Initialize with IC on first call
+        if (!idt_initialized_[idt_idx]) {
+            idt_accumulators_[idt_idx] = node->value;  // IC
+            idt_committed_[idt_idx] = node->value;
+            idt_initialized_[idt_idx] = true;
+        }
+
+        double dt = current_dt_;
+        // Start from committed value (not tentative) — critical for Newton convergence
+        double integral = idt_committed_[idt_idx];
+        if (dt > 0.0 && idt_committed_has_prev_[idt_idx]) {
+            integral += 0.5 * (a.val + idt_committed_prev_arg_[idt_idx]) * dt;
+        }
+        idt_accumulators_[idt_idx] = integral;
+
+        result.val = integral;
+
+        // Gradient: d(IDT(f))/dx_i = 0.5 * dt * (df/dx_i)
+        if (need_grad && dt > 0.0 && idt_committed_has_prev_[idt_idx]) {
+            for (int i = 0; i < nv; ++i)
+                result.grad[i] = 0.5 * dt * a.grad[i];
+        }
+
+        // Store current argument for next step's trapezoidal rule (tentative)
+        idt_prev_arg_values_[idt_idx] = a.val;
+        idt_has_prev_arg_[idt_idx] = true;
 
         return result;
     }
