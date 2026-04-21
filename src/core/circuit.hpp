@@ -67,7 +67,7 @@ struct FourierCommand {
 };
 
 struct AnalysisCommand {
-    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE };
+    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE, TF };
     Type type;
     double tran_tstep = 0, tran_tstop = 0;
     bool tran_uic = false;   // Use Initial Conditions
@@ -80,6 +80,9 @@ struct AnalysisCommand {
     // Noise analysis parameters
     std::string noise_output;      // e.g., "v(out)" — the output voltage node
     std::string noise_input_src;   // e.g., "vin" — the input voltage source name
+    // TF analysis parameters
+    std::string tf_output;         // e.g., "v(out)" or "i(vout)"
+    std::string tf_input_src;      // e.g., "vin" — the input source name
 };
 
 // IntegratorCtx is defined in core/types.hpp (included above) so that

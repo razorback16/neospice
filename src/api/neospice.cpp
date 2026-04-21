@@ -125,6 +125,11 @@ NoiseResult Simulator::run_noise(Circuit& ckt, const std::string& output_node,
     return solve_noise(ckt, output_node, input_src, mode, npoints, fstart, fstop);
 }
 
+TFResult Simulator::run_tf(Circuit& ckt, const std::string& output_var,
+                           const std::string& input_src) {
+    return solve_tf(ckt, output_var, input_src);
+}
+
 SimulationResult Simulator::run(Circuit& ckt) {
     SimulationResult result;
     for (auto& cmd : ckt.analyses) {
@@ -160,6 +165,10 @@ SimulationResult Simulator::run(Circuit& ckt) {
                                   cmd.ac_mode, cmd.ac_npoints,
                                   cmd.ac_fstart, cmd.ac_fstop);
             result.noise = std::move(nr);
+            break;
+        }
+        case AnalysisCommand::TF: {
+            result.tf = solve_tf(ckt, cmd.tf_output, cmd.tf_input_src);
             break;
         }
         default:

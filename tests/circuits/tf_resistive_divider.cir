@@ -1,0 +1,7 @@
+Transfer function test - resistive divider
+V1 in 0 1
+R1 in mid 1k
+R2 mid out 2k
+R3 out 0 10k
+.tf V(out) V1
+.end

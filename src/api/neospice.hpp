@@ -4,6 +4,7 @@
 #include "core/transient.hpp"
 #include "core/ac.hpp"
 #include "core/noise.hpp"
+#include "core/tf.hpp"
 #include "core/measure.hpp"
 #include <string>
 #include <optional>
@@ -17,6 +18,7 @@ struct SimulationResult {
     std::optional<ACResult> ac;
     std::optional<DCSweepResult> dc_sweep;
     std::optional<NoiseResult> noise;
+    std::optional<TFResult> tf;
     std::optional<MeasureResult> measures;
     std::vector<std::string> print_output;  // formatted .print/.plot output
 };
@@ -47,6 +49,8 @@ public:
                           AnalysisCommand::ACMode mode,
                           int npoints, double fstart, double fstop);
     DCSweepResult run_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& params);
+    TFResult run_tf(Circuit& ckt, const std::string& output_var,
+                    const std::string& input_src);
 
     SimulationResult run(Circuit& ckt);
 

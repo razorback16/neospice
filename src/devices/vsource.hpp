@@ -47,6 +47,10 @@ public:
     void set_branch_index(int32_t idx);
     int32_t branch_index() const { return branch_idx_; }
 
+    /// Node accessors (needed by .tf analysis).
+    int32_t pos_node() const { return np_; }
+    int32_t neg_node() const { return nn_; }
+
     /// AC analysis parameters.
     void set_ac(double mag, double phase_deg = 0.0);
     double ac_mag() const { return ac_mag_; }

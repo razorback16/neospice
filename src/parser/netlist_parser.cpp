@@ -1165,6 +1165,18 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     }
                     ckt.prints.push_back(std::move(pcmd));
                 }
+            } else if (first == ".tf") {
+                // .tf output_var input_src
+                // e.g., .tf V(out) V1  or  .tf I(Vout) V1
+                if (tokens.size() < 3) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .tf requires output variable and input source");
+                }
+                AnalysisCommand cmd;
+                cmd.type = AnalysisCommand::TF;
+                cmd.tf_output = to_lower(tokens[1]);
+                cmd.tf_input_src = to_lower(tokens[2]);
+                ckt.analyses.push_back(cmd);
             } else if (first == ".four" || first == ".fourier") {
                 // .four freq signal1 [signal2 ...]
                 if (tokens.size() >= 3) {
