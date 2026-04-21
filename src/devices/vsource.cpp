@@ -42,6 +42,11 @@ void VSource::set_sffm(SffmParams p) {
     sffm_ = p;
 }
 
+void VSource::set_am(AmParams p) {
+    func_ = SourceFunction::AM;
+    am_   = p;
+}
+
 void VSource::resolve_defaults(double tstep, double tstop) {
     if (func_ == SourceFunction::PULSE) {
         // ngspice (vsrcload.c): TR/TF default to CKTstep when 0 or unspecified,
@@ -64,6 +69,10 @@ void VSource::resolve_defaults(double tstep, double tstop) {
         // ngspice (vsrcload.c): FC/FS default to 1/tstop when 0 or unspecified.
         if (sffm_.fc <= 0) sffm_.fc = (tstop > 0) ? 1.0 / tstop : 0.0;
         if (sffm_.fs <= 0) sffm_.fs = (tstop > 0) ? 1.0 / tstop : 0.0;
+    } else if (func_ == SourceFunction::AM) {
+        // ngspice (vsrcload.c): FM/FC default to 1/tstop when 0 or unspecified.
+        if (am_.fm <= 0) am_.fm = (tstop > 0) ? 1.0 / tstop : 0.0;
+        if (am_.fc <= 0) am_.fc = (tstop > 0) ? 1.0 / tstop : 0.0;
     }
 }
 
@@ -137,6 +146,14 @@ double VSource::value_at(double t) const {
         const auto& s = sffm_;
         return s.vo + s.va * std::sin(2.0 * M_PI * s.fc * t
                                       + s.mdi * std::sin(2.0 * M_PI * s.fs * t));
+    }
+
+    case SourceFunction::AM: {
+        const auto& a = am_;
+        if (t < a.td) return 0.0;
+        double dt = t - a.td;
+        return a.sa * (a.oc + std::sin(2.0 * M_PI * a.fm * dt))
+                     * std::sin(2.0 * M_PI * a.fc * dt);
     }
     }
     return dc_value_;

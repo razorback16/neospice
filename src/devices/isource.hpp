@@ -26,6 +26,7 @@ public:
     void set_pwl(PwlParams p);
     void set_exp(ExpParams p);
     void set_sffm(SffmParams p);
+    void set_am(AmParams p);
 
     /// Resolve unspecified PULSE/SIN defaults using .tran parameters.
     void resolve_defaults(double tstep, double tstop);
@@ -61,6 +62,7 @@ private:
     PwlParams      pwl_;
     ExpParams      exp_;
     SffmParams     sffm_;
+    AmParams       am_;
     double         current_time_ = 0.0;
 };
 

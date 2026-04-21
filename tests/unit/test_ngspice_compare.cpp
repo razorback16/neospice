@@ -500,6 +500,20 @@ TEST_F(NgspiceCompareTest, SffmSourceTransient) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, AmSourceTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/am_source.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    // AM with FC=1MHz carrier produces high-frequency oscillation.  Timestep
+    // control differences cause small interpolation mismatch at carrier
+    // zero-crossings, so use a slightly relaxed tolerance.
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-2, 1e-3});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 // ---------------------------------------------------------------------------
 // Temperature coefficient tests
 // ---------------------------------------------------------------------------

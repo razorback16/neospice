@@ -1,0 +1,5 @@
+AM source test
+V1 out 0 AM(1 0.5 10K 1MEG 0)
+R1 out 0 1k
+.tran 1n 100u
+.end
