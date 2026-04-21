@@ -54,6 +54,19 @@ public:
     double prev_dt() const { return prev_dt_; }
     void set_prev_dt(double h) { prev_dt_ = h; }
 
+    // Ringing detection — detects sign-alternating oscillations in the
+    // second differences of node voltages, which indicate trapezoidal
+    // integration ringing near sharp transitions.
+    void check_ringing(const std::vector<double>& sol,
+                       const std::vector<double>& sol_prev,
+                       const std::vector<double>& sol_prev2,
+                       const std::vector<double>& sol_prev3,
+                       int32_t num_nodes,
+                       const SimOptions& opts);
+    bool ringing_detected() const { return ringing_detected_; }
+    int ringing_cooldown() const { return ringing_cooldown_; }
+    void tick_cooldown();  // called each accepted step
+
 private:
     double dt_ = 0.0;
     double time_ = 0.0;
@@ -64,6 +77,8 @@ private:
     double prev_dt_ = 0.0;
     bool crossed_src_bp_ = false;
     BreakpointType last_bp_type_ = BreakpointType::HARD;
+    bool ringing_detected_ = false;
+    int ringing_cooldown_ = 0;
     std::set<double> breakpoints_;
     std::map<double, BreakpointType> source_breakpoints_;
     std::vector<double> max_seen_;  // per-node max |value| for lte_ref_mode==2

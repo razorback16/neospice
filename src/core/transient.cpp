@@ -317,9 +317,10 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     const double dt_min = tstep * 1e-6;
     const double dt_max = tstep * 100.0;
 
-    // History for LTE (stores the two previous accepted solutions)
+    // History for LTE (stores the previous accepted solutions)
     std::vector<double> sol_prev = solution;
     std::vector<double> sol_prev2 = solution;
+    std::vector<double> sol_prev3 = solution;  // 4th history point for ringing detection
     double next_output_time = tstep;
     int step_count = 0;
 
@@ -416,7 +417,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
             // Determine effective method: trap unless user chose gear or
             // ringing detection temporarily switched to gear.
-            bool eff_gear = use_gear;
+            bool eff_gear = (ckt.integrator_ctx.integrate_method == 1);
 
             if (cur_order == 1) {
                 // Backward Euler: y'(t_n) ≈ (y_n - y_{n-1}) / dt
@@ -607,9 +608,38 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             next_output_time += tstep;
         }
 
-        // Shift history
+        // Shift history (sol_prev3 must shift before sol_prev2)
+        sol_prev3 = sol_prev2;
         sol_prev2 = sol_prev;
         sol_prev = solution;
+
+        // Ringing detection — check for sign-alternating second differences
+        // that indicate trapezoidal integration overshoot.  Only when user
+        // selected trap (not gear) and we have 4 history points (step >= 3).
+        // Also skip near breakpoints (steps_after_bp < 5) where the step
+        // reduction already handles transient artifacts from sharp edges.
+        if (step_count >= 3 && !use_gear && steps_after_bp >= 5) {
+            ctrl.check_ringing(solution, sol_prev, sol_prev2, sol_prev3,
+                               num_nodes, ckt.options);
+            ctrl.tick_cooldown();
+
+            // Switch integration method based on ringing state
+            int new_method = (ctrl.ringing_detected() || ctrl.ringing_cooldown() > 0) ? 1 : 0;
+            if (new_method != ckt.integrator_ctx.integrate_method) {
+                ckt.integrator_ctx.integrate_method = new_method;
+                // Propagate to reactive devices so their companion models
+                // use the correct integration coefficients on the next step.
+                for (auto& dev : ckt.devices()) {
+                    if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
+                        cap->set_integration_method(new_method);
+                    } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
+                        ind->set_integration_method(new_method);
+                    } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
+                        ki->set_integration_method(new_method);
+                    }
+                }
+            }
+        }
 
         // Propose next dt from device LTE (ngspice: CKTdelta = newdelta
         // after CKTtrunc, dctran.c ~876).  Use device_dt which already
