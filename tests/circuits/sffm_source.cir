@@ -1,0 +1,5 @@
+SFFM source test
+V1 out 0 SFFM(0 1 1MEG 5 10K)
+R1 out 0 1k
+.tran 10n 100u
+.end

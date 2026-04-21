@@ -9,7 +9,7 @@ namespace neospice {
 // Shared source-function types (used by VSource and ISource)
 // ---------------------------------------------------------------------------
 
-enum class SourceFunction { DC, PULSE, SIN, PWL, EXP };
+enum class SourceFunction { DC, PULSE, SIN, PWL, EXP, SFFM };
 
 struct PulseParams {
     double v1 = 0, v2 = 0, td = 0, tr = -1, tf = -1, pw = -1, per = -1;
@@ -25,6 +25,10 @@ struct PwlParams {
 
 struct ExpParams {
     double v1 = 0, v2 = 0, td1 = 0, tau1 = -1, td2 = -1, tau2 = -1;
+};
+
+struct SffmParams {
+    double vo = 0, va = 0, fc = -1, mdi = 0, fs = -1;
 };
 
 // ---------------------------------------------------------------------------
@@ -49,6 +53,7 @@ public:
     void set_sin(SinParams p);
     void set_pwl(PwlParams p);
     void set_exp(ExpParams p);
+    void set_sffm(SffmParams p);
 
     /// Override the DC value (used during DC sweep analysis).
     void set_dc_value(double v) { dc_value_ = v; }
@@ -98,6 +103,7 @@ private:
     SinParams      sin_;
     PwlParams      pwl_;
     ExpParams      exp_;
+    SffmParams     sffm_;
     double         current_time_ = 0.0;
 
     // Cached offsets (assigned after pattern is built)

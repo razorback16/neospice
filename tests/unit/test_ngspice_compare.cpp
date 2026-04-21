@@ -484,6 +484,22 @@ TEST_F(NgspiceCompareTest, ExpSourceTransient) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, SffmSourceTransient) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/sffm_source.cir";
+    auto ng_result = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.transient.has_value());
+    // SFFM with FC=1MHz and MDI=5 produces a rapidly varying waveform whose
+    // instantaneous frequency sweeps up to FC+MDI*FS = 1.05MHz.  Timestep
+    // control differences between the two simulators create interpolation
+    // mismatch at the high-frequency carrier zero-crossings, so we use a
+    // slightly relaxed tolerance.
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-2, 1e-3});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 // ---------------------------------------------------------------------------
 // Temperature coefficient tests
 // ---------------------------------------------------------------------------

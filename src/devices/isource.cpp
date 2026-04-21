@@ -32,6 +32,11 @@ void ISource::set_exp(ExpParams p) {
     exp_  = p;
 }
 
+void ISource::set_sffm(SffmParams p) {
+    func_ = SourceFunction::SFFM;
+    sffm_ = p;
+}
+
 void ISource::resolve_defaults(double tstep, double tstop) {
     if (func_ == SourceFunction::PULSE) {
         if (pulse_.tr <= 0) pulse_.tr = tstep;
@@ -47,6 +52,10 @@ void ISource::resolve_defaults(double tstep, double tstop) {
         if (exp_.tau1 <= 0) exp_.tau1 = tstep;
         if (exp_.td2  <= 0) exp_.td2  = exp_.td1 + tstep;
         if (exp_.tau2 <= 0) exp_.tau2 = tstep;
+    } else if (func_ == SourceFunction::SFFM) {
+        // ngspice (vsrcload.c): FC/FS default to 1/tstop when 0 or unspecified.
+        if (sffm_.fc <= 0) sffm_.fc = (tstop > 0) ? 1.0 / tstop : 0.0;
+        if (sffm_.fs <= 0) sffm_.fs = (tstop > 0) ? 1.0 / tstop : 0.0;
     }
 }
 
@@ -111,6 +120,12 @@ double ISource::value_at(double t) const {
             return e.v1 + (e.v2 - e.v1) * (1.0 - std::exp(-(t - e.td1) / e.tau1))
                         + (e.v1 - e.v2) * (1.0 - std::exp(-(t - e.td2) / e.tau2));
         }
+    }
+
+    case SourceFunction::SFFM: {
+        const auto& s = sffm_;
+        return s.vo + s.va * std::sin(2.0 * M_PI * s.fc * t
+                                      + s.mdi * std::sin(2.0 * M_PI * s.fs * t));
     }
     }
     return dc_value_;

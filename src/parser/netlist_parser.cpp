@@ -95,6 +95,7 @@ struct SourceSpec {
     SinParams sin;
     PwlParams pwl;
     ExpParams exp;
+    SffmParams sffm;
 };
 
 SourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t start_idx) {
@@ -120,7 +121,7 @@ SourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t star
                 std::string next_lower = to_lower(tokens[i]);
                 // Check if next token is a number (AC phase) or a keyword
                 if (next_lower != "dc" && next_lower != "pulse" && next_lower != "sin" &&
-                    next_lower != "pwl" && next_lower != "exp" &&
+                    next_lower != "pwl" && next_lower != "exp" && next_lower != "sffm" &&
                     next_lower.find('(') == std::string::npos) {
                     try {
                         spec.ac_phase = parse_spice_number(tokens[i]);
@@ -165,6 +166,14 @@ SourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t star
             if (vals.size() >= 4) spec.exp.tau1 = vals[3];
             if (vals.size() >= 5) spec.exp.td2  = vals[4];
             if (vals.size() >= 6) spec.exp.tau2 = vals[5];
+        } else if (lower == "sffm" || lower.substr(0, 4) == "sffm") {
+            auto vals = parse_paren_params(tokens, i);
+            spec.func = SourceFunction::SFFM;
+            if (vals.size() >= 1) spec.sffm.vo  = vals[0];
+            if (vals.size() >= 2) spec.sffm.va  = vals[1];
+            if (vals.size() >= 3) spec.sffm.fc  = vals[2];
+            if (vals.size() >= 4) spec.sffm.mdi = vals[3];
+            if (vals.size() >= 5) spec.sffm.fs  = vals[4];
         } else {
             // Try to parse as a bare DC value (no "DC" keyword)
             try {
@@ -1171,6 +1180,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             else if (spec.func == SourceFunction::SIN) vs->set_sin(spec.sin);
             else if (spec.func == SourceFunction::PWL) vs->set_pwl(spec.pwl);
             else if (spec.func == SourceFunction::EXP) vs->set_exp(spec.exp);
+            else if (spec.func == SourceFunction::SFFM) vs->set_sffm(spec.sffm);
             ckt.add_device(std::move(vs));
 
         } else if (elem_type == 'i') {
@@ -1191,6 +1201,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             else if (spec.func == SourceFunction::SIN) is->set_sin(spec.sin);
             else if (spec.func == SourceFunction::PWL) is->set_pwl(spec.pwl);
             else if (spec.func == SourceFunction::EXP) is->set_exp(spec.exp);
+            else if (spec.func == SourceFunction::SFFM) is->set_sffm(spec.sffm);
             ckt.add_device(std::move(is));
 
         } else if (elem_type == 'd') {
