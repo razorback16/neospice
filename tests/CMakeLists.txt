@@ -59,6 +59,7 @@ add_executable(neospice_tests
     unit/test_dc_sweep.cpp
     unit/test_save_filter.cpp
     unit/test_expression.cpp
+    unit/test_expression_random.cpp
     unit/test_subcircuit.cpp
     unit/test_subcircuit_expand.cpp
     unit/test_include.cpp

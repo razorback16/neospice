@@ -3,6 +3,7 @@
 #include "core/types.hpp"
 #include <cctype>
 #include <cmath>
+#include <random>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
@@ -11,6 +12,18 @@
 namespace neospice {
 
 namespace {
+
+thread_local std::mt19937 tls_rng{std::random_device{}()};
+
+double gauss0() {
+    std::normal_distribution<double> dist(0.0, 1.0);
+    return dist(tls_rng);
+}
+
+double uniform_minus1_plus1() {
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    return dist(tls_rng);
+}
 
 // ---------------------------------------------------------------------------
 // Recursive-descent expression parser
@@ -159,6 +172,28 @@ private:
             // SPICE convention varies; we use cond > 0 as true.
             return (args[0] > 0.0) ? args[1] : args[2];
         }
+        if (lname == "gauss") {
+            require(3);
+            double nominal = args[0], rel_var = args[1], sigma = args[2];
+            double stdvar = (sigma != 0.0) ? rel_var * nominal / sigma : 0.0;
+            return nominal + stdvar * gauss0();
+        }
+        if (lname == "agauss") {
+            require(3);
+            double nominal = args[0], abs_var = args[1], sigma = args[2];
+            double stdvar = (sigma != 0.0) ? abs_var / sigma : 0.0;
+            return nominal + stdvar * gauss0();
+        }
+        if (lname == "unif") {
+            require(2);
+            double nominal = args[0], rel_var = args[1];
+            return nominal * (1.0 + rel_var * uniform_minus1_plus1());
+        }
+        if (lname == "aunif") {
+            require(2);
+            double nominal = args[0], abs_var = args[1];
+            return nominal + abs_var * uniform_minus1_plus1();
+        }
         throw ParseError("Unknown function: " + name);
     }
 
@@ -240,7 +275,8 @@ private:
 // ---------------------------------------------------------------------------
 const std::unordered_set<std::string> kBuiltinFunctions = {
     "sqrt", "abs", "log", "log10", "exp", "sin", "cos",
-    "min", "max", "pow", "if"
+    "min", "max", "pow", "if",
+    "gauss", "agauss", "unif", "aunif"
 };
 
 // ---------------------------------------------------------------------------
