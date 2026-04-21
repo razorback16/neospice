@@ -1,0 +1,13 @@
+CCVS POLY test
+* Test H element POLY(1) current-controlled voltage source
+*
+* Vsense1 drives current through R1: I(Vsense1) = 1V/1k = 1mA
+* H1 POLY(1): V(out) = 0.5 + 1000*I(Vsense1) = 0.5 + 1000*0.001 = 1.5 V
+*
+Vin in 0 1
+R1 in a 1k
+Vsense1 a 0 0
+H1 out 0 POLY(1) Vsense1 0.5 1000
+R2 out 0 1k
+.op
+.end

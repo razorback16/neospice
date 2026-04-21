@@ -1,0 +1,18 @@
+CCCS POLY(2) test
+* Test F element POLY(2) with two sensing VSources
+*
+* I(Vsense1) = 2V/1k = 2mA
+* I(Vsense2) = 3V/1k = 3mA
+* F1 POLY(2): I = c0 + c1*I1 + c2*I2 = 0 + 500*0.002 + 500*0.003 = 2.5 A
+* V(out) = -2.5 * 1k = -2500 V
+*
+V1 in1 0 2
+R1 in1 a 1k
+Vsense1 a 0 0
+V2 in2 0 3
+R2 in2 b 1k
+Vsense2 b 0 0
+F1 out 0 POLY(2) Vsense1 Vsense2 0 500 500
+R3 out 0 1k
+.op
+.end

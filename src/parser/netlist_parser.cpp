@@ -21,6 +21,8 @@
 #include "devices/switch.hpp"
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/vccs_nonlinear.hpp"
+#include "devices/ccvs_nonlinear.hpp"
+#include "devices/cccs_nonlinear.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/mos1/mos1_device.hpp"
 #include "devices/bsim3/bsim3_device.hpp"
@@ -621,6 +623,26 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int line_number;
     };
     std::vector<DeferredCCCS> deferred_cccs;
+
+    // Deferred POLY CCVS (H POLY elements): resolved after all VSource devices exist.
+    struct DeferredPolyCCVS {
+        std::string name;
+        int32_t np, nn;
+        std::vector<std::string> vsense_names;
+        std::vector<double> coeffs;
+        int line_number;
+    };
+    std::vector<DeferredPolyCCVS> deferred_poly_ccvs;
+
+    // Deferred POLY CCCS (F POLY elements): resolved after all VSource devices exist.
+    struct DeferredPolyCCCS {
+        std::string name;
+        int32_t np, nn;
+        std::vector<std::string> vsense_names;
+        std::vector<double> coeffs;
+        int line_number;
+    };
+    std::vector<DeferredPolyCCCS> deferred_poly_cccs;
 
     // Deferred MOSFETs: parsed M-cards are resolved in a second pass once
     // all .model cards are known.  node indices are already mapped (we have
@@ -1738,39 +1760,137 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
 
         } else if (elem_type == 'h') {
-            // H name np nn Vsense transresistance
+            // H name np nn [POLY(N) Vs1 ... coeffs | Vsense transresistance]
             if (tokens.size() < 5) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": CCVS requires name, np, nn, Vsense, transresistance");
             }
-            DeferredCCVS hd;
-            hd.name        = tokens[0];
-            hd.np          = ckt.node(tokens[1]);
-            hd.nn          = ckt.node(tokens[2]);
-            hd.vsense_name = tokens[3];
-            hd.rm          = parse_spice_number(tokens[4]);
-            hd.line_number = line.line_number;
-            deferred_ccvs.push_back(std::move(hd));
+            std::string tok3h = to_lower(tokens[3]);
+            if (tok3h.substr(0, 4) == "poly") {
+                // POLY(N) form
+                int poly_dim = 1;
+                std::string poly_tok = tok3h;
+                size_t paren_pos = poly_tok.find('(');
+                if (paren_pos != std::string::npos) {
+                    size_t close = poly_tok.find(')');
+                    if (close != std::string::npos && close > paren_pos) {
+                        poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
+                    }
+                } else if (tokens.size() > 4) {
+                    std::string next = tokens[4];
+                    if (!next.empty() && next.front() == '(') {
+                        size_t close = next.find(')');
+                        if (close != std::string::npos) {
+                            poly_dim = std::stoi(next.substr(1, close - 1));
+                        }
+                    }
+                }
+                size_t idx = 4;
+                if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
+
+                // Parse N VSource names
+                std::vector<std::string> vsense_names;
+                vsense_names.reserve(poly_dim);
+                for (int k = 0; k < poly_dim; ++k) {
+                    if (idx >= tokens.size()) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": POLY CCVS: not enough sensing VSource names");
+                    }
+                    vsense_names.push_back(tokens[idx++]);
+                }
+                // Remaining tokens are polynomial coefficients
+                std::vector<double> coeffs;
+                for (; idx < tokens.size(); ++idx) {
+                    coeffs.push_back(parse_spice_number(tokens[idx]));
+                }
+                DeferredPolyCCVS hpd;
+                hpd.name = tokens[0];
+                hpd.np = ckt.node(tokens[1]);
+                hpd.nn = ckt.node(tokens[2]);
+                hpd.vsense_names = std::move(vsense_names);
+                hpd.coeffs = std::move(coeffs);
+                hpd.line_number = line.line_number;
+                deferred_poly_ccvs.push_back(std::move(hpd));
+            } else {
+                // Linear form: H name np nn Vsense transresistance
+                DeferredCCVS hd;
+                hd.name        = tokens[0];
+                hd.np          = ckt.node(tokens[1]);
+                hd.nn          = ckt.node(tokens[2]);
+                hd.vsense_name = tokens[3];
+                hd.rm          = parse_spice_number(tokens[4]);
+                hd.line_number = line.line_number;
+                deferred_ccvs.push_back(std::move(hd));
+            }
 
         } else if (elem_type == 'f') {
-            // F name np nn Vsense gain
+            // F name np nn [POLY(N) Vs1 ... coeffs | Vsense gain]
             if (tokens.size() < 5) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": CCCS requires name, np, nn, Vsense, gain");
             }
-            DeferredCCCS fd;
-            fd.name        = tokens[0];
-            fd.np          = ckt.node(tokens[1]);
-            fd.nn          = ckt.node(tokens[2]);
-            fd.vsense_name = tokens[3];
-            fd.gain        = parse_spice_number(tokens[4]);
-            fd.line_number = line.line_number;
-            for (size_t k = 5; k < tokens.size(); ++k) {
-                std::string tok = to_lower(tokens[k]);
-                if (tok.starts_with("m="))
-                    fd.m = parse_spice_number(tok.substr(2));
+            std::string tok3f = to_lower(tokens[3]);
+            if (tok3f.substr(0, 4) == "poly") {
+                // POLY(N) form
+                int poly_dim = 1;
+                std::string poly_tok = tok3f;
+                size_t paren_pos = poly_tok.find('(');
+                if (paren_pos != std::string::npos) {
+                    size_t close = poly_tok.find(')');
+                    if (close != std::string::npos && close > paren_pos) {
+                        poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
+                    }
+                } else if (tokens.size() > 4) {
+                    std::string next = tokens[4];
+                    if (!next.empty() && next.front() == '(') {
+                        size_t close = next.find(')');
+                        if (close != std::string::npos) {
+                            poly_dim = std::stoi(next.substr(1, close - 1));
+                        }
+                    }
+                }
+                size_t idx = 4;
+                if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
+
+                // Parse N VSource names
+                std::vector<std::string> vsense_names;
+                vsense_names.reserve(poly_dim);
+                for (int k = 0; k < poly_dim; ++k) {
+                    if (idx >= tokens.size()) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": POLY CCCS: not enough sensing VSource names");
+                    }
+                    vsense_names.push_back(tokens[idx++]);
+                }
+                // Remaining tokens are polynomial coefficients
+                std::vector<double> coeffs;
+                for (; idx < tokens.size(); ++idx) {
+                    coeffs.push_back(parse_spice_number(tokens[idx]));
+                }
+                DeferredPolyCCCS fpd;
+                fpd.name = tokens[0];
+                fpd.np = ckt.node(tokens[1]);
+                fpd.nn = ckt.node(tokens[2]);
+                fpd.vsense_names = std::move(vsense_names);
+                fpd.coeffs = std::move(coeffs);
+                fpd.line_number = line.line_number;
+                deferred_poly_cccs.push_back(std::move(fpd));
+            } else {
+                // Linear form: F name np nn Vsense gain
+                DeferredCCCS fd;
+                fd.name        = tokens[0];
+                fd.np          = ckt.node(tokens[1]);
+                fd.nn          = ckt.node(tokens[2]);
+                fd.vsense_name = tokens[3];
+                fd.gain        = parse_spice_number(tokens[4]);
+                fd.line_number = line.line_number;
+                for (size_t k = 5; k < tokens.size(); ++k) {
+                    std::string tok = to_lower(tokens[k]);
+                    if (tok.starts_with("m="))
+                        fd.m = parse_spice_number(tok.substr(2));
+                }
+                deferred_cccs.push_back(std::move(fd));
             }
-            deferred_cccs.push_back(std::move(fd));
 
         } else if (elem_type == 'q') {
             // Q name nc nb ne [ns] modelname [area=X] [areab=X] [areac=X] [m=X] [ic=VBE,VCE] [off]
@@ -2190,6 +2310,56 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         auto cccs = std::make_unique<CCCS>(fd.name, fd.np, fd.nn, fd.gain, vs);
         if (fd.m != 1.0) cccs->set_multiplier(fd.m);
         ckt.add_device(std::move(cccs));
+    }
+
+    // Resolve deferred POLY CCVS (H POLY elements) — find sensing VSources by name.
+    for (const auto& hpd : deferred_poly_ccvs) {
+        std::vector<const VSource*> vsenses;
+        vsenses.reserve(hpd.vsense_names.size());
+        for (const auto& vsname : hpd.vsense_names) {
+            const VSource* vs = nullptr;
+            for (const auto& dev : ckt.devices()) {
+                if (auto* v = dynamic_cast<const VSource*>(dev.get())) {
+                    if (to_lower(v->name()) == to_lower(vsname)) {
+                        vs = v;
+                        break;
+                    }
+                }
+            }
+            if (!vs) {
+                throw ParseError("Line " + std::to_string(hpd.line_number) +
+                                 ": POLY CCVS '" + hpd.name +
+                                 "' references unknown voltage source '" + vsname + "'");
+            }
+            vsenses.push_back(vs);
+        }
+        ckt.add_device(std::make_unique<NonlinearCCVS>(
+            hpd.name, hpd.np, hpd.nn, std::move(vsenses), hpd.coeffs));
+    }
+
+    // Resolve deferred POLY CCCS (F POLY elements) — find sensing VSources by name.
+    for (const auto& fpd : deferred_poly_cccs) {
+        std::vector<const VSource*> vsenses;
+        vsenses.reserve(fpd.vsense_names.size());
+        for (const auto& vsname : fpd.vsense_names) {
+            const VSource* vs = nullptr;
+            for (const auto& dev : ckt.devices()) {
+                if (auto* v = dynamic_cast<const VSource*>(dev.get())) {
+                    if (to_lower(v->name()) == to_lower(vsname)) {
+                        vs = v;
+                        break;
+                    }
+                }
+            }
+            if (!vs) {
+                throw ParseError("Line " + std::to_string(fpd.line_number) +
+                                 ": POLY CCCS '" + fpd.name +
+                                 "' references unknown voltage source '" + vsname + "'");
+            }
+            vsenses.push_back(vs);
+        }
+        ckt.add_device(std::make_unique<NonlinearCCCS>(
+            fpd.name, fpd.np, fpd.nn, std::move(vsenses), fpd.coeffs));
     }
 
     // Resolve deferred diodes — UCB DIO adapter

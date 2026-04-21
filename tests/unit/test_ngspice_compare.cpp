@@ -679,3 +679,54 @@ TEST_F(NgspiceCompareTest, ResistorRAC) {
             << "AC magnitude mismatch at frequency point " << i;
     }
 }
+
+// ---------------------------------------------------------------------------
+// F POLY(1) — current-controlled current source with polynomial
+// ---------------------------------------------------------------------------
+TEST_F(NgspiceCompareTest, CccsPolyDC) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/cccs_poly.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run_dc(ckt);
+    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+TEST_F(NgspiceCompareTest, CccsPoly2DC) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/cccs_poly2.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run_dc(ckt);
+    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+// ---------------------------------------------------------------------------
+// H POLY(1) — current-controlled voltage source with polynomial
+// ---------------------------------------------------------------------------
+TEST_F(NgspiceCompareTest, CcvsPolyDC) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/ccvs_poly.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run_dc(ckt);
+    // Strip ngspice internal xspice nodes/branches (containing '$')
+    for (auto it = ng_result.node_voltages.begin();
+         it != ng_result.node_voltages.end(); ) {
+        if (it->first.find('$') != std::string::npos)
+            it = ng_result.node_voltages.erase(it);
+        else
+            ++it;
+    }
+    for (auto it = ng_result.branch_currents.begin();
+         it != ng_result.branch_currents.end(); ) {
+        if (it->first.find('$') != std::string::npos)
+            it = ng_result.branch_currents.erase(it);
+        else
+            ++it;
+    }
+    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}

@@ -1,0 +1,14 @@
+CCCS POLY test
+* Test F element POLY(1) and POLY(2) current-controlled current source
+*
+* Vsense1 drives current through R1: I(Vsense1) = 1V/1k = 1mA
+* F1 POLY(1): I = 0.5 + 1000*I(Vsense1) = 0.5 + 1000*0.001 = 1.5 A
+* V(out) = -F1_current * R2 = -1.5 * 1k = -1500 V
+*
+Vin in 0 1
+R1 in a 1k
+Vsense1 a 0 0
+F1 out 0 POLY(1) Vsense1 0.5 1000
+R2 out 0 1k
+.op
+.end

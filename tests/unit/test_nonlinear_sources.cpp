@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/vccs_nonlinear.hpp"
+#include "devices/ccvs_nonlinear.hpp"
+#include "devices/cccs_nonlinear.hpp"
 #include "core/klu_solver.hpp"
 #include "api/neospice.hpp"
 #include <cmath>
@@ -416,4 +418,222 @@ R1 out 0 1k
     ASSERT_TRUE(result.dc.has_value());
     // I = 0.001 A (constant) leaves out, V(out) = -0.001 * 1000 = -1.0
     EXPECT_NEAR(result.dc->node_voltages["v(out)"], -1.0, 1e-6);
+}
+
+// ===========================================================================
+// NonlinearCCVS (H POLY) unit tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// POLY(1) linear: H1 out 0 POLY(1) Vsense1 0 1000
+// Equivalent to transresistance 1000
+// I(Vsense1) = 1V/1k = 1mA, V(out) = 1000 * 1mA = 1.0V
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCVS, Poly1LinearEquivalent) {
+    Simulator sim;
+    std::string netlist = R"(
+* POLY(1) linear CCVS: V(out) = 1000 * I(Vsense1)
+Vin in 0 DC 1.0
+R1 in a 1k
+Vsense1 a 0 0
+H1 out 0 POLY(1) Vsense1 0 1000
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    // I(Vsense1) = 1mA, V(out) = 0 + 1000*0.001 = 1.0V
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 1.0, 1e-6);
+}
+
+// ---------------------------------------------------------------------------
+// POLY(1) with offset: H1 out 0 POLY(1) Vsense1 0.5 1000
+// I(Vsense1) = 1mA, V(out) = 0.5 + 1000*0.001 = 1.5V
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCVS, Poly1WithOffset) {
+    Simulator sim;
+    std::string netlist = R"(
+* POLY(1) CCVS with offset
+Vin in 0 DC 1.0
+R1 in a 1k
+Vsense1 a 0 0
+H1 out 0 POLY(1) Vsense1 0.5 1000
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 1.5, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
+// POLY(1) quadratic: V(out) = 1e6 * I(Vs)^2
+// I(Vsense1) = 1V/1k = 1mA, V(out) = 1e6 * (1e-3)^2 = 1.0V
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCVS, Poly1Quadratic) {
+    Simulator sim;
+    std::string netlist = R"(
+* POLY(1) quadratic CCVS: V(out) = 1e6 * I(Vs)^2
+Vin in 0 DC 1.0
+R1 in a 1k
+Vsense1 a 0 0
+H1 out 0 POLY(1) Vsense1 0 0 1e6
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    // I = 1mA, V(out) = 1e6 * (1e-3)^2 = 1.0
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 1.0, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
+// Linear H still works after parser change
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCVS, LinearFallthrough) {
+    Simulator sim;
+    std::string netlist = R"(
+Linear CCVS still works
+Vin in 0 DC 1.0
+R1 in a 1k
+Vsense1 a 0 0
+H1 out 0 Vsense1 2000
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    // I(Vsense1) = 1mA, V(out) = 2000 * 0.001 = 2.0V
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 2.0, 1e-6);
+}
+
+// ===========================================================================
+// NonlinearCCCS (F POLY) unit tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// POLY(1) linear: F1 out 0 POLY(1) Vsense1 0 1000
+// Equivalent to gain 1000
+// I(Vsense1) = 1mA, I(F1) = 1000*1mA = 1A leaves out
+// V(out) = -1A * 1k = -1000V
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCCS, Poly1LinearEquivalent) {
+    Simulator sim;
+    std::string netlist = R"(
+* POLY(1) linear CCCS: I = 1000 * I(Vsense1)
+Vin in 0 DC 1.0
+R1 in a 1k
+Vsense1 a 0 0
+F1 out 0 POLY(1) Vsense1 0 1000
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    // I = 1000*0.001 = 1A leaves out, V(out) = -1*1000 = -1000
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -1000.0, 1e-3);
+}
+
+// ---------------------------------------------------------------------------
+// POLY(1) with offset: F1 out 0 POLY(1) Vsense1 0.5 1000
+// I(Vsense1) = 1mA, I(F1) = 0.5 + 1000*1mA = 1.5A leaves out
+// V(out) = -1.5 * 1k = -1500V
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCCS, Poly1WithOffset) {
+    Simulator sim;
+    std::string netlist = R"(
+* POLY(1) CCCS with offset
+Vin in 0 DC 1.0
+R1 in a 1k
+Vsense1 a 0 0
+F1 out 0 POLY(1) Vsense1 0.5 1000
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -1500.0, 1e-3);
+}
+
+// ---------------------------------------------------------------------------
+// POLY(2) adder: F1 out 0 POLY(2) Vs1 Vs2 0 500 500
+// I(Vs1) = 2mA, I(Vs2) = 3mA
+// I(F1) = 0 + 500*0.002 + 500*0.003 = 2.5A leaves out
+// V(out) = -2.5 * 1k = -2500V
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCCS, Poly2Adder) {
+    Simulator sim;
+    std::string netlist = R"(
+* POLY(2) CCCS adder
+V1 in1 0 2
+R1 in1 a 1k
+Vsense1 a 0 0
+V2 in2 0 3
+R2 in2 b 1k
+Vsense2 b 0 0
+F1 out 0 POLY(2) Vsense1 Vsense2 0 500 500
+R3 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -2500.0, 1e-3);
+}
+
+// ---------------------------------------------------------------------------
+// POLY(1) constant: F1 out 0 POLY(1) Vsense1 0.002
+// I(F1) = 0.002 A constant, V(out) = -0.002 * 1k = -2.0V
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCCS, Poly1Constant) {
+    Simulator sim;
+    std::string netlist = R"(
+* POLY(1) CCCS constant term only
+Vin in 0 DC 1.0
+R1 in a 1k
+Vsense1 a 0 0
+F1 out 0 POLY(1) Vsense1 0.002
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -2.0, 1e-6);
+}
+
+// ---------------------------------------------------------------------------
+// Linear F still works after parser change
+// ---------------------------------------------------------------------------
+TEST(NonlinearCCCS, LinearFallthrough) {
+    Simulator sim;
+    std::string netlist = R"(
+Linear CCCS still works
+Vin in 0 DC 1.0
+R1 in a 1k
+Vsense1 a 0 0
+F1 out 0 Vsense1 500
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    // I(Vsense1) = 1mA, I(F1) = 500*1mA = 0.5A, V(out) = -0.5*1000 = -500
+    EXPECT_NEAR(result.dc->node_voltages["v(out)"], -500.0, 1e-6);
 }

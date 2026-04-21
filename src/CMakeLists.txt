@@ -31,6 +31,8 @@ add_library(neospice_lib
     devices/vccs_nonlinear.cpp
     devices/ccvs.cpp
     devices/cccs.cpp
+    devices/ccvs_nonlinear.cpp
+    devices/cccs_nonlinear.cpp
     devices/capacitor.cpp
     devices/inductor.cpp
     devices/coupled_inductor.cpp
