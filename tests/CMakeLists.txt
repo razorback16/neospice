@@ -112,6 +112,10 @@ target_compile_definitions(neospice_tests PRIVATE
 
 gtest_discover_tests(neospice_tests)
 
+# Per-device comparison tests
+add_subdirectory(devices/dio)
+add_subdirectory(devices/bsim4v7)
+
 # Performance benchmarks
 add_executable(bench_ths4131
     bench/bench_ths4131.cpp
