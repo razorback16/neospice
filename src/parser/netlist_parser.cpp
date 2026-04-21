@@ -1199,6 +1199,39 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     }
                     ckt.fourier_commands.push_back(std::move(fcmd));
                 }
+            } else if (first == ".step") {
+                // .step param <name> <start> <stop> <step>
+                // .step <Vsource> <start> <stop> <step>
+                // .step temp <start> <stop> <step>
+                if (tokens.size() < 5) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .step requires at least 4 arguments");
+                }
+                StepCommand sc;
+                std::string kind_or_name = to_lower(tokens[1]);
+                if (kind_or_name == "param") {
+                    sc.kind = StepCommand::PARAM;
+                    if (tokens.size() < 6) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": .step param requires name start stop step");
+                    }
+                    sc.name  = to_lower(tokens[2]);
+                    sc.start = parse_spice_number(tokens[3]);
+                    sc.stop  = parse_spice_number(tokens[4]);
+                    sc.step  = parse_spice_number(tokens[5]);
+                } else if (kind_or_name == "temp") {
+                    sc.kind  = StepCommand::TEMP;
+                    sc.start = parse_spice_number(tokens[2]);
+                    sc.stop  = parse_spice_number(tokens[3]);
+                    sc.step  = parse_spice_number(tokens[4]);
+                } else {
+                    sc.kind = StepCommand::SOURCE;
+                    sc.name  = to_lower(tokens[1]);
+                    sc.start = parse_spice_number(tokens[2]);
+                    sc.stop  = parse_spice_number(tokens[3]);
+                    sc.step  = parse_spice_number(tokens[4]);
+                }
+                ckt.step_commands.push_back(sc);
             }
             // Skip .model, .param (already handled), .include, .lib, .endl, etc.
             continue;

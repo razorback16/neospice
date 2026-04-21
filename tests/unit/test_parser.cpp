@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "parser/netlist_parser.hpp"
+#include "api/neospice.hpp"
 
 using namespace neospice;
 
@@ -180,4 +181,51 @@ R1 out 0 1k
     NetlistParser parser;
     auto ckt = parser.parse(netlist);
     EXPECT_EQ(ckt.devices().size(), 2u);
+}
+
+TEST(Parser, StepParamParsing) {
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Test step
+R1 1 0 1k
+V1 1 0 1
+.step param rval 100 10k 100
+.op
+.end
+)");
+    ASSERT_EQ(ckt.step_commands.size(), 1u);
+    EXPECT_EQ(ckt.step_commands[0].kind, StepCommand::PARAM);
+    EXPECT_EQ(ckt.step_commands[0].name, "rval");
+    EXPECT_DOUBLE_EQ(ckt.step_commands[0].start, 100.0);
+    EXPECT_DOUBLE_EQ(ckt.step_commands[0].stop, 10e3);
+    EXPECT_DOUBLE_EQ(ckt.step_commands[0].step, 100.0);
+}
+
+TEST(Parser, StepSourceParsing) {
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Test step
+R1 1 0 1k
+V1 1 0 1
+.step V1 0 5 0.1
+.op
+.end
+)");
+    ASSERT_EQ(ckt.step_commands.size(), 1u);
+    EXPECT_EQ(ckt.step_commands[0].kind, StepCommand::SOURCE);
+    EXPECT_EQ(ckt.step_commands[0].name, "v1");
+}
+
+TEST(Parser, StepTempParsing) {
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Test step
+R1 1 0 1k
+V1 1 0 1
+.step temp -40 125 5
+.op
+.end
+)");
+    ASSERT_EQ(ckt.step_commands.size(), 1u);
+    EXPECT_EQ(ckt.step_commands[0].kind, StepCommand::TEMP);
 }

@@ -28,6 +28,15 @@ struct DCSweepParam {
     double step  = 0.0;
 };
 
+struct StepCommand {
+    enum Kind { PARAM, SOURCE, TEMP };
+    Kind kind = PARAM;
+    std::string name;        // parameter or source name
+    double start = 0.0;
+    double stop  = 0.0;
+    double step  = 0.0;
+};
+
 struct MeasureCommand {
     std::string name;           // result name
     std::string analysis_type;  // "tran", "ac", "dc"
@@ -150,6 +159,7 @@ public:
     std::vector<MeasureCommand>         measures;  // .meas / .measure
     std::vector<PrintCommand>           prints;    // .print / .plot
     std::vector<FourierCommand>         fourier_commands;  // .four
+    std::vector<StepCommand>            step_commands;     // .step
 
     IntegratorCtx integrator_ctx;
 
