@@ -228,6 +228,20 @@ TEST_F(NgspiceCompareTest, NMOS_DC_IV) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+TEST_F(NgspiceCompareTest, BSIM4v7_DC_Audit_SingleNMOS) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_single_bias.cir";
+    auto ng_result = ngspice_->run_dc(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run_dc(ckt);
+    // DC audit: actual worst_error=0.001 on signal i(vgs) — tracking for improvement
+    auto cmp = compare_dc(ng_result, cs_result, {5e-3, 1e-9});
+    // Print actual error even if test passes — this is an audit
+    std::cerr << "BSIM4v7 DC Audit: worst=" << cmp.worst_signal
+              << " error=" << cmp.worst_error << std::endl;
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
 TEST_F(NgspiceCompareTest, NMOS_DC_RDSMOD) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_rdsmod.cir";
     auto ng_result = ngspice_->run_dc(path);

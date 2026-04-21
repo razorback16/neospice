@@ -1,0 +1,9 @@
+* Single NMOS DC bias point for audit
+vgs gate 0 dc 1.0
+vds drain 0 dc 1.8
+m1 drain gate 0 0 nch W=10u L=100n
+
+.model nch nmos level=14 version=4.7
+
+.op
+.end
