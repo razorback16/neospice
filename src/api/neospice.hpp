@@ -5,6 +5,7 @@
 #include "core/ac.hpp"
 #include "core/noise.hpp"
 #include "core/tf.hpp"
+#include "core/sens.hpp"
 #include "core/measure.hpp"
 #include <string>
 #include <optional>
@@ -19,6 +20,7 @@ struct SimulationResult {
     std::optional<DCSweepResult> dc_sweep;
     std::optional<NoiseResult> noise;
     std::optional<TFResult> tf;
+    std::optional<SensResult> sens;
     std::optional<MeasureResult> measures;
     std::vector<std::string> print_output;  // formatted .print/.plot output
 };
@@ -51,6 +53,7 @@ public:
     DCSweepResult run_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& params);
     TFResult run_tf(Circuit& ckt, const std::string& output_var,
                     const std::string& input_src);
+    SensResult run_sens(Circuit& ckt, const std::string& output_var);
 
     SimulationResult run(Circuit& ckt);
 

@@ -20,6 +20,7 @@ public:
 
     double resistance() const { return resistance_eff_; }
     double resistance_nom() const { return resistance_nom_; }
+    void set_resistance(double r) { resistance_eff_ = r; }
 
     /// Temperature coefficient setters (instance-level parameters)
     void set_tc1(double tc1) { tc1_ = tc1; }

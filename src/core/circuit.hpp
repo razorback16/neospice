@@ -67,7 +67,7 @@ struct FourierCommand {
 };
 
 struct AnalysisCommand {
-    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE, TF };
+    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE, TF, SENS };
     Type type;
     double tran_tstep = 0, tran_tstop = 0;
     bool tran_uic = false;   // Use Initial Conditions
@@ -83,6 +83,8 @@ struct AnalysisCommand {
     // TF analysis parameters
     std::string tf_output;         // e.g., "v(out)" or "i(vout)"
     std::string tf_input_src;      // e.g., "vin" — the input source name
+    // SENS analysis parameters
+    std::string sens_output;       // e.g., "v(out)" — the output variable
 };
 
 // IntegratorCtx is defined in core/types.hpp (included above) so that

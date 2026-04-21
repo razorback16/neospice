@@ -20,6 +20,10 @@ public:
     int32_t pos_node() const { return np_; }
     int32_t neg_node() const { return nn_; }
 
+    /// Override the DC value (used during sensitivity analysis).
+    void set_dc_value(double v) { dc_value_ = v; }
+    double dc_value() const { return dc_value_; }
+
     /// Time-domain waveforms.
     void set_pulse(PulseParams p);
     void set_sin(SinParams p);

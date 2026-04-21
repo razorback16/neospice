@@ -1177,6 +1177,17 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 cmd.tf_output = to_lower(tokens[1]);
                 cmd.tf_input_src = to_lower(tokens[2]);
                 ckt.analyses.push_back(cmd);
+            } else if (first == ".sens") {
+                // .sens output_var
+                // e.g., .sens V(out)
+                if (tokens.size() < 2) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": .sens requires output variable");
+                }
+                AnalysisCommand cmd;
+                cmd.type = AnalysisCommand::SENS;
+                cmd.sens_output = to_lower(tokens[1]);
+                ckt.analyses.push_back(cmd);
             } else if (first == ".four" || first == ".fourier") {
                 // .four freq signal1 [signal2 ...]
                 if (tokens.size() >= 3) {

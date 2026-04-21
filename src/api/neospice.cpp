@@ -130,6 +130,10 @@ TFResult Simulator::run_tf(Circuit& ckt, const std::string& output_var,
     return solve_tf(ckt, output_var, input_src);
 }
 
+SensResult Simulator::run_sens(Circuit& ckt, const std::string& output_var) {
+    return solve_sens(ckt, output_var);
+}
+
 SimulationResult Simulator::run(Circuit& ckt) {
     SimulationResult result;
     for (auto& cmd : ckt.analyses) {
@@ -169,6 +173,10 @@ SimulationResult Simulator::run(Circuit& ckt) {
         }
         case AnalysisCommand::TF: {
             result.tf = solve_tf(ckt, cmd.tf_output, cmd.tf_input_src);
+            break;
+        }
+        case AnalysisCommand::SENS: {
+            result.sens = solve_sens(ckt, cmd.sens_output);
             break;
         }
         default:

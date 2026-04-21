@@ -16,6 +16,7 @@ add_library(neospice_lib
     core/convergence.cpp
     core/dc.cpp
     core/tf.cpp
+    core/sens.cpp
     core/transient.cpp
     core/ac.cpp
     core/noise.cpp
