@@ -22,6 +22,7 @@ from .gen_def import generate_def_hpp
 from .gen_shim import generate_shim_hpp, generate_shim_cpp
 from .gen_adapter import generate_adapter_hpp, generate_adapter_cpp
 from .gen_model_card import generate_model_card_hpp, generate_model_card_cpp
+from .gen_parser import generate_parser_hpp
 from .gen_cmake import generate_cmake
 from .validation import validate_migration
 
@@ -141,6 +142,14 @@ def main(argv: list[str] | None = None) -> int:
         _write_file(output_dir / f"{ns}_model_card.hpp", mc_hpp, dry_run=dry_run)
         _write_file(output_dir / f"{ns}_model_card.cpp", mc_cpp, dry_run=dry_run)
         generated_sources.append(f"{ns}_model_card.cpp")
+
+    # ------------------------------------------------------------------
+    # 6c. Generate parser integration helper
+    # ------------------------------------------------------------------
+    if hasattr(desc, 'model_types') and desc.model_types:
+        print("\nGenerating parser integration helper:")
+        parser_hpp = generate_parser_hpp(desc)
+        _write_file(output_dir / f"{ns}_parser.hpp", parser_hpp, dry_run=dry_run)
 
     # ------------------------------------------------------------------
     # 7. Generate CMakeLists.txt
