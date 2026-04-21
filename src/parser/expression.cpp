@@ -14,16 +14,11 @@ namespace neospice {
 namespace {
 
 thread_local std::mt19937 tls_rng{std::random_device{}()};
+thread_local std::normal_distribution<double> tls_normal{0.0, 1.0};
+thread_local std::uniform_real_distribution<double> tls_uniform{-1.0, 1.0};
 
-double gauss0() {
-    std::normal_distribution<double> dist(0.0, 1.0);
-    return dist(tls_rng);
-}
-
-double uniform_minus1_plus1() {
-    std::uniform_real_distribution<double> dist(-1.0, 1.0);
-    return dist(tls_rng);
-}
+double gauss0() { return tls_normal(tls_rng); }
+double uniform_minus1_plus1() { return tls_uniform(tls_rng); }
 
 // ---------------------------------------------------------------------------
 // Recursive-descent expression parser
