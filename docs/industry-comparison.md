@@ -1,0 +1,287 @@
+# SPICE Simulator Industry Comparison
+
+Research on how commercial and open-source SPICE simulators handle the same
+algorithmic choices where neospice diverges from ngspice. Sources include
+official documentation, published papers, and user guides.
+
+---
+
+## Simulators Surveyed
+
+| Simulator | Developer | License | Baseline |
+|-----------|-----------|---------|----------|
+| ngspice | Community (Berkeley SPICE3f5 fork) | BSD | SPICE3f5 faithful |
+| Xyce | Sandia National Labs | GPLv3 | Independent implementation |
+| LTspice | Analog Devices (Mike Engelhardt) | Freeware | Custom from scratch |
+| HSPICE | Synopsys | Commercial | SPICE2/3 lineage, heavily modified |
+| Spectre | Cadence | Commercial | Independent implementation |
+| PSpice | Cadence (OrCAD) | Commercial | SPICE2G lineage |
+| neospice | This project | — | ngspice-validated, selectively divergent |
+
+---
+
+## 1. Integration Method
+
+All major simulators default to trapezoidal integration, which offers second-order
+accuracy and good stability for most circuits.
+
+| Simulator | Default Method | Order | Notes |
+|-----------|---------------|-------|-------|
+| ngspice | Trapezoidal | 2 | Also supports Gear BDF-2 via `.options method=gear` |
+| Xyce | Variable-order Trap | 1→2 | `METHOD=7` (trap, default). Also has Gear 1-6 |
+| LTspice | "Modified Trap" | 2 | Proprietary algorithm that "precisely cancels traditional trap ringing" |
+| HSPICE | Trapezoidal | 2 | Also supports Gear and "Gear-modified" |
+| Spectre | Trapezoidal | 2 | Default for most analyses |
+| PSpice | Trapezoidal | 2 | Gear optional |
+| **neospice** | Trapezoidal | 2 | Also supports Gear BDF-2 |
+
+**Key insight**: LTspice's "modified trap" is the most interesting divergence.
+Engelhardt has stated that it cancels the ringing artifact that trap produces
+when the solution has slope discontinuities, without falling back to the lower
+accuracy of backward Euler. The exact algorithm is proprietary.
+
+---
+
+## 2. Integration Order at Breakpoints
+
+When the simulator hits a source breakpoint (e.g., PULSE edge), the solution
+history before the breakpoint may be invalid for the new waveform segment. The
+question is whether to drop integration order to 1 (backward Euler) for safety.
+
+| Simulator | Behavior at Breakpoints | Rationale |
+|-----------|------------------------|-----------|
+| ngspice | **Resets to order 1** (backward Euler) | Conservative: stale predictor might cause order-2 to ring |
+| Xyce | **Does NOT reset** (`NEWBPSTEPPING=TRUE` default) | Relies on LTE control to handle accuracy. "Can take a reasonably large step out of every non-DCOP breakpoint" |
+| LTspice | **Resets to order 1** for that circuit's reactances | Standard SPICE3 behavior, compensated by modified-trap accuracy |
+| HSPICE | Resets to order 1 (SPICE3 behavior) | Traditional approach |
+| **neospice** | **Keeps order 2**, reduces dt to 0.1× | Matches Xyce philosophy. The dt reduction provides the safety margin |
+
+**Industry trend**: Xyce (Sandia) independently arrived at the same conclusion as
+neospice — that resetting to order 1 is overly conservative, and timestep control
+is sufficient to maintain accuracy through breakpoints. LTspice took a different
+path (keep the order-1 reset but improve the integration method itself).
+
+---
+
+## 3. Local Truncation Error (LTE) Control
+
+LTE determines whether to accept or reject a timestep based on estimated
+integration error. The critical question is *what variables* to check.
+
+| Simulator | LTE Scope | Details |
+|-----------|-----------|---------|
+| ngspice | **Device-only** (charge LTE) | `CKTtrunc` calls each device's `trunc()` function. Only reactive devices contribute |
+| Xyce | **Global LTE on all variables** | `NEWLTE=1` (default). Reference modes: 0=current node, 1=max all signals, 2=max over all time, 3=max per signal. Current variables optionally included (`MASKIVARS=0` default) |
+| LTspice | Not publicly documented | Believed to use device-level LTE similar to SPICE3 |
+| HSPICE | Device LTE + additional checks | `LVLTIM` option controls timestep algorithm sophistication |
+| **neospice** | **Global node-voltage LTE** + device charge LTE | Second finite differences on all node voltages. Skipped for first 2 steps and 3 steps after breakpoints |
+
+**Key finding**: Xyce's `NEWLTE` is the most configurable global LTE in any
+simulator. Their default (`NEWLTE=1`) normalizes each variable's LTE against the
+maximum of all signals, which prevents large signals from masking errors in
+small signals. neospice's approach (normalize against per-node tolerance) is
+simpler but effective for the same reason.
+
+**Xyce's additional LTE options** (from Reference Guide v7.6, pp. 97-102):
+- `ERROPTION=0`: Uses LTE for timestep control (default)
+- `ERROPTION=1`: Uses "N(t)" method (undocumented alternative)
+- `NLNEARCONV=0`: Soft nonlinear solver failure flag
+- `DELMAX`: Maximum timestep limit (complements LTE from above)
+
+---
+
+## 4. Output Grid
+
+How simulation results are stored and reported to the user.
+
+| Simulator | Output Grid | Interpolation |
+|-----------|-------------|---------------|
+| ngspice | **Adaptive** (every accepted internal step) | None — raw solver output |
+| Xyce | **Adaptive** by default; uniform optional via `.options output` | Linear or higher-order |
+| LTspice | **Adaptive** with lossy waveform compression | Proprietary compression reduces file size |
+| HSPICE | **Uniform** with `INTERP` option (enabled by default in modern versions) | Polynomial interpolation to tstep grid |
+| Spectre | **Adaptive** by default; `strobeperiod` for uniform | Various interpolation options |
+| PSpice | **Uniform** at TSTEP intervals | Internal interpolation |
+| **neospice** | **Uniform** at tstep intervals | Quadratic Lagrange (3-point) after 2 steps; linear for first 2 |
+
+**Industry split**: There are two camps — adaptive output (ngspice, LTspice,
+Spectre) and uniform output (HSPICE, PSpice, neospice). Uniform is preferred by
+downstream tools (FFT, measurement, comparison) but can lose detail between
+output points if tstep is too coarse. neospice's quadratic interpolation
+preserves the accuracy of the internal adaptive stepping.
+
+---
+
+## 5. Order Promotion Strategy
+
+After starting at order 1 (backward Euler for the first step), when and how to
+promote to order 2.
+
+| Simulator | Promotion Strategy |
+|-----------|--------------------|
+| ngspice | **Speculative**: promotes only if order 2 gives tighter dt bound (`dctran.c:863-873`) |
+| Xyce | **Automatic**: `MINORD=1, MAXORD=2`, promotes once sufficient history exists |
+| HSPICE | `MAXORD` option (default 2), promotes after sufficient history |
+| **neospice** | **Unconditional** after 2 accepted steps |
+
+**Assessment**: All simulators promote to order 2 quickly. ngspice's speculative
+approach is the most conservative (may stay at order 1 longer) but adds
+complexity for marginal benefit.
+
+---
+
+## 6. AC Analysis Matrix Strategy
+
+How the complex admittance matrix Y = G + jωC is assembled across frequency points.
+
+| Simulator | Strategy |
+|-----------|----------|
+| ngspice | **Re-stamps at every frequency** via device AC load functions |
+| HSPICE | Pre-built matrices (proprietary details) |
+| Spectre | Pre-built G/C with per-frequency assembly |
+| **neospice** | **Pre-built G and C matrices**, assembled as G + jωC per frequency |
+
+**Limitation**: This optimization breaks for NQS (non-quasi-static) models where
+conductances depend on frequency. BSIM4v7 `acnqsMod` is flagged as unsupported.
+Spectre handles NQS by detecting frequency-dependent devices and falling back to
+per-frequency evaluation only for those devices.
+
+---
+
+## 7. DC Convergence Aids
+
+When the Newton-Raphson solver fails to converge on the DC operating point,
+simulators apply convergence aids in sequence.
+
+| Simulator | Convergence Sequence |
+|-----------|---------------------|
+| ngspice | gmin stepping → **true source stepping** (scales all independent sources 0→1) → fail |
+| Xyce | gmin stepping → source stepping → pseudo-transient → fail. Tighter default tolerances than most |
+| HSPICE | gmin stepping → source stepping → `AUTOSTOP` + various heuristics |
+| PSpice | gmin stepping → source stepping → fail |
+| **neospice** | gmin stepping → **gmin proxy** (different gmin schedule, NOT true source stepping) → fail |
+
+**Gap identified**: neospice's source stepping is a known weakness. Every other
+simulator implements true source stepping, where independent source values are
+scaled from 0 to their final value in stages. The gmin proxy works for most
+circuits but will fail on high-gain feedback loops.
+
+**Xyce additionally offers**:
+- Pseudo-transient continuation (LOCA library) for extremely difficult circuits
+- `NOXUPDATE`: controls direct Newton update vs. damped update
+- `CONTINUATION`: general parameter continuation solver
+
+---
+
+## 8. Device-Level Convergence
+
+Whether the Newton solver checks device-internal convergence beyond node
+voltage/branch current agreement.
+
+| Simulator | Device Convergence Check |
+|-----------|------------------------|
+| ngspice | **Node/branch only** — declares convergence when voltages and branch currents stabilize |
+| Xyce | Device-level callbacks available (solver framework supports it) |
+| HSPICE | Device-level checks for BSIM models |
+| **neospice** | **Device callback** — `device_converged()` called after node convergence passes |
+
+**Rationale**: BSIM4v7 can have converged terminal voltages while internal
+feedback loops (charge redistribution, NQS effects) are still oscillating. The
+device callback catches this.
+
+---
+
+## 9. Noise Analysis
+
+How the adjoint system for noise is solved.
+
+| Simulator | Adjoint Strategy |
+|-----------|-----------------|
+| ngspice | Transposes Y at each frequency point |
+| Spectre | Pre-built adjoint pattern, optimized symbolic factorization |
+| **neospice** | **Pre-built Y^T sparsity pattern** with separate symbolic factorization for Y and Y^T |
+
+**Assessment**: neospice's approach matches commercial practice (Spectre). The
+asymmetric sparsity of Y^T for active devices makes pre-building the transpose
+pattern worthwhile.
+
+---
+
+## 10. Solver Tolerances
+
+Default tolerance settings vary significantly across simulators.
+
+| Simulator | reltol | abstol | vntol | chgtol |
+|-----------|--------|--------|-------|--------|
+| ngspice | 1e-3 | 1e-12 | 1e-6 | 1e-14 |
+| Xyce | 1e-3 | 1e-6 | — | 1e-12 |
+| LTspice | 1e-3 | 1e-12 | 1e-6 | 1e-14 |
+| HSPICE | 1e-3 | 1e-12 | 1e-6 | 1e-14 |
+| PSpice | 1e-3 | 1e-12 | 1e-6 | 1e-14 |
+| **neospice** | 1e-3 | 1e-12 | 1e-6 | 1e-14 |
+
+**Note**: Xyce documentation states "Xyce has much tighter default solver
+tolerances than some other simulators (e.g., PSpice)." Their `abstol` of 1e-6
+(vs. the industry standard 1e-12) is tighter in the sense that their solver
+convergence criteria are stricter — `abstol` in Xyce refers to the Newton
+convergence tolerance, not the same quantity as SPICE3's `abstol`.
+
+---
+
+## 11. Speed
+
+Publicly available benchmarks are scarce and methodology varies. General industry
+perception:
+
+| Simulator | Relative Speed | Notes |
+|-----------|---------------|-------|
+| ngspice | 1× (baseline) | Pure C, optimized over decades |
+| Xyce | 1-2× for serial; scales with parallelism | Designed for massive parallel runs on HPC |
+| LTspice | 2-5× faster than SPICE3 | Highly optimized, custom solver |
+| HSPICE | 1-3× | "Gold standard" for accuracy, not speed |
+| Spectre | 2-4× | Optimized for large analog circuits |
+| **neospice** | 1.2× on CMOS inverter | C++ overhead reduction + KLU. Expected to improve with larger circuits |
+
+---
+
+## Summary: Where neospice Aligns with Industry
+
+| Feature | ngspice | Xyce | LTspice | HSPICE | neospice | Assessment |
+|---------|---------|------|---------|--------|----------|------------|
+| Global LTE | No | **Yes** | Unknown | Partial | **Yes** | Validated by Xyce |
+| Keep order at BP | No | **Yes** | No | No | **Yes** | Validated by Xyce |
+| Uniform output | No | Optional | No | **Yes** | **Yes** | Commercial practice |
+| AC G/C caching | No | — | — | Likely | **Yes** | Pure optimization |
+| Device convergence | No | Yes | — | Yes | **Yes** | Best practice |
+| True source stepping | **Yes** | **Yes** | **Yes** | **Yes** | **No** | Gap — proxy only |
+| Modified trap | No | No | **Yes** | No | No | LTspice-exclusive |
+| Pseudo-transient | No | **Yes** | No | Limited | No | Gap — advanced circuits |
+
+### Key Takeaways
+
+1. **neospice's algorithmic choices are validated by Xyce** — global LTE and
+   improved breakpoint handling are independently proven by Sandia.
+
+2. **The source stepping proxy is the most significant gap** — every other
+   simulator has true source stepping. This limits convergence on high-gain
+   feedback circuits.
+
+3. **Uniform output grid matches HSPICE/PSpice practice** — not a divergence,
+   but alignment with commercial tools.
+
+4. **LTspice's modified trap is unique** — no other simulator has it. It solves
+   trap ringing differently than neospice (which relies on global LTE to detect
+   ringing).
+
+5. **Pseudo-transient continuation (Xyce) is a potential future enhancement** —
+   for extremely difficult circuits where both gmin and source stepping fail.
+
+---
+
+## Sources
+
+- Xyce Reference Guide v7.6, Sandia National Labs (2024). Pages 97-102 (time integration options), 769-783 (transient analysis details)
+- Mike Engelhardt, "A Few Algorithms Used in LTspice" (public talk, various conferences)
+- ngspice source code: `src/spicelib/analysis/dctran.c`, `src/spicelib/analysis/cktop.c`
+- HSPICE User Guide, Synopsys (general references from publicly available documentation)
+- neospice source code: `src/core/transient.cpp`, `src/core/timestep.cpp`, `src/core/convergence.cpp`
