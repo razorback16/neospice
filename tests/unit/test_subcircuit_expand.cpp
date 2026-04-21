@@ -682,3 +682,173 @@ X1 inp outp recursive
         }
     }
 }
+
+// -----------------------------------------------------------------------
+// 23. .global node declaration: global nodes are not prefixed
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, GlobalNodeNotPrefixed) {
+    // vdd is declared .global — it should NOT be prefixed inside subcircuits.
+    // Without .global, vdd inside the subcircuit would become x1.vdd and
+    // x2.vdd, disconnected from the top-level V1.
+    std::string netlist = wrap(R"(
+.global vdd
+.subckt inv in out
+R1 in mid 1k
+R2 mid out 1k
+R3 mid vdd 1k
+.ends inv
+V1 vdd 0 5
+X1 a b inv
+X2 b c inv
+R4 a 0 1k
+R5 c 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    // V1 + R4 + R5 + 2*(R1+R2+R3) = 1 + 1 + 1 + 6 = 9 devices
+    EXPECT_EQ(ckt.devices().size(), 9u);
+
+    // DC solve: vdd = 5V
+    DCResult result = solve_dc(ckt);
+    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
+
+    // Verify that x1.mid and x2.mid exist (internal nodes ARE prefixed)
+    EXPECT_TRUE(result.node_voltages.count("v(x1.mid)") > 0)
+        << "Internal node x1.mid should exist";
+    EXPECT_TRUE(result.node_voltages.count("v(x2.mid)") > 0)
+        << "Internal node x2.mid should exist";
+
+    // Verify that x1.vdd does NOT exist (global node should NOT be prefixed)
+    EXPECT_TRUE(result.node_voltages.count("v(x1.vdd)") == 0)
+        << "Global node vdd should NOT be prefixed as x1.vdd";
+    EXPECT_TRUE(result.node_voltages.count("v(x2.vdd)") == 0)
+        << "Global node vdd should NOT be prefixed as x2.vdd";
+}
+
+// -----------------------------------------------------------------------
+// 24. .global is case-insensitive
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, GlobalNodeCaseInsensitive) {
+    // .GLOBAL VDD should work the same as .global vdd
+    std::string netlist = wrap(R"(
+.GLOBAL VDD
+.subckt res_to_vdd in
+R1 in VDD 1k
+.ends res_to_vdd
+V1 VDD 0 3.3
+X1 a res_to_vdd
+R2 a 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    DCResult result = solve_dc(ckt);
+    EXPECT_NEAR(result.node_voltages["v(vdd)"], 3.3, 1e-6);
+
+    // vdd should not be prefixed
+    EXPECT_TRUE(result.node_voltages.count("v(x1.vdd)") == 0)
+        << "Global node vdd should NOT be prefixed as x1.vdd";
+}
+
+// -----------------------------------------------------------------------
+// 25. Multiple .global lines accumulate
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, MultipleGlobalLines) {
+    std::string netlist = wrap(R"(
+.global vdd
+.global vss
+.subckt buf in out
+R1 in vdd 1k
+R2 in vss 1k
+R3 in out 100
+.ends buf
+V1 vdd 0 5
+V2 vss 0 -5
+X1 a b buf
+R4 a 0 1k
+R5 b 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    DCResult result = solve_dc(ckt);
+    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
+    EXPECT_NEAR(result.node_voltages["v(vss)"], -5.0, 1e-6);
+
+    // Neither vdd nor vss should be prefixed
+    EXPECT_TRUE(result.node_voltages.count("v(x1.vdd)") == 0)
+        << "Global node vdd should NOT be prefixed";
+    EXPECT_TRUE(result.node_voltages.count("v(x1.vss)") == 0)
+        << "Global node vss should NOT be prefixed";
+}
+
+// -----------------------------------------------------------------------
+// 26. .global with multiple nodes on one line
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, GlobalMultipleNodesOneLine) {
+    std::string netlist = wrap(R"(
+.global vdd vss
+.subckt buf in out
+R1 in vdd 1k
+R2 in vss 1k
+R3 in out 100
+.ends buf
+V1 vdd 0 5
+V2 vss 0 -5
+X1 a b buf
+R4 a 0 1k
+R5 b 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    DCResult result = solve_dc(ckt);
+    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
+    EXPECT_NEAR(result.node_voltages["v(vss)"], -5.0, 1e-6);
+
+    EXPECT_TRUE(result.node_voltages.count("v(x1.vdd)") == 0)
+        << "Global node vdd should NOT be prefixed";
+    EXPECT_TRUE(result.node_voltages.count("v(x1.vss)") == 0)
+        << "Global node vss should NOT be prefixed";
+}
+
+// -----------------------------------------------------------------------
+// 27. .global in nested subcircuit hierarchy
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, GlobalNodeNestedHierarchy) {
+    // vdd should remain unprefixed even in nested subcircuit expansion
+    std::string netlist = wrap(R"(
+.global vdd
+.subckt inner a b
+R1 a vdd 1k
+R2 a b 1k
+.ends inner
+.subckt outer x y
+Xin x y inner
+.ends outer
+V1 vdd 0 5
+Xouter top bot outer
+R_load top 0 1k
+R_load2 bot 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    DCResult result = solve_dc(ckt);
+    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
+
+    // vdd should NOT appear as xouter.xin.vdd
+    EXPECT_TRUE(result.node_voltages.count("v(xouter.xin.vdd)") == 0)
+        << "Global node vdd should NOT be prefixed in nested hierarchy";
+}

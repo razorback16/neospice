@@ -15,10 +15,12 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
-/// Ground node names that are never substituted (global nodes).
-bool is_ground(const std::string& name) {
+/// Check whether a node name is global (ground or declared via .global).
+/// Global nodes are never substituted during subcircuit expansion.
+bool is_global_node(const std::string& name,
+                    const std::unordered_set<std::string>& global_nodes) {
     std::string lower = to_lower(name);
-    return lower == "0" || lower == "gnd";
+    return lower == "0" || lower == "gnd" || global_nodes.count(lower) > 0;
 }
 
 /// Determine the number of node tokens for an element line based on the
@@ -179,11 +181,12 @@ void extract_nested_defs(
 }
 
 /// Collect all node names that appear in element lines of the body.
-/// Returns the set of internal node names (not ports, not ground).
+/// Returns the set of internal node names (not ports, not ground, not .global).
 std::unordered_set<std::string> collect_internal_nodes(
     const std::vector<TokenizedLine>& body,
     const std::unordered_set<std::string>& port_set,
-    const std::unordered_map<std::string, SubcircuitDef>& all_defs) {
+    const std::unordered_map<std::string, SubcircuitDef>& all_defs,
+    const std::unordered_set<std::string>& global_nodes) {
 
     std::unordered_set<std::string> internal_nodes;
 
@@ -231,7 +234,7 @@ std::unordered_set<std::string> collect_internal_nodes(
         for (size_t pos : node_positions) {
             if (pos >= line.tokens.size()) continue;
             std::string node = to_lower(line.tokens[pos]);
-            if (!is_ground(node) && port_set.find(node) == port_set.end()) {
+            if (!is_global_node(node, global_nodes) && port_set.find(node) == port_set.end()) {
                 internal_nodes.insert(node);
             }
         }
@@ -250,6 +253,7 @@ std::unordered_set<std::string> collect_internal_nodes(
 /// @param depth            Recursion depth (for infinite recursion detection)
 /// @param line_number      Source line number of the X element (for error messages)
 /// @param global_params    Top-level .param values (base for parameter resolution)
+/// @param global_nodes     Node names declared via .global (never prefixed)
 std::vector<TokenizedLine> expand_instance(
     const std::string& instance_prefix,
     const SubcircuitDef& def,
@@ -258,7 +262,8 @@ std::vector<TokenizedLine> expand_instance(
     const std::unordered_map<std::string, SubcircuitDef>& all_defs,
     int depth,
     int line_number,
-    const std::unordered_map<std::string, double>& global_params) {
+    const std::unordered_map<std::string, double>& global_params,
+    const std::unordered_set<std::string>& global_nodes) {
 
     if (depth > MAX_SUBCIRCUIT_DEPTH) {
         throw ParseError("Line " + std::to_string(line_number) +
@@ -297,7 +302,7 @@ std::vector<TokenizedLine> expand_instance(
     std::unordered_set<std::string> port_set(def.ports.begin(), def.ports.end());
 
     // Collect internal nodes from body
-    auto internal_nodes = collect_internal_nodes(body_lines, port_set, merged_defs);
+    auto internal_nodes = collect_internal_nodes(body_lines, port_set, merged_defs, global_nodes);
 
     // Map internal nodes to prefixed names
     for (const auto& inode : internal_nodes) {
@@ -343,11 +348,10 @@ std::vector<TokenizedLine> expand_instance(
     // Helper: substitute a node name using the node_map
     auto subst_node = [&](const std::string& name) -> std::string {
         std::string lower = to_lower(name);
-        if (is_ground(lower)) return name;  // ground is global
+        if (is_global_node(lower, global_nodes)) return name;  // global node — never prefix
         auto it = node_map.find(lower);
         if (it != node_map.end()) return it->second;
-        // Not a known port or internal node — treat as global (shouldn't happen
-        // in well-formed subcircuits, but be safe)
+        // Not a known port or internal node — treat as internal (prefix)
         return instance_prefix + "." + lower;
     };
 
@@ -447,7 +451,8 @@ std::vector<TokenizedLine> expand_instance(
             std::string sub_prefix = instance_prefix + "." + x_name;
             auto expanded = expand_instance(sub_prefix, sub_def, sub_connections,
                                             sub_params, merged_defs, depth + 1,
-                                            line.line_number, global_params);
+                                            line.line_number, global_params,
+                                            global_nodes);
             result.insert(result.end(), expanded.begin(), expanded.end());
 
         } else {
@@ -532,7 +537,8 @@ std::vector<TokenizedLine> expand_instance(
 std::vector<TokenizedLine> expand_all_instances(
     const std::vector<TokenizedLine>& lines,
     const std::unordered_map<std::string, SubcircuitDef>& all_defs,
-    const std::unordered_map<std::string, double>& global_params) {
+    const std::unordered_map<std::string, double>& global_params,
+    const std::unordered_set<std::string>& global_nodes) {
 
     std::vector<TokenizedLine> result;
     result.reserve(lines.size());
@@ -615,7 +621,8 @@ std::vector<TokenizedLine> expand_all_instances(
             // Expand
             auto expanded = expand_instance(x_name, def, connections,
                                             instance_params, all_defs, 1,
-                                            line.line_number, global_params);
+                                            line.line_number, global_params,
+                                            global_nodes);
             result.insert(result.end(), expanded.begin(), expanded.end());
         } else {
             result.push_back(line);

@@ -36,6 +36,7 @@
 #include <set>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace neospice {
 
@@ -559,11 +560,24 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         }
     }
 
+    // Pass 0.4: Collect .global node declarations.
+    // Nodes listed on .global lines are shared across all subcircuit
+    // hierarchies and must NOT be prefixed during expansion.
+    std::unordered_set<std::string> global_nodes;
+    for (const auto& line : lines) {
+        if (line.tokens.empty()) continue;
+        if (to_lower(line.tokens[0]) == ".global") {
+            for (size_t i = 1; i < line.tokens.size(); ++i) {
+                global_nodes.insert(to_lower(line.tokens[i]));
+            }
+        }
+    }
+
     // Pass 0.5: Expand X instances into primitive element lines.
     // After this step, `lines` contains no X elements.
     // Always call — even when subcircuit_defs_ is empty — so that X lines
     // referencing undefined subcircuits produce a proper ParseError.
-    lines = expand_all_instances(lines, subcircuit_defs_, global_params);
+    lines = expand_all_instances(lines, subcircuit_defs_, global_params, global_nodes);
 
     // Storage for params and models
     std::unordered_map<std::string, double> params;

@@ -1,0 +1,14 @@
+Global node test
+.global vdd
+.subckt inv in out
+R1 in mid 1k
+R2 mid out 1k
+R3 mid vdd 1k
+.ends inv
+V1 vdd 0 5
+X1 a b inv
+X2 b c inv
+R4 a 0 1k
+R5 c 0 1k
+.op
+.end
