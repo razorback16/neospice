@@ -96,13 +96,14 @@ def main(argv: list[str] | None = None) -> int:
     # 4. Generate _def.hpp from *def*.h
     # ------------------------------------------------------------------
     print("\nGenerating def header:")
+    def_content: str = ""
     def_headers = sorted(glob.glob(str(ngspice_dir / "*def*.h")))
     if def_headers:
         def_src_path = Path(def_headers[0])
         def_raw = def_src_path.read_text(encoding="utf-8", errors="replace")
-        def_hpp = generate_def_hpp(def_raw, desc)
+        def_content = generate_def_hpp(def_raw, desc)
         def_out = output_dir / f"{ns}_def.hpp"
-        _write_file(def_out, def_hpp, dry_run=dry_run)
+        _write_file(def_out, def_content, dry_run=dry_run)
     else:
         print("  WARNING: no *def*.h found in ngspice_dir", file=sys.stderr)
 
@@ -121,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     print("\nGenerating adapter files:")
     adapter_hpp = generate_adapter_hpp(desc)
-    adapter_cpp = generate_adapter_cpp(desc, setup_source=setup_content)
+    adapter_cpp = generate_adapter_cpp(desc, setup_source=setup_content, def_content=def_content)
     _write_file(output_dir / f"{ns}_device.hpp", adapter_hpp, dry_run=dry_run)
     _write_file(output_dir / f"{ns}_device.cpp", adapter_cpp, dry_run=dry_run)
     generated_sources.append(f"{ns}_device.cpp")

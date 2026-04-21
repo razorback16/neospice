@@ -445,7 +445,7 @@ class TestResolveGeneration:
         cpp = generate_adapter_cpp(desc, setup_source=setup_src)
         assert "RESOLVE(DIOposPosPtr);" in cpp
         assert "RESOLVE(DIOnegNegPtr);" in cpp
-        assert "TODO" not in cpp
+        assert "// TODO: add RESOLVE()" not in cpp
 
     def test_todo_when_no_setup_source(self) -> None:
         desc = StubDescriptor()

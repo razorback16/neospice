@@ -267,3 +267,11 @@ def generate_def_hpp(src: str, desc: ModelDescriptor) -> str:
     )
 
     return wrapped
+
+
+def extract_matrix_offset_fields(def_text: str) -> list[str]:
+    """Extract field names typed as neospice::MatrixOffset from def header text.
+
+    Returns list of field names in order of first occurrence.
+    """
+    return list(dict.fromkeys(re.findall(r'neospice::MatrixOffset\s+(\w+)\s*\{', def_text)))

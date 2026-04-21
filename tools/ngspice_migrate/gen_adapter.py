@@ -208,7 +208,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
 # Implementation generator
 # ---------------------------------------------------------------------------
 
-def generate_adapter_cpp(desc: _Desc, setup_source: str = "") -> str:
+def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str = "") -> str:
     """Return the complete text of the device adapter implementation file.
 
     Parameters
@@ -219,6 +219,10 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "") -> str:
         Translated setup .cpp source text.  When provided, TSTALLOC field
         names are extracted and used to emit RESOLVE() calls in
         assign_offsets.  When empty, a TODO comment is emitted instead.
+    def_content:
+        Generated *_def.hpp header text.  When provided, MatrixOffset fields
+        are extracted directly from the header (most reliable).  Falls back
+        to TSTALLOC extraction from *setup_source* when empty.
     """
     parts: list[str] = []
     ns = desc.namespace
@@ -422,9 +426,18 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "") -> str:
     parts.append("    } while (0)\n")
     parts.append("\n")
 
-    tstalloc_fields = extract_tstalloc_fields(setup_source, desc.matrix_ptr_suffix) if setup_source else []
-    if tstalloc_fields:
-        for fld in tstalloc_fields:
+    # Primary: extract fields from the generated def header (100% reliable).
+    # Fallback: extract from TSTALLOC calls in the translated setup source.
+    if def_content:
+        from .gen_def import extract_matrix_offset_fields
+        resolve_fields = extract_matrix_offset_fields(def_content)
+    elif setup_source:
+        resolve_fields = extract_tstalloc_fields(setup_source, desc.matrix_ptr_suffix)
+    else:
+        resolve_fields = []
+
+    if resolve_fields:
+        for fld in resolve_fields:
             parts.append(f"    RESOLVE({fld});\n")
     else:
         parts.append(f"    // TODO: add RESOLVE() calls for each {prefix}*{desc.matrix_ptr_suffix} field\n")
