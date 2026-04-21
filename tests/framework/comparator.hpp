@@ -49,4 +49,49 @@ CompareResult compare_transient_oscillator(
 CompareResult compare_noise(const NgspiceNoiseResult& expected,
                             const NoiseResult& actual, Tolerance tol = {});
 
+// ---------------------------------------------------------------------------
+// Timing-based transient comparison
+// ---------------------------------------------------------------------------
+// Instead of point-wise sample matching (which is dominated by interpolation
+// artifacts at switching edges), extract physically meaningful timing metrics
+// from each waveform and compare those.  This gives sub-percent tolerances
+// that reflect actual simulator accuracy.
+
+struct EdgeMetrics {
+    double cross_time;    // 50% crossing time (interpolated)
+    double rise_time;     // 10%-90% transition time (negative for falling)
+    double settled_value; // mean value in the settled window after the edge
+    double overshoot;     // peak beyond settled value (absolute)
+};
+
+struct EdgeTolerance {
+    double crossing_relative = 1e-3;   // 0.1% on 50% crossing time
+    double rise_fall_relative = 5e-2;  // 5% on rise/fall time
+    double settled_absolute = 1e-3;    // 1mV on settled value
+    double overshoot_absolute = 5e-3;  // 5mV on overshoot
+};
+
+struct EdgeCompareResult {
+    bool passed;
+    std::string detail;       // human-readable description of worst mismatch
+    double worst_error;       // worst relative or absolute error found
+    int num_edges_compared;
+};
+
+/// Extract edges from a single-signal waveform.  A "falling edge" crosses
+/// v_mid from above; a "rising edge" from below.  v_low/v_high define the
+/// 10%/90% thresholds.  settle_window is the time after an edge to average
+/// for the settled value.
+std::vector<EdgeMetrics> extract_edges(
+    const std::vector<double>& time,
+    const std::vector<double>& signal,
+    double v_low, double v_high,
+    double settle_window);
+
+/// Compare edges extracted from two waveforms.
+EdgeCompareResult compare_edges(
+    const std::vector<EdgeMetrics>& expected,
+    const std::vector<EdgeMetrics>& actual,
+    EdgeTolerance tol = {});
+
 } // namespace neospice

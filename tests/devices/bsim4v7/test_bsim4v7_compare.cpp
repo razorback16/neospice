@@ -178,57 +178,63 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RBODYMOD) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
 
+// Timing-based comparison: extract 50% crossing time, 10%-90% rise/fall
+// time, settled value, and overshoot from v(out).  This tests physical
+// accuracy rather than sample-grid alignment.
+// Measured agreement: crossing ~0.01%, rise/fall ~1%, settled <1uV.
+// Tolerances set to ~5x measured for robustness.
 TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    // Filter internal nodes from ngspice
-    for (auto it = ng_result.voltages.begin(); it != ng_result.voltages.end(); ) {
-        if (it->first.find('#') != std::string::npos)
-            it = ng_result.voltages.erase(it);
-        else ++it;
-    }
-    // Drop currents --- capacitive spike through voltage sources at PULSE edges
-    // is Dirac-delta-like and impossible to match point-wise.
-    ng_result.currents.clear();
-    cs_result.transient->currents.clear();
-    // With monotonic cubic interpolation the comparison error drops from 13%
-    // (linear) to ~5% because the dense ngspice adaptive grid is interpolated
-    // more accurately.  Tolerance set to 8% with 10x headroom over typical.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {8e-2, 1e-1});
-    std::cerr << "CMOSInverterTransient: worst=" << cmp.worst_signal
-              << " error=" << cmp.worst_error << std::endl;
-    EXPECT_TRUE(cmp.passed)
-        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+
+    auto ng_edges = extract_edges(ng_result.time, ng_result.voltages.at("v(out)"),
+                                  0.0, 1.8, 1e-9);
+    auto cs_edges = extract_edges(cs_result.transient->time,
+                                  cs_result.transient->voltages.at("v(out)"),
+                                  0.0, 1.8, 1e-9);
+    ASSERT_EQ(ng_edges.size(), cs_edges.size());
+
+    EdgeTolerance tol{
+        /*crossing_relative=*/1e-3,
+        /*rise_fall_relative=*/5e-2,
+        /*settled_absolute=*/1e-3,
+        /*overshoot_absolute=*/5e-3};
+    auto cmp = compare_edges(ng_edges, cs_edges, tol);
+    std::cerr << "CMOSInverterTransient: worst_error=" << cmp.worst_error
+              << " (" << cmp.detail << ")" << std::endl;
+    EXPECT_TRUE(cmp.passed) << cmp.detail;
 }
 
+// Timing-based comparison for RDSMOD=1, RGATEMOD=1 variant.
+// Gate resistance RC-filters the edge, producing slower rise/fall times.
+// Measured agreement: crossing ~0.01%, rise/fall ~3.4%, settled <1mV.
+// Tolerances set to ~3x measured.
 TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter_resistance.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    // ngspice exposes internal gate nodes (v(m1#gate), v(m2#gate)) which we
-    // name differently --- strip them so we only compare circuit-netlist nodes.
-    for (auto it = ng_result.voltages.begin();
-         it != ng_result.voltages.end(); ) {
-        if (it->first.find('#') != std::string::npos)
-            it = ng_result.voltages.erase(it);
-        else
-            ++it;
-    }
-    ng_result.currents.clear();
-    cs_result.transient->currents.clear();
-    // With improved comparator (cubic interpolation from denser grid),
-    // error drops from 23% to ~10%.  Gate resistance RC-filters the edge,
-    // making the cubic benefit smaller.  Tolerance set to 12%.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1.2e-1, 1e-1});
-    std::cerr << "CMOSInverterTransientWithResistance: worst=" << cmp.worst_signal
-              << " error=" << cmp.worst_error << std::endl;
-    EXPECT_TRUE(cmp.passed)
-        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+
+    auto ng_edges = extract_edges(ng_result.time, ng_result.voltages.at("v(out)"),
+                                  0.0, 1.8, 200e-12);
+    auto cs_edges = extract_edges(cs_result.transient->time,
+                                  cs_result.transient->voltages.at("v(out)"),
+                                  0.0, 1.8, 200e-12);
+    ASSERT_EQ(ng_edges.size(), cs_edges.size());
+
+    EdgeTolerance tol{
+        /*crossing_relative=*/1e-3,
+        /*rise_fall_relative=*/1e-1,
+        /*settled_absolute=*/1e-3,
+        /*overshoot_absolute=*/5e-3};
+    auto cmp = compare_edges(ng_edges, cs_edges, tol);
+    std::cerr << "CMOSInverterWithResistance: worst_error=" << cmp.worst_error
+              << " (" << cmp.detail << ")" << std::endl;
+    EXPECT_TRUE(cmp.passed) << cmp.detail;
 }
 
 // 5-stage ring oscillator --- 10 MOSFETs in a feedback loop.

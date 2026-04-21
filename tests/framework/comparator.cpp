@@ -476,4 +476,215 @@ CompareResult compare_noise(const NgspiceNoiseResult& expected,
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// Timing-based edge extraction and comparison
+// ---------------------------------------------------------------------------
+
+namespace {
+
+double mean_in_window(const std::vector<double>& t, const std::vector<double>& y,
+                      double t_start, double t_end) {
+    double sum = 0.0;
+    int count = 0;
+    for (size_t i = 0; i < t.size(); ++i) {
+        if (t[i] >= t_start && t[i] <= t_end) {
+            sum += y[i];
+            ++count;
+        }
+    }
+    return count > 0 ? sum / count : 0.0;
+}
+
+double peak_in_window(const std::vector<double>& t, const std::vector<double>& y,
+                      double t_start, double t_end, bool find_max) {
+    double val = find_max ? -1e30 : 1e30;
+    for (size_t i = 0; i < t.size(); ++i) {
+        if (t[i] >= t_start && t[i] <= t_end) {
+            val = find_max ? std::max(val, y[i]) : std::min(val, y[i]);
+        }
+    }
+    return val;
+}
+
+} // anonymous namespace
+
+std::vector<EdgeMetrics> extract_edges(
+    const std::vector<double>& time,
+    const std::vector<double>& signal,
+    double v_low, double v_high,
+    double settle_window) {
+
+    std::vector<EdgeMetrics> edges;
+    if (time.size() < 2) return edges;
+
+    double v_mid = 0.5 * (v_low + v_high);
+    double v_10 = v_low + 0.1 * (v_high - v_low);
+    double v_90 = v_low + 0.9 * (v_high - v_low);
+    double t_end = time.back();
+
+    size_t i = 1;
+    while (i < time.size()) {
+        bool rising_cross = (signal[i-1] < v_mid && signal[i] >= v_mid);
+        bool falling_cross = (signal[i-1] > v_mid && signal[i] <= v_mid);
+
+        if (!rising_cross && !falling_cross) { ++i; continue; }
+
+        EdgeMetrics em{};
+        double dy = signal[i] - signal[i-1];
+        double frac = (std::abs(dy) > 1e-30) ? (v_mid - signal[i-1]) / dy : 0.5;
+        em.cross_time = time[i-1] + frac * (time[i] - time[i-1]);
+
+        if (rising_cross) {
+            // Rising edge: find 10% and 90% crossings around this point
+            // Search backwards for 10% crossing
+            double t_10 = -1;
+            for (size_t j = i; j > 0; --j) {
+                if (signal[j-1] < v_10 && signal[j] >= v_10) {
+                    double d = signal[j] - signal[j-1];
+                    double f = (std::abs(d) > 1e-30) ? (v_10 - signal[j-1]) / d : 0.5;
+                    t_10 = time[j-1] + f * (time[j] - time[j-1]);
+                    break;
+                }
+            }
+            // Search forward for 90% crossing
+            double t_90 = -1;
+            for (size_t j = i; j < time.size(); ++j) {
+                if (signal[j-1] < v_90 && signal[j] >= v_90) {
+                    double d = signal[j] - signal[j-1];
+                    double f = (std::abs(d) > 1e-30) ? (v_90 - signal[j-1]) / d : 0.5;
+                    t_90 = time[j-1] + f * (time[j] - time[j-1]);
+                    break;
+                }
+            }
+            em.rise_time = (t_10 >= 0 && t_90 >= 0) ? (t_90 - t_10) : -1.0;
+
+            // Settled value and overshoot in window after transition
+            double settle_start = em.cross_time + 2.0 * std::abs(em.rise_time > 0 ? em.rise_time : settle_window);
+            double settle_end = std::min(settle_start + settle_window, t_end);
+            if (settle_start < t_end) {
+                em.settled_value = mean_in_window(time, signal, settle_start, settle_end);
+                double peak = peak_in_window(time, signal, em.cross_time, settle_start, true);
+                em.overshoot = std::max(0.0, peak - em.settled_value);
+            }
+        } else {
+            // Falling edge: find 90% and 10% crossings
+            double t_90 = -1;
+            for (size_t j = i; j > 0; --j) {
+                if (signal[j-1] > v_90 && signal[j] <= v_90) {
+                    double d = signal[j] - signal[j-1];
+                    double f = (std::abs(d) > 1e-30) ? (v_90 - signal[j-1]) / d : 0.5;
+                    t_90 = time[j-1] + f * (time[j] - time[j-1]);
+                    break;
+                }
+            }
+            double t_10 = -1;
+            for (size_t j = i; j < time.size(); ++j) {
+                if (signal[j-1] > v_10 && signal[j] <= v_10) {
+                    double d = signal[j] - signal[j-1];
+                    double f = (std::abs(d) > 1e-30) ? (v_10 - signal[j-1]) / d : 0.5;
+                    t_10 = time[j-1] + f * (time[j] - time[j-1]);
+                    break;
+                }
+            }
+            em.rise_time = (t_90 >= 0 && t_10 >= 0) ? -(t_10 - t_90) : -1.0;
+
+            double settle_start = em.cross_time + 2.0 * std::abs(em.rise_time > 0 ? em.rise_time : settle_window);
+            double settle_end = std::min(settle_start + settle_window, t_end);
+            if (settle_start < t_end) {
+                em.settled_value = mean_in_window(time, signal, settle_start, settle_end);
+                double peak = peak_in_window(time, signal, em.cross_time, settle_start, false);
+                em.overshoot = std::max(0.0, em.settled_value - peak);
+            }
+        }
+
+        edges.push_back(em);
+
+        // Skip past this transition to avoid double-counting
+        while (i < time.size() && std::abs(time[i] - em.cross_time) < settle_window * 0.5)
+            ++i;
+        ++i;
+    }
+
+    return edges;
+}
+
+EdgeCompareResult compare_edges(
+    const std::vector<EdgeMetrics>& expected,
+    const std::vector<EdgeMetrics>& actual,
+    EdgeTolerance tol) {
+
+    EdgeCompareResult result{true, "", 0.0, 0};
+
+    if (expected.size() != actual.size()) {
+        result.passed = false;
+        result.detail = "edge count mismatch: expected " +
+            std::to_string(expected.size()) + ", actual " +
+            std::to_string(actual.size());
+        result.worst_error = std::numeric_limits<double>::infinity();
+        return result;
+    }
+
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const auto& e = expected[i];
+        const auto& a = actual[i];
+        std::string prefix = "edge[" + std::to_string(i) + "]";
+
+        // 50% crossing time
+        if (e.cross_time > 0 && a.cross_time > 0) {
+            double ref = std::max(std::abs(e.cross_time), 1e-18);
+            double err = std::abs(e.cross_time - a.cross_time) / ref;
+            result.num_edges_compared++;
+            if (err > result.worst_error) {
+                result.worst_error = err;
+                result.detail = prefix + " crossing: " +
+                    std::to_string(e.cross_time) + " vs " + std::to_string(a.cross_time) +
+                    " (" + std::to_string(err * 100) + "%)";
+            }
+            if (err > tol.crossing_relative) result.passed = false;
+        }
+
+        // Rise/fall time
+        if (e.rise_time > 0 && a.rise_time > 0) {
+            double ref = std::max(std::abs(e.rise_time), 1e-18);
+            double err = std::abs(e.rise_time - a.rise_time) / ref;
+            result.num_edges_compared++;
+            if (err > result.worst_error) {
+                result.worst_error = err;
+                result.detail = prefix + (e.rise_time > 0 ? " rise_time: " : " fall_time: ") +
+                    std::to_string(std::abs(e.rise_time)) + " vs " + std::to_string(std::abs(a.rise_time)) +
+                    " (" + std::to_string(err * 100) + "%)";
+            }
+            if (err > tol.rise_fall_relative) result.passed = false;
+        }
+
+        // Settled value
+        {
+            double err = std::abs(e.settled_value - a.settled_value);
+            result.num_edges_compared++;
+            if (err > result.worst_error) {
+                result.worst_error = err;
+                result.detail = prefix + " settled: " +
+                    std::to_string(e.settled_value) + " vs " + std::to_string(a.settled_value) +
+                    " (delta=" + std::to_string(err) + "V)";
+            }
+            if (err > tol.settled_absolute) result.passed = false;
+        }
+
+        // Overshoot
+        {
+            double err = std::abs(e.overshoot - a.overshoot);
+            result.num_edges_compared++;
+            if (err > result.worst_error) {
+                result.worst_error = err;
+                result.detail = prefix + " overshoot: " +
+                    std::to_string(e.overshoot) + " vs " + std::to_string(a.overshoot) +
+                    " (delta=" + std::to_string(err) + "V)";
+            }
+            if (err > tol.overshoot_absolute) result.passed = false;
+        }
+    }
+
+    return result;
+}
+
 } // namespace neospice
