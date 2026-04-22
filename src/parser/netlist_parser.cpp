@@ -2911,6 +2911,16 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             throw ParseError("Line " + std::to_string(z.line_number) +
                              ": Z card references non-HFET model '" + z.model_name + "'");
         }
+        // HFET1 (LEVEL=5) is not yet migrated — reject to prevent silent misuse
+        auto lvl_it = it->second.params.find("level");
+        if (lvl_it != it->second.params.end()) {
+            int level = static_cast<int>(lvl_it->second);
+            if (level != 6 && level != 0) {
+                throw ParseError("Line " + std::to_string(z.line_number) +
+                                 ": HFET LEVEL=" + std::to_string(level) +
+                                 " is not supported (only LEVEL=6 / HFET2)");
+            }
+        }
         auto card_it = hfet2_cards.find(z.model_name);
         if (card_it == hfet2_cards.end()) {
             try {
