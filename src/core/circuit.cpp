@@ -13,6 +13,7 @@
 #include "devices/hfet2/hfet2_device.hpp"      // complete HFET2ModelCard for unique_ptr
 #include "devices/bsim3v32/bsim3v32_device.hpp" // complete BSIM3v32ModelCard for unique_ptr
 #include "devices/hisim2/hisim2_device.hpp"    // complete HSM2ModelCard for unique_ptr
+#include "devices/hisimhv/hisimhv_device.hpp"  // complete HSMHVModelCard for unique_ptr
 #include "devices/resistor.hpp"
 #include "devices/capacitor.hpp"
 #include "devices/inductor.hpp"
@@ -137,6 +138,10 @@ void Circuit::add_bsim3v32_model_card(std::unique_ptr<BSIM3v32ModelCard> card) {
 
 void Circuit::add_hisim2_model_card(std::unique_ptr<HSM2ModelCard> card) {
     hisim2_model_cards_.push_back(std::move(card));
+}
+
+void Circuit::add_hisimhv_model_card(std::unique_ptr<HSMHVModelCard> card) {
+    hisimhv_model_cards_.push_back(std::move(card));
 }
 
 void Circuit::finalize() {

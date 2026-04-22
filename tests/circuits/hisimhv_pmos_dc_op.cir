@@ -1,0 +1,8 @@
+HiSIM_HV PMOS DC Operating Point
+Vdd vdd 0 3.3
+Vg gate 0 1.5
+Rload drain 0 1k
+M1 drain gate vdd vdd PMOD W=10u L=5u
+.model PMOD PMOS LEVEL=73
+.op
+.end

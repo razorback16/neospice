@@ -1,0 +1,69 @@
+model:
+  ngspice_prefix: "HSMHV"
+  neospice_name: "hisimhv"
+  neospice_namespace: "hisimhv"
+  instance_struct: "HSMHVinstance"
+  model_struct: "HSMHVmodel"
+  instance_tag: "sHSMHVinstance"
+  model_tag: "sHSMHVmodel"
+  cpp_instance: "HSMHVInstance"
+  cpp_model: "HSMHVModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "HSMHVdNode" }
+    - { name: "g", field: "HSMHVgNode" }
+    - { name: "s", field: "HSMHVsNode" }
+    - { name: "b", field: "HSMHVbNode" }
+    - { name: "sub", field: "HSMHVsubNode" }
+  state_count: 31
+  state_base_field: "HSMHVstates"
+  next_instance_field: "HSMHVnextInstance"
+  instances_field: "HSMHVinstances"
+  next_model_field: "HSMHVnextModel"
+  model_ptr_field: "HSMHVmodPtr"
+  name_field: "HSMHVname"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "hsmhvset.c"
+    load: "hsmhvld.c"
+    temp: "hsmhvtemp.c"
+    mpar: "hsmhvmpar.c"
+    param: "hsmhvpar.c"
+    eval: "hsmhveval.c"
+    eval_dio: "hsmhveval_dio.c"
+    eval_rdrift: "hsmhveval_rdri.c"
+    devsup: "hsmhv.c"
+  skip_files:
+    - "hsmhvacld.c"
+    - "hsmhvnoi.c"
+    - "hsmhvpzld.c"
+    - "hsmhvcvtest.c"
+    - "hsmhvask.c"
+    - "hsmhvmask.c"
+    - "hsmhvdel.c"
+    - "hsmhvdest.c"
+    - "hsmhvgetic.c"
+    - "hsmhvtrunc.c"
+    - "hsmhvsoachk.c"
+    - "hsmhvinit.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "HSMHVsetup"
+  temp_function: "HSMHVtemp"
+  load_function: "HSMHVload"
+  cleanup_linked_lists: []
+  geometry:
+    - { name: "W",   field: "HSMHV_w",   given: "HSMHV_w_Given",   default: "1e-6",  always_given: true }
+    - { name: "L",   field: "HSMHV_l",   given: "HSMHV_l_Given",   default: "1e-7",  always_given: true }
+    - { name: "M",   field: "HSMHV_m",   given: "HSMHV_m_Given",   default: "1.0",   always_given: true }
+    - { name: "AD",  field: "HSMHV_ad",  given: "HSMHV_ad_Given",  default: "0.0" }
+    - { name: "AS",  field: "HSMHV_as",  given: "HSMHV_as_Given",  default: "0.0" }
+    - { name: "PD",  field: "HSMHV_pd",  given: "HSMHV_pd_Given",  default: "0.0" }
+    - { name: "PS",  field: "HSMHV_ps",  given: "HSMHV_ps_Given",  default: "0.0" }
+    - { name: "NRD", field: "HSMHV_nrd", given: "HSMHV_nrd_Given", default: "0.0" }
+    - { name: "NRS", field: "HSMHV_nrs", given: "HSMHV_nrs_Given", default: "0.0" }
+    - { name: "NF",  field: "HSMHV_nf",  given: "HSMHV_nf_Given",  default: "1.0",   always_given: true }
+  model_types:
+    - { spice_name: "nmos", flag_field: "HSMHV_type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "HSMHV_type", flag_value: -1 }

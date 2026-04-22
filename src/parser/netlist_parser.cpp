@@ -42,6 +42,8 @@
 #include "devices/vbic/vbic_device.hpp"
 #include "devices/hisim2/hisim2_device.hpp"
 #include "devices/hisim2/hisim2_model_card.hpp"
+#include "devices/hisimhv/hisimhv_device.hpp"
+#include "devices/hisimhv/hisimhv_model_card.hpp"
 #include "devices/tline.hpp"
 #include "devices/ltra.hpp"
 #include "devices/asrc/asrc_device.hpp"
@@ -663,6 +665,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     struct DeferredMosfet {
         std::string name;
         int32_t nd, ng, ns, nb;
+        int32_t nsub = GROUND_INTERNAL;  // optional 5th terminal (substrate) for HiSIM_HV
+        bool nsub_given = false;
         std::string model_name;
         BSIM4v7Device::Geom geom;
         int line_number;
@@ -1554,8 +1558,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             deferred_diodes.push_back(std::move(dd));
 
         } else if (elem_type == 'm') {
-            // M name nd ng ns nb modelname [W=.. L=.. NF=.. AD=.. AS=.. PD=..
-            //                                PS=.. NRD=.. NRS=.. SA=.. SB=.. SD=..]
+            // M name nd ng ns nb [nsub] modelname [W=.. L=.. NF=.. AD=.. AS=.. PD=..
+            //                                      PS=.. NRD=.. NRS=.. SA=.. SB=.. SD=..]
+            // 5-terminal form (e.g. HiSIM_HV): M1 d g s b sub modelname ...
             if (tokens.size() < 6) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": M card requires name, nd, ng, ns, nb, modelname");
@@ -1566,9 +1571,28 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             m.ng          = ckt.node(tokens[2]);
             m.ns          = ckt.node(tokens[3]);
             m.nb          = ckt.node(tokens[4]);
-            m.model_name  = tokens[5];
             m.line_number = line.line_number;
-            for (size_t i = 6; i < tokens.size(); ++i) {
+
+            // Detect 5-terminal M-cards: if tokens[5] is not a known model name
+            // and tokens[6] exists and is not a key=value pair, treat tokens[5]
+            // as the substrate node and tokens[6] as the model name.
+            size_t param_start = 6;
+            std::string tok5_lower = to_lower(tokens[5]);
+            bool tok5_is_model = (models.find(tokens[5]) != models.end() ||
+                                  models.find(tok5_lower) != models.end());
+            if (!tok5_is_model && tokens.size() >= 7 &&
+                tokens[5].find('=') == std::string::npos &&
+                tokens[6].find('=') == std::string::npos) {
+                // 5-terminal form: tokens[5] is substrate node
+                m.nsub = ckt.node(tokens[5]);
+                m.nsub_given = true;
+                m.model_name = tokens[6];
+                param_start = 7;
+            } else {
+                m.model_name = tokens[5];
+            }
+
+            for (size_t i = param_start; i < tokens.size(); ++i) {
                 auto eq = tokens[i].find('=');
                 if (eq == std::string::npos) continue;
                 std::string key = to_lower(tokens[i].substr(0, eq));
@@ -2553,6 +2577,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     //   LEVEL=8 or 49     -> BSIM3v3
     //   LEVEL=14 (default)-> BSIM4v7
     //   LEVEL=61 or 68    -> HiSIM2
+    //   LEVEL=73           -> HiSIM_HV (5-terminal high-voltage MOSFET)
     std::unordered_map<std::string, std::unique_ptr<BSIM4v7ModelCard>> bsim4_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS1ModelCard>> mos1_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS3ModelCard>> mos3_cards;
@@ -2560,6 +2585,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     std::unordered_map<std::string, std::unique_ptr<BSIM3ModelCard>> bsim3_cards;
     std::unordered_map<std::string, std::unique_ptr<BSIM3v32ModelCard>> bsim3v32_cards;
     std::unordered_map<std::string, std::unique_ptr<HSM2ModelCard>> hisim2_cards;
+    std::unordered_map<std::string, std::unique_ptr<HSMHVModelCard>> hisimhv_cards;
     std::unordered_map<std::string, int> mosfet_levels;
     for (const auto& m : deferred_mosfets) {
         auto it = models.find(m.model_name);
@@ -2786,6 +2812,40 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                             m.ic_vbs, m.ic_vbs_given);
             }
             ckt.add_device(std::move(dev));
+        } else if (level == 73) {
+            // HiSIM_HV (5-terminal high-voltage MOSFET)
+            auto card_it = hisimhv_cards.find(m.model_name);
+            if (card_it == hisimhv_cards.end()) {
+                try {
+                    card_it = hisimhv_cards.emplace(m.model_name,
+                                                    to_hisimhv_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            HSMHVDevice::Geom hv_geom;
+            hv_geom.W   = m.geom.W;
+            hv_geom.L   = m.geom.L;
+            hv_geom.M   = m.geom.M;
+            hv_geom.NF  = m.geom.NF;
+            hv_geom.AD  = m.geom.AD;
+            hv_geom.AS  = m.geom.AS;
+            hv_geom.PD  = m.geom.PD;
+            hv_geom.PS  = m.geom.PS;
+            hv_geom.NRD = m.geom.NRD;
+            hv_geom.NRS = m.geom.NRS;
+            // Use 5th terminal (substrate) if given; pass GROUND_INTERNAL-1
+            // as sentinel for "no substrate node" (make() maps it to UCB -1).
+            int32_t n_sub = m.nsub_given ? m.nsub : (GROUND_INTERNAL - 1);
+            auto dev = HSMHVDevice::make(m.name, m.nd, m.ng, m.ns, m.nb, n_sub,
+                                         hv_geom, *card_it->second);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
         } else {
             throw ParseError("Line " + std::to_string(m.line_number) +
                              ": Unsupported MOSFET LEVEL=" +
@@ -2814,6 +2874,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     }
     for (auto& [name, card] : hisim2_cards) {
         ckt.add_hisim2_model_card(std::move(card));
+    }
+    for (auto& [name, card] : hisimhv_cards) {
+        ckt.add_hisimhv_model_card(std::move(card));
     }
 
     // Resolve deferred BJTs (Q-cards dispatch to BJT or VBIC based on LEVEL)

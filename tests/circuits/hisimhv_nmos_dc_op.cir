@@ -1,0 +1,8 @@
+HiSIM_HV NMOS DC Operating Point
+Vdd vdd 0 3.3
+Vgs gate 0 1.5
+Rd vdd drain 1k
+M1 drain gate 0 0 NMOD W=10u L=5u
+.model NMOD NMOS LEVEL=73
+.op
+.end

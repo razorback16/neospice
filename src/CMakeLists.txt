@@ -13,6 +13,7 @@ add_subdirectory(devices/hfet1)
 add_subdirectory(devices/hfet2)
 add_subdirectory(devices/bsim3v32)
 add_subdirectory(devices/hisim2)
+add_subdirectory(devices/hisimhv)
 
 add_library(neospice_lib
     core/types.cpp
@@ -72,6 +73,7 @@ add_library(neospice_lib
     $<TARGET_OBJECTS:hfet2_obj>
     $<TARGET_OBJECTS:bsim3v32_obj>
     $<TARGET_OBJECTS:hisim2_obj>
+    $<TARGET_OBJECTS:hisimhv_obj>
 )
 
 target_include_directories(neospice_lib PUBLIC
