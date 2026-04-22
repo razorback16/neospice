@@ -52,9 +52,9 @@ TEST(ParserMosfet, Level1NmosCardInstantiatesMOS1Device) {
 
 TEST(ParserMosfet, UnsupportedLevelThrows) {
     const std::string netlist =
-        "* Unsupported LEVEL=3 probe\n"
+        "* Unsupported LEVEL=5 probe\n"
         "M1 d g s b M1MOD\n"
-        ".model M1MOD NMOS LEVEL=3 VT0=0.7\n"
+        ".model M1MOD NMOS LEVEL=5 VT0=0.7\n"
         ".end\n";
 
     NetlistParser p;

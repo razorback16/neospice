@@ -16,6 +16,7 @@ namespace neospice {
 // the complete type in circuit.cpp (for unique_ptr destruction).
 struct BSIM4v7ModelCard;
 struct MOS1ModelCard;
+struct MOS3ModelCard;
 struct MOS9ModelCard;
 struct BSIM3ModelCard;
 struct BJTModelCard;
@@ -132,6 +133,7 @@ public:
     void add_jfet_model_card(std::unique_ptr<JFETModelCard> card);
     void add_jfet2_model_card(std::unique_ptr<JFET2ModelCard> card);
     void add_mos1_model_card(std::unique_ptr<MOS1ModelCard> card);
+    void add_mos3_model_card(std::unique_ptr<MOS3ModelCard> card);
     void add_mos9_model_card(std::unique_ptr<MOS9ModelCard> card);
     void add_dio_model_card(std::unique_ptr<DIOModelCard> card);
     void add_vbic_model_card(std::unique_ptr<VBICModelCard> card);
@@ -195,6 +197,7 @@ private:
     // device non-owning model_ pointers stay valid.
     std::vector<std::unique_ptr<BSIM4v7ModelCard>> bsim4_model_cards_;
     std::vector<std::unique_ptr<MOS1ModelCard>> mos1_model_cards_;
+    std::vector<std::unique_ptr<MOS3ModelCard>> mos3_model_cards_;
     std::vector<std::unique_ptr<MOS9ModelCard>> mos9_model_cards_;
     std::vector<std::unique_ptr<BJTModelCard>> bjt_model_cards_;
     std::vector<std::unique_ptr<JFETModelCard>> jfet_model_cards_;

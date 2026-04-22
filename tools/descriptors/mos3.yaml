@@ -1,0 +1,71 @@
+model:
+  ngspice_prefix: "MOS3"
+  neospice_name: "mos3"
+  neospice_namespace: "mos3"
+  instance_struct: "MOS3instance"
+  model_struct: "MOS3model"
+  instance_tag: "sMOS3instance"
+  model_tag: "sMOS3model"
+  cpp_instance: "MOS3Instance"
+  cpp_model: "MOS3Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "MOS3dNode" }
+    - { name: "g", field: "MOS3gNode" }
+    - { name: "s", field: "MOS3sNode" }
+    - { name: "b", field: "MOS3bNode" }
+  state_count: 17
+  state_base_field: "MOS3states"
+  next_instance_field: "MOS3nextInstance"
+  instances_field: "MOS3instances"
+  next_model_field: "MOS3nextModel"
+  model_ptr_field: "MOS3modPtr"
+  name_field: "MOS3name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "mos3set.c"
+    load: "mos3load.c"
+    temp: "mos3temp.c"
+    param: "mos3par.c"
+    mpar: "mos3mpar.c"
+    devsup: "mos3.c"
+  skip_files:
+    - "mos3acld.c"
+    - "mos3ask.c"
+    - "mos3conv.c"
+    - "mos3del.c"
+    - "mos3dest.c"
+    - "mos3dist.c"
+    - "mos3dset.c"
+    - "mos3ic.c"
+    - "mos3init.c"
+    - "mos3mask.c"
+    - "mos3mdel.c"
+    - "mos3noi.c"
+    - "mos3pzld.c"
+    - "mos3sacl.c"
+    - "mos3sld.c"
+    - "mos3sprt.c"
+    - "mos3sset.c"
+    - "mos3supd.c"
+    - "mos3trun.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "MOS3setup"
+  temp_function: "MOS3temp"
+  load_function: "MOS3load"
+  geometry:
+    - { name: "W", field: "MOS3w", given: "MOS3wGiven", default: "1e-6" }
+    - { name: "L", field: "MOS3l", given: "MOS3lGiven", default: "1e-4" }
+    - { name: "AD", field: "MOS3drainArea", given: "MOS3drainAreaGiven", default: "0.0" }
+    - { name: "AS", field: "MOS3sourceArea", given: "MOS3sourceAreaGiven", default: "0.0" }
+    - { name: "PD", field: "MOS3drainPerimiter", given: "MOS3drainPerimiterGiven", default: "0.0" }
+    - { name: "PS", field: "MOS3sourcePerimiter", given: "MOS3sourcePerimiterGiven", default: "0.0" }
+    - { name: "NRD", field: "MOS3drainSquares", given: "MOS3drainSquaresGiven", default: "0.0" }
+    - { name: "NRS", field: "MOS3sourceSquares", given: "MOS3sourceSquaresGiven", default: "0.0" }
+    - { name: "M", field: "MOS3m", given: "MOS3mGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "nmos", flag_field: "MOS3type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "MOS3type", flag_value: -1 }
+  charge_states: [5, 8, 11, 13, 15]

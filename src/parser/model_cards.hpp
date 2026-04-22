@@ -5,6 +5,7 @@
 #include "devices/inductor_model.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
 #include "devices/mos1/mos1_device.hpp"          // MOS1ModelCard
+#include "devices/mos3/mos3_device.hpp"          // MOS3ModelCard
 #include "devices/mos9/mos9_device.hpp"          // MOS9ModelCard
 #include "devices/bsim3/bsim3_device.hpp"       // BSIM3ModelCard
 #include "devices/bjt/bjt_device.hpp"            // BJTModelCard
@@ -42,6 +43,10 @@ std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card);
 /// Translate a parsed .model card (LEVEL=1 NMOS/PMOS) into a
 /// MOS1ModelCard using the UCB MOS1mParam dispatcher.
 std::unique_ptr<MOS1ModelCard> to_mos1_card(const ModelCard& card);
+
+/// Translate a parsed .model card (LEVEL=3 NMOS/PMOS) into a
+/// MOS3ModelCard using the UCB MOS3mParam dispatcher.
+std::unique_ptr<MOS3ModelCard> to_mos3_card(const ModelCard& card);
 
 /// Translate a parsed .model card (LEVEL=9 NMOS/PMOS) into a
 /// MOS9ModelCard (Modified Level 3) using the UCB MOS9mParam dispatcher.
