@@ -1,0 +1,54 @@
+model:
+  ngspice_prefix: "HFET2"
+  neospice_name: "hfet2"
+  neospice_namespace: "hfet2"
+  instance_struct: "HFET2instance"
+  model_struct: "HFET2model"
+  instance_tag: "sHFET2instance"
+  model_tag: "sHFET2model"
+  cpp_instance: "HFET2Instance"
+  cpp_model: "HFET2Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "drain", field: "HFET2drainNode" }
+    - { name: "gate", field: "HFET2gateNode" }
+    - { name: "source", field: "HFET2sourceNode" }
+  state_count: 13
+  state_base_field: "HFET2state"
+  next_instance_field: "HFET2nextInstance"
+  instances_field: "HFET2instances"
+  next_model_field: "HFET2nextModel"
+  model_ptr_field: "HFET2modPtr"
+  name_field: "HFET2name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "hfet2setup.c"
+    load: "hfet2load.c"
+    temp: "hfet2temp.c"
+    param: "hfet2param.c"
+    mpar: "hfet2mpar.c"
+    devsup: "hfet2.c"
+  skip_files:
+    - "hfet2acl.c"
+    - "hfet2ask.c"
+    - "hfet2del.c"
+    - "hfet2dest.c"
+    - "hfet2getic.c"
+    - "hfet2init.c"
+    - "hfet2mask.c"
+    - "hfet2mdel.c"
+    - "hfet2pzl.c"
+    - "hfet2trunc.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "HFET2setup"
+  temp_function: "HFET2temp"
+  load_function: "HFET2load"
+  geometry:
+    - { name: "L", field: "HFET2length", given: "HFET2lengthGiven", default: "1e-6" }
+    - { name: "W", field: "HFET2width", given: "HFET2widthGiven", default: "20e-6" }
+    - { name: "M", field: "HFET2m", given: "HFET2mGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "nhfet", flag_field: "HFET2type", flag_value: 1 }
+    - { spice_name: "phfet", flag_field: "HFET2type", flag_value: -1 }

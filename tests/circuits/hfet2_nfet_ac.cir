@@ -1,0 +1,13 @@
+HFET2 NHFET AC Analysis
+* NHFET common-source small-signal AC analysis
+Vdd vdd 0 DC 2.0
+Rd vdd drain 200
+Vgs gate 0 DC 0.3 AC 1
+Z1 drain gate 0 HMOD L=1u W=10u
+.model HMOD nhfet level=6 rd=60 rs=60 m=2.57 lambda=0.17
++ vs=1.5e5 mu=0.385 vto=0.13 eta=1.28 sigma0=0.04
++ vsigma=0.1 vsigmat=0.3 nmax=6e15 d1=0.03e-6 d2=0.2e-6
++ di=0.04e-6 delta=3.0 deltad=4.5e-9 gamma=3.0 n=5.0
+.ac dec 10 1e6 1e12
+.print AC vm(drain) vp(drain)
+.end

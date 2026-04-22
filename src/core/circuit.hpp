@@ -22,6 +22,7 @@ struct BJTModelCard;
 struct JFETModelCard;
 struct DIOModelCard;
 struct VBICModelCard;
+struct HFET2ModelCard;
 
 struct DCSweepParam {
     std::string source_name;
@@ -132,6 +133,7 @@ public:
     void add_mos9_model_card(std::unique_ptr<MOS9ModelCard> card);
     void add_dio_model_card(std::unique_ptr<DIOModelCard> card);
     void add_vbic_model_card(std::unique_ptr<VBICModelCard> card);
+    void add_hfet2_model_card(std::unique_ptr<HFET2ModelCard> card);
 
     /// Take ownership of a BSIM3ModelCard so it outlives any BSIM3Device
     /// that holds a non-owning pointer to it.
@@ -197,6 +199,7 @@ private:
     std::vector<std::unique_ptr<DIOModelCard>> dio_model_cards_;
     std::vector<std::unique_ptr<VBICModelCard>> vbic_model_cards_;
     std::vector<std::unique_ptr<BSIM3ModelCard>> bsim3_model_cards_;
+    std::vector<std::unique_ptr<HFET2ModelCard>> hfet2_model_cards_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     std::vector<bool>                        internal_nodes_;

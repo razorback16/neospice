@@ -11,6 +11,7 @@
 #include "devices/jfet/jfet_device.hpp"          // JFETModelCard
 #include "devices/dio/dio_device.hpp"            // DIOModelCard
 #include "devices/vbic/vbic_device.hpp"          // VBICModelCard
+#include "devices/hfet2/hfet2_device.hpp"        // HFET2ModelCard
 #include "parser/tokenizer.hpp"
 #include <memory>
 #include <string>
@@ -64,6 +65,10 @@ std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card);
 /// Translate a parsed .model card (D) into a DIOModelCard using
 /// the UCB DIOmParam dispatcher.
 std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card);
+
+/// Translate a parsed .model card (NHFET/PHFET level=6) into an
+/// HFET2ModelCard using the UCB HFET2mParam dispatcher.
+std::unique_ptr<HFET2ModelCard> to_hfet2_card(const ModelCard& card);
 
 /// Detect the MOSFET level from a parsed .model card.
 /// Returns 1 for MOS1, 14 (default) for BSIM4v7.

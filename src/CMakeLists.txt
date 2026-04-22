@@ -7,6 +7,7 @@ add_subdirectory(devices/mos1)
 add_subdirectory(devices/mos9)
 add_subdirectory(devices/vbic)
 add_subdirectory(devices/asrc)
+add_subdirectory(devices/hfet2)
 
 add_library(neospice_lib
     core/types.cpp
@@ -60,6 +61,7 @@ add_library(neospice_lib
     $<TARGET_OBJECTS:mos9_obj>
     $<TARGET_OBJECTS:vbic_obj>
     $<TARGET_OBJECTS:asrc_obj>
+    $<TARGET_OBJECTS:hfet2_obj>
 )
 
 target_include_directories(neospice_lib PUBLIC
