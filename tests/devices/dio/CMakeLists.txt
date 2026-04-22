@@ -1,5 +1,6 @@
 add_executable(test_dio_compare
     test_dio_compare.cpp
+    test_dio_validation.cpp
     ${CMAKE_SOURCE_DIR}/tests/framework/ngspice_runner.cpp
     ${CMAKE_SOURCE_DIR}/tests/framework/comparator.cpp
 )

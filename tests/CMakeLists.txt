@@ -66,8 +66,6 @@ add_executable(neospice_tests
     unit/test_lib.cpp
     unit/test_pdk_integration.cpp
     unit/test_bjt.cpp
-    unit/test_bjt_validation.cpp
-    unit/test_diode_validation.cpp
     unit/test_coupled_inductor.cpp
     unit/test_tline.cpp
     unit/test_ltra.cpp
@@ -84,12 +82,7 @@ add_executable(neospice_tests
     unit/test_options.cpp
     unit/test_nonlinear_sources.cpp
     unit/test_asrc.cpp
-    unit/test_mos1_validation.cpp
-    unit/test_ltra_validation.cpp
-    unit/test_asrc_validation.cpp
     unit/test_ths4131.cpp
-    unit/test_bsim3_validation.cpp
-    unit/test_vbic_validation.cpp
     unit/test_tf.cpp
     unit/test_sens.cpp
     unit/test_pz.cpp
@@ -114,8 +107,14 @@ target_compile_definitions(neospice_tests PRIVATE
 gtest_discover_tests(neospice_tests)
 
 # Per-device comparison tests
-add_subdirectory(devices/dio)
+add_subdirectory(devices/asrc)
+add_subdirectory(devices/bjt)
+add_subdirectory(devices/bsim3)
 add_subdirectory(devices/bsim4v7)
+add_subdirectory(devices/dio)
+add_subdirectory(devices/ltra)
+add_subdirectory(devices/mos1)
+add_subdirectory(devices/vbic)
 
 # Performance benchmarks
 add_executable(bench_ths4131

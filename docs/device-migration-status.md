@@ -1,6 +1,6 @@
 # ngspice Device Migration Status
 
-Last updated: 2026-04-20
+Last updated: 2026-04-22
 
 ## Overview
 
@@ -67,7 +67,8 @@ All 5 Priority 1 devices were migrated in a single session using parallel subage
 - [x] Parameter query (gm, gds, id, vth, caps)
 - [x] Parser: LEVEL=1 dispatch via `detect_mosfet_level()`
 
-**Validation:** ngspice comparison tests pending.
+**Validation:** 5 ngspice comparison tests (`tests/devices/mos1/test_mos1_compare.cpp`):
+NMOS DC OP, NMOS IV sweep, PMOS DC OP, AC response, transient pulse.
 
 ---
 
@@ -92,7 +93,8 @@ All 5 Priority 1 devices were migrated in a single session using parallel subage
 - [x] Parameter query (gm, go, ic, ib, vbe, vbc, caps)
 - [x] Parser: Q-card level dispatch (LEVEL=4/9/12/13 -> VBIC)
 
-**Validation:** ngspice comparison tests pending.
+**Validation:** 5 ngspice comparison tests (`tests/devices/vbic/test_vbic_compare.cpp`):
+NPN DC OP, Gummel plot, PNP DC OP, AC small-signal, switching transient.
 
 ---
 
@@ -118,7 +120,9 @@ All 5 Priority 1 devices were migrated in a single session using parallel subage
 - [x] Parser: LEVEL=8/49 dispatch, UCB BSIM3mParam table
 - [x] Size-dependent parameter linked-list cleanup in destructor
 
-**Validation:** ngspice comparison tests pending.
+**Validation:** 7 ngspice comparison tests (`tests/devices/bsim3/test_bsim3_compare.cpp`):
+NMOS DC OP, NMOS IV sweep, PMOS DC OP, CS amplifier AC, AC nonzero output,
+CMOS inverter transient, CMOS inverter transitions.
 
 ---
 
@@ -147,7 +151,8 @@ All 5 Priority 1 devices were migrated in a single session using parallel subage
 - [ ] IC parsing not wired
 - [ ] No LC/RLC transient support yet
 
-**Validation:** ngspice DC comparison tests pending.
+**Validation:** 2 ngspice comparison tests (`tests/devices/ltra/test_ltra_compare.cpp`):
+DC OP RC line, DC OP RG line.
 
 ---
 
@@ -180,7 +185,11 @@ All 5 Priority 1 devices were migrated in a single session using parallel subage
 - [ ] No pole-zero analysis
 - [ ] Singular derivatives at x=0 (sqrt, log) can cause issues without source stepping
 
-**Validation:** ngspice comparison tests pending.
+**Validation:** 11 ngspice comparison tests:
+- `tests/devices/asrc/test_asrc_compare.cpp` (6): voltage doubler, VCCS, nonlinear,
+  trig, multi-variable, AC gain
+- `tests/unit/test_ngspice_compare.cpp` (5): TEMPER, PWL, HERTZ, DDT transient,
+  IDT transient
 
 ---
 
