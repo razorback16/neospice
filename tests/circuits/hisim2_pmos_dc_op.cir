@@ -1,0 +1,8 @@
+HiSIM2 PMOS DC Operating Point
+Vdd vdd 0 1.8
+Vg gate 0 1.0
+Rload drain 0 1k
+M1 drain gate vdd vdd PMOD W=10u L=1u
+.model PMOD PMOS LEVEL=68 TOX=3.0e-9 NSUBC=5.0e17 VFBC=-1.0
+.op
+.end

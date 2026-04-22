@@ -1,0 +1,66 @@
+model:
+  ngspice_prefix: "HSM2"
+  neospice_name: "hisim2"
+  neospice_namespace: "hisim2"
+  instance_struct: "HSM2instance"
+  model_struct: "HSM2model"
+  instance_tag: "sHSM2instance"
+  model_tag: "sHSM2model"
+  cpp_instance: "HSM2Instance"
+  cpp_model: "HSM2Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "HSM2dNode" }
+    - { name: "g", field: "HSM2gNode" }
+    - { name: "s", field: "HSM2sNode" }
+    - { name: "b", field: "HSM2bNode" }
+  state_count: 21
+  state_base_field: "HSM2states"
+  next_instance_field: "HSM2nextInstance"
+  instances_field: "HSM2instances"
+  next_model_field: "HSM2nextModel"
+  model_ptr_field: "HSM2modPtr"
+  name_field: "HSM2name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "hsm2set.c"
+    load: "hsm2ld.c"
+    temp: "hsm2temp.c"
+    mpar: "hsm2mpar.c"
+    param: "hsm2par.c"
+    eval: "hsm2eval.c"
+    devsup: "hsm2.c"
+  skip_files:
+    - "hsm2acld.c"
+    - "hsm2noi.c"
+    - "hsm2pzld.c"
+    - "hsm2cvtest.c"
+    - "hsm2ask.c"
+    - "hsm2mask.c"
+    - "hsm2del.c"
+    - "hsm2dest.c"
+    - "hsm2getic.c"
+    - "hsm2trunc.c"
+    - "hsm2soachk.c"
+    - "hsm2init.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "HSM2setup"
+  temp_function: "HSM2temp"
+  load_function: "HSM2load"
+  cleanup_linked_lists: []
+  geometry:
+    - { name: "W",   field: "HSM2_w",   given: "HSM2_w_Given",   default: "1e-6",  always_given: true }
+    - { name: "L",   field: "HSM2_l",   given: "HSM2_l_Given",   default: "1e-7",  always_given: true }
+    - { name: "M",   field: "HSM2_m",   given: "HSM2_m_Given",   default: "1.0",   always_given: true }
+    - { name: "AD",  field: "HSM2_ad",  given: "HSM2_ad_Given",  default: "0.0" }
+    - { name: "AS",  field: "HSM2_as",  given: "HSM2_as_Given",  default: "0.0" }
+    - { name: "PD",  field: "HSM2_pd",  given: "HSM2_pd_Given",  default: "0.0" }
+    - { name: "PS",  field: "HSM2_ps",  given: "HSM2_ps_Given",  default: "0.0" }
+    - { name: "NRD", field: "HSM2_nrd", given: "HSM2_nrd_Given", default: "0.0" }
+    - { name: "NRS", field: "HSM2_nrs", given: "HSM2_nrs_Given", default: "0.0" }
+    - { name: "NF",  field: "HSM2_nf",  given: "HSM2_nf_Given",  default: "1.0",   always_given: true }
+  model_types:
+    - { spice_name: "nmos", flag_field: "HSM2_type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "HSM2_type", flag_value: -1 }

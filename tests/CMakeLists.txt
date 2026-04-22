@@ -121,6 +121,7 @@ add_subdirectory(devices/mos3)
 add_subdirectory(devices/mos9)
 add_subdirectory(devices/vbic)
 add_subdirectory(devices/bsim3v32)
+add_subdirectory(devices/hisim2)
 
 # Performance benchmarks
 add_executable(bench_ths4131

@@ -1,0 +1,7 @@
+HiSIM2 NMOS IV Curve DC Sweep
+Vds drain 0 1.8
+Vgs gate 0 0.9
+M1 drain gate 0 0 NMOD W=10u L=1u
+.model NMOD NMOS LEVEL=68 TOX=3.0e-9 NSUBC=5.0e17 VFBC=-1.0
+.dc Vds 0 1.8 0.02
+.end

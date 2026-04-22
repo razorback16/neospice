@@ -40,6 +40,8 @@
 #include "devices/jfet2/jfet2_device.hpp"
 #include "devices/jfet2/jfet2_model_card.hpp"
 #include "devices/vbic/vbic_device.hpp"
+#include "devices/hisim2/hisim2_device.hpp"
+#include "devices/hisim2/hisim2_model_card.hpp"
 #include "devices/tline.hpp"
 #include "devices/ltra.hpp"
 #include "devices/asrc/asrc_device.hpp"
@@ -2550,12 +2552,14 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     //   LEVEL=9           -> MOS9 (Modified Level 3)
     //   LEVEL=8 or 49     -> BSIM3v3
     //   LEVEL=14 (default)-> BSIM4v7
+    //   LEVEL=61 or 68    -> HiSIM2
     std::unordered_map<std::string, std::unique_ptr<BSIM4v7ModelCard>> bsim4_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS1ModelCard>> mos1_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS3ModelCard>> mos3_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS9ModelCard>> mos9_cards;
     std::unordered_map<std::string, std::unique_ptr<BSIM3ModelCard>> bsim3_cards;
     std::unordered_map<std::string, std::unique_ptr<BSIM3v32ModelCard>> bsim3v32_cards;
+    std::unordered_map<std::string, std::unique_ptr<HSM2ModelCard>> hisim2_cards;
     std::unordered_map<std::string, int> mosfet_levels;
     for (const auto& m : deferred_mosfets) {
         auto it = models.find(m.model_name);
@@ -2751,6 +2755,37 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                             m.ic_vbs, m.ic_vbs_given);
             }
             ckt.add_device(std::move(dev));
+        } else if (level == 61 || level == 68) {
+            // HiSIM2
+            auto card_it = hisim2_cards.find(m.model_name);
+            if (card_it == hisim2_cards.end()) {
+                try {
+                    card_it = hisim2_cards.emplace(m.model_name,
+                                                    to_hisim2_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            HSM2Device::Geom hsm2_geom;
+            hsm2_geom.W   = m.geom.W;
+            hsm2_geom.L   = m.geom.L;
+            hsm2_geom.M   = m.geom.M;
+            hsm2_geom.NF  = m.geom.NF;
+            hsm2_geom.AD  = m.geom.AD;
+            hsm2_geom.AS  = m.geom.AS;
+            hsm2_geom.PD  = m.geom.PD;
+            hsm2_geom.PS  = m.geom.PS;
+            hsm2_geom.NRD = m.geom.NRD;
+            hsm2_geom.NRS = m.geom.NRS;
+            auto dev = HSM2Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                        hsm2_geom, *card_it->second);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
         } else {
             throw ParseError("Line " + std::to_string(m.line_number) +
                              ": Unsupported MOSFET LEVEL=" +
@@ -2776,6 +2811,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     }
     for (auto& [name, card] : bsim3v32_cards) {
         ckt.add_bsim3v32_model_card(std::move(card));
+    }
+    for (auto& [name, card] : hisim2_cards) {
+        ckt.add_hisim2_model_card(std::move(card));
     }
 
     // Resolve deferred BJTs (Q-cards dispatch to BJT or VBIC based on LEVEL)
