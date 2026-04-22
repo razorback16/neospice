@@ -1,0 +1,54 @@
+model:
+  ngspice_prefix: "JFET2"
+  neospice_name: "jfet2"
+  neospice_namespace: "jfet2"
+  instance_struct: "JFET2instance"
+  model_struct: "JFET2model"
+  instance_tag: "sJFET2instance"
+  model_tag: "sJFET2model"
+  cpp_instance: "JFET2Instance"
+  cpp_model: "JFET2Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "drain", field: "JFET2drainNode" }
+    - { name: "gate", field: "JFET2gateNode" }
+    - { name: "source", field: "JFET2sourceNode" }
+  state_count: 18
+  state_base_field: "JFET2state"
+  next_instance_field: "JFET2nextInstance"
+  instances_field: "JFET2instances"
+  next_model_field: "JFET2nextModel"
+  model_ptr_field: "JFET2modPtr"
+  name_field: "JFET2name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "jfet2set.c"
+    load: "jfet2load.c"
+    temp: "jfet2temp.c"
+    param: "jfet2par.c"
+    mpar: "jfet2mpar.c"
+    devsup: "jfet2.c"
+  skip_files:
+    - "jfet2acld.c"
+    - "jfet2ask.c"
+    - "jfet2del.c"
+    - "jfet2dest.c"
+    - "jfet2ic.c"
+    - "jfet2init.c"
+    - "jfet2mask.c"
+    - "jfet2mdel.c"
+    - "jfet2noi.c"
+    - "jfet2trun.c"
+    - "psmodel.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "JFET2setup"
+  temp_function: "JFET2temp"
+  load_function: "JFET2load"
+  geometry:
+    - { name: "area", field: "JFET2area", given: "JFET2areaGiven", default: "1.0" }
+    - { name: "m", field: "JFET2m", given: "JFET2mGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "njf", flag_field: "JFET2type", flag_value: 1 }
+    - { spice_name: "pjf", flag_field: "JFET2type", flag_value: -1 }

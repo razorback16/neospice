@@ -31,6 +31,8 @@
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
 #include "devices/hfet2/hfet2_device.hpp"
+#include "devices/jfet2/jfet2_device.hpp"
+#include "devices/jfet2/jfet2_model_card.hpp"
 #include "devices/vbic/vbic_device.hpp"
 #include "devices/tline.hpp"
 #include "devices/ltra.hpp"
@@ -2772,8 +2774,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.add_vbic_model_card(std::move(card));
     }
 
-    // Resolve deferred JFETs
+    // Resolve deferred JFETs (J-cards dispatch to JFET or JFET2 based on LEVEL)
+    // LEVEL=1 (default, or unspecified) -> JFET (Shichman-Hodges)
+    // LEVEL=2                           -> JFET2 (Parker-Skellern)
     std::unordered_map<std::string, std::unique_ptr<JFETModelCard>> jfet_cards;
+    std::unordered_map<std::string, std::unique_ptr<JFET2ModelCard>> jfet2_cards;
     for (const auto& j : deferred_jfets) {
         auto it = models.find(j.model_name);
         if (it == models.end()) {
@@ -2790,28 +2795,66 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             throw ParseError("Line " + std::to_string(j.line_number) +
                              ": J card references non-JFET model '" + j.model_name + "'");
         }
-        auto card_it = jfet_cards.find(j.model_name);
-        if (card_it == jfet_cards.end()) {
-            try {
-                card_it = jfet_cards.emplace(j.model_name,
-                                              to_jfet_card(it->second)).first;
-            } catch (const ParseError& e) {
-                throw ParseError("Line " + std::to_string(j.line_number) +
-                                 ": " + e.what());
+
+        // Determine level: default=1 (JFET), 2 = JFET2 (Parker-Skellern)
+        auto level_it = it->second.params.find("level");
+        int level = (level_it == it->second.params.end()) ? 1
+                    : static_cast<int>(level_it->second);
+
+        if (level == 2) {
+            // JFET2 (Parker-Skellern) model
+            auto card_it = jfet2_cards.find(j.model_name);
+            if (card_it == jfet2_cards.end()) {
+                try {
+                    card_it = jfet2_cards.emplace(j.model_name,
+                                                   to_jfet2_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(j.line_number) +
+                                     ": " + e.what());
+                }
             }
+            int32_t nd = ckt.node(j.nd);
+            int32_t ng = ckt.node(j.ng);
+            int32_t ns = ckt.node(j.ns);
+            JFET2Device::Geom g2;
+            g2.area = j.geom.area;
+            g2.area_given = j.geom.area_given;
+            g2.m = j.geom.m;
+            g2.m_given = j.geom.m_given;
+            auto dev = JFET2Device::make(j.name, nd, ng, ns,
+                                          g2, *card_it->second);
+            if (j.ic_vds_given || j.ic_vgs_given) {
+                dev->set_ic(j.ic_vds, j.ic_vds_given, j.ic_vgs, j.ic_vgs_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else {
+            // Standard JFET (level 1 or unspecified)
+            auto card_it = jfet_cards.find(j.model_name);
+            if (card_it == jfet_cards.end()) {
+                try {
+                    card_it = jfet_cards.emplace(j.model_name,
+                                                  to_jfet_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(j.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            int32_t nd = ckt.node(j.nd);
+            int32_t ng = ckt.node(j.ng);
+            int32_t ns = ckt.node(j.ns);
+            auto dev = JFETDevice::make(j.name, nd, ng, ns,
+                                         j.geom, *card_it->second);
+            if (j.ic_vds_given || j.ic_vgs_given) {
+                dev->set_ic(j.ic_vds, j.ic_vds_given, j.ic_vgs, j.ic_vgs_given);
+            }
+            ckt.add_device(std::move(dev));
         }
-        int32_t nd = ckt.node(j.nd);
-        int32_t ng = ckt.node(j.ng);
-        int32_t ns = ckt.node(j.ns);
-        auto dev = JFETDevice::make(j.name, nd, ng, ns,
-                                     j.geom, *card_it->second);
-        if (j.ic_vds_given || j.ic_vgs_given) {
-            dev->set_ic(j.ic_vds, j.ic_vds_given, j.ic_vgs, j.ic_vgs_given);
-        }
-        ckt.add_device(std::move(dev));
     }
     for (auto& [name, card] : jfet_cards) {
         ckt.add_jfet_model_card(std::move(card));
+    }
+    for (auto& [name, card] : jfet2_cards) {
+        ckt.add_jfet2_model_card(std::move(card));
     }
 
     // Resolve deferred HFET2s (Z elements with nhfet/phfet level=6)

@@ -115,6 +115,7 @@ add_subdirectory(devices/dio)
 add_subdirectory(devices/hfet2)
 add_subdirectory(devices/ltra)
 add_subdirectory(devices/mos1)
+add_subdirectory(devices/jfet2)
 add_subdirectory(devices/mos9)
 add_subdirectory(devices/vbic)
 

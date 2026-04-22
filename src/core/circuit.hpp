@@ -20,6 +20,7 @@ struct MOS9ModelCard;
 struct BSIM3ModelCard;
 struct BJTModelCard;
 struct JFETModelCard;
+struct JFET2ModelCard;
 struct DIOModelCard;
 struct VBICModelCard;
 struct HFET2ModelCard;
@@ -129,6 +130,7 @@ public:
     /// Take ownership of a JFETModelCard so it outlives any JFETDevice
     /// that holds a non-owning pointer to it.
     void add_jfet_model_card(std::unique_ptr<JFETModelCard> card);
+    void add_jfet2_model_card(std::unique_ptr<JFET2ModelCard> card);
     void add_mos1_model_card(std::unique_ptr<MOS1ModelCard> card);
     void add_mos9_model_card(std::unique_ptr<MOS9ModelCard> card);
     void add_dio_model_card(std::unique_ptr<DIOModelCard> card);
@@ -196,6 +198,7 @@ private:
     std::vector<std::unique_ptr<MOS9ModelCard>> mos9_model_cards_;
     std::vector<std::unique_ptr<BJTModelCard>> bjt_model_cards_;
     std::vector<std::unique_ptr<JFETModelCard>> jfet_model_cards_;
+    std::vector<std::unique_ptr<JFET2ModelCard>> jfet2_model_cards_;
     std::vector<std::unique_ptr<DIOModelCard>> dio_model_cards_;
     std::vector<std::unique_ptr<VBICModelCard>> vbic_model_cards_;
     std::vector<std::unique_ptr<BSIM3ModelCard>> bsim3_model_cards_;

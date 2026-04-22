@@ -4,6 +4,7 @@
 #include "devices/mos9/mos9_device.hpp"        // complete MOS9ModelCard for unique_ptr
 #include "devices/bjt/bjt_device.hpp"           // complete BJTModelCard for unique_ptr
 #include "devices/jfet/jfet_device.hpp"         // complete JFETModelCard for unique_ptr
+#include "devices/jfet2/jfet2_device.hpp"       // complete JFET2ModelCard for unique_ptr
 #include "devices/dio/dio_device.hpp"           // complete DIOModelCard for unique_ptr
 #include "devices/vbic/vbic_device.hpp"         // complete VBICModelCard for unique_ptr
 #include "devices/bsim3/bsim3_device.hpp"      // complete BSIM3ModelCard for unique_ptr
@@ -88,6 +89,10 @@ void Circuit::add_bjt_model_card(std::unique_ptr<BJTModelCard> card) {
 
 void Circuit::add_jfet_model_card(std::unique_ptr<JFETModelCard> card) {
     jfet_model_cards_.push_back(std::move(card));
+}
+
+void Circuit::add_jfet2_model_card(std::unique_ptr<JFET2ModelCard> card) {
+    jfet2_model_cards_.push_back(std::move(card));
 }
 
 void Circuit::add_mos1_model_card(std::unique_ptr<MOS1ModelCard> card) {
