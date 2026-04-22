@@ -90,7 +90,7 @@ TEST_F(NgspiceCompareTest, RCLowpassTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-4, 1e-4});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-5, 1e-4});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -112,7 +112,7 @@ TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {2e-3, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-5, 1e-4});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -264,7 +264,7 @@ TEST_F(NgspiceCompareTest, PulseDefaultsTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-3, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-5, 1e-5});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -275,7 +275,7 @@ TEST_F(NgspiceCompareTest, PwlSourceTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-4, 1e-4});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-6, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -304,12 +304,7 @@ TEST_F(NgspiceCompareTest, SffmSourceTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    // SFFM with FC=1MHz and MDI=5 produces a rapidly varying waveform whose
-    // instantaneous frequency sweeps up to FC+MDI*FS = 1.05MHz.  Timestep
-    // control differences between the two simulators create interpolation
-    // mismatch at the high-frequency carrier zero-crossings, so we use a
-    // slightly relaxed tolerance.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-2, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-3, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -320,10 +315,7 @@ TEST_F(NgspiceCompareTest, AmSourceTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    // AM with FC=1MHz carrier produces high-frequency oscillation.  Timestep
-    // control differences cause small interpolation mismatch at carrier
-    // zero-crossings, so use a slightly relaxed tolerance.
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-2, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-4, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -408,7 +400,7 @@ TEST_F(NgspiceCompareTest, AsrcDdtTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-2, 1e-3});
+    auto cmp = compare_transient(*cs_result.transient, ng_result, {1e-5, 1e-5});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

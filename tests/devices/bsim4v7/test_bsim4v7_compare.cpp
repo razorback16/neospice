@@ -181,8 +181,7 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RBODYMOD) {
 // Timing-based comparison: extract 50% crossing time, 10%-90% rise/fall
 // time, settled value, and overshoot from v(out).  This tests physical
 // accuracy rather than sample-grid alignment.
-// Measured agreement: crossing ~0.01%, rise/fall ~1%, settled <1uV.
-// Tolerances set to ~5x measured for robustness.
+// Measured agreement: crossing ~0.01%, rise/fall ~0.8%, settled <1uV.
 TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter.cir";
     auto ng_result = ngspice_->run_transient(path);
@@ -199,19 +198,16 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
 
     EdgeTolerance tol{
         /*crossing_relative=*/1e-3,
-        /*rise_fall_relative=*/5e-2,
+        /*rise_fall_relative=*/2e-2,
         /*settled_absolute=*/1e-3,
         /*overshoot_absolute=*/5e-3};
     auto cmp = compare_edges(ng_edges, cs_edges, tol);
-    std::cerr << "CMOSInverterTransient: worst_error=" << cmp.worst_error
-              << " (" << cmp.detail << ")" << std::endl;
     EXPECT_TRUE(cmp.passed) << cmp.detail;
 }
 
 // Timing-based comparison for RDSMOD=1, RGATEMOD=1 variant.
 // Gate resistance RC-filters the edge, producing slower rise/fall times.
-// Measured agreement: crossing ~0.01%, rise/fall ~3.4%, settled <1mV.
-// Tolerances set to ~3x measured.
+// Measured agreement: crossing ~0.01%, rise/fall ~3.0%, settled <1mV.
 TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter_resistance.cir";
     auto ng_result = ngspice_->run_transient(path);
@@ -228,12 +224,10 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
 
     EdgeTolerance tol{
         /*crossing_relative=*/1e-3,
-        /*rise_fall_relative=*/1e-1,
+        /*rise_fall_relative=*/5e-2,
         /*settled_absolute=*/1e-3,
         /*overshoot_absolute=*/5e-3};
     auto cmp = compare_edges(ng_edges, cs_edges, tol);
-    std::cerr << "CMOSInverterWithResistance: worst_error=" << cmp.worst_error
-              << " (" << cmp.detail << ")" << std::endl;
     EXPECT_TRUE(cmp.passed) << cmp.detail;
 }
 
