@@ -460,6 +460,7 @@ JFET2Device::query_param(const std::string& name) const {
     if (state0_ && state_base_ >= 0) {
         if (key == "vgs")  return state0_[inst_.JFET2state + 0];
         if (key == "vgd")  return state0_[inst_.JFET2state + 1];
+        if (key == "vds")  return state0_[inst_.JFET2state + 0] - state0_[inst_.JFET2state + 1];
         if (key == "ig")   return state0_[inst_.JFET2state + 2] * m;
         if (key == "id")   return state0_[inst_.JFET2state + 3] * m;
         if (key == "igd")  return state0_[inst_.JFET2state + 4] * m;

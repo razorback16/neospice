@@ -178,7 +178,49 @@ TEST_F(MOS3Validation, NmosIvCurveSweep) {
 }
 
 // ============================================================================
-// 3.  AC Small-Signal -- NMOS common-source amplifier
+// 3.  PMOS DC Operating Point — Verify PMOS polarity works correctly
+//
+// Circuit: Vdd(5V) -> M1(drain,gate,vdd,vdd) -> Rload(1k) -> GND
+// PMOS: source at Vdd, drain pulled to ground through Rload.
+// Vgs = V(gate) - V(vdd) = 3 - 5 = -2V (which is < Vto = -0.7V, so ON).
+// ============================================================================
+
+TEST_F(MOS3Validation, PmosOperatingPoint) {
+    std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/mos3_pmos_dc_op.cir";
+
+    // Run ngspice
+    DCResult ng_result;
+    try {
+        ng_result = ngspice_->run_dc(cir_path);
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+    }
+
+    if (ng_result.node_voltages.empty()) {
+        GTEST_SKIP() << "ngspice returned empty DC result";
+    }
+
+    // Run neospice
+    auto ckt = sim_.load(cir_path);
+    DCResult cs_result = sim_.run_dc(ckt);
+
+    auto cmp = compare_dc(ng_result, cs_result, {1e-2, 1e-6});
+    EXPECT_TRUE(cmp.passed)
+        << "PMOS DC OP comparison failed. Worst: " << cmp.worst_signal
+        << " error: " << cmp.worst_error;
+
+    // Verify PMOS physics
+    ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);
+    double v_drain = cs_result.node_voltages["v(drain)"];
+
+    EXPECT_GT(v_drain, 0.1)
+        << "PMOS drain should be pulled up from ground";
+    EXPECT_LT(v_drain, 5.0)
+        << "PMOS drain should be below Vdd";
+}
+
+// ============================================================================
+// 4.  AC Small-Signal -- NMOS common-source amplifier
 //
 // Circuit: Vdd(5V) -> Rd(1k) -> drain, M1(drain,gate,0,0), Vin AC=1 at gate.
 // Model includes overlap and junction capacitances for AC response.
@@ -243,4 +285,64 @@ TEST_F(MOS3Validation, NmosAcResponse) {
     double phase_low_deg = std::arg(v_drain_ac.front()) * 180.0 / M_PI;
     EXPECT_GT(std::abs(phase_low_deg), 90.0)
         << "CS amp should show inverting phase (|phase| > 90 deg) at low frequency";
+}
+
+// ============================================================================
+// 5.  Transient — NMOS inverter pulse response
+//
+// Circuit: Vdd(5V) -> Rd(1k) -> drain, M1(drain,gate,0,0), Cl=1pF on drain
+// Input: PULSE(0, 5, 0, 100ns, 100ns, 2us, 5us)
+// Tests truncation error control (compute_trunc) with charge storage.
+// ============================================================================
+
+TEST_F(MOS3Validation, NmosTransientPulse) {
+    std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/mos3_nmos_transient.cir";
+
+    // Run ngspice
+    TransientResult ng_result;
+    try {
+        ng_result = ngspice_->run_transient(cir_path);
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+    }
+
+    if (ng_result.time.empty()) {
+        GTEST_SKIP() << "ngspice returned empty transient result";
+    }
+
+    // Run neospice
+    auto ckt = sim_.load(cir_path);
+    TransientResult cs_result = sim_.run_transient(ckt, 50e-9, 15e-6);
+
+    ASSERT_FALSE(cs_result.time.empty());
+    ASSERT_GT(cs_result.time.back(), 10e-6)
+        << "Simulation should reach near final time";
+
+    // Compare v(drain) only — skip v(gate) which is the pulse source and
+    // has sharp edges that cause interpolation mismatch between simulators.
+    TransientResult ng_filtered;
+    ng_filtered.time = ng_result.time;
+    if (ng_result.voltages.count("v(drain)") > 0) {
+        ng_filtered.voltages["v(drain)"] = ng_result.voltages.at("v(drain)");
+    }
+
+    auto cmp = compare_transient(ng_filtered, cs_result, {5.5e-1, 5e-2});
+    EXPECT_TRUE(cmp.passed)
+        << "Transient comparison failed. Worst: " << cmp.worst_signal
+        << " error: " << cmp.worst_error;
+
+    // Verify basic transient physics
+    ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
+    const auto& v_drain = cs_result.voltages.at("v(drain)");
+
+    int idx_high = -1;
+    for (size_t i = 0; i < cs_result.time.size(); ++i) {
+        if (cs_result.time[i] >= 1e-6) {
+            idx_high = static_cast<int>(i);
+            break;
+        }
+    }
+    ASSERT_GE(idx_high, 0) << "Could not find t=1us time point";
+    EXPECT_LT(v_drain[idx_high], 2.0)
+        << "V(drain) should be pulled low when gate is high (MOSFET on)";
 }

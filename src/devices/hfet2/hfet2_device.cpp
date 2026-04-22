@@ -396,6 +396,7 @@ HFET2Device::query_param(const std::string& name) const {
     if (state0_ && state_base_ >= 0) {
         if (key == "vgs")  return state0_[inst_.HFET2state + 0];  // HFET2vgs
         if (key == "vgd")  return state0_[inst_.HFET2state + 1];  // HFET2vgd
+        if (key == "vds")  return state0_[inst_.HFET2state + 0] - state0_[inst_.HFET2state + 1];
         if (key == "cg")   return state0_[inst_.HFET2state + 2] * m;  // HFET2cg
         if (key == "cd" || key == "id")
             return state0_[inst_.HFET2state + 3] * m;  // HFET2cd

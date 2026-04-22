@@ -1,0 +1,9 @@
+MOS3 NMOS Inverter Transient
+Vdd vdd 0 5
+Vin gate 0 PULSE(0 5 0 100n 100n 2u 5u)
+Rd vdd drain 1k
+Cl drain 0 1p
+M1 drain gate 0 0 NMOD W=10u L=1u
+.model NMOD NMOS LEVEL=3 VTO=0.7 KP=110U GAMMA=0.4 PHI=0.65 THETA=0.1 ETA=0.1 KAPPA=0.5
+.tran 50n 15u
+.end
