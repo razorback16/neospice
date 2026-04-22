@@ -221,17 +221,11 @@ challenging part is avoiding false positives.
 
 ## Priority 7: Spectre-Style NQS AC Fallback
 
-**Current state**: BSIM4v7 `acnqsMod` is unsupported because NQS conductances
-depend on frequency, which breaks the G/C matrix caching optimization.
-
-**Approach**: Detect NQS-enabled devices at circuit setup time. For those devices
-only, evaluate the AC stamp per frequency and add the contribution to the cached
-G + jωC matrix. Non-NQS devices still use the cache.
-
-**Impact**: Low. NQS is rarely used in practice. But supporting it removes a
-documented limitation.
-
-**Estimated effort**: Medium (1-2 days).
+**Current state**: Implemented. BSIM4v7 `acnqsMod` is fully supported via the
+`ac_stamp_freq()` hook. NQS-enabled devices build intrinsic G/C entries during
+`ac_stamp()`, then `ac_stamp_freq()` adds per-frequency delta corrections to the
+interleaved complex matrix using the τ_net relaxation formula. Non-NQS devices
+are unaffected. Passes ngspice comparison within 5% tolerance.
 
 ---
 
@@ -245,9 +239,9 @@ documented limitation.
 | 4 | Current variable LTE | **Rejected** | Algebraic branch currents violate O(h²); device LTE covers inductors |
 | 5 | Pseudo-transient continuation | **Done** | `04e29c8` |
 | 6 | Trap ringing detection | **Done** | `362d744` |
-| 7 | NQS AC fallback | Deferred | Requires BSIM4v7 NQS AC stamp |
+| 7 | NQS AC fallback | **Done** | `bb98bda` |
 
-All 820 tests pass after implementation.
+All 817 tests pass after implementation.
 
 ---
 
