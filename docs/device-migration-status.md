@@ -199,13 +199,16 @@ DC OP RC line, DC OP RG line.
 |-------|-------|--------|
 | 1 | MOS1 (Shichman-Hodges) | Migrated |
 | 2 | MOS2 (Grove-Frohman) | Not migrated |
-| 3 | MOS3 | Not migrated |
+| 3 | MOS3 | Migrated |
 | 4 | BSIM1 | Not migrated (obsolete) |
 | 5 | BSIM2 | Not migrated (obsolete) |
 | 6 | MOS6 | Not migrated |
-| 8, 49 | BSIM3 v3.3 | Migrated |
-| 9 | MOS9 (Modified Level 3) | Not migrated |
+| 8, 49 | BSIM3 v3.3 / BSIM3v32 | Migrated (both v3.3 and v3.24) |
+| 9 | MOS9 (Modified Level 3) | Migrated |
+| 10, 58 | BSIMSOI | Not migrated |
 | 14, 54 | BSIM4v7 | Migrated (pre-existing) |
+| 61, 68 | HiSIM2 | Migrated |
+| 62, 73 | HiSIM_HV | Migrated |
 
 ## BJT Level Dispatch
 
@@ -214,21 +217,219 @@ DC OP RC line, DC OP RG line.
 | 1 (default) | BJT (Gummel-Poon) | Migrated (pre-existing) |
 | 4, 9, 12, 13 | VBIC | Migrated |
 
+## JFET Level Dispatch
+
+| LEVEL | Model | Status |
+|-------|-------|--------|
+| 1 (default) | JFET | Migrated (pre-existing) |
+| 2 | JFET2 (Parker-Skellern) | Migrated |
+
+## HFET (Z-card) Level Dispatch
+
+| LEVEL | Model | Status |
+|-------|-------|--------|
+| 5 (default) | HFET1 (Curtice cubic) | Migrated |
+| 6 | HFET2 (Chalmers) | Migrated |
+
 ---
 
-## Priority 2 -- Medium Impact (Not Yet Migrated)
+## Priority 2 -- Migrated (2026-04-22)
+
+8 of 9 Priority 2 devices migrated via parallel subagent-driven development.
+
+### MOS9 (Modified Level 3 MOSFET)
+
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | M (LEVEL=9) |
+| Location | `src/devices/mos9/` |
+| Descriptor | `tools/descriptors/mos9.yaml` |
+| Terminals | 4 (drain, gate, source, bulk) |
+| Internal nodes | 2 (drain_prime, source_prime) |
+| State variables | 17 |
+| Complexity | Medium |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, param, mpar
+- [x] AC stamp (G/C split) with Meyer gate capacitance
+- [x] Noise: thermal (Rd, Rs, channel) + flicker (KF/AF)
+- [x] Truncation: Gear-2 LTE over charge states
+- [x] Parser: LEVEL=9 dispatch
+
+**Validation:** ngspice comparison tests (`tests/devices/mos9/test_mos9_compare.cpp`)
+
+---
+
+### MOS3 (Level 3 MOSFET)
+
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | M (LEVEL=3) |
+| Location | `src/devices/mos3/` |
+| Descriptor | `tools/descriptors/mos3.yaml` |
+| Terminals | 4 (drain, gate, source, bulk) |
+| Internal nodes | 2 (drain_prime, source_prime) |
+| State variables | 17 |
+| Complexity | Medium |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, param, mpar
+- [x] AC stamp (G/C split) with Meyer gate capacitance
+- [x] Noise: thermal (Rd, Rs, channel) + flicker (KF/AF)
+- [x] Truncation: Gear-2 LTE over charge states
+- [x] Parser: LEVEL=3 dispatch
+
+**Validation:** ngspice comparison tests (`tests/devices/mos3/test_mos3_compare.cpp`)
+
+---
+
+### HFET2 (Chalmers GaAs/GaN HFET)
+
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | Z (LEVEL=6) |
+| Location | `src/devices/hfet2/` |
+| Descriptor | `tools/descriptors/hfet2.yaml` |
+| Terminals | 3 (drain, gate, source) |
+| Internal nodes | 2 (drain_prime, source_prime) |
+| State variables | 16 |
+| Complexity | Medium |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, param, mpar
+- [x] AC stamp (G/C split)
+- [x] Noise: thermal + flicker
+- [x] Truncation: Gear-2 LTE
+- [x] Parser: Z-card LEVEL=6 dispatch
+
+**Validation:** ngspice comparison tests (`tests/devices/hfet2/test_hfet2_compare.cpp`)
+
+---
+
+### JFET2 (Parker-Skellern)
+
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | J (LEVEL=2) |
+| Location | `src/devices/jfet2/` |
+| Descriptor | `tools/descriptors/jfet2.yaml` |
+| Terminals | 3 (drain, gate, source) |
+| Internal nodes | 2 (drain_prime, source_prime) |
+| State variables | 22 |
+| Complexity | Low-Medium |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, param, mpar
+- [x] AC stamp (G/C split)
+- [x] Noise: thermal + flicker + shot
+- [x] Truncation: Gear-2 LTE
+- [x] Parser: J-card LEVEL=2 dispatch
+
+**Validation:** ngspice comparison tests (`tests/devices/jfet2/test_jfet2_compare.cpp`)
+
+---
+
+### HFET1 (Curtice Cubic GaAs/GaN HFET)
+
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | Z (LEVEL=5, default) |
+| Location | `src/devices/hfet1/` |
+| Descriptor | `tools/descriptors/hfet1.yaml` |
+| Terminals | 3 (drain, gate, source) |
+| Internal nodes | 5 (drain_prime, source_prime, gate_prime, drain_prime_prime, source_prime_prime) |
+| State variables | 24 |
+| Complexity | Medium |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, param, mpar
+- [x] AC stamp (G/C split)
+- [x] Truncation: Gear-2 LTE
+- [x] Parser: Z-card LEVEL=5 dispatch (default for NHFET/PHFET)
+
+**Validation:** ngspice comparison tests (`tests/devices/hfet1/test_hfet1_compare.cpp`)
+
+---
+
+### BSIM3v32 (BSIM3 v3.24)
+
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | M (LEVEL=49, VERSION<3.3) |
+| Location | `src/devices/bsim3v32/` |
+| Descriptor | `tools/descriptors/bsim3v32.yaml` |
+| Terminals | 4 (drain, gate, source, bulk) |
+| Internal nodes | yes (drain_prime, source_prime, Q-node for NQS) |
+| State variables | 17 |
+| Complexity | High |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, check, param, mpar
+- [x] AC stamp: 22 standard + 9 NQS (Q-node) matrix entries
+- [x] Noise: thermal (SPICE2/BSIM3v32) + flicker (SPICE2/holistic)
+- [x] Truncation: Gear-2 LTE on qb/qg/qd charges
+- [x] SIZE-dependent parameter linked list cleanup in destructor
+- [x] ACM stub functions for source/drain resistance
+- [x] Parser: LEVEL=49 with VERSION<3.3 routes to BSIM3v32
+
+**Validation:** 3 ngspice comparison tests (`tests/devices/bsim3v32/test_bsim3v32_compare.cpp`):
+DC operating point, CS amplifier AC gain, AC sanity check.
+
+---
+
+### HiSIM2 (Hiroshima-University STARC IGFET)
+
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | M (LEVEL=61/68) |
+| Location | `src/devices/hisim2/` |
+| Descriptor | `tools/descriptors/hisim2.yaml` |
+| Terminals | 4 (drain, gate, source, bulk) |
+| Internal nodes | variable (D', G', S', B', DB, SB, etc.) |
+| State variables | 21 |
+| Complexity | High |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, eval, param, mpar, devsup
+- [x] AC stamp with NQS/corbnet/corg modes
+- [x] Noise: thermal + flicker + shot
+- [x] Truncation: Gear-2 LTE on charge states
+- [x] Parser: LEVEL=61/68 dispatch
+
+**Validation:** 4 ngspice comparison tests (`tests/devices/hisim2/test_hisim2_compare.cpp`):
+NMOS DC, PMOS DC, IV sweep, AC response.
+
+---
+
+### HiSIM_HV (High-Voltage variant)
+
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | M (LEVEL=73) |
+| Location | `src/devices/hisimhv/` |
+| Descriptor | `tools/descriptors/hisimhv.yaml` |
+| Terminals | 5 (drain, gate, source, bulk, substrate) |
+| Internal nodes | variable (D', G', S', B', DB, SB, tempNode, qiNode, qbNode) |
+| State variables | 31 (36 with NQS) |
+| Complexity | High |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, eval, param, mpar, devsup
+- [x] AC stamp with self-heating + NQS support
+- [x] 5th terminal (substrate) parser support for M-card
+- [x] Truncation: Gear-2 LTE on charge states
+- [x] Parser: LEVEL=73 dispatch with 5-terminal M-card detection
+
+**Validation:** 3 ngspice comparison tests (`tests/devices/hisimhv/test_hisimhv_compare.cpp`):
+NMOS DC, PMOS DC, AC response.
+
+---
+
+## Priority 2 -- Not Yet Migrated
 
 | Device | ngspice Dir | Terminals | Why | Complexity | Notes |
 |--------|------------|-----------|-----|------------|-------|
-| BSIM3v32 | `bsim3v32/` | 4 | Some PDKs use v3.2.4 specifically | High | Similar to BSIM3 v3.3 |
-| BSIMSOI | `bsimsoi/` | 4+ | SOI technology, advanced nodes | High | Level 10/58, v4.3.1 |
-| MOS3 | `mos3/` | 4 | Legacy PDK support | Medium | |
-| MOS9 | `mos9/` | 4 | Modified Level 3, some PDKs | Medium | |
-| HiSIM2 | `hisim2/` | 4 | Japanese semiconductor PDKs | High | Level 61/68 |
-| HiSIM_HV | `hisimhv1/` | 4 | High-voltage variant | High | Level 62/73 |
-| HFET1 | `hfet1/` | 4 | RF/microwave GaAs/GaN | Medium | Level 5 |
-| HFET2 | `hfet2/` | 4 | RF/microwave GaAs/GaN | Medium | Level 6 |
-| JFET2 | `jfet2/` | 3 | Parker-Skellern, more accurate | Low-Medium | Level 2 |
+| BSIMSOI | `bsimsoi/` | 6 | SOI technology, advanced nodes | High | Level 10/58, v4.3.1, 38 states |
 
 ---
 
@@ -284,11 +485,12 @@ same tool but the source structure differs from hand-written ngspice devices.
 |----------|-------|
 | Pre-existing devices | 19 |
 | Priority 1 migrated | 5 |
-| **Total migrated** | **24** |
-| Priority 2 remaining | 9 |
+| Priority 2 migrated | 8 |
+| **Total migrated** | **32** |
+| Priority 2 remaining | 1 (BSIMSOI) |
 | Priority 3 remaining | 24 |
 | Priority 4 (Verilog-A) | 5 |
-| **Total remaining** | **38** |
+| **Total remaining** | **30** |
 | **Total ngspice devices** | **~62** |
 
 ## Migration Tooling

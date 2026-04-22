@@ -13,7 +13,7 @@ neospice is a full-featured SPICE circuit simulator written in C++ with a clean 
 - **Fourier** (.four) — harmonic decomposition + THD
 - **Parameter Sweep** (.step) — nested sweeps of any parameter or temperature
 
-### Device Models (19 types)
+### Device Models (27 types)
 | Category          | Devices                                                                                                                             |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | Passives          | R (with TC, RAC, noise, flicker), C, L, K (mutual)                                                                                  |
@@ -22,7 +22,9 @@ neospice is a full-featured SPICE circuit simulator written in C++ with a clean 
 | Behavioral        | B (ASRC) — expression-based with auto-differentiation for exact Jacobians, DDT, IDT, PWL, TABLE                                     |
 | Switches          | S (voltage), W (current) — hysteresis                                                                                               |
 | Transmission Line | T (lossless Branin model)                                                                                                           |
-| Semiconductors    | Diode, BJT (Gummel-Poon), JFET, MOS1 (level 1), BSIM3 (level 33), **BSIM4v7** (level 14, full UCB port: AC NQS, full noise with correlated gate noise), **VBIC** (level 4/9/12/13) |
+| Diode/BJT         | Diode, BJT (Gummel-Poon), **VBIC** (level 4/9/12/13)                                                                               |
+| JFET/HFET         | JFET, **JFET2** (Parker-Skellern), **HFET1** (Curtice cubic), **HFET2** (Chalmers)                                                 |
+| MOSFET            | MOS1 (level 1), **MOS3** (level 3), **MOS9** (level 9), **BSIM3v32** (level 49/v3.24), BSIM3 (level 49/v3.3), **BSIM4v7** (level 14, full UCB port: AC NQS, full noise with correlated gate noise), **HiSIM2** (level 61/68), **HiSIM_HV** (level 73, 5-terminal with self-heating) |
 
 ### Convergence & Numerical Features
 - **Automatic fallback sequence**: Newton → GMIN stepping → source stepping → pseudo-transient continuation
@@ -52,4 +54,4 @@ auto result = sim.run(ckt);            // runs all analyses in the netlist
 Results are returned as structured data (maps keyed by signal name like `"v(out)"`, `"i(v1)"`).
 
 ### Validation
-817 tests including direct ngspice comparison tests across all analysis types, with tolerances as tight as 1e-6 relative error on simple circuits and sub-1% on CMOS inverter edge timing.
+843 tests including direct ngspice comparison tests across all analysis types, with tolerances as tight as 1e-6 relative error on simple circuits and sub-1% on CMOS inverter edge timing.
