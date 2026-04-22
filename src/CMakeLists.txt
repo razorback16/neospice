@@ -9,6 +9,7 @@ add_subdirectory(devices/mos3)
 add_subdirectory(devices/mos9)
 add_subdirectory(devices/vbic)
 add_subdirectory(devices/asrc)
+add_subdirectory(devices/hfet1)
 add_subdirectory(devices/hfet2)
 add_subdirectory(devices/bsim3v32)
 
@@ -66,6 +67,7 @@ add_library(neospice_lib
     $<TARGET_OBJECTS:mos9_obj>
     $<TARGET_OBJECTS:vbic_obj>
     $<TARGET_OBJECTS:asrc_obj>
+    $<TARGET_OBJECTS:hfet1_obj>
     $<TARGET_OBJECTS:hfet2_obj>
     $<TARGET_OBJECTS:bsim3v32_obj>
 )

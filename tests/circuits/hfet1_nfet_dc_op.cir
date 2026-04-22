@@ -1,0 +1,11 @@
+HFET1 NHFET DC Operating Point
+* Simple NHFET DC bias: Vgs=0.3V, Vds=1V
+Vds drain 0 DC 1.0
+Vgs gate 0 DC 0.3
+Z1 drain gate 0 HMOD L=1u W=10u
+.model HMOD nhfet level=5 rd=60 rs=60 m=2.57 lambda=0.17
++ vs=1.5e5 mu=0.385 vto=0.13 eta=1.28 sigma0=0.04
++ vsigma=0.1 vsigmat=0.3 nmax=6e15 d1=0.03e-6 d2=0.2e-6
++ di=0.04e-6 delta=3.0 deltad=4.5e-9 gamma=3.0 n=5.0
+.op
+.end

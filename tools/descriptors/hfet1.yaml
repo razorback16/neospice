@@ -1,0 +1,54 @@
+model:
+  ngspice_prefix: "HFETA"
+  neospice_name: "hfet1"
+  neospice_namespace: "hfet1"
+  instance_struct: "HFETAinstance"
+  model_struct: "HFETAmodel"
+  instance_tag: "sHFETAinstance"
+  model_tag: "sHFETAmodel"
+  cpp_instance: "HFETAInstance"
+  cpp_model: "HFETAModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "drain", field: "HFETAdrainNode" }
+    - { name: "gate", field: "HFETAgateNode" }
+    - { name: "source", field: "HFETAsourceNode" }
+  state_count: 24
+  state_base_field: "HFETAstate"
+  next_instance_field: "HFETAnextInstance"
+  instances_field: "HFETAinstances"
+  next_model_field: "HFETAnextModel"
+  model_ptr_field: "HFETAmodPtr"
+  name_field: "HFETAname"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "hfetsetup.c"
+    load: "hfetload.c"
+    temp: "hfettemp.c"
+    param: "hfetparam.c"
+    mpar: "hfetmpar.c"
+    devsup: "hfet.c"
+  skip_files:
+    - "hfetacl.c"
+    - "hfetask.c"
+    - "hfetdel.c"
+    - "hfetdest.c"
+    - "hfetgetic.c"
+    - "hfetinit.c"
+    - "hfetmask.c"
+    - "hfetmdel.c"
+    - "hfetpzl.c"
+    - "hfettrunc.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "HFETAsetup"
+  temp_function: "HFETAtemp"
+  load_function: "HFETAload"
+  geometry:
+    - { name: "L", field: "HFETAlength", given: "HFETAlengthGiven", default: "1e-6" }
+    - { name: "W", field: "HFETAwidth", given: "HFETAwidthGiven", default: "20e-6" }
+    - { name: "M", field: "HFETAm", given: "HFETAmGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "nhfet", flag_field: "HFETAtype", flag_value: 1 }
+    - { spice_name: "phfet", flag_field: "HFETAtype", flag_value: -1 }

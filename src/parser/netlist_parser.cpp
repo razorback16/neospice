@@ -34,6 +34,8 @@
 #include "devices/bsim3v32/bsim3v32_model_card.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
+#include "devices/hfet1/hfet1_device.hpp"
+#include "devices/hfet1/hfet1_model_card.hpp"
 #include "devices/hfet2/hfet2_device.hpp"
 #include "devices/jfet2/jfet2_device.hpp"
 #include "devices/jfet2/jfet2_model_card.hpp"
@@ -705,18 +707,20 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     };
     std::vector<DeferredJFET> deferred_jfets;
 
-    // Deferred HFET2s: parsed Z-cards with level=6 (nhfet/phfet) resolved
-    // in a second pass once all .model cards are known.
-    struct DeferredHFET2 {
+    // Deferred HFETs: parsed Z-cards with nhfet/phfet model types resolved
+    // in a second pass once all .model cards are known. LEVEL determines device:
+    // LEVEL=5 or default → HFET1, LEVEL=6 → HFET2.
+    struct DeferredHFET {
         std::string name;
         std::string nd, ng, ns;  // drain, gate, source node names
         std::string model_name;
-        HFET2Device::Geom geom;
+        double length = 1e-6, width = 20e-6, m = 1.0;
+        bool length_given = false, width_given = false, m_given = false;
         int line_number = 0;
         double ic_vds = 0, ic_vgs = 0;
         bool ic_vds_given = false, ic_vgs_given = false;
     };
-    std::vector<DeferredHFET2> deferred_hfet2s;
+    std::vector<DeferredHFET> deferred_hfets;
 
     // Deferred VSwitch (S elements): resolved after all .model cards are known.
     struct DeferredVSwitch {
@@ -2140,27 +2144,25 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": Z card requires at least name, nd, ng, ns, model");
             }
-            DeferredHFET2 z;
+            DeferredHFET z;
             z.name = tokens[0];
             z.nd = tokens[1];
             z.ng = tokens[2];
             z.ns = tokens[3];
             z.model_name = tokens[4];
             z.line_number = line.line_number;
-            // Parse remaining: L=, W=, M=, ic=, off
             for (size_t i = 5; i < tokens.size(); ++i) {
                 auto eq = tokens[i].find('=');
                 if (eq != std::string::npos) {
                     std::string key = to_lower(tokens[i].substr(0, eq));
                     std::string valstr = tokens[i].substr(eq + 1);
                     if (key == "l") {
-                        z.geom.L = parse_spice_number(valstr);
+                        z.length = parse_spice_number(valstr); z.length_given = true;
                     } else if (key == "w") {
-                        z.geom.W = parse_spice_number(valstr);
+                        z.width = parse_spice_number(valstr); z.width_given = true;
                     } else if (key == "m") {
-                        z.geom.M = parse_spice_number(valstr);
+                        z.m = parse_spice_number(valstr); z.m_given = true;
                     } else if (key == "ic") {
-                        // ic=VDS,VGS
                         std::vector<double> icvals;
                         size_t start = 0;
                         while (start < valstr.size()) {
@@ -2175,10 +2177,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     }
                 } else {
                     std::string lower = to_lower(tokens[i]);
-                    if (lower == "off") continue; // ignore OFF flag
+                    if (lower == "off") continue;
                 }
             }
-            deferred_hfet2s.push_back(std::move(z));
+            deferred_hfets.push_back(std::move(z));
 
         } else if (elem_type == 'k') {
             // K name L1 L2 coupling_coefficient
@@ -2936,9 +2938,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.add_jfet2_model_card(std::move(card));
     }
 
-    // Resolve deferred HFET2s (Z elements with nhfet/phfet level=6)
+    // Resolve deferred HFETs (Z elements with nhfet/phfet)
+    // LEVEL=5 or default → HFET1, LEVEL=6 → HFET2
+    std::unordered_map<std::string, std::unique_ptr<HFETAModelCard>> hfet1_cards;
     std::unordered_map<std::string, std::unique_ptr<HFET2ModelCard>> hfet2_cards;
-    for (const auto& z : deferred_hfet2s) {
+    for (const auto& z : deferred_hfets) {
         auto it = models.find(z.model_name);
         if (it == models.end()) {
             auto it2 = models.find(to_lower(z.model_name));
@@ -2948,41 +2952,66 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             it = it2;
         }
-        // Check that the model type is nhfet or phfet
         std::string model_type = to_lower(it->second.type);
         if (model_type != "nhfet" && model_type != "phfet") {
             throw ParseError("Line " + std::to_string(z.line_number) +
                              ": Z card references non-HFET model '" + z.model_name + "'");
         }
-        // HFET1 (LEVEL=5) is not yet migrated — reject to prevent silent misuse
+        int level = 5; // default: HFET1
         auto lvl_it = it->second.params.find("level");
         if (lvl_it != it->second.params.end()) {
-            int level = static_cast<int>(lvl_it->second);
-            if (level != 6 && level != 0) {
-                throw ParseError("Line " + std::to_string(z.line_number) +
-                                 ": HFET LEVEL=" + std::to_string(level) +
-                                 " is not supported (only LEVEL=6 / HFET2)");
-            }
-        }
-        auto card_it = hfet2_cards.find(z.model_name);
-        if (card_it == hfet2_cards.end()) {
-            try {
-                card_it = hfet2_cards.emplace(z.model_name,
-                                              to_hfet2_card(it->second)).first;
-            } catch (const ParseError& e) {
-                throw ParseError("Line " + std::to_string(z.line_number) +
-                                 ": " + e.what());
-            }
+            level = static_cast<int>(lvl_it->second);
         }
         int32_t nd = ckt.node(z.nd);
         int32_t ng = ckt.node(z.ng);
         int32_t ns = ckt.node(z.ns);
-        auto dev = HFET2Device::make(z.name, nd, ng, ns,
-                                     z.geom, *card_it->second);
-        if (z.ic_vds_given || z.ic_vgs_given) {
-            dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
+
+        if (level == 6) {
+            auto card_it = hfet2_cards.find(z.model_name);
+            if (card_it == hfet2_cards.end()) {
+                try {
+                    card_it = hfet2_cards.emplace(z.model_name,
+                                                  to_hfet2_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(z.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            HFET2Device::Geom geom;
+            geom.L = z.length; geom.W = z.width; geom.M = z.m;
+            auto dev = HFET2Device::make(z.name, nd, ng, ns,
+                                         geom, *card_it->second);
+            if (z.ic_vds_given || z.ic_vgs_given) {
+                dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else {
+            // LEVEL=5 or default → HFET1
+            auto card_it = hfet1_cards.find(z.model_name);
+            if (card_it == hfet1_cards.end()) {
+                try {
+                    card_it = hfet1_cards.emplace(z.model_name,
+                                                  to_hfet1_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(z.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            HFETADevice::Geom geom;
+            geom.length = z.length; geom.width = z.width; geom.m = z.m;
+            geom.length_given = z.length_given;
+            geom.width_given = z.width_given;
+            geom.m_given = z.m_given;
+            auto dev = HFETADevice::make(z.name, nd, ng, ns,
+                                         geom, *card_it->second);
+            if (z.ic_vds_given || z.ic_vgs_given) {
+                dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
+            }
+            ckt.add_device(std::move(dev));
         }
-        ckt.add_device(std::move(dev));
+    }
+    for (auto& [name, card] : hfet1_cards) {
+        ckt.add_hfet1_model_card(std::move(card));
     }
     for (auto& [name, card] : hfet2_cards) {
         ckt.add_hfet2_model_card(std::move(card));

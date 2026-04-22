@@ -9,6 +9,7 @@
 #include "devices/dio/dio_device.hpp"           // complete DIOModelCard for unique_ptr
 #include "devices/vbic/vbic_device.hpp"         // complete VBICModelCard for unique_ptr
 #include "devices/bsim3/bsim3_device.hpp"      // complete BSIM3ModelCard for unique_ptr
+#include "devices/hfet1/hfet1_device.hpp"      // complete HFETAModelCard for unique_ptr
 #include "devices/hfet2/hfet2_device.hpp"      // complete HFET2ModelCard for unique_ptr
 #include "devices/bsim3v32/bsim3v32_device.hpp" // complete BSIM3v32ModelCard for unique_ptr
 #include "devices/resistor.hpp"
@@ -119,6 +120,10 @@ void Circuit::add_vbic_model_card(std::unique_ptr<VBICModelCard> card) {
 
 void Circuit::add_bsim3_model_card(std::unique_ptr<BSIM3ModelCard> card) {
     bsim3_model_cards_.push_back(std::move(card));
+}
+
+void Circuit::add_hfet1_model_card(std::unique_ptr<HFETAModelCard> card) {
+    hfet1_model_cards_.push_back(std::move(card));
 }
 
 void Circuit::add_hfet2_model_card(std::unique_ptr<HFET2ModelCard> card) {
