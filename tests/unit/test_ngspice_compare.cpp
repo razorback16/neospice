@@ -536,3 +536,18 @@ TEST_F(NgspiceCompareTest, CcvsPolyDC) {
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
+
+// ---------------------------------------------------------------------------
+// tnoiMod=2 noise — correlated drain-gate noise (CORLNOIZ)
+// ---------------------------------------------------------------------------
+
+TEST_F(NgspiceCompareTest, BSIM4v7_Noise_TnoiMod2) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_noise_tnoi2.cir";
+    auto ng_result = ngspice_->run_noise(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.noise.has_value());
+    auto cmp = compare_noise(ng_result, *cs_result.noise, {0.05, 1e-30});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}

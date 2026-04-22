@@ -54,6 +54,8 @@ public:
                   NumericMatrix& mat, std::vector<double>& rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
+    bool ac_stamp_freq(double omega, std::vector<double>& ax, int32_t nnz,
+                       std::vector<std::complex<double>>& ac_rhs) override;
 
     int32_t state_vars() const override { return 29; }
     void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
@@ -62,6 +64,8 @@ public:
     bool device_converged() const override;
     std::optional<double> query_param(const std::string& name) const override;
     std::vector<NoiseSource> noise_sources(
+        double freq, const std::vector<double>& dc_solution) const override;
+    std::vector<CorrelatedNoiseSource> correlated_noise_sources(
         double freq, const std::vector<double>& dc_solution) const override;
     void reset_temp() override { temp_done_ = false; }
 
@@ -91,6 +95,9 @@ private:
 
     std::vector<double> ghost_voltages_;
     std::vector<double> ghost_rhs_;
+
+    struct NqsEntry { MatrixOffset off; double g_intr; double c_intr; };
+    std::vector<NqsEntry> nqs_entries_;
 };
 
 } // namespace neospice

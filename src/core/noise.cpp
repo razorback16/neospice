@@ -6,6 +6,7 @@
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
 #include <algorithm>
+#include <cmath>
 #include <complex>
 #include <stdexcept>
 
@@ -219,7 +220,8 @@ NoiseResult solve_noise(Circuit& ckt,
     // Initialize per-device breakdown
     for (const auto& dev : ckt.devices()) {
         auto sources = dev->noise_sources(1.0, dc_solution);
-        if (!sources.empty()) {
+        auto corr = dev->correlated_noise_sources(1.0, dc_solution);
+        if (!sources.empty() || !corr.empty()) {
             noise_result.device_noise[to_lower(dev->name())].resize(freqs.size(), 0.0);
         }
     }
@@ -336,6 +338,51 @@ NoiseResult solve_noise(Circuit& ckt,
             auto it = noise_result.device_noise.find(dev_key);
             if (it != noise_result.device_noise.end()) {
                 it->second[fi] = device_contribution;
+            }
+        }
+
+        // ---- Accumulate correlated noise from all devices ----
+        for (const auto& dev : ckt.devices()) {
+            auto corr = dev->correlated_noise_sources(freqs[fi], dc_solution);
+            if (corr.empty()) continue;
+
+            double device_contribution = 0.0;
+            for (const auto& cs : corr) {
+                auto adj_val = [&](int32_t node, double& re, double& im) {
+                    re = im = 0.0;
+                    if (node >= 0 && node < n) {
+                        re = rhs_adj[node];
+                        im = rhs_adj[node + n];
+                    }
+                };
+                double h1_re_i, h1_im_i, h1_re_j, h1_im_j;
+                double h2_re_i, h2_im_i, h2_re_j, h2_im_j;
+                adj_val(cs.n1_i, h1_re_i, h1_im_i);
+                adj_val(cs.n1_j, h1_re_j, h1_im_j);
+                adj_val(cs.n2_i, h2_re_i, h2_im_i);
+                adj_val(cs.n2_j, h2_re_j, h2_im_j);
+
+                double h1_re = h1_re_i - h1_re_j;
+                double h1_im = h1_im_i - h1_im_j;
+                double h2_re = h2_re_i - h2_re_j;
+                double h2_im = h2_im_i - h2_im_j;
+
+                double s1_sq = std::sqrt(cs.psd1);
+                double s2_sq = std::sqrt(cs.psd2);
+                double cos_p = std::cos(cs.phase);
+                double sin_p = std::sin(cs.phase);
+
+                double re_out = s1_sq * h1_re + s2_sq * (cos_p * h2_re - sin_p * h2_im);
+                double im_out = s1_sq * h1_im + s2_sq * (cos_p * h2_im + sin_p * h2_re);
+                device_contribution += re_out * re_out + im_out * im_out;
+            }
+
+            total_output_noise += device_contribution;
+
+            std::string dev_key = to_lower(dev->name());
+            auto it = noise_result.device_noise.find(dev_key);
+            if (it != noise_result.device_noise.end()) {
+                it->second[fi] += device_contribution;
             }
         }
 

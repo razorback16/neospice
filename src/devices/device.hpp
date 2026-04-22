@@ -115,6 +115,23 @@ public:
         return {};
     }
 
+    /// Correlated noise source: two current noise sources with a phase
+    /// relationship.  The combined output noise contribution is
+    ///   S1*|H1|^2 + S2*|H2|^2 + 2*sqrt(S1*S2)*Re(conj(H1)*e^(j*phase)*H2)
+    /// where H1 = adj[n1_i]-adj[n1_j], H2 = adj[n2_i]-adj[n2_j].
+    struct CorrelatedNoiseSource {
+        int32_t n1_i, n1_j;   // first source nodes
+        int32_t n2_i, n2_j;   // second source nodes
+        double psd1;           // spectral density of first source (A²/Hz)
+        double psd2;           // spectral density of second source (A²/Hz)
+        double phase;          // phase of source 2 relative to source 1 (radians)
+    };
+
+    virtual std::vector<CorrelatedNoiseSource> correlated_noise_sources(
+        double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
+        return {};
+    }
+
 protected:
     std::string name_;
     double sim_temp_ = T_NOMINAL;  ///< simulation temperature for noise (K)

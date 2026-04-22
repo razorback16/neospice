@@ -126,3 +126,28 @@ M2 out in 0 0 NMOD W=10u L=100n
     EXPECT_GT(low_freq_mag, 1.0)
         << "CMOS inverter low-frequency gain should be > 1, got " << low_freq_mag;
 }
+
+// ---------------------------------------------------------------------------
+// NMOS NQS AC (acnqsMod=1) — compare against ngspice
+// ---------------------------------------------------------------------------
+TEST_F(BSIM4v7ACTest, NMOS_NQS_AC) {
+    std::string path = std::string(TEST_CIRCUITS_DIR) + "/nmos_nqs_ac.cir";
+
+    auto ng_result = ngspice_->run_ac(path);
+    auto ckt = sim_.load(path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.ac.has_value())
+        << "AC analysis result is missing for NQS circuit";
+
+    for (auto it = ng_result.voltages.begin(); it != ng_result.voltages.end(); ) {
+        if (it->first.find('#') != std::string::npos)
+            it = ng_result.voltages.erase(it);
+        else
+            ++it;
+    }
+    ng_result.currents.erase("i(vg)");
+
+    auto cmp = compare_ac(ng_result, *cs_result.ac, {0.05, 1e-15});
+    EXPECT_TRUE(cmp.passed)
+        << "NQS AC worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}

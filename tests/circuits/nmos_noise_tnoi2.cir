@@ -1,0 +1,9 @@
+NMOS tnoiMod=2 Noise Analysis
+VDD vdd 0 DC 1.8
+VG gate 0 DC 0.9 AC 1
+RD vdd drain 1k
+M1 drain gate 0 0 NMOD W=10u L=100n
+.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
++ TNOIMOD=2 RNOIC=0.37
+.noise v(drain) VG dec 10 1k 100g
+.end

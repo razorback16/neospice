@@ -401,16 +401,7 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& /*voltages*/,
     auto* model = model_;
     auto* pParam = inst.pParam;
 
-    if (inst.BSIM4v7acnqsMod) {
-        thread_local bool warned = false;
-        if (!warned) {
-            fprintf(stderr, "WARNING: BSIM4v7 acnqsMod != 0 (NQS) not supported "
-                    "in AC analysis — results may be inaccurate for device '%s'\n",
-                    name_.c_str());
-            warned = true;
-        }
-        return;
-    }
+    const bool nqs_active = (inst.BSIM4v7acnqsMod != 0);
 
     const double m = inst.BSIM4v7m;
 
@@ -436,7 +427,6 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& /*voltages*/,
     double Csgr = Csg;
     double Cssr = Css;
     double Csbr = -(Csdr + Csgr + Cssr);
-    (void)Csbr;
 
     double Cgdr = inst.BSIM4v7cgdb;
     double Cggr = inst.BSIM4v7cggb;
@@ -964,6 +954,74 @@ void BSIM4v7Device::ac_stamp(const std::vector<double>& /*voltages*/,
     if (inst.BSIM4v7trnqsMod) {
         G.add(inst.BSIM4v7QqPtr, m * 1.0);
     }
+
+    // --- Build NQS correction entries for ac_stamp_freq() ---
+    nqs_entries_.clear();
+    if (nqs_active) {
+        double c_nqs_DPdp, c_nqs_DPgp, c_nqs_DPsp, c_nqs_DPbp;
+        double c_nqs_SPdp, c_nqs_SPgp, c_nqs_SPsp, c_nqs_SPbp;
+
+        if (inst.BSIM4v7mode >= 0) {
+            c_nqs_DPdp = Cddr;  c_nqs_DPgp = Cdgr;
+            c_nqs_DPsp = Cdsr;  c_nqs_DPbp = Cdbr;
+            c_nqs_SPdp = Csdr;  c_nqs_SPgp = Csgr;
+            c_nqs_SPsp = Cssr;  c_nqs_SPbp = Csbr;
+        } else {
+            c_nqs_DPdp = Cssr;  c_nqs_DPgp = Csgr;
+            c_nqs_DPsp = Csdr;  c_nqs_DPbp = Csbr;
+            c_nqs_SPdp = Cdsr;  c_nqs_SPgp = Cdgr;
+            c_nqs_SPsp = Cddr;  c_nqs_SPbp = Cdbr;
+        }
+
+        double c_nqs_GPdp = -(c_nqs_DPdp + c_nqs_SPdp);
+        double c_nqs_GPgp = -(c_nqs_DPgp + c_nqs_SPgp);
+        double c_nqs_GPsp = -(c_nqs_DPsp + c_nqs_SPsp);
+        double c_nqs_GPbp = -(c_nqs_GPdp + c_nqs_GPgp + c_nqs_GPsp);
+
+        nqs_entries_.reserve(12);
+        auto add_nqs = [&](MatrixOffset off, double g, double c) {
+            if (off >= 0 && (g != 0.0 || c != 0.0))
+                nqs_entries_.push_back({off, m * g, m * c});
+        };
+
+        add_nqs(inst.BSIM4v7DPdpPtr, gdsr + RevSumr, c_nqs_DPdp);
+        add_nqs(inst.BSIM4v7DPgpPtr, Gmr, c_nqs_DPgp);
+        add_nqs(inst.BSIM4v7DPspPtr, -(gdsr + FwdSumr), c_nqs_DPsp);
+        add_nqs(inst.BSIM4v7DPbpPtr, Gmbsr, c_nqs_DPbp);
+
+        add_nqs(inst.BSIM4v7SPdpPtr, -(gdsr + RevSumr), c_nqs_SPdp);
+        add_nqs(inst.BSIM4v7SPgpPtr, -Gmr, c_nqs_SPgp);
+        add_nqs(inst.BSIM4v7SPspPtr, gdsr + FwdSumr, c_nqs_SPsp);
+        add_nqs(inst.BSIM4v7SPbpPtr, -Gmbsr, c_nqs_SPbp);
+
+        add_nqs(inst.BSIM4v7GPdpPtr, 0.0, c_nqs_GPdp);
+        add_nqs(inst.BSIM4v7GPgpPtr, 0.0, c_nqs_GPgp);
+        add_nqs(inst.BSIM4v7GPspPtr, 0.0, c_nqs_GPsp);
+        add_nqs(inst.BSIM4v7GPbpPtr, 0.0, c_nqs_GPbp);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ac_stamp_freq — per-frequency NQS correction for acnqsMod
+//
+// Adds delta to the interleaved complex matrix (ax) converting QS stamps
+// to NQS:  Y_NQS = Y_QS + delta, where for each intrinsic entry:
+//   delta_real = g*(T2-1) + omega*c*T3
+//   delta_imag = -g*T3   + omega*c*(T2-1)
+// with T0 = omega*taunet, T2 = 1/(1+T0^2), T3 = T0*T2.
+// ---------------------------------------------------------------------------
+bool BSIM4v7Device::ac_stamp_freq(double omega, std::vector<double>& ax,
+                                   int32_t /*nnz*/,
+                                   std::vector<std::complex<double>>& /*ac_rhs*/) {
+    if (nqs_entries_.empty()) return false;
+    const double T0 = omega * inst_.BSIM4v7taunet;
+    const double T2 = 1.0 / (1.0 + T0 * T0);
+    const double T3 = T0 * T2;
+    for (const auto& e : nqs_entries_) {
+        ax[2 * e.off]     += e.g_intr * (T2 - 1.0) + omega * e.c_intr * T3;
+        ax[2 * e.off + 1] += -e.g_intr * T3 + omega * e.c_intr * (T2 - 1.0);
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -1131,9 +1189,8 @@ BSIM4v7Device::query_param(const std::string& name) const {
 //   4. Gate resistance thermal noise (if rgateMod > 0)
 //   5. Body resistance thermal noise (if rbodyMod > 0)
 //
-// Gate-induced noise (CORLNOIZ, tnoiMod 2 correlated term) is omitted as
-// it requires complex-number stamping that is outside the current noise
-// framework.
+// Gate-induced correlated noise (CORLNOIZ, tnoiMod 2) is handled by
+// correlated_noise_sources() which returns CorrelatedNoiseSource entries.
 // ---------------------------------------------------------------------------
 static inline int32_t ucb_to_neo(int ucb_node) {
     return (ucb_node <= 0) ? GROUND_INTERNAL : (ucb_node - 1);
@@ -1170,11 +1227,10 @@ BSIM4v7Device::noise_sources(double freq,
     const int32_t db_neo = ucb_to_neo(inst.BSIM4v7dbNode);
 
     std::vector<NoiseSource> sources;
-    sources.reserve(12);
+    sources.reserve(16);
 
     // -----------------------------------------------------------------------
     // 1. Drain / Source series resistance thermal noise
-    //    (only when rdsMod == 0, i.e. lumped external resistors exist)
     // -----------------------------------------------------------------------
     double gspr, gdpr;
     if (model->BSIM4v7rdsMod == 0) {
@@ -1183,6 +1239,32 @@ BSIM4v7Device::noise_sources(double freq,
     } else {
         gdpr = inst.BSIM4v7gdtot;
         gspr = inst.BSIM4v7gstot;
+    }
+
+    // tnoiMod=1: modify gspr/gdpr with npart_theta (b4v7noi.c:237-242)
+    double npart_beta = 0.0, npart_theta = 0.0;
+    if (model->BSIM4v7tnoiMod == 1) {
+        double T5_sq = 0.0;
+        if (inst.BSIM4v7EsatL > 0.0) {
+            T5_sq = (inst.BSIM4v7Vgsteff / inst.BSIM4v7EsatL)
+                  * (inst.BSIM4v7Vgsteff / inst.BSIM4v7EsatL);
+        }
+        npart_beta  = model->BSIM4v7rnoia
+                    * (1.0 + T5_sq * model->BSIM4v7tnoia * pParam->BSIM4v7leff);
+        npart_theta = model->BSIM4v7rnoib
+                    * (1.0 + T5_sq * model->BSIM4v7tnoib * pParam->BSIM4v7leff);
+        if (npart_theta > 0.9)
+            npart_theta = 0.9;
+        if (npart_theta > 0.9 * npart_beta)
+            npart_theta = 0.9 * npart_beta;
+
+        const double IdovVds = inst.BSIM4v7IdovVds;
+        if (state0_ && state_base_ >= 0 && IdovVds > 0.0) {
+            if (state0_[state_base_ + 3] >= 0.0)
+                gspr = gspr * (1.0 + npart_theta * npart_theta * gspr / IdovVds);
+            else
+                gdpr = gdpr * (1.0 + npart_theta * npart_theta * gdpr / IdovVds);
+        }
     }
 
     if (gdpr > 0.0)
@@ -1261,14 +1343,14 @@ BSIM4v7Device::noise_sources(double freq,
     //   channel_noise = fourKT * G_ch * m   (A^2/Hz)
     switch (model->BSIM4v7tnoiMod) {
       case 0: {
-        // Simple thermal noise: proportional to ueff * |Qinv|
-        // From ngspice b4v7noi.c lines 427-435:
-        //   T0 = ueff * |qinv|
-        //   T1 = T0 * tmp + Leff^2   (tmp = 1/grdsw; we use tmp=0)
-        //   G_ch = (T0/T1) * ntnoi
+        // b4v7noi.c:427-434: G_ch = (T0/T1) * ntnoi
+        // where T1 = T0*tmp + Leff^2, tmp = 1/grdsw when rdsMod=0
         const double T0   = inst.BSIM4v7ueff * std::abs(inst.BSIM4v7qinv);
-        const double Leff = pParam->BSIM4v7leff;
-        const double T1   = Leff * Leff;   // tmp=0 simplification
+        const double Leff_ch = pParam->BSIM4v7leff;
+        double tmp = 0.0;
+        if (model->BSIM4v7rdsMod == 0 && inst.BSIM4v7grdsw > 0.0)
+            tmp = 1.0 / inst.BSIM4v7grdsw;
+        const double T1   = T0 * tmp + Leff_ch * Leff_ch;
         if (T1 > 0.0) {
             const double G_ch = (T0 / T1) * model->BSIM4v7ntnoi;
             channel_noise = fourKT * G_ch * m;
@@ -1276,24 +1358,7 @@ BSIM4v7Device::noise_sources(double freq,
         break;
       }
       case 1: {
-        // Holistic thermal noise (tnoiMod 1):
-        //   G_ch = T2 - igsquare   where T2 = T1^2 / IdovVds
-        //   (NevalSrc passes G_ch*m; PSD = 4kT*G_ch*m)
-        double npart_beta, npart_theta;
-        if (inst.BSIM4v7EsatL > 0.0) {
-            const double T5_sq = (inst.BSIM4v7Vgsteff / inst.BSIM4v7EsatL)
-                               * (inst.BSIM4v7Vgsteff / inst.BSIM4v7EsatL);
-            npart_beta  = model->BSIM4v7rnoia *
-                          (1.0 + T5_sq * model->BSIM4v7tnoia * pParam->BSIM4v7leff);
-            npart_theta = model->BSIM4v7rnoib *
-                          (1.0 + T5_sq * model->BSIM4v7tnoib * pParam->BSIM4v7leff);
-        } else {
-            npart_beta  = model->BSIM4v7rnoia;
-            npart_theta = model->BSIM4v7rnoib;
-        }
-        if (npart_theta > 0.9)            npart_theta = 0.9;
-        if (npart_theta > 0.9 * npart_beta) npart_theta = 0.9 * npart_beta;
-
+        // b4v7noi.c:436-446: uses npart_beta/npart_theta from above
         const double IdovVds = inst.BSIM4v7IdovVds;
         if (std::abs(IdovVds) > 0.0) {
             const double T0   = inst.BSIM4v7gm + inst.BSIM4v7gmbs + inst.BSIM4v7gds;
@@ -1304,7 +1369,6 @@ BSIM4v7Device::noise_sources(double freq,
             const double G_ch = std::max(0.0, T2 - igsq);
             channel_noise = fourKT * G_ch * m;
         } else {
-            // Fall back to simple 2/3 * (gm + gds) model
             const double G_ch = (2.0 / 3.0)
                               * (std::abs(inst.BSIM4v7gm) + inst.BSIM4v7gds);
             channel_noise = fourKT * G_ch * m;
@@ -1313,34 +1377,47 @@ BSIM4v7Device::noise_sources(double freq,
       }
       case 2:
       default: {
-        // tnoiMod 2 (v4.7 holistic, full form).
-        // The uncorrelated drain-current part: GammaGd0 * (1 - ctnoi^2).
-        // Gate-induced noise correlation term (CORLNOIZ) requires complex
-        // stamping and is not implemented — it's typically small for low f.
+        // tnoiMod 2 (v4.7 holistic model with drain-gate correlation).
+        // Uncorrelated part: GammaGd0 * (1 - ctnoi^2).
+        // Correlated part handled by correlated_noise_sources().
         if (inst.BSIM4v7noiGd0 > 0.0) {
-            // Compute the geometry-dependent gamma coefficient from the model
-            // (b4v7noi.c lines 387-424 abbreviated — ctnoi ≈ 0 for uncorrelated)
             const double Leff  = pParam->BSIM4v7leff;
             const double EsatL = (inst.BSIM4v7EsatL > 0.0) ? inst.BSIM4v7EsatL : 1e-10;
             const double Lvsat = Leff * (1.0 + inst.BSIM4v7Vdseff / EsatL);
             const double T6    = (Lvsat > 0.0) ? Leff / Lvsat : 1.0;
             const double eta   = 1.0 - inst.BSIM4v7Vdseff * inst.BSIM4v7AbovVgst2Vtm;
-            const double T0    = 1.0 - eta;
-            const double T1    = 1.0 + eta;
-            const double T2    = T1 + 2.0 * inst.BSIM4v7Abulk * model->BSIM4v7vtm
-                                     / std::max(inst.BSIM4v7Vgsteff, 1e-15);
+            const double T0v   = 1.0 - eta;
+            const double T1v   = 1.0 + eta;
+            const double T2v   = T1v + 2.0 * inst.BSIM4v7Abulk * model->BSIM4v7vtm
+                                       / std::max(inst.BSIM4v7Vgsteff, 1e-15);
             const double T8sq  = (inst.BSIM4v7Vgsteff / EsatL)
                                * (inst.BSIM4v7Vgsteff / EsatL);
-            const double npart_beta = model->BSIM4v7rnoia *
-                                      (1.0 + T8sq * model->BSIM4v7tnoia * Leff);
-            const double gamma_raw  = T6 * (0.5 * T1 + T0 * T0 / (6.0 * T2));
-            const double gamma = gamma_raw * 3.0 * npart_beta * npart_beta;
-            // GammaGd0 = gamma * noiGd0 is the effective noise conductance.
-            // ctnoi ≈ 0 for the uncorrelated term → T4 = 1 - ctnoi^2 ≈ 1
-            const double G_ch = gamma * inst.BSIM4v7noiGd0;
-            channel_noise = fourKT * G_ch * m;
+
+            const double gamma_raw = T6 * (0.5 * T1v + T0v * T0v / (6.0 * T2v));
+            const double T3v   = T2v * T2v;
+            const double T4v   = T0v * T0v;
+            const double T5v   = T3v * T3v;
+            const double delta_raw = (T1v / T3v
+                    - (5.0 * T1v + T2v) * T4v / (15.0 * T5v)
+                    + T4v * T4v / (9.0 * T5v * T2v))
+                    / (6.0 * T6 * T6 * T6);
+            const double T7v   = T0v / T2v;
+            const double epsilon = (T7v - T7v * T7v * T7v / 3.0) / (6.0 * T6);
+
+            const double npart_c = model->BSIM4v7rnoic
+                    * (1.0 + T8sq * model->BSIM4v7tnoic * Leff);
+            const double ctnoi_raw = (gamma_raw > 0.0 && delta_raw > 0.0)
+                    ? epsilon / std::sqrt(gamma_raw * delta_raw) * 2.5316 * npart_c
+                    : 0.0;
+            const double ctnoi = std::min(ctnoi_raw, 1.0);
+
+            const double npart_b = model->BSIM4v7rnoia
+                    * (1.0 + T8sq * model->BSIM4v7tnoia * Leff);
+            const double gamma  = gamma_raw * 3.0 * npart_b * npart_b;
+            const double GammaGd0 = gamma * inst.BSIM4v7noiGd0;
+            const double T4_uncorr = 1.0 - ctnoi * ctnoi;
+            channel_noise = fourKT * GammaGd0 * T4_uncorr * m;
         } else {
-            // Fallback when noiGd0 hasn't been computed: standard 2/3 formula
             const double G_ch = (2.0 / 3.0)
                               * (std::abs(inst.BSIM4v7gm) + inst.BSIM4v7gds);
             channel_noise = fourKT * G_ch * m;
@@ -1377,93 +1454,90 @@ BSIM4v7Device::noise_sources(double freq,
             break;
           }
           case 1: {
-            // Unified 1/f noise model (ngspice fnoiMod == 1):
-            //   Eval1ovFNoise() — uses NOIA, NOIB, NOIC trap-density parameters
-            //   Ssi  = T1/T2 * (T3+T4+T5) + T6/T7 * DelClm * T8/T9
-            //   where T1 = q^2 * kT * cd * ueff
-            //         T2 = 1e10 * f^ef * Abulk * coxe * Leff^2
-            //         N0/Nl from Vgsteff and AbovVgst2Vtm
-            //   (see b4v7noi.c lines 37-79)
-            //
-            // After computing Ssi, the flicker noise uses a combined formula:
-            //   if (Swi + Ssi > 0):  Sid_fl = m * Ssi * Swi / (Swi + Ssi)
-            // This smoothly transitions between the two mechanisms.
-            const double EffFreq = std::pow(freq, model->BSIM4v7ef);
+            // Unified 1/f noise model matching ngspice b4v7noi.c:500-519.
+            // Ssi = Eval1ovFNoise(Vds) — charge-trapping + CLM terms summed
+            // Swi = outer scattering-limited term
+            // Combined: flicker = m * Ssi * Swi / (Ssi + Swi)
+            double Vds_abs = 0.0;
+            if (state0_ && state_base_ >= 0)
+                Vds_abs = std::fabs(state0_[state_base_ + 3]);
+
             const double ueff    = inst.BSIM4v7ueff;
-            const double Abulk   = inst.BSIM4v7Abulk;
             const double Vgsteff = inst.BSIM4v7Vgsteff;
             const double Vdseff  = inst.BSIM4v7Vdseff;
             const double coxe    = model->BSIM4v7coxe;
             const double nstar   = inst.BSIM4v7nstar;
             const double AbovVgst2Vtm = inst.BSIM4v7AbovVgst2Vtm;
+            const double Abulk   = inst.BSIM4v7Abulk;
+            const double weff    = pParam->BSIM4v7weff;
+            const double nf      = inst.BSIM4v7nf;
+            const double temp    = sim_temp_;
 
-            // Noise effective Leff: subtract lintnoi correction
-            const double Lnoi = Leff - 2.0 * model->BSIM4v7lintnoi;
+            // Noise effective Leff (b4v7noi.c:50)
+            const double Lnoi  = Leff - 2.0 * model->BSIM4v7lintnoi;
             const double Lnoi2 = Lnoi * Lnoi;
 
-            // DelClm (channel-length modulation term for noise)
+            // --- Eval1ovFNoise (b4v7noi.c:37-79) ---
+            const double esat = (ueff > 0.0)
+                              ? 2.0 * inst.BSIM4v7vsattemp / ueff : 1e10;
+
             double DelClm = 0.0;
             if (model->BSIM4v7em > 0.0) {
-                const double vsattemp = inst.BSIM4v7vsattemp;
-                const double esat = (ueff > 0.0) ? 2.0 * vsattemp / ueff : 1e10;
                 const double litl = pParam->BSIM4v7litl;
                 if (litl > 0.0 && esat > 0.0) {
-                    const double T0_d = ((Vdseff > 0 ? Vdseff - Vdseff : 0.0)
-                                        / litl + model->BSIM4v7em) / esat;
-                    // Note: ngspice uses (Vds - Vdseff)/litl, but Vds from
-                    // state vector isn't available here — use 0 (conservative).
-                    const double arg = std::max(model->BSIM4v7em / esat, NOISE_MINLOG);
-                    DelClm = litl * std::log(arg);
+                    const double T0_d = ((Vds_abs - Vdseff) / litl
+                                        + model->BSIM4v7em) / esat;
+                    DelClm = litl * std::log(std::max(T0_d, NOISE_MINLOG));
                     if (DelClm < 0.0) DelClm = 0.0;
                 }
             }
 
-            // Carrier densities N0, Nl
-            const double CHARGE_Q_local = 1.60217663e-19;
-            const double N0 = (coxe > 0.0 && CHARGE_Q_local > 0.0)
-                            ? coxe * Vgsteff / CHARGE_Q_local : 0.0;
-            const double Nl = (coxe > 0.0 && CHARGE_Q_local > 0.0)
+            const double EffFreq = std::pow(freq, model->BSIM4v7ef);
+            const double N0 = (coxe > 0.0)
+                            ? coxe * Vgsteff / CHARGE_Q : 0.0;
+            const double Nl = (coxe > 0.0)
                             ? coxe * Vgsteff * (1.0 - AbovVgst2Vtm * Vdseff)
-                              / CHARGE_Q_local : 0.0;
+                              / CHARGE_Q : 0.0;
 
-            const double N0s  = N0 + nstar;
-            const double Nls  = std::max(Nl + nstar, NOISE_MINLOG);
-            const double N0s2 = N0 * N0;
-            const double Nl2  = Nl * Nl;
-
-            // T3 + T4 + T5
             const double T3 = model->BSIM4v7oxideTrapDensityA
-                            * std::log(std::max(N0s / Nls, NOISE_MINLOG));
+                            * std::log(std::max((N0 + nstar)
+                                / std::max(Nl + nstar, NOISE_MINLOG),
+                                NOISE_MINLOG));
             const double T4 = model->BSIM4v7oxideTrapDensityB * (N0 - Nl);
-            const double T5 = model->BSIM4v7oxideTrapDensityC * 0.5 * (N0s2 - Nl2);
+            const double T5 = model->BSIM4v7oxideTrapDensityC
+                            * 0.5 * (N0 * N0 - Nl * Nl);
 
-            // Primary shot term Ssi
+            // Ssi = both terms summed (b4v7noi.c:77)
             double Ssi = 0.0;
             if (EffFreq > 0.0 && Abulk > 0.0 && coxe > 0.0 && Lnoi2 > 0.0) {
-                const double T1_n = CHARGE_Q_local * CHARGE_Q_local
-                                  * kT * cd * ueff;
-                const double T2_n = 1.0e10 * EffFreq * Abulk * coxe * Lnoi2;
-                if (T2_n > 0.0)
-                    Ssi = T1_n / T2_n * (T3 + T4 + T5);
+                const double T1 = CHARGE_Q * CHARGE_Q * BOLTZMANN * temp
+                                * cd * ueff;
+                const double T2 = 1.0e10 * EffFreq * Abulk * coxe * Lnoi2;
+                const double T6 = BOLTZMANN * temp * cd * cd;
+                const double T7 = 1.0e10 * EffFreq * Lnoi2 * weff * nf;
+                const double Nls = Nl + nstar;
+                const double T8 = model->BSIM4v7oxideTrapDensityA
+                                + model->BSIM4v7oxideTrapDensityB * Nl
+                                + model->BSIM4v7oxideTrapDensityC * Nl * Nl;
+                const double T9 = Nls * Nls;
+
+                if (T2 > 0.0 && T7 > 0.0 && T9 > 0.0)
+                    Ssi = T1 / T2 * (T3 + T4 + T5)
+                        + T6 / T7 * DelClm * T8 / T9;
             }
 
-            // Scattering term Swi (from channel-length modulation)
+            // --- Outer Swi (b4v7noi.c:507-513) ---
+            // Uses raw Leff (not Lnoi) and nstar^2 (not Nls^2)
             double Swi = 0.0;
-            const double T8_den = model->BSIM4v7oxideTrapDensityA
-                                 + model->BSIM4v7oxideTrapDensityB * Nl
-                                 + model->BSIM4v7oxideTrapDensityC * Nl2;
-            const double T9_den = Nls * Nls;
-            const double weff   = pParam->BSIM4v7weff;
-            const double nf     = inst.BSIM4v7nf;
-            if (EffFreq > 0.0 && weff > 0.0 && nf > 0.0 && Lnoi2 > 0.0
-                && T9_den > 0.0) {
-                const double T6_n = kT * cd * cd;
-                const double T7_n = 1.0e10 * EffFreq * Lnoi2 * weff * nf;
-                if (T7_n > 0.0)
-                    Swi = T6_n / T7_n * DelClm * T8_den / T9_den;
+            if (EffFreq > 0.0 && weff > 0.0 && nf > 0.0
+                && Leff > 0.0 && nstar > 0.0) {
+                const double T10 = model->BSIM4v7oxideTrapDensityA
+                                 * BOLTZMANN * temp;
+                const double T11 = weff * nf * Leff * EffFreq * 1.0e10
+                                 * nstar * nstar;
+                Swi = T10 / T11 * cd * cd;
             }
 
-            // Combined flicker noise (harmonic mean of Ssi and Swi)
             const double T1_tot = Swi + Ssi;
             if (T1_tot > 0.0)
                 flicker_noise = m * (Ssi * Swi) / T1_tot;
@@ -1478,7 +1552,118 @@ BSIM4v7Device::noise_sources(double freq,
             sources.push_back({dp_neo, sp_neo, flicker_noise});
     }
 
+    // -----------------------------------------------------------------------
+    // 6. Gate current shot noise (b4v7noi.c:526-548)
+    //    PSD = 2*q*|I| for each gate tunneling path.
+    // -----------------------------------------------------------------------
+    {
+        const double two_q = 2.0 * CHARGE_Q;
+        double Igs_total, Igd_total;
+        if (inst.BSIM4v7mode >= 0) {
+            Igs_total = inst.BSIM4v7Igs + inst.BSIM4v7Igcs;
+            Igd_total = inst.BSIM4v7Igd + inst.BSIM4v7Igcd;
+        } else {
+            Igs_total = inst.BSIM4v7Igs + inst.BSIM4v7Igcd;
+            Igd_total = inst.BSIM4v7Igd + inst.BSIM4v7Igcs;
+        }
+        if (std::fabs(Igs_total) > 0.0)
+            sources.push_back({gp_neo, sp_neo,
+                               two_q * std::fabs(m * Igs_total)});
+        if (std::fabs(Igd_total) > 0.0)
+            sources.push_back({gp_neo, dp_neo,
+                               two_q * std::fabs(m * Igd_total)});
+        if (std::fabs(inst.BSIM4v7Igb) > 0.0)
+            sources.push_back({gp_neo, bp_neo,
+                               two_q * std::fabs(m * inst.BSIM4v7Igb)});
+    }
+
     return sources;
+}
+
+// ---------------------------------------------------------------------------
+// correlated_noise_sources — tnoiMod=2 gate-drain correlated noise (CORLNOIZ)
+//
+// Returns the correlated noise pair: drain current noise (dp↔sp) coupled to
+// gate-induced noise (gp↔sp) with π/2 phase.  The frequency-dependent gate
+// noise PSD uses sigrat: T7 = (ω·sigrat)² / (1+(ω·sigrat)²).
+// ---------------------------------------------------------------------------
+std::vector<Device::CorrelatedNoiseSource>
+BSIM4v7Device::correlated_noise_sources(double freq,
+                                         const std::vector<double>& /*dc_solution*/) const {
+    const auto* model  = model_;
+    const auto& inst   = inst_;
+    const auto* pParam = inst.pParam;
+    if (!pParam) return {};
+    if (model->BSIM4v7tnoiMod != 2) return {};
+    if (inst.BSIM4v7noiGd0 <= 0.0) return {};
+
+    const double m   = inst.BSIM4v7m;
+    const double kT  = BOLTZMANN * sim_temp_;
+    const double fourKT = 4.0 * kT;
+
+    const double Leff  = pParam->BSIM4v7leff;
+    const double EsatL = (inst.BSIM4v7EsatL > 0.0) ? inst.BSIM4v7EsatL : 1e-10;
+    const double Lvsat = Leff * (1.0 + inst.BSIM4v7Vdseff / EsatL);
+    const double T6    = (Lvsat > 0.0) ? Leff / Lvsat : 1.0;
+    const double eta   = 1.0 - inst.BSIM4v7Vdseff * inst.BSIM4v7AbovVgst2Vtm;
+    const double T0v   = 1.0 - eta;
+    const double T1v   = 1.0 + eta;
+    const double T2v   = T1v + 2.0 * inst.BSIM4v7Abulk * model->BSIM4v7vtm
+                               / std::max(inst.BSIM4v7Vgsteff, 1e-15);
+    const double T8sq  = (inst.BSIM4v7Vgsteff / EsatL)
+                       * (inst.BSIM4v7Vgsteff / EsatL);
+
+    const double gamma_raw = T6 * (0.5 * T1v + T0v * T0v / (6.0 * T2v));
+    const double T3v   = T2v * T2v;
+    const double T4v   = T0v * T0v;
+    const double T5v   = T3v * T3v;
+    const double delta_raw = (T1v / T3v
+            - (5.0 * T1v + T2v) * T4v / (15.0 * T5v)
+            + T4v * T4v / (9.0 * T5v * T2v))
+            / (6.0 * T6 * T6 * T6);
+    const double T7v   = T0v / T2v;
+    const double epsilon = (T7v - T7v * T7v * T7v / 3.0) / (6.0 * T6);
+
+    const double npart_c = model->BSIM4v7rnoic
+            * (1.0 + T8sq * model->BSIM4v7tnoic * Leff);
+    if (gamma_raw <= 0.0 || delta_raw <= 0.0) return {};
+    const double ctnoi_raw = epsilon / std::sqrt(gamma_raw * delta_raw) * 2.5316 * npart_c;
+    const double ctnoi = std::min(ctnoi_raw, 1.0);
+    if (ctnoi * ctnoi < 1e-30) return {};
+
+    const double npart_b   = model->BSIM4v7rnoia
+            * (1.0 + T8sq * model->BSIM4v7tnoia * Leff);
+    const double npart_th  = model->BSIM4v7rnoib
+            * (1.0 + T8sq * model->BSIM4v7tnoib * Leff);
+    const double gamma  = gamma_raw * 3.0 * npart_b * npart_b;
+    const double delta  = delta_raw * 3.75 * npart_th * npart_th;
+    const double GammaGd0 = gamma * inst.BSIM4v7noiGd0;
+
+    const double C0 = inst.BSIM4v7Coxeff * pParam->BSIM4v7weffCV
+                     * inst.BSIM4v7nf * pParam->BSIM4v7leffCV;
+    const double sigrat = (inst.BSIM4v7noiGd0 > 0.0 && gamma > 0.0)
+            ? (C0 / inst.BSIM4v7noiGd0) * std::sqrt(delta / gamma)
+            : 0.0;
+
+    const double omega = 2.0 * M_PI * freq;
+    const double T5_os = omega * sigrat;
+    const double T6_os = T5_os * T5_os;
+    const double T7_os = T6_os / (1.0 + T6_os);
+
+    const double psd1 = fourKT * GammaGd0 * ctnoi * ctnoi * m;
+    const double psd2 = fourKT * GammaGd0 * T7_os * m;
+
+    const int32_t dp_neo = ucb_to_neo(inst.BSIM4v7dNodePrime);
+    const int32_t sp_neo = ucb_to_neo(inst.BSIM4v7sNodePrime);
+    const int32_t gp_neo = ucb_to_neo(inst.BSIM4v7gNodePrime);
+
+    std::vector<CorrelatedNoiseSource> result;
+    if (inst.BSIM4v7mode >= 0) {
+        result.push_back({dp_neo, sp_neo, gp_neo, sp_neo, psd1, psd2, 0.5 * M_PI});
+    } else {
+        result.push_back({sp_neo, dp_neo, gp_neo, dp_neo, psd1, psd2, 0.5 * M_PI});
+    }
+    return result;
 }
 
 } // namespace neospice
