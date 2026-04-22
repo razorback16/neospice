@@ -25,6 +25,8 @@
 #include "devices/cccs_nonlinear.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/mos1/mos1_device.hpp"
+#include "devices/mos9/mos9_device.hpp"
+#include "devices/mos9/mos9_model_card.hpp"
 #include "devices/bsim3/bsim3_device.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
@@ -2477,10 +2479,12 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 
     // Resolve deferred MOSFETs.  Level dispatch:
     //   LEVEL=1           -> MOS1 (Shichman-Hodges)
+    //   LEVEL=9           -> MOS9 (Modified Level 3)
     //   LEVEL=8 or 49     -> BSIM3v3
     //   LEVEL=14 (default)-> BSIM4v7
     std::unordered_map<std::string, std::unique_ptr<BSIM4v7ModelCard>> bsim4_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS1ModelCard>> mos1_cards;
+    std::unordered_map<std::string, std::unique_ptr<MOS9ModelCard>> mos9_cards;
     std::unordered_map<std::string, std::unique_ptr<BSIM3ModelCard>> bsim3_cards;
     std::unordered_map<std::string, int> mosfet_levels;
     for (const auto& m : deferred_mosfets) {
@@ -2524,6 +2528,36 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             mos1_geom.M   = m.geom.M;
             auto dev = MOS1Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos1_geom, *card_it->second);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else if (level == 9) {
+            // MOS9 Modified Level 3
+            auto card_it = mos9_cards.find(m.model_name);
+            if (card_it == mos9_cards.end()) {
+                try {
+                    card_it = mos9_cards.emplace(m.model_name,
+                                                  to_mos9_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            MOS9Device::Geom mos9_geom;
+            mos9_geom.W   = m.geom.W;
+            mos9_geom.L   = m.geom.L;
+            mos9_geom.AD  = m.geom.AD;
+            mos9_geom.AS  = m.geom.AS;
+            mos9_geom.PD  = m.geom.PD;
+            mos9_geom.PS  = m.geom.PS;
+            mos9_geom.NRD = m.geom.NRD;
+            mos9_geom.NRS = m.geom.NRS;
+            mos9_geom.M   = m.geom.M;
+            auto dev = MOS9Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                        mos9_geom, *card_it->second);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,
@@ -2593,6 +2627,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     }
     for (auto& [name, card] : mos1_cards) {
         ckt.add_mos1_model_card(std::move(card));
+    }
+    for (auto& [name, card] : mos9_cards) {
+        ckt.add_mos9_model_card(std::move(card));
     }
     for (auto& [name, card] : bsim3_cards) {
         ckt.add_bsim3_model_card(std::move(card));

@@ -114,6 +114,7 @@ add_subdirectory(devices/bsim4v7)
 add_subdirectory(devices/dio)
 add_subdirectory(devices/ltra)
 add_subdirectory(devices/mos1)
+add_subdirectory(devices/mos9)
 add_subdirectory(devices/vbic)
 
 # Performance benchmarks

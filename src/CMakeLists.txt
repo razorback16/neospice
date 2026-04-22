@@ -4,6 +4,7 @@ add_subdirectory(devices/bjt)
 add_subdirectory(devices/jfet)
 add_subdirectory(devices/dio)
 add_subdirectory(devices/mos1)
+add_subdirectory(devices/mos9)
 add_subdirectory(devices/vbic)
 add_subdirectory(devices/asrc)
 
@@ -56,6 +57,7 @@ add_library(neospice_lib
     $<TARGET_OBJECTS:jfet_obj>
     $<TARGET_OBJECTS:dio_obj>
     $<TARGET_OBJECTS:mos1_obj>
+    $<TARGET_OBJECTS:mos9_obj>
     $<TARGET_OBJECTS:vbic_obj>
     $<TARGET_OBJECTS:asrc_obj>
 )

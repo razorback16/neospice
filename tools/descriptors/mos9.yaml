@@ -1,0 +1,71 @@
+model:
+  ngspice_prefix: "MOS9"
+  neospice_name: "mos9"
+  neospice_namespace: "mos9"
+  instance_struct: "MOS9instance"
+  model_struct: "MOS9model"
+  instance_tag: "sMOS9instance"
+  model_tag: "sMOS9model"
+  cpp_instance: "MOS9Instance"
+  cpp_model: "MOS9Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "MOS9dNode" }
+    - { name: "g", field: "MOS9gNode" }
+    - { name: "s", field: "MOS9sNode" }
+    - { name: "b", field: "MOS9bNode" }
+  state_count: 17
+  state_base_field: "MOS9states"
+  next_instance_field: "MOS9nextInstance"
+  instances_field: "MOS9instances"
+  next_model_field: "MOS9nextModel"
+  model_ptr_field: "MOS9modPtr"
+  name_field: "MOS9name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "mos9set.c"
+    load: "mos9load.c"
+    temp: "mos9temp.c"
+    param: "mos9par.c"
+    mpar: "mos9mpar.c"
+    devsup: "mos9.c"
+  skip_files:
+    - "mos9acld.c"
+    - "mos9ask.c"
+    - "mos9conv.c"
+    - "mos9del.c"
+    - "mos9dest.c"
+    - "mos9dist.c"
+    - "mos9dset.c"
+    - "mos9ic.c"
+    - "mos9init.c"
+    - "mos9mask.c"
+    - "mos9mdel.c"
+    - "mos9noi.c"
+    - "mos9pzld.c"
+    - "mos9sacl.c"
+    - "mos9sld.c"
+    - "mos9sprt.c"
+    - "mos9sset.c"
+    - "mos9supd.c"
+    - "mos9trun.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "MOS9setup"
+  temp_function: "MOS9temp"
+  load_function: "MOS9load"
+  geometry:
+    - { name: "W", field: "MOS9w", given: "MOS9wGiven", default: "1e-6" }
+    - { name: "L", field: "MOS9l", given: "MOS9lGiven", default: "1e-4" }
+    - { name: "AD", field: "MOS9drainArea", given: "MOS9drainAreaGiven", default: "0.0" }
+    - { name: "AS", field: "MOS9sourceArea", given: "MOS9sourceAreaGiven", default: "0.0" }
+    - { name: "PD", field: "MOS9drainPerimiter", given: "MOS9drainPerimiterGiven", default: "0.0" }
+    - { name: "PS", field: "MOS9sourcePerimiter", given: "MOS9sourcePerimiterGiven", default: "0.0" }
+    - { name: "NRD", field: "MOS9drainSquares", given: "MOS9drainSquaresGiven", default: "0.0" }
+    - { name: "NRS", field: "MOS9sourceSquares", given: "MOS9sourceSquaresGiven", default: "0.0" }
+    - { name: "M", field: "MOS9m", given: "MOS9mGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "nmos", flag_field: "MOS9type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "MOS9type", flag_value: -1 }
+  charge_states: [5, 8, 11, 13, 15]
