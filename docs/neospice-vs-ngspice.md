@@ -134,11 +134,14 @@ the result.
 O(N * (device_stamp + factorize)). For large circuits where device stamping
 dominates, this can be significantly faster.
 
-**Limitation:** NQS (non-quasi-static) models where conductances depend on
-frequency cannot use this optimization. BSIM4v7 acnqsMod is flagged as
-unsupported.
+**NQS support:** Devices with frequency-dependent AC behavior (e.g.,
+BSIM4v7 acnqsMod) override `ac_stamp_freq(omega, ax, nnz, ac_rhs)`.
+The base G+jwC is assembled from cached arrays as above, then the hook
+adds per-frequency delta corrections directly into the complex `ax`
+array. This preserves the O(1) device-stamp cost while supporting
+NQS scaling (tau_net relaxation: T0=wt, T2=1/(1+T0^2), T3=T0*T2).
 
-**Source:** `src/core/ac.cpp:112-161`
+**Source:** `src/core/ac.cpp:112-161`, `src/devices/device.hpp` (ac_stamp_freq)
 
 ---
 
@@ -182,23 +185,21 @@ The device-level check prevents premature declaration of convergence.
 
 ---
 
-## 8. Source stepping is a proxy
+## 8. Source stepping
 
 **ngspice** implements true source stepping: scales all independent source
 values from 0 to 1 in stages, solving the DC operating point at each stage.
 
-**neospice** implements source stepping as a gmin-stepping variant with a
-different schedule (starts from gmin=0.1 instead of 0.01). It does not
-actually scale source values.
+**neospice** also implements true source stepping with the same approach:
+collects all independent sources, saves their original DC values, scales
+from 0 to 1 through {0.1, 0.2, ..., 1.0}, and uses each converged
+solution as the initial guess for the next step. If any step fails, the
+fraction increment is halved and retried.
 
-**Why:** True source scaling requires runtime modification of source device
-values with a rollback mechanism. The gmin proxy works for most circuits and
-was simpler to implement.
+**Impact:** Matches ngspice's convergence behavior on high-gain feedback
+circuits. No longer a divergence.
 
-**Impact:** May fail on circuits where source-dominated convergence is the
-issue (e.g., very high gain feedback loops that need gradual source ramp-up).
-
-**Source:** `src/core/convergence.cpp:37-66`
+**Source:** `src/core/convergence.cpp:37-80`
 
 ---
 
