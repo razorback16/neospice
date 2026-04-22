@@ -8,6 +8,7 @@
 #include "devices/mos3/mos3_device.hpp"          // MOS3ModelCard
 #include "devices/mos9/mos9_device.hpp"          // MOS9ModelCard
 #include "devices/bsim3/bsim3_device.hpp"       // BSIM3ModelCard
+#include "devices/bsim3v32/bsim3v32_device.hpp" // BSIM3v32ModelCard
 #include "devices/bjt/bjt_device.hpp"            // BJTModelCard
 #include "devices/jfet/jfet_device.hpp"          // JFETModelCard
 #include "devices/dio/dio_device.hpp"            // DIOModelCard

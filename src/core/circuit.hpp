@@ -19,6 +19,7 @@ struct MOS1ModelCard;
 struct MOS3ModelCard;
 struct MOS9ModelCard;
 struct BSIM3ModelCard;
+struct BSIM3v32ModelCard;
 struct BJTModelCard;
 struct JFETModelCard;
 struct JFET2ModelCard;
@@ -143,6 +144,10 @@ public:
     /// that holds a non-owning pointer to it.
     void add_bsim3_model_card(std::unique_ptr<BSIM3ModelCard> card);
 
+    /// Take ownership of a BSIM3v32ModelCard so it outlives any BSIM3v32Device
+    /// that holds a non-owning pointer to it.
+    void add_bsim3v32_model_card(std::unique_ptr<BSIM3v32ModelCard> card);
+
     /// Assign branch indices, build sparsity pattern, assign offsets.
     void finalize();
 
@@ -206,6 +211,7 @@ private:
     std::vector<std::unique_ptr<VBICModelCard>> vbic_model_cards_;
     std::vector<std::unique_ptr<BSIM3ModelCard>> bsim3_model_cards_;
     std::vector<std::unique_ptr<HFET2ModelCard>> hfet2_model_cards_;
+    std::vector<std::unique_ptr<BSIM3v32ModelCard>> bsim3v32_model_cards_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     std::vector<bool>                        internal_nodes_;

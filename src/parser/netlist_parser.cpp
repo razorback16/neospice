@@ -30,6 +30,8 @@
 #include "devices/mos9/mos9_device.hpp"
 #include "devices/mos9/mos9_model_card.hpp"
 #include "devices/bsim3/bsim3_device.hpp"
+#include "devices/bsim3v32/bsim3v32_device.hpp"
+#include "devices/bsim3v32/bsim3v32_model_card.hpp"
 #include "devices/bjt/bjt_device.hpp"
 #include "devices/jfet/jfet_device.hpp"
 #include "devices/hfet2/hfet2_device.hpp"
@@ -2551,6 +2553,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     std::unordered_map<std::string, std::unique_ptr<MOS3ModelCard>> mos3_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS9ModelCard>> mos9_cards;
     std::unordered_map<std::string, std::unique_ptr<BSIM3ModelCard>> bsim3_cards;
+    std::unordered_map<std::string, std::unique_ptr<BSIM3v32ModelCard>> bsim3v32_cards;
     std::unordered_map<std::string, int> mosfet_levels;
     for (const auto& m : deferred_mosfets) {
         auto it = models.find(m.model_name);
@@ -2630,35 +2633,72 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             ckt.add_device(std::move(dev));
         } else if (level == 8 || level == 49) {
-            // BSIM3v3
-            auto card_it = bsim3_cards.find(m.model_name);
-            if (card_it == bsim3_cards.end()) {
-                try {
-                    card_it = bsim3_cards.emplace(m.model_name,
-                                                  to_bsim3_card(it->second)).first;
-                } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(m.line_number) +
-                                     ": " + e.what());
+            // BSIM3 — dispatch to v3.2x or v3.3 based on VERSION param.
+            // VERSION < 3.3 -> BSIM3v32, otherwise -> BSIM3 v3.3.
+            auto ver_it = it->second.params.find("version");
+            bool use_v32 = false;
+            if (ver_it != it->second.params.end() && ver_it->second < 3.3)
+                use_v32 = true;
+
+            if (use_v32) {
+                auto card_it = bsim3v32_cards.find(m.model_name);
+                if (card_it == bsim3v32_cards.end()) {
+                    try {
+                        card_it = bsim3v32_cards.emplace(m.model_name,
+                                                          to_bsim3v32_card(it->second)).first;
+                    } catch (const ParseError& e) {
+                        throw ParseError("Line " + std::to_string(m.line_number) +
+                                         ": " + e.what());
+                    }
                 }
+                BSIM3v32Device::Geom g32;
+                g32.W   = m.geom.W;
+                g32.L   = m.geom.L;
+                g32.AD  = m.geom.AD;
+                g32.AS  = m.geom.AS;
+                g32.PD  = m.geom.PD;
+                g32.PS  = m.geom.PS;
+                g32.NRD = m.geom.NRD;
+                g32.NRS = m.geom.NRS;
+                g32.M   = m.geom.M;
+                auto dev = BSIM3v32Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                                 g32, *card_it->second);
+                if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                    dev->set_ic(m.ic_vds, m.ic_vds_given,
+                                m.ic_vgs, m.ic_vgs_given,
+                                m.ic_vbs, m.ic_vbs_given);
+                }
+                ckt.add_device(std::move(dev));
+            } else {
+                auto card_it = bsim3_cards.find(m.model_name);
+                if (card_it == bsim3_cards.end()) {
+                    try {
+                        card_it = bsim3_cards.emplace(m.model_name,
+                                                      to_bsim3_card(it->second)).first;
+                    } catch (const ParseError& e) {
+                        throw ParseError("Line " + std::to_string(m.line_number) +
+                                         ": " + e.what());
+                    }
+                }
+                BSIM3Device::Geom g3;
+                g3.W   = m.geom.W;
+                g3.L   = m.geom.L;
+                g3.AD  = m.geom.AD;
+                g3.AS  = m.geom.AS;
+                g3.PD  = m.geom.PD;
+                g3.PS  = m.geom.PS;
+                g3.NRD = m.geom.NRD;
+                g3.NRS = m.geom.NRS;
+                g3.M   = m.geom.M;
+                auto dev = BSIM3Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                             g3, *card_it->second);
+                if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                    dev->set_ic(m.ic_vds, m.ic_vds_given,
+                                m.ic_vgs, m.ic_vgs_given,
+                                m.ic_vbs, m.ic_vbs_given);
+                }
+                ckt.add_device(std::move(dev));
             }
-            BSIM3Device::Geom g3;
-            g3.W   = m.geom.W;
-            g3.L   = m.geom.L;
-            g3.AD  = m.geom.AD;
-            g3.AS  = m.geom.AS;
-            g3.PD  = m.geom.PD;
-            g3.PS  = m.geom.PS;
-            g3.NRD = m.geom.NRD;
-            g3.NRS = m.geom.NRS;
-            g3.M   = m.geom.M;
-            auto dev = BSIM3Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
-                                         g3, *card_it->second);
-            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
-                dev->set_ic(m.ic_vds, m.ic_vds_given,
-                            m.ic_vgs, m.ic_vgs_given,
-                            m.ic_vbs, m.ic_vbs_given);
-            }
-            ckt.add_device(std::move(dev));
         } else if (level == 9) {
             // MOS9 Modified Level 3
             auto card_it = mos9_cards.find(m.model_name);
@@ -2731,6 +2771,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     }
     for (auto& [name, card] : bsim3_cards) {
         ckt.add_bsim3_model_card(std::move(card));
+    }
+    for (auto& [name, card] : bsim3v32_cards) {
+        ckt.add_bsim3v32_model_card(std::move(card));
     }
 
     // Resolve deferred BJTs (Q-cards dispatch to BJT or VBIC based on LEVEL)

@@ -1,0 +1,69 @@
+model:
+  ngspice_prefix: "BSIM3v32"
+  neospice_name: "bsim3v32"
+  neospice_namespace: "bsim3v32"
+  instance_struct: "BSIM3v32instance"
+  model_struct: "BSIM3v32model"
+  instance_tag: "sBSIM3v32instance"
+  model_tag: "sBSIM3v32model"
+  cpp_instance: "BSIM3v32Instance"
+  cpp_model: "BSIM3v32Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "BSIM3v32dNode" }
+    - { name: "g", field: "BSIM3v32gNode" }
+    - { name: "s", field: "BSIM3v32sNode" }
+    - { name: "b", field: "BSIM3v32bNode" }
+  state_count: 17
+  state_base_field: "BSIM3v32states"
+  next_instance_field: "BSIM3v32nextInstance"
+  instances_field: "BSIM3v32instances"
+  next_model_field: "BSIM3v32nextModel"
+  model_ptr_field: "BSIM3v32modPtr"
+  name_field: "BSIM3v32name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "b3v32set.c"
+    load: "b3v32ld.c"
+    temp: "b3v32temp.c"
+    check: "b3v32check.c"
+    param: "b3v32par.c"
+    mpar: "b3v32mpar.c"
+    devsup: "b3v32.c"
+  skip_files:
+    - "b3v32acld.c"
+    - "b3v32noi.c"
+    - "b3v32pzld.c"
+    - "b3v32cvtest.c"
+    - "b3v32ask.c"
+    - "b3v32mask.c"
+    - "b3v32del.c"
+    - "b3v32dest.c"
+    - "b3v32getic.c"
+    - "b3v32trunc.c"
+    - "bsim3v32init.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "BSIM3v32setup"
+  temp_function: "BSIM3v32temp"
+  load_function: "BSIM3v32load"
+  cleanup_linked_lists:
+    - { field: "pSizeDependParamKnot", next_field: "pNext" }
+  version_stamp:
+    field: "BSIM3v32version"
+    given_field: "BSIM3v32versionGiven"
+    value: "3.24"
+  geometry:
+    - { name: "W", field: "BSIM3v32w", given: "BSIM3v32wGiven", default: "1e-6", always_given: true }
+    - { name: "L", field: "BSIM3v32l", given: "BSIM3v32lGiven", default: "1e-7", always_given: true }
+    - { name: "AD", field: "BSIM3v32drainArea", given: "BSIM3v32drainAreaGiven", default: "0.0" }
+    - { name: "AS", field: "BSIM3v32sourceArea", given: "BSIM3v32sourceAreaGiven", default: "0.0" }
+    - { name: "PD", field: "BSIM3v32drainPerimeter", given: "BSIM3v32drainPerimeterGiven", default: "0.0" }
+    - { name: "PS", field: "BSIM3v32sourcePerimeter", given: "BSIM3v32sourcePerimeterGiven", default: "0.0" }
+    - { name: "NRD", field: "BSIM3v32drainSquares", given: "BSIM3v32drainSquaresGiven", default: "0.0" }
+    - { name: "NRS", field: "BSIM3v32sourceSquares", given: "BSIM3v32sourceSquaresGiven", default: "0.0" }
+    - { name: "M", field: "BSIM3v32m", given: "BSIM3v32mGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "nmos", flag_field: "BSIM3v32type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "BSIM3v32type", flag_value: -1 }

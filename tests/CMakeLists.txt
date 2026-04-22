@@ -119,6 +119,7 @@ add_subdirectory(devices/jfet2)
 add_subdirectory(devices/mos3)
 add_subdirectory(devices/mos9)
 add_subdirectory(devices/vbic)
+add_subdirectory(devices/bsim3v32)
 
 # Performance benchmarks
 add_executable(bench_ths4131
