@@ -214,40 +214,6 @@ TEST(Sens, ThreeResistorChain) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. ngspice comparison
 // ─────────────────────────────────────────────────────────────────────────────
-static bool parse_ngspice_sens_entry(const std::string& line,
-                                     std::string& element,
-                                     double& sensitivity,
-                                     double& normalized) {
-    // ngspice .sens output lines look like:
-    //   r1              resistance   -2.500000e-03  -50.0000%
-    // or:
-    //   v1              dc           5.000000e-01   100.0000%
-    // Columns: element  parameter  sensitivity  normalized%
-    // Use simple whitespace-based parsing
-    std::istringstream iss(line);
-    std::string elem, param, sens_str, norm_str;
-    if (!(iss >> elem >> param >> sens_str >> norm_str)) return false;
-
-    // Parse sensitivity
-    try {
-        sensitivity = std::stod(sens_str);
-    } catch (...) {
-        return false;
-    }
-
-    // Parse normalized (strip trailing %)
-    if (!norm_str.empty() && norm_str.back() == '%') {
-        norm_str.pop_back();
-    }
-    try {
-        normalized = std::stod(norm_str) / 100.0;  // convert from percent
-    } catch (...) {
-        return false;
-    }
-
-    element = elem;
-    return true;
-}
 
 TEST(Sens, NgspiceComparison) {
     // Run ngspice on the test circuit

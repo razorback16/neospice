@@ -21,17 +21,10 @@ public:
     void set_dt(double dt) { dt_ = dt; }
     void advance(double dt);
 
-    /// Evaluate global LTE using second finite differences.
-    /// @param check_indices  Indices into the solution vector to check.
-    ///        Typically all node voltage indices (0..num_nodes-1) plus any
-    ///        integration-state branch variables (inductor currents).
-    ///        Algebraic branch variables (voltage source currents) must NOT
-    ///        be included — their second differences don't converge with h.
     bool evaluate_step(const std::vector<double>& sol,
                        const std::vector<double>& sol_prev,
                        const std::vector<double>& sol_prev2,
                        int32_t num_nodes,
-                       const std::vector<int32_t>& check_indices,
                        const SimOptions& opts);
 
     void add_breakpoint(double t);

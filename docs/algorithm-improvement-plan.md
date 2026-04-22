@@ -121,31 +121,27 @@ breakpoints. This is a fixed 10× reduction regardless of the breakpoint's natur
 **Inspiration**: Xyce's `MASKIVARS=0` (default) includes current variables in
 global LTE, not just voltages.
 
-**Current state**: neospice's global LTE checks only node voltages (indices
-`0..num_nodes-1` in the solution vector). Branch currents (voltage source
-currents, inductor currents) are not checked.
+**Status**: **Investigated and rejected.**
 
-**Impact**: Medium. An inductor current that changes rapidly between timesteps
-won't trigger step rejection unless the device's charge LTE catches it. Global
-LTE on currents would catch this.
+**Investigation findings**: Branch current variables in the MNA solution vector
+fall into two categories:
 
-**Implementation**:
+1. **Integration state variables** (inductor currents) — evolved via flux
+   integration, their second differences are O(h²) and the LTE formula applies.
+   However, `Inductor::compute_trunc()` already provides device-specific LTE on
+   flux history with appropriate `chgtol`-based tolerance. Global LTE would be
+   redundant.
 
-1. In `evaluate_step()`, extend the loop from `num_nodes` to include branch
-   current indices
-2. Use `abstol` (current tolerance) instead of `vntol` for current variables:
-   `tol = reltol * |sol[i]| + abstol`
-3. Add `mask_ivars` option (default false = include currents, matching Xyce)
+2. **Algebraic variables** (voltage source, VCVS, CCVS currents) — determined
+   by KCL, not by integration. Their second differences do NOT converge to zero
+   with decreasing h, violating the LTE formula's O(h²) assumption. Including
+   them causes irreversible timestep collapse in MOSFET circuits (observed:
+   delta2 = 3.3e-3 at dt = 1e-17, ratio > 200× tolerance).
 
-**Files to modify**:
-- `src/core/timestep.cpp` — extend `evaluate_step()` loop range
-- `src/core/timestep.hpp` — add parameter for solution vector size vs. node count
-- `src/core/transient.cpp` — pass full solution size to `evaluate_step()`
-- `src/core/options.hpp` — add `mask_ivars` to `SimOptions`
-
-**Test**:
-- Inductor circuit with fast current ramp. Verify that global LTE rejects
-  steps that are too large for current accuracy.
+**Conclusion**: Global LTE should only check node voltages. Device-specific LTE
+(`compute_trunc()`) is the correct mechanism for internal state variables —
+devices have domain knowledge about their charge/flux offsets and appropriate
+tolerances. This matches ngspice's architecture.
 
 **Estimated effort**: Small (few hours).
 
@@ -246,7 +242,7 @@ documented limitation.
 | 1 | True source stepping | **Done** | `282ad8c` |
 | 2 | Configurable LTE reference mode | **Done** | `9f5a39f` |
 | 3 | Breakpoint step recovery | **Done** | `7fb4e64` |
-| 4 | Current variable LTE | **Done** | `07a9e17` |
+| 4 | Current variable LTE | **Rejected** | Algebraic branch currents violate O(h²); device LTE covers inductors |
 | 5 | Pseudo-transient continuation | **Done** | `04e29c8` |
 | 6 | Trap ringing detection | **Done** | `362d744` |
 | 7 | NQS AC fallback | Deferred | Requires BSIM4v7 NQS AC stamp |

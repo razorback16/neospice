@@ -37,41 +37,37 @@ bool TimeStepController::evaluate_step(const std::vector<double>& sol,
                                         const std::vector<double>& sol_prev,
                                         const std::vector<double>& sol_prev2,
                                         int32_t num_nodes,
-                                        const std::vector<int32_t>& check_indices,
                                         const SimOptions& opts) {
     // Pre-compute reference values based on LTE reference mode
     double max_abs = 0.0;
     if (opts.lte_ref_mode == 1) {
-        for (int32_t idx : check_indices) {
-            max_abs = std::max(max_abs, std::abs(sol[idx]));
+        for (int32_t i = 0; i < num_nodes; ++i) {
+            max_abs = std::max(max_abs, std::abs(sol[i]));
         }
     } else if (opts.lte_ref_mode == 2) {
-        int32_t max_idx = 0;
-        for (int32_t idx : check_indices) max_idx = std::max(max_idx, idx + 1);
-        if (static_cast<int32_t>(max_seen_.size()) < max_idx) {
-            max_seen_.resize(max_idx, 0.0);
+        if (static_cast<int32_t>(max_seen_.size()) < num_nodes) {
+            max_seen_.resize(num_nodes, 0.0);
         }
-        for (int32_t idx : check_indices) {
-            max_seen_[idx] = std::max(max_seen_[idx], std::abs(sol[idx]));
+        for (int32_t i = 0; i < num_nodes; ++i) {
+            max_seen_[i] = std::max(max_seen_[i], std::abs(sol[i]));
         }
     }
 
     double max_ratio = 0.0;
-    for (int32_t i : check_indices) {
+    for (int32_t i = 0; i < num_nodes; ++i) {
         double delta2 = sol[i] - 2.0 * sol_prev[i] + sol_prev2[i];
         double lte_coeff = (opts.method == "gear") ? (2.0 / 9.0) : (1.0 / 12.0);
         double lte = std::abs(delta2) * lte_coeff;
-        double abs_tol = (i < num_nodes) ? opts.vntol : opts.itol;
         double tol;
         switch (opts.lte_ref_mode) {
         case 1:
-            tol = opts.reltol * max_abs + abs_tol;
+            tol = opts.reltol * max_abs + opts.vntol;
             break;
         case 2:
-            tol = opts.reltol * max_seen_[i] + abs_tol;
+            tol = opts.reltol * max_seen_[i] + opts.vntol;
             break;
         default:
-            tol = opts.reltol * std::abs(sol[i]) + abs_tol;
+            tol = opts.reltol * std::abs(sol[i]) + opts.vntol;
             break;
         }
         if (tol > 0.0) {
