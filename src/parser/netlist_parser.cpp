@@ -930,6 +930,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                             ckt.options.itl4 = static_cast<int>(val);
                         } else if (key == "lte_ref_mode") {
                             ckt.options.lte_ref_mode = static_cast<int>(val);
+                        } else if (key == "itol") {
+                            ckt.options.itol = val;
                         } else if (key == "mask_ivars") {
                             ckt.options.mask_ivars = (static_cast<int>(val) != 0);
                         } else if (key == "restart_step_scale") {

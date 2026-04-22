@@ -317,6 +317,23 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     const double dt_min = tstep * 1e-6;
     const double dt_max = tstep * 100.0;
 
+    // Build the set of solution indices eligible for global LTE checking.
+    // Only integration state variables have O(h²) error that the second-
+    // difference formula can detect: node voltages (evolved via charge
+    // integration) and inductor branch currents (evolved via flux integration).
+    // Algebraic branch variables (voltage source, VCVS, CCVS currents) are
+    // excluded — their second differences don't converge with h.
+    std::vector<int32_t> lte_indices;
+    lte_indices.reserve(n);
+    for (int32_t i = 0; i < num_nodes; ++i) lte_indices.push_back(i);
+    if (!ckt.options.mask_ivars) {
+        for (const auto& dev : ckt.devices()) {
+            if (auto* ind = dynamic_cast<const Inductor*>(dev.get())) {
+                lte_indices.push_back(ind->branch_index());
+            }
+        }
+    }
+
     // History for LTE (stores the previous accepted solutions)
     std::vector<double> sol_prev = solution;
     std::vector<double> sol_prev2 = solution;
@@ -482,13 +499,14 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         }
         solution = nr.solution;
 
-        // Global node-voltage LTE check — skip first 2 steps (need 3 points)
+        // Global LTE check — skip first 2 steps (need 3 history points)
         // and skip 3 steps after a source breakpoint so the second-difference
         // history is fully populated from uniform post-edge steps.
         bool accepted = true;
         if (step_count >= 2 && steps_after_bp >= 3) {
             ctrl.set_dt(dt);
-            accepted = ctrl.evaluate_step(solution, sol_prev, sol_prev2, num_nodes, n, ckt.options);
+            accepted = ctrl.evaluate_step(solution, sol_prev, sol_prev2,
+                                          num_nodes, lte_indices, ckt.options);
             if (!accepted && dt <= dt_min * 1.01) {
                 accepted = true;
             }

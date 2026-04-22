@@ -34,10 +34,10 @@ struct SimOptions {
     int itl1      = 100;    // DC iteration limit (alias for max_iter)
     int itl4      = 50;     // transient iteration limit per timepoint
     std::string method = "trap"; // integration method: "trap" or "gear"
+    double itol   = 1e-4;      // current integration tolerance for global LTE on branch currents
     int lte_ref_mode = 0;       // LTE reference mode: 0=per-node, 1=max-all, 2=max-per-signal-over-time
     bool verbose  = false;
-    bool mask_ivars = true;     // when true, exclude branch current variables from global LTE check
-                                // set to false (mask_ivars=0) to include current variables in LTE
+    bool mask_ivars = false;    // when true, exclude inductor branch currents from global LTE check
     double restart_step_scale = 0.1; // dt reduction factor after crossing a source breakpoint
 };
 

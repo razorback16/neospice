@@ -37,31 +37,31 @@ bool TimeStepController::evaluate_step(const std::vector<double>& sol,
                                         const std::vector<double>& sol_prev,
                                         const std::vector<double>& sol_prev2,
                                         int32_t num_nodes,
-                                        int32_t num_vars,
+                                        const std::vector<int32_t>& check_indices,
                                         const SimOptions& opts) {
-    int32_t check_vars = opts.mask_ivars ? num_nodes : num_vars;
-
     // Pre-compute reference values based on LTE reference mode
     double max_abs = 0.0;
     if (opts.lte_ref_mode == 1) {
-        for (int32_t i = 0; i < check_vars; ++i) {
-            max_abs = std::max(max_abs, std::abs(sol[i]));
+        for (int32_t idx : check_indices) {
+            max_abs = std::max(max_abs, std::abs(sol[idx]));
         }
     } else if (opts.lte_ref_mode == 2) {
-        if (static_cast<int32_t>(max_seen_.size()) < check_vars) {
-            max_seen_.resize(check_vars, 0.0);
+        int32_t max_idx = 0;
+        for (int32_t idx : check_indices) max_idx = std::max(max_idx, idx + 1);
+        if (static_cast<int32_t>(max_seen_.size()) < max_idx) {
+            max_seen_.resize(max_idx, 0.0);
         }
-        for (int32_t i = 0; i < check_vars; ++i) {
-            max_seen_[i] = std::max(max_seen_[i], std::abs(sol[i]));
+        for (int32_t idx : check_indices) {
+            max_seen_[idx] = std::max(max_seen_[idx], std::abs(sol[idx]));
         }
     }
 
     double max_ratio = 0.0;
-    for (int32_t i = 0; i < check_vars; ++i) {
+    for (int32_t i : check_indices) {
         double delta2 = sol[i] - 2.0 * sol_prev[i] + sol_prev2[i];
         double lte_coeff = (opts.method == "gear") ? (2.0 / 9.0) : (1.0 / 12.0);
         double lte = std::abs(delta2) * lte_coeff;
-        double abs_tol = (i < num_nodes) ? opts.vntol : opts.abstol;
+        double abs_tol = (i < num_nodes) ? opts.vntol : opts.itol;
         double tol;
         switch (opts.lte_ref_mode) {
         case 1:
