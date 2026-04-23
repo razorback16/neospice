@@ -59,6 +59,21 @@ ASRCDevice::ASRCDevice(std::string name, int32_t node_pos, int32_t node_neg,
 }
 
 // ===========================================================================
+// process_temperature — compute output scaling factor from tc1/tc2
+// ===========================================================================
+
+void ASRCDevice::process_temperature(double sim_temp, double sim_tnom) {
+    // Follows ngspice asrcload.c exactly:
+    //   difference = (device_temp + dtemp) - tnom
+    //   factor = 1 + tc1*diff + tc2*diff^2
+    double temp = (temp_ > 0) ? temp_ : sim_temp;
+    // If temp was explicitly given, dtemp is ignored (ngspice behavior)
+    double dtemp = (temp_ > 0) ? 0.0 : dtemp_;
+    double difference = (temp + dtemp) - sim_tnom;
+    output_scale_ = 1.0 + tc1_ * difference + tc2_ * difference * difference;
+}
+
+// ===========================================================================
 // var_circuit_index — resolve the MNA solution vector index for variable i
 // ===========================================================================
 
@@ -289,6 +304,9 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
 
     const auto& refs = expr_.var_refs();
 
+    // Temperature coefficient scaling factor (ngspice asrcload.c)
+    const double factor = output_scale_;
+
     if (mode_ == Mode::VOLTAGE) {
         // ---------------------------------------------------------------
         // Voltage source mode — MNA formulation
@@ -299,8 +317,8 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
         //   mat[nn, branch]     -= 1
         //   mat[branch, np]     += 1
         //   mat[branch, nn]     -= 1
-        //   mat[branch, var_k]  -= df/dx_k
-        //   rhs[branch]         += f(x0) - sum_k df/dx_k * x_k0
+        //   mat[branch, var_k]  -= df/dx_k * factor
+        //   rhs[branch]         += factor * (f(x0) - sum_k df/dx_k * x_k0)
         // ---------------------------------------------------------------
 
         // MNA coupling
@@ -322,17 +340,17 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
             switch (refs[i].kind) {
             case asrc::VarKind::NODE_VOLTAGE:
             case asrc::VarKind::BRANCH_CURRENT:
-                add_if_valid(mat, var_stamps_[i].off_a, -d);
+                add_if_valid(mat, var_stamps_[i].off_a, -d * factor);
                 break;
             case asrc::VarKind::DIFF_VOLTAGE:
-                add_if_valid(mat, var_stamps_[i].off_a,  -d);
-                add_if_valid(mat, var_stamps_[i].off_a2,  d);
+                add_if_valid(mat, var_stamps_[i].off_a,  -d * factor);
+                add_if_valid(mat, var_stamps_[i].off_a2,  d * factor);
                 break;
             }
         }
 
         if (branch_idx_ >= 0) {
-            rhs[branch_idx_] += rhs_val;
+            rhs[branch_idx_] += factor * rhs_val;
         }
 
     } else {
@@ -341,10 +359,10 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
         // I = f(vars) flows from np to nn (out of np, into nn)
         //
         // Linearized:
-        //   mat[np, var_k] += df/dx_k
-        //   mat[nn, var_k] -= df/dx_k
-        //   rhs[np] -= (f(x0) - sum_k df/dx_k * x_k0)
-        //   rhs[nn] += (f(x0) - sum_k df/dx_k * x_k0)
+        //   mat[np, var_k] += df/dx_k * factor
+        //   mat[nn, var_k] -= df/dx_k * factor
+        //   rhs[np] -= factor * (f(x0) - sum_k df/dx_k * x_k0)
+        //   rhs[nn] += factor * (f(x0) - sum_k df/dx_k * x_k0)
         // ---------------------------------------------------------------
 
         double companion = f_val;
@@ -360,20 +378,20 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
             switch (refs[i].kind) {
             case asrc::VarKind::NODE_VOLTAGE:
             case asrc::VarKind::BRANCH_CURRENT:
-                add_if_valid(mat, var_stamps_[i].off_a,  d);
-                add_if_valid(mat, var_stamps_[i].off_b, -d);
+                add_if_valid(mat, var_stamps_[i].off_a,  d * factor);
+                add_if_valid(mat, var_stamps_[i].off_b, -d * factor);
                 break;
             case asrc::VarKind::DIFF_VOLTAGE:
-                add_if_valid(mat, var_stamps_[i].off_a,   d);
-                add_if_valid(mat, var_stamps_[i].off_b,  -d);
-                add_if_valid(mat, var_stamps_[i].off_a2, -d);
-                add_if_valid(mat, var_stamps_[i].off_b2,  d);
+                add_if_valid(mat, var_stamps_[i].off_a,   d * factor);
+                add_if_valid(mat, var_stamps_[i].off_b,  -d * factor);
+                add_if_valid(mat, var_stamps_[i].off_a2, -d * factor);
+                add_if_valid(mat, var_stamps_[i].off_b2,  d * factor);
                 break;
             }
         }
 
-        add_rhs_if_valid(rhs, np_, -companion);
-        add_rhs_if_valid(rhs, nn_,  companion);
+        add_rhs_if_valid(rhs, np_, -companion * factor);
+        add_rhs_if_valid(rhs, nn_,  companion * factor);
     }
 }
 
@@ -389,6 +407,9 @@ void ASRCDevice::ac_stamp(const std::vector<double>& voltages,
         expr_.evaluate(var_values_, ac_derivs_);
         ac_values_valid_ = true;
     }
+
+    // Temperature coefficient scaling factor (matches DC stamp)
+    const double factor = output_scale_;
 
     const auto& refs = expr_.var_refs();
 
@@ -406,11 +427,11 @@ void ASRCDevice::ac_stamp(const std::vector<double>& voltages,
             switch (refs[i].kind) {
             case asrc::VarKind::NODE_VOLTAGE:
             case asrc::VarKind::BRANCH_CURRENT:
-                add_if_valid(G, var_stamps_[i].off_a, -d);
+                add_if_valid(G, var_stamps_[i].off_a, -d * factor);
                 break;
             case asrc::VarKind::DIFF_VOLTAGE:
-                add_if_valid(G, var_stamps_[i].off_a,  -d);
-                add_if_valid(G, var_stamps_[i].off_a2,  d);
+                add_if_valid(G, var_stamps_[i].off_a,  -d * factor);
+                add_if_valid(G, var_stamps_[i].off_a2,  d * factor);
                 break;
             }
         }
@@ -423,14 +444,14 @@ void ASRCDevice::ac_stamp(const std::vector<double>& voltages,
             switch (refs[i].kind) {
             case asrc::VarKind::NODE_VOLTAGE:
             case asrc::VarKind::BRANCH_CURRENT:
-                add_if_valid(G, var_stamps_[i].off_a,  d);
-                add_if_valid(G, var_stamps_[i].off_b, -d);
+                add_if_valid(G, var_stamps_[i].off_a,  d * factor);
+                add_if_valid(G, var_stamps_[i].off_b, -d * factor);
                 break;
             case asrc::VarKind::DIFF_VOLTAGE:
-                add_if_valid(G, var_stamps_[i].off_a,   d);
-                add_if_valid(G, var_stamps_[i].off_b,  -d);
-                add_if_valid(G, var_stamps_[i].off_a2, -d);
-                add_if_valid(G, var_stamps_[i].off_b2,  d);
+                add_if_valid(G, var_stamps_[i].off_a,   d * factor);
+                add_if_valid(G, var_stamps_[i].off_b,  -d * factor);
+                add_if_valid(G, var_stamps_[i].off_a2, -d * factor);
+                add_if_valid(G, var_stamps_[i].off_b2,  d * factor);
                 break;
             }
         }

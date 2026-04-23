@@ -778,6 +778,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         // Names of vsources for I() refs (resolved later)
         std::vector<std::string> vsrc_names; // empty string if not I() ref
         int line_number;
+        // Temperature coefficients
+        double tc1 = 0.0;
+        double tc2 = 0.0;
+        double temp = -1.0;   // Kelvin, -1 = use sim default
+        double dtemp = 0.0;   // Kelvin
     };
     std::vector<DeferredASRC> deferred_asrcs;
 
@@ -2402,7 +2407,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             deferred_cswitches.push_back(std::move(wd));
 
         } else if (elem_type == 'b') {
-            // B name np nn V={expression} or I={expression}
+            // B name np nn V={expression} or I={expression} [tc1=val] [tc2=val] [temp=val] [dtemp=val]
             // Syntax: Bname node+ node- V={expr} | I={expr}
             if (tokens.size() < 4) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
@@ -2412,11 +2417,30 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t np = ckt.node(tokens[1]);
             int32_t nn = ckt.node(tokens[2]);
 
-            // Join remaining tokens to handle expressions split across tokens
-            std::string rest;
+            // Separate expression tokens from instance parameter tokens (tc1=, tc2=, temp=, dtemp=)
+            // Parameters are recognized as trailing tokens with known prefixes.
+            double b_tc1 = 0.0, b_tc2 = 0.0, b_temp = -1.0, b_dtemp = 0.0;
+            std::vector<std::string> expr_tokens;
             for (size_t i = 3; i < tokens.size(); ++i) {
+                std::string tok_lower = to_lower(tokens[i]);
+                if (tok_lower.starts_with("tc1=")) {
+                    b_tc1 = parse_spice_number(tok_lower.substr(4));
+                } else if (tok_lower.starts_with("tc2=")) {
+                    b_tc2 = parse_spice_number(tok_lower.substr(4));
+                } else if (tok_lower.starts_with("temp=")) {
+                    b_temp = parse_spice_number(tok_lower.substr(5)) + 273.15;
+                } else if (tok_lower.starts_with("dtemp=")) {
+                    b_dtemp = parse_spice_number(tok_lower.substr(6));
+                } else {
+                    expr_tokens.push_back(tokens[i]);
+                }
+            }
+
+            // Join expression tokens to handle expressions split across tokens
+            std::string rest;
+            for (size_t i = 0; i < expr_tokens.size(); ++i) {
                 if (!rest.empty()) rest += ' ';
-                rest += tokens[i];
+                rest += expr_tokens[i];
             }
 
             // Determine mode (V= or I=) and extract expression
@@ -2514,6 +2538,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             bd.node_indices2 = std::move(node_indices2);
             bd.vsrc_names = std::move(vsrc_names);
             bd.line_number = line.line_number;
+            bd.tc1 = b_tc1;
+            bd.tc2 = b_tc2;
+            bd.temp = b_temp;
+            bd.dtemp = b_dtemp;
             deferred_asrcs.push_back(std::move(bd));
 
         }
@@ -3407,12 +3435,20 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
         }
 
-        ckt.add_device(std::make_unique<ASRCDevice>(
+        auto asrc_dev = std::make_unique<ASRCDevice>(
             bd.name, bd.np, bd.nn, bd.mode,
             std::move(bd.expr),
             std::move(bd.node_indices),
             std::move(bd.node_indices2),
-            std::move(vsource_ptrs)));
+            std::move(vsource_ptrs));
+
+        // Apply temperature coefficient parameters
+        asrc_dev->set_tc1(bd.tc1);
+        asrc_dev->set_tc2(bd.tc2);
+        if (bd.temp > 0) asrc_dev->set_temp(bd.temp);
+        asrc_dev->set_dtemp(bd.dtemp);
+
+        ckt.add_device(std::move(asrc_dev));
     }
 
     ckt.finalize();

@@ -18,6 +18,7 @@
 #include "devices/resistor.hpp"
 #include "devices/capacitor.hpp"
 #include "devices/inductor.hpp"
+#include "devices/asrc/asrc_device.hpp"
 #include <cassert>
 #include <stdexcept>
 
@@ -192,6 +193,8 @@ void Circuit::finalize() {
             c->process_temperature(options.temp, options.tnom);
         else if (auto* l = dynamic_cast<Inductor*>(dev.get()))
             l->process_temperature(options.temp, options.tnom);
+        else if (auto* b = dynamic_cast<ASRCDevice*>(dev.get()))
+            b->process_temperature(options.temp, options.tnom);
     }
 
     // 6. Allocate state ring buffers and bind per-device base offsets.

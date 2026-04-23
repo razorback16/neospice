@@ -38,6 +38,7 @@ If a YAML descriptor already exists, skip to Phase 2. Otherwise proceed to Phase
 Study these for patterns:
 - `src/devices/bsim4v7/` — complex MOSFET (4 terminals, 29 states, internal nodes, full feature set)
 - `tools/descriptors/bsim4v7.yaml` — complex descriptor with geometry, version stamp, linked-list cleanup
+- `tools/descriptors/bsimsoi.yaml` — 6-terminal MOSFET with `ac_load_file`, `noise_file`, `levels`, `spice_prefix` (uses all new descriptor fields)
 - `tools/descriptors/dio.yaml` — simpler descriptor (2 terminals, 5 states)
 
 ---
@@ -137,6 +138,17 @@ model:
     given_field: "DIOversionGiven"
     value: "1.0.0"
 
+  # --- AC load file (optional — enables AC stamp scaffolding) ---
+  ac_load_file: "dioacld.c"               # ngspice AC load file — tool extracts G/C stamps
+  ac_load_function: "DIOacLoad"            # AC load function name (informational)
+
+  # --- Noise file (optional — enables noise source scaffolding) ---
+  noise_file: "dionoise.c"                 # ngspice noise file — tool extracts noise sources
+
+  # --- SPICE levels and prefix (for test circuit generation) ---
+  levels: [1]                              # SPICE LEVEL values this device maps to
+  spice_prefix: "D"                        # Element prefix letter (M, Q, J, Z, D, etc.)
+
   # --- Geometry parameters (instance card fields like W, L, area, m) ---
   geometry:
     - { name: "area", field: "DIOarea", given: "DIOareaGiven", default: "1.0" }
@@ -150,6 +162,10 @@ model:
 - **Finding terminals**: Look at the setup function's node binding or the def header's node field definitions.
 - **Finding cleanup lists**: Search the model struct for pointer fields with `pNext`-linked chains. If the model struct has `pSizeDependParamKnot` or similar, it needs cleanup.
 - **Geometry**: Look at the instance parameter table for geometric quantities (area, perimeter, width, length, multiplier).
+- **AC load file**: The `*acld.c` file (e.g., `b4soiacld.c`). When specified, the tool extracts all real/imaginary stamp entries and generates scaffolded `ac_stamp()` code.
+- **Noise file**: The `*noi.c` file (e.g., `b4soinoi.c`). When specified, the tool extracts THERMNOISE/SHOTNOISE/N_GAIN/flicker patterns and generates scaffolded `noise_sources()` code.
+- **Levels**: Look at the model card registration or `.model` documentation to find which LEVEL values the device uses (e.g., BSIMSOI uses LEVEL=10,58).
+- **Spice prefix**: The element card prefix letter (M for MOSFETs, Q for BJTs, J for JFETs, Z for HFETs, D for diodes).
 
 ---
 
@@ -164,7 +180,7 @@ python -m ngspice_migrate \
 ```
 
 Additional CLI flags:
-- `--gen-tests` — generate test scaffolding (per-device test directory with CMakeLists.txt, DC test, and transient test skeletons)
+- `--gen-tests` — generate test scaffolding: `test_<ns>_compare.cpp` with DC OP + AC comparison tests using the NgspiceRunner/comparator/Simulator API, device-appropriate SPICE circuits in `tests/circuits/`, and CMakeLists.txt matching the framework pattern
 - `--test-dir PATH` — override test output directory (default: `tests/devices/<device>/`)
 
 This produces:
@@ -278,13 +294,27 @@ The shim generator (`gen_shim.py`) and transformer (`transformer.py`) now handle
 
 ---
 
-## Phase 4: AC Stamp (Manual)
+## Phase 4: AC Stamp (Scaffolded or Manual)
 
-**Why manual**: ngspice stamps into a single complex matrix `(Y = G + jωC)`. Neospice uses separate real `G` and `C` matrices combined per-frequency as `(G + jωC)`. The auto-tool cannot split these.
+**Why not fully auto**: ngspice stamps into a single complex matrix `(Y = G + jωC)`. Neospice uses separate real `G` and `C` matrices combined per-frequency as `(G + jωC)`. The tool now extracts and classifies stamps but the generated code still needs manual completion.
+
+### 4.0 Auto-scaffolding (when `ac_load_file` is specified in descriptor)
+
+When the descriptor includes `ac_load_file`, the tool reads the ngspice `*acld.c` file
+and extracts all real-part (G matrix) and imaginary-part (C matrix) stamp entries.
+The generated `ac_stamp()` body contains commented scaffolding identifying every matrix
+entry with its pointer field name and value expression. This replaces the bare TODO stub.
+
+**What you get**: For each `*(here->XXXPtr) += expr` the tool classifies it as G (real)
+or C (imaginary, from `*(ptr + 1)`). The scaffolding lists all entries with their
+original ngspice expressions. You still need to:
+- Declare local variables for conductances/capacitances from instance fields
+- Map the ngspice expressions to neospice field names
+- Divide C-matrix entries by omega (ngspice stamps `cap * omega`, neospice multiplies by omega later)
 
 ### 4.1 Find the AC load source
 
-Look at the skipped AC file (e.g., `dioacld.c`, `b4v7acld.c`). This contains the small-signal model stamps.
+Look at the AC file specified in the descriptor (e.g., `dioacld.c`, `b4soiacld.c`). This contains the small-signal model stamps.
 
 ### 4.2 Implement `ac_stamp()` override
 
@@ -335,14 +365,23 @@ double m = inst_.<PREFIX>m;  // or default 1.0
 
 ---
 
-## Phase 4b: Noise Model
+## Phase 4b: Noise Model (Scaffolded or Manual)
 
-The auto-tool generates an empty `noise_sources()` stub. Fill in the device-specific
-noise physics from the ngspice `*noise.c` file.
+When the descriptor includes `noise_file`, the tool reads the ngspice `*noi.c` file
+and extracts THERMNOISE, SHOTNOISE, N_GAIN, and flicker noise macro patterns. The
+generated `noise_sources()` body contains commented scaffolding with node pairs,
+noise types (thermal/shot/flicker/custom), and PSD expressions from the ngspice source.
+Constants (kB, q), temperature via `sim_temp()`, and multiplier `m` are pre-declared.
+
+**Without `noise_file`**: a bare TODO stub is generated instead.
+
+**Manual work remaining**: Map the extracted expressions to actual instance fields,
+uncomment the `ns.push_back(...)` calls, and replace placeholder values (G, I, psd_1f)
+with the correct field references.
 
 ### 4b.1 Identify noise sources in ngspice
 
-Look in the skipped noise file (e.g., `dionoise.c`, `bjtnoise.c`, `b4noi.c`). Find:
+Look in the noise file specified in the descriptor (e.g., `dionoise.c`, `bjtnoise.c`, `b4soinoi.c`). Find:
 - The `static char *nNames[]` array — lists all noise source types
 - `NevalSrc()` calls — identify node pairs and noise type
 
@@ -729,47 +768,46 @@ void <Prefix>Device::limit_voltages(const std::vector<double>& old_v,
 
 ---
 
-## Phase 11: Testing
+## Phase 11: Testing (Auto-Generated Framework)
 
-### 11.1 Basic DC test
+The `--gen-tests` flag now generates production-quality test scaffolding that matches
+the real test framework (NgspiceRunner/comparator/Simulator API).
 
-Create a simple test circuit and verify DC operating point against ngspice:
+### 11.0 What the tool generates
+
+When `--gen-tests` is passed, the tool produces:
+
+- **`tests/devices/<ns>/test_<ns>_compare.cpp`** — unified test file with:
+  - A GTest fixture class (`<Ns>Validation`) with NgspiceRunner + Simulator
+  - DC operating point test(s) per model type (e.g., NMOS + PMOS for MOSFETs)
+  - AC small-signal comparison test(s)
+  - Device-specific physics assertions (e.g., V(drain) within expected range)
+  - Graceful skip when ngspice is unavailable
+- **`tests/devices/<ns>/CMakeLists.txt`** — matches the pattern from `tests/devices/hisim2/`
+- **`tests/circuits/<ns>_*.cir`** — device-appropriate SPICE circuits for MOSFETs (NMOS/PMOS DC + AC), BJTs (NPN/PNP DC + AC), JFETs, HFETs, and diodes
+
+**Device category inference**: The tool infers the device category from `model_types`
+(mosfet, bjt, jfet, hfet, diode) and generates category-appropriate circuits with
+correct element prefixes, bias points, and model cards. The `levels` and `spice_prefix`
+descriptor fields control the LEVEL parameter and element prefix letter.
+
+### 11.1 Review and customize generated tests
+
+The auto-generated tests are a solid starting point. Review and add:
+
+- Additional operating points (e.g., subthreshold, saturation, triode for MOSFETs)
+- Tighter tolerances once the device is verified working (default: 1% DC, 5% AC)
+- Transient tests (not yet auto-generated — add manually):
 
 ```cpp
-TEST(DeviceTest, BasicDC) {
-    NgspiceRunner ng;
-    auto ref = ng.run_dc("test_circuit.cir");
-
-    Circuit ckt;
-    // ... build circuit programmatically or parse netlist
-    auto result = solve_dc(ckt);
-
-    EXPECT_NEAR(result.solution[node_idx], ref["v(out)"], tolerance);
-}
-```
-
-### 11.2 AC test (if ac_stamp implemented)
-
-Test AC response at multiple frequencies against ngspice:
-
-```cpp
-TEST(DeviceTest, ACResponse) {
-    // Compare magnitude/phase at key frequencies
-    // Use 25% tolerance for near-threshold or high-gain operating points
-}
-```
-
-### 11.3 Transient test (validates truncation + convergence)
-
-```cpp
-TEST(DeviceTest, Transient) {
+TEST_F(<Ns>Validation, Transient) {
     // Step response or pulse response
     // Verify timestep control doesn't explode
     // Compare waveform against ngspice at key time points
 }
 ```
 
-### 11.4 Parameter query test
+### 11.2 Parameter query test
 
 ```cpp
 TEST(DeviceTest, QueryParams) {
@@ -779,7 +817,7 @@ TEST(DeviceTest, QueryParams) {
 }
 ```
 
-### 11.5 IC test
+### 11.3 IC test
 
 ```cpp
 TEST(DeviceTest, InitialConditions) {
@@ -789,7 +827,7 @@ TEST(DeviceTest, InitialConditions) {
 }
 ```
 
-### 11.6 Noise test
+### 11.4 Noise test
 
 Test noise analysis output against ngspice:
 
@@ -812,27 +850,12 @@ TEST(DeviceTest, NoiseVsNgspice) {
 }
 ```
 
-**Temperature-aware noise test**: Verify noise scales with temperature:
+### 11.5 Test circuits
 
-```cpp
-TEST(DeviceTest, NoiseTempScaling) {
-    // Run at T=300K and T=400K
-    // Thermal noise should scale as T (4kT*G)
-    // Shot noise is temperature-independent (2*q*I)
-    double ratio = result_hot.output_noise_density[0] /
-                   result_cold.output_noise_density[0];
-    EXPECT_NEAR(ratio, 400.0 / 300.0, 0.1);  // for thermal-dominated
-}
-```
-
-### 11.7 Test circuits
-
-Create test circuits in `tests/circuits/`:
-- Basic DC bias circuit
-- AC small-signal circuit
-- Transient switching circuit
-- Multi-device circuit (tests multiplier and multi-instance)
-- Noise analysis circuit (resistor divider or amplifier)
+Auto-generated in `tests/circuits/` — shared across all device tests:
+- DC bias circuits per model polarity (NMOS/PMOS, NPN/PNP, NJF/PJF)
+- AC small-signal circuits
+- Additional circuits to add manually: transient switching, multi-device, noise analysis
 
 ---
 
@@ -875,15 +898,15 @@ Before considering the migration complete, verify:
 | Temp (temperature params) | Yes | Build fixes only |
 | Param/Mpar (parameter tables) | Yes | Build fixes only |
 | CMakeLists.txt | Yes | - |
-| AC stamp (G/C split) | Stub generated | **Fill in G/C entries** |
+| AC stamp (G/C split) | **Scaffolded** (when `ac_load_file` set) | **Map expressions to fields** |
 | Truncation error (LTE) | **Auto-generated** (may need tuning) | Verify for complex devices |
 | Initial conditions (ic=) | - | **Parser + set_ic()** |
 | Parameter query | **Skeleton generated** (fill TODOs) | **Fill in OP param mappings + m-scaling** |
 | Model card conversion | **Yes** (when `model_types` defined) | - |
 | Parser integration | **Model card + helper generated** | **Element parsing + model dispatch wiring** |
-| Test scaffolding | **Yes** (`--gen-tests`) | Add test circuits |
+| Test scaffolding | **Yes** (`--gen-tests`: DC+AC tests, circuits) | Add transient/noise tests |
 | Voltage limiting | Inline in load | Override if external |
-| Noise model | Stub generated | **Fill in noise source physics** |
+| Noise model | **Scaffolded** (when `noise_file` set) | **Map expressions to fields** |
 | Pole-zero analysis | - | Not yet supported |
 | SOA checking | - | Not yet supported |
 | Delete/Destroy | - | C++ RAII (automatic) |

@@ -67,6 +67,16 @@ public:
     /// Set the simulation time for the next evaluate call.
     void set_time(double t) { current_time_ = t; }
 
+    /// Temperature coefficient setters (instance-level parameters)
+    void set_tc1(double v) { tc1_ = v; }
+    void set_tc2(double v) { tc2_ = v; }
+    void set_temp(double v) { temp_ = v; }
+    void set_dtemp(double v) { dtemp_ = v; }
+
+    /// Apply temperature-dependent scaling factor.
+    /// Called once during circuit finalize (or whenever temperature changes).
+    void process_temperature(double sim_temp, double sim_tnom);
+
     int32_t branch_index() const { return branch_idx_; }
     Mode mode() const { return mode_; }
     const asrc::CompiledExpression& expression() const { return expr_; }
@@ -104,6 +114,13 @@ private:
 
     // Simulation time
     double current_time_ = 0.0;
+
+    // Temperature coefficients
+    double tc1_ = 0.0;          // first temp coefficient (1/K)
+    double tc2_ = 0.0;          // second temp coefficient (1/K²)
+    double temp_ = -1.0;        // absolute device temp (K), -1 = use sim temp
+    double dtemp_ = 0.0;        // delta temp offset (K)
+    double output_scale_ = 1.0; // computed temperature scaling factor
 
     // Time variable index (-1 if expression doesn't use TIME)
     int time_var_idx_ = -1;

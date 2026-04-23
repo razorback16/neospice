@@ -1,6 +1,6 @@
 # ngspice Device Migration Status
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 ## Overview
 
@@ -142,17 +142,16 @@ CMOS inverter transient, CMOS inverter transitions.
 - [x] Model setup with Bessel function computation
 - [x] Parser: 'O' element prefix, LTRA model type
 - [x] Parameter query (R, L, C, G, LEN, Z0)
+- [x] Transient convolution with delayed-value interpolation (quadratic/linear)
+- [x] LTE calculation for RLC/RC cases (second-derivative impulse response)
+- [x] IC parameter parsing (IC=v1,i1,v2,i2 vector and individual V1=/I1=/V2=/I2=)
 - [x] 20 unit tests (setup, Bessel, interpolation, parsing, DC)
 
 **Known limitations (future work):**
-- [ ] Transient convolution not operational (rcCoeffsSetup/rlcCoeffsSetup stubbed)
-- [ ] AC stamp is simplified resistive approximation (not full Y-parameters)
-- [ ] LTE calculation stubbed
-- [ ] IC parsing not wired
-- [ ] No LC/RLC transient support yet
+- [ ] AC stamp is simplified resistive approximation (not full Y-parameters — requires framework support for per-frequency device evaluation)
 
-**Validation:** 2 ngspice comparison tests (`tests/devices/ltra/test_ltra_compare.cpp`):
-DC OP RC line, DC OP RG line.
+**Validation:** 5 ngspice comparison tests (`tests/devices/ltra/test_ltra_compare.cpp`):
+DC OP RC line, DC OP RG line, Transient RC, Transient RLC, Transient LC.
 
 ---
 
@@ -176,18 +175,18 @@ DC OP RC line, DC OP RG line.
 - [x] SPICE number suffixes (1k, 2.5m, 100u, etc.)
 - [x] MNA stamping for both voltage and current modes
 - [x] Deferred I() resolution for VSource branch currents
+- [x] TEMP/DTEMP/tc1/tc2 temperature coefficient scaling
 - [x] 34 tests (24 expression + 10 circuit integration)
 
 **Known limitations (future work):**
-- [ ] No TEMP/DTEMP/tc1/tc2 support
 - [ ] TIME derivative not tracked for transient (treated as parameter)
-- [ ] No noise analysis for B elements
-- [ ] No pole-zero analysis
+- [ ] No noise analysis for B elements (ngspice also has no B-element noise)
+- [ ] No pole-zero analysis (ngspice also lacks this for B elements)
 - [ ] Singular derivatives at x=0 (sqrt, log) can cause issues without source stepping
 
-**Validation:** 11 ngspice comparison tests:
-- `tests/devices/asrc/test_asrc_compare.cpp` (6): voltage doubler, VCCS, nonlinear,
-  trig, multi-variable, AC gain
+**Validation:** 13 ngspice comparison tests:
+- `tests/devices/asrc/test_asrc_compare.cpp` (8): voltage doubler, VCCS, nonlinear,
+  trig, multi-variable, AC gain, tc1/tc2 voltage mode, tc1/tc2 current mode
 - `tests/unit/test_ngspice_compare.cpp` (5): TEMPER, PWL, HERTZ, DDT transient,
   IDT transient
 
@@ -235,7 +234,7 @@ DC OP RC line, DC OP RG line.
 
 ## Priority 2 -- Migrated (2026-04-22)
 
-8 of 9 Priority 2 devices migrated via parallel subagent-driven development.
+All 9 Priority 2 devices migrated via parallel subagent-driven development.
 
 ### MOS9 (Modified Level 3 MOSFET)
 
@@ -416,12 +415,13 @@ NMOS DC, PMOS DC, IV sweep, AC response.
 **Features implemented:**
 - [x] Auto-migrated setup, load, temp, eval, param, mpar, devsup
 - [x] AC stamp with self-heating + NQS support
+- [x] Noise: thermal (drain/source/channel), flicker 1/f, induced gate, gate tunneling shot
 - [x] 5th terminal (substrate) parser support for M-card
 - [x] Truncation: Gear-2 LTE on charge states
 - [x] Parser: LEVEL=73 dispatch with 5-terminal M-card detection
 
-**Validation:** 3 ngspice comparison tests (`tests/devices/hisimhv/test_hisimhv_compare.cpp`):
-NMOS DC, PMOS DC, AC response.
+**Validation:** 4 ngspice comparison tests (`tests/devices/hisimhv/test_hisimhv_compare.cpp`):
+NMOS DC, PMOS DC, AC response, NMOS noise.
 
 ---
 
@@ -444,11 +444,11 @@ NMOS DC, PMOS DC, AC response.
 - [x] 6-terminal M-card parser support
 - [x] Truncation: Gear-2 LTE on 8 charge states
 - [x] Parser: LEVEL=10/58 dispatch with 6-terminal detection
-- [ ] AC stamp (scaffolded, needs completion)
-- [ ] Noise sources (scaffolded, needs completion)
+- [x] AC stamp: 67 G-matrix + 35 C-matrix entries with rgateMod/soiMod/rbodyMod/rdsMod/selfheat support
+- [x] Noise: 13 sources (thermal, shot, flicker, gate-induced, body resistance)
 
-**Validation:** 2 ngspice comparison tests (`tests/devices/bsimsoi/test_bsimsoi_compare.cpp`):
-NMOS DC OP, PMOS DC OP. AC test disabled pending AC stamp completion.
+**Validation:** 3 ngspice comparison tests (`tests/devices/bsimsoi/test_bsimsoi_compare.cpp`):
+NMOS DC OP, PMOS DC OP, NMOS AC response.
 
 ---
 

@@ -1,0 +1,8 @@
+ASRC temperature coefficient test
+* B voltage source with tc1 and tc2 at TEMP=100
+V1 in 0 DC 1.0
+R1 out 0 1k
+B1 out 0 V={V(in)} tc1=0.001 tc2=0.00001
+.options TEMP=100
+.op
+.end

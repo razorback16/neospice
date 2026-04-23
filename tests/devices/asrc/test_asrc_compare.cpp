@@ -194,6 +194,75 @@ TEST_F(ASRCValidation, MultiVariable) {
 }
 
 // ============================================================================
+// 6a. Temperature Coefficient — Voltage Mode
+//
+// Circuit: V1=1V -> B1 out 0 V={V(in)} tc1=0.001 tc2=0.00001
+// TEMP=100 => difference = (100+273.15) - 300.15 = 73.0 K
+// factor = 1 + 0.001*73.0 + 0.00001*73.0^2 = 1 + 0.073 + 0.05329 = 1.12629
+// Expected: V(out) = 1.0 * 1.12629 ≈ 1.12629 V (but ngspice is the reference)
+// ============================================================================
+
+TEST_F(ASRCValidation, TempCoVoltageMode) {
+    std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/asrc_tempco.cir";
+
+    // Run ngspice
+    DCResult ng_result;
+    try {
+        ng_result = ngspice_->run_dc(cir_path);
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+    }
+
+    // Run neospice
+    auto ckt = sim_.load(cir_path);
+    auto cs_result = sim_.run_dc(ckt);
+
+    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+
+    // Verify that temperature scaling is applied (output > 1.0)
+    double v_out = cs_result.node_voltages.count("v(out)")
+                       ? cs_result.node_voltages.at("v(out)") : 0.0;
+    EXPECT_GT(v_out, 1.05)
+        << "V(out) should be > 1.0 due to tc1/tc2 at TEMP=100";
+}
+
+// ============================================================================
+// 6b. Temperature Coefficient — Current Mode
+//
+// Circuit: V1=5V -> B1 0 out I={V(in)*1e-3} tc1=0.001 tc2=0.00001 -> R1(1k)
+// TEMP=100 => factor ≈ 1.12629
+// Expected: V(out) = 5*1e-3*1000*factor ≈ 5.63 V (but ngspice is the reference)
+// ============================================================================
+
+TEST_F(ASRCValidation, TempCoCurrentMode) {
+    std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/asrc_tempco_current.cir";
+
+    // Run ngspice
+    DCResult ng_result;
+    try {
+        ng_result = ngspice_->run_dc(cir_path);
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+    }
+
+    // Run neospice
+    auto ckt = sim_.load(cir_path);
+    auto cs_result = sim_.run_dc(ckt);
+
+    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+
+    // Verify that temperature scaling is applied (output > 5.0)
+    double v_out = cs_result.node_voltages.count("v(out)")
+                       ? cs_result.node_voltages.at("v(out)") : 0.0;
+    EXPECT_GT(v_out, 5.3)
+        << "V(out) should be > 5.0 due to tc1/tc2 at TEMP=100";
+}
+
+// ============================================================================
 // 6.  AC Analysis — Behavioral Voltage Amplifier
 //
 // Circuit: V1 AC=1 -> B1 out 0 V={V(in)*5} -> R1 (1k) to GND
