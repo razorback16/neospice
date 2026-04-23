@@ -205,7 +205,7 @@ DC OP RC line, DC OP RG line.
 | 6 | MOS6 | Not migrated |
 | 8, 49 | BSIM3 v3.3 / BSIM3v32 | Migrated (both v3.3 and v3.24) |
 | 9 | MOS9 (Modified Level 3) | Migrated |
-| 10, 58 | BSIMSOI | Not migrated |
+| 10, 58 | BSIMSOI | Migrated (DC/transient; AC stub) |
 | 14, 54 | BSIM4v7 | Migrated (pre-existing) |
 | 61, 68 | HiSIM2 | Migrated |
 | 62, 73 | HiSIM_HV | Migrated |
@@ -425,11 +425,30 @@ NMOS DC, PMOS DC, AC response.
 
 ---
 
-## Priority 2 -- Not Yet Migrated
+### BSIMSOI (Berkeley SOI MOSFET v4.x)
 
-| Device | ngspice Dir | Terminals | Why | Complexity | Notes |
-|--------|------------|-----------|-----|------------|-------|
-| BSIMSOI | `bsimsoi/` | 6 | SOI technology, advanced nodes | High | Level 10/58, v4.3.1, 38 states |
+| Attribute | Value |
+|-----------|-------|
+| SPICE prefix | M (LEVEL=10/58) |
+| Location | `src/devices/bsimsoi/` |
+| Descriptor | `tools/descriptors/bsimsoi.yaml` |
+| Terminals | 6 (drain, gate_ext, source, substrate, body, bulk) |
+| Internal nodes | variable (D', S', G, GMid, DB, SB, tempNode, etc.) |
+| State variables | 38 |
+| Complexity | High (largest P2 device, 32K LOC) |
+
+**Features implemented:**
+- [x] Auto-migrated setup, load, temp, check, param, mpar, devsup
+- [x] Size-dependent parameter linked list cleanup in destructor
+- [x] Version stamp (v4.6.1) auto-set
+- [x] 6-terminal M-card parser support
+- [x] Truncation: Gear-2 LTE on 8 charge states
+- [x] Parser: LEVEL=10/58 dispatch with 6-terminal detection
+- [ ] AC stamp (scaffolded, needs completion)
+- [ ] Noise sources (scaffolded, needs completion)
+
+**Validation:** 2 ngspice comparison tests (`tests/devices/bsimsoi/test_bsimsoi_compare.cpp`):
+NMOS DC OP, PMOS DC OP. AC test disabled pending AC stamp completion.
 
 ---
 
@@ -485,9 +504,9 @@ same tool but the source structure differs from hand-written ngspice devices.
 |----------|-------|
 | Pre-existing devices | 19 |
 | Priority 1 migrated | 5 |
-| Priority 2 migrated | 8 |
-| **Total migrated** | **32** |
-| Priority 2 remaining | 1 (BSIMSOI) |
+| Priority 2 migrated | 9 |
+| **Total migrated** | **33** |
+| Priority 2 remaining | 0 |
 | Priority 3 remaining | 24 |
 | Priority 4 (Verilog-A) | 5 |
 | **Total remaining** | **30** |
