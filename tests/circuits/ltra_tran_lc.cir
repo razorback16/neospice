@@ -1,0 +1,8 @@
+LTRA Transient LC Line
+* Step input through lossless LC transmission line
+V1 in 0 DC 0 PULSE(0 1 0 1n 1n 100n 200n)
+R1 out 0 50
+O1 in 0 out 0 TMOD
+.model TMOD LTRA L=250n C=100p LEN=1
+.tran 0.1n 100n
+.end

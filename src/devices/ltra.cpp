@@ -466,18 +466,204 @@ int straightLineCheck(double x1, double y1, double x2, double y2,
 }
 
 // LTE calculation (from ltramisc.c LTRAlteCalculate)
+// Returns sum of absolute values of local truncation error for both equations.
 double lteCalculate(double curtime,
                     const LTRAModel& model,
                     const LossyTransmissionLine& inst,
                     const std::vector<double>& timePoints,
                     int timeIndex,
                     const std::vector<double>& /*rhsOld*/) {
-    // Placeholder — the full LTE calculation requires access to the instance
-    // history arrays which are private. For now, return 0 (no LTE constraint
-    // from convolution).  The timestep is still limited by the delay-based
-    // truncation in compute_trunc_ltra().
-    (void)curtime; (void)model; (void)inst; (void)timePoints; (void)timeIndex;
-    return 0.0;
+    // Helper: second derivative estimate using divided differences.
+    // idx is the index of the latest value (c).  a,b,c are values at
+    // t_{idx-2}, t_{idx-1}, t_{idx}.  For idx == timeIndex+1, t_{idx} = curtime.
+    auto secondDeriv = [&](int idx, double a, double b, double c) -> double {
+        double t_i = (idx == timeIndex + 1) ? curtime : timePoints[idx];
+        double t_im1 = timePoints[idx - 1];
+        double t_im2 = timePoints[idx - 2];
+        double denom = t_i - t_im2;
+        if (std::fabs(denom) < 1e-30) return 0.0;
+        double d_im1 = t_im1 - t_im2;
+        double d_i   = t_i - t_im1;
+        if (std::fabs(d_im1) < 1e-30 || std::fabs(d_i) < 1e-30) return 0.0;
+        return ((c - b) / d_i - (b - a) / d_im1) / denom;
+    };
+
+    switch (model.specialCase) {
+    case LTRA_CASE_LC:
+    case LTRA_CASE_RG:
+        return 0.0;
+
+    case LTRA_CASE_RLC: {
+        if (timeIndex < 2) return 0.0;
+
+        const auto& v1 = inst.hist_v1();
+        const auto& v2 = inst.hist_v2();
+        const auto& i1 = inst.hist_i1();
+        const auto& i2 = inst.hist_i2();
+
+        double eq1LTE = 0.0, eq2LTE = 0.0;
+        double dashdash;
+
+        // Determine if delay has been exceeded
+        bool tdover = (curtime > model.td);
+        int auxindex = 0;
+
+        if (tdover) {
+            int exact = 0;
+            int i;
+            for (i = timeIndex; i >= 0; i--) {
+                if (curtime - timePoints[i] == model.td) { exact = 1; break; }
+                if (curtime - timePoints[i] > model.td) break;
+            }
+            auxindex = exact ? i - 1 : i;
+            if (auxindex < 2) tdover = false;  // not enough points for 2nd deriv
+        }
+
+        // h1dash truncation coefficient
+        double hilimit1 = curtime - timePoints[timeIndex];
+        double lolimit1 = 0.0;
+        double hivalue1 = rlcH1dashTwiceIntFunc(hilimit1, model.beta);
+        double lovalue1 = 0.0;
+        double f1i = hivalue1;
+        double g1i = intlinfunc(lolimit1, hilimit1, lovalue1, hivalue1,
+                                lolimit1, hilimit1);
+        double h1dashTfirstCoeff = 0.5 * f1i * (curtime - timePoints[timeIndex]) - g1i;
+
+        // h2 and h3dash truncation coefficients (only if tdover)
+        double h2TfirstCoeff = 0.0, h3dashTfirstCoeff = 0.0;
+        if (tdover) {
+            double hi = curtime - timePoints[auxindex];
+            double lo = std::max(model.td,
+                                 timePoints[timeIndex] - timePoints[auxindex]);
+
+            double hiv = rlcH2Func(hi, model.td, model.alpha, model.beta);
+            double lov = rlcH2Func(lo, model.td, model.alpha, model.beta);
+            f1i = twiceintlinfunc(lo, hi, lo, lov, hiv, lo, hi);
+            g1i = thriceintlinfunc(lo, hi, lo, lo, lov, hiv, lo, hi);
+            h2TfirstCoeff = 0.5 * f1i * (curtime - model.td - timePoints[auxindex]) - g1i;
+
+            hiv = rlcH3dashIntFunc(hi, model.td, model.beta);
+            lov = rlcH3dashIntFunc(lo, model.td, model.beta);
+            f1i = intlinfunc(lo, hi, lov, hiv, lo, hi);
+            g1i = twiceintlinfunc(lo, hi, lo, lov, hiv, lo, hi);
+            h3dashTfirstCoeff = 0.5 * f1i * (curtime - model.td - timePoints[auxindex]) - g1i;
+        }
+
+        // LTE for convolution with v1 (2nd derivative estimate)
+        // Use current v1 value from history (latest accepted + current)
+        double v1_cur = (timeIndex < (int)v1.size()) ? v1[timeIndex] : 0.0;
+        if (timeIndex >= 2) {
+            dashdash = secondDeriv(timeIndex, v1[timeIndex - 2], v1[timeIndex - 1], v1_cur);
+            eq1LTE += model.Y0 * std::fabs(dashdash * h1dashTfirstCoeff);
+        }
+
+        if (tdover && auxindex >= 2 && auxindex + 1 < (int)v1.size()) {
+            dashdash = secondDeriv(auxindex + 1, v1[auxindex - 1], v1[auxindex], v1[auxindex + 1]);
+            eq2LTE += model.Y0 * std::fabs(dashdash * h3dashTfirstCoeff);
+        }
+
+        // LTE for convolution with v2
+        double v2_cur = (timeIndex < (int)v2.size()) ? v2[timeIndex] : 0.0;
+        if (timeIndex >= 2) {
+            dashdash = secondDeriv(timeIndex, v2[timeIndex - 2], v2[timeIndex - 1], v2_cur);
+            eq2LTE += model.Y0 * std::fabs(dashdash * h1dashTfirstCoeff);
+        }
+
+        if (tdover && auxindex >= 2 && auxindex + 1 < (int)v2.size()) {
+            dashdash = secondDeriv(auxindex + 1, v2[auxindex - 1], v2[auxindex], v2[auxindex + 1]);
+            eq1LTE += model.Y0 * std::fabs(dashdash * h3dashTfirstCoeff);
+        }
+
+        // LTE for convolution with i1
+        if (tdover && auxindex >= 2 && auxindex + 1 < (int)i1.size()) {
+            dashdash = secondDeriv(auxindex + 1, i1[auxindex - 1], i1[auxindex], i1[auxindex + 1]);
+            eq2LTE += std::fabs(dashdash * h2TfirstCoeff);
+        }
+
+        // LTE for convolution with i2
+        if (tdover && auxindex >= 2 && auxindex + 1 < (int)i2.size()) {
+            dashdash = secondDeriv(auxindex + 1, i2[auxindex - 1], i2[auxindex], i2[auxindex + 1]);
+            eq1LTE += std::fabs(dashdash * h2TfirstCoeff);
+        }
+
+        return eq1LTE + eq2LTE;
+    }
+
+    case LTRA_CASE_RC: {
+        // RC case: LTE based on h1dash, h2, h3dash truncation coefficients
+        if (timeIndex < 2) return 0.0;
+
+        const auto& v1 = inst.hist_v1();
+        const auto& v2 = inst.hist_v2();
+        const auto& i1 = inst.hist_i1();
+        const auto& i2 = inst.hist_i2();
+
+        double eq1LTE = 0.0, eq2LTE = 0.0;
+        double dashdash;
+
+        double hilimit1 = curtime - timePoints[timeIndex];
+        double lolimit1 = 0.0;
+
+        // h1dash coefficient
+        double hivalue1 = rcH1dashTwiceIntFunc(hilimit1, model.cByR);
+        double lovalue1 = 0.0;
+        double f1i = hivalue1;
+        double g1i = intlinfunc(lolimit1, hilimit1, lovalue1, hivalue1,
+                                lolimit1, hilimit1);
+        double h1dashTfirstCoeff = 0.5 * f1i * (curtime - timePoints[timeIndex]) - g1i;
+
+        // h2 coefficient
+        hivalue1 = rcH2TwiceIntFunc(hilimit1, model.rclsqr);
+        lovalue1 = 0.0;
+        f1i = hivalue1;
+        g1i = intlinfunc(lolimit1, hilimit1, lovalue1, hivalue1,
+                         lolimit1, hilimit1);
+        double h2TfirstCoeff = 0.5 * f1i * (curtime - timePoints[timeIndex]) - g1i;
+
+        // h3dash coefficient
+        hivalue1 = rcH3dashTwiceIntFunc(hilimit1, model.cByR, model.rclsqr);
+        lovalue1 = 0.0;
+        f1i = hivalue1;
+        g1i = intlinfunc(lolimit1, hilimit1, lovalue1, hivalue1,
+                         lolimit1, hilimit1);
+        double h3dashTfirstCoeff = 0.5 * f1i * (curtime - timePoints[timeIndex]) - g1i;
+
+        // LTE from v1 second derivative
+        double v1_cur = (timeIndex < (int)v1.size()) ? v1[timeIndex] : 0.0;
+        if (timeIndex >= 2) {
+            dashdash = secondDeriv(timeIndex, v1[timeIndex - 2], v1[timeIndex - 1], v1_cur);
+            eq1LTE += std::fabs(dashdash * h1dashTfirstCoeff);
+            eq2LTE += std::fabs(dashdash * h3dashTfirstCoeff);
+        }
+
+        // LTE from v2 second derivative
+        double v2_cur = (timeIndex < (int)v2.size()) ? v2[timeIndex] : 0.0;
+        if (timeIndex >= 2) {
+            dashdash = secondDeriv(timeIndex, v2[timeIndex - 2], v2[timeIndex - 1], v2_cur);
+            eq2LTE += std::fabs(dashdash * h1dashTfirstCoeff);
+            eq1LTE += std::fabs(dashdash * h3dashTfirstCoeff);
+        }
+
+        // LTE from i1 second derivative
+        double i1_cur = (timeIndex < (int)i1.size()) ? i1[timeIndex] : 0.0;
+        if (timeIndex >= 2) {
+            dashdash = secondDeriv(timeIndex, i1[timeIndex - 2], i1[timeIndex - 1], i1_cur);
+            eq2LTE += std::fabs(dashdash * h2TfirstCoeff);
+        }
+
+        // LTE from i2 second derivative
+        double i2_cur = (timeIndex < (int)i2.size()) ? i2[timeIndex] : 0.0;
+        if (timeIndex >= 2) {
+            dashdash = secondDeriv(timeIndex, i2[timeIndex - 2], i2[timeIndex - 1], i2_cur);
+            eq1LTE += std::fabs(dashdash * h2TfirstCoeff);
+        }
+
+        return eq1LTE + eq2LTE;
+    }
+
+    default:
+        return 0.0;
+    }
 }
 
 } // namespace ltra
@@ -689,7 +875,7 @@ void LossyTransmissionLine::evaluate(
     const std::vector<double>& voltages,
     NumericMatrix& mat, std::vector<double>& rhs)
 {
-    const auto& m = *model_;
+    auto& m = *model_;  // non-const: coefficients are updated each step
 
     bool is_dc = !transient_;
     bool is_tran = transient_ && tls_integrator_ctx != nullptr;
@@ -761,25 +947,111 @@ void LossyTransmissionLine::evaluate(
     const auto& ctx = *tls_integrator_ctx;
     double currentTime = ctx.current_time;
 
-    // Get time points from the integrator context
-    // We use the history arrays to track time points
+    // timeIndex refers to the last accepted time step (stored in history)
     int timeIndex = static_cast<int>(v1_.size()) - 1;
     if (timeIndex < 0) timeIndex = 0;
 
     bool initTran = (ctx.mode & 0x1000) != 0;  // MODEINITTRAN
-    bool initPred = (ctx.mode & 0x20) != 0;     // MODEINITPRED
+    bool initPred = (ctx.mode & 0x2000) != 0;  // MODEINITPRED
 
     // Save initial conditions at start of transient
     if (initTran) {
-        if (!(ctx.mode & 0x10000)) { // !MODEUIC
-            double vp1p = (p1p_ >= 0) ? voltages[p1p_] : 0.0;
-            double vp1n = (p1n_ >= 0) ? voltages[p1n_] : 0.0;
-            double vp2p = (p2p_ >= 0) ? voltages[p2p_] : 0.0;
-            double vp2n = (p2n_ >= 0) ? voltages[p2n_] : 0.0;
-            initVolt1_ = vp1p - vp1n;
-            initVolt2_ = vp2p - vp2n;
-            initCur1_ = (br1_ >= 0 && br1_ < (int32_t)voltages.size()) ? voltages[br1_] : 0.0;
-            initCur2_ = (br2_ >= 0 && br2_ < (int32_t)voltages.size()) ? voltages[br2_] : 0.0;
+        if (!(ctx.mode & 0x10000)) { // !MODEUIC — use DC OP values
+            if (!icV1Given_) {
+                double vp1p = (p1p_ >= 0) ? voltages[p1p_] : 0.0;
+                double vp1n = (p1n_ >= 0) ? voltages[p1n_] : 0.0;
+                initVolt1_ = vp1p - vp1n;
+            }
+            if (!icV2Given_) {
+                double vp2p = (p2p_ >= 0) ? voltages[p2p_] : 0.0;
+                double vp2n = (p2n_ >= 0) ? voltages[p2n_] : 0.0;
+                initVolt2_ = vp2p - vp2n;
+            }
+            if (!icC1Given_) {
+                initCur1_ = (br1_ >= 0 && br1_ < (int32_t)voltages.size()) ? voltages[br1_] : 0.0;
+            }
+            if (!icC2Given_) {
+                initCur2_ = (br2_ >= 0 && br2_ < (int32_t)voltages.size()) ? voltages[br2_] : 0.0;
+            }
+        }
+    }
+
+    // -----------------------------------------------------------
+    // Coefficient setup (called on first NR iteration of each step)
+    // Must be done BEFORE matrix and RHS loading.
+    // -----------------------------------------------------------
+    if ((initPred || initTran) && timeIndex >= 0 && !times_.empty()) {
+        switch (m.specialCase) {
+        case LTRA_CASE_RLC:
+            ltra::rlcCoeffsSetup(
+                &m.h1dashFirstCoeff, &m.h2FirstCoeff, &m.h3dashFirstCoeff,
+                m.h1dashCoeffs.data(), m.h2Coeffs.data(), m.h3dashCoeffs.data(),
+                static_cast<int>(m.h1dashCoeffs.size()),
+                m.td, m.alpha, m.beta,
+                currentTime, times_.data(), timeIndex,
+                m.chopReltol > 0 ? m.chopReltol : 1e-3, &m.auxIndex);
+            break;
+
+        case LTRA_CASE_RC:
+            ltra::rcCoeffsSetup(
+                &m.h1dashFirstCoeff, &m.h2FirstCoeff, &m.h3dashFirstCoeff,
+                m.h1dashCoeffs.data(), m.h2Coeffs.data(), m.h3dashCoeffs.data(),
+                static_cast<int>(m.h1dashCoeffs.size()),
+                m.cByR, m.rclsqr,
+                currentTime, times_.data(), timeIndex,
+                m.chopReltol > 0 ? m.chopReltol : 1e-3);
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    // -----------------------------------------------------------
+    // Delayed-value interpolation for LC/RLC cases
+    // -----------------------------------------------------------
+    bool tdover = false;
+    double v1d = 0.0, v2d = 0.0, i1d = 0.0, i2d = 0.0;
+    int isaved = -1;
+    double qf1 = 0.0, qf2 = 0.0, qf3 = 0.0;
+    double lf2 = 0.0, lf3 = 0.0;
+
+    if ((m.specialCase == LTRA_CASE_LC || m.specialCase == LTRA_CASE_RLC)
+        && (initPred || initTran)) {
+        if (currentTime > m.td) {
+            tdover = true;
+        }
+
+        if (tdover && !times_.empty()) {
+            // Search backwards through time points for bracket containing
+            // (currentTime - td)
+            double delayed_t = currentTime - m.td;
+            int i;
+            for (i = timeIndex; i >= 0; i--) {
+                if (times_[i] < delayed_t) break;
+            }
+            // Clamp: if timestep > delay, i might equal timeIndex
+            if (i == timeIndex) i--;
+            if (i < 0) {
+                // Cannot find delayed timepoint — should not happen
+                tdover = false;
+            } else {
+                isaved = i;
+                double t2 = times_[i];
+                double t3 = times_[i + 1];
+
+                // Quadratic interpolation with 3 points (if available)
+                if (i != 0 && (m.howToInterp == LTRA_INTERP_QUAD ||
+                               m.howToInterp == LTRA_INTERP_MIXED)) {
+                    double t1 = times_[i - 1];
+                    ltra::quadInterp(delayed_t, t1, t2, t3, &qf1, &qf2, &qf3);
+                }
+                // Linear interpolation (used if i==0, or LININTERP, or MIXED fallback)
+                if (i == 0 || m.howToInterp == LTRA_INTERP_MIXED ||
+                    m.howToInterp == LTRA_INTERP_LIN) {
+                    ltra::linInterp(delayed_t, t2, t3, &lf2, &lf3);
+                }
+            }
         }
     }
 
@@ -845,28 +1117,49 @@ void LossyTransmissionLine::evaluate(
     if (initPred || initTran) {
         input1_ = input2_ = 0.0;
 
-        bool tdover = false;
-        double v1d = 0.0, v2d = 0.0, i1d = 0.0, i2d = 0.0;
+        // -----------------------------------------------------------
+        // Perform delayed-value interpolation for LC/RLC
+        // -----------------------------------------------------------
+        if ((m.specialCase == LTRA_CASE_LC || m.specialCase == LTRA_CASE_RLC) && tdover && isaved >= 0) {
+            // Helper lambda: interpolate a history vector at the delayed time.
+            // Uses quadratic first, falls back to linear if out of range or LININTERP.
+            auto interp_value = [&](const std::vector<double>& hist) -> double {
+                double val = 0.0;
+                double max_v, min_v;
+                bool use_quad = (isaved != 0) &&
+                    (m.howToInterp == LTRA_INTERP_QUAD || m.howToInterp == LTRA_INTERP_MIXED);
+                bool use_linear = false;
 
-        // Interpolation for delayed values (LC/RLC cases)
-        if (m.specialCase == LTRA_CASE_LC || m.specialCase == LTRA_CASE_RLC) {
-            if (currentTime > m.td && !v1_.empty()) {
-                tdover = true;
+                if (use_quad) {
+                    val = hist[isaved - 1] * qf1 + hist[isaved] * qf2 + hist[isaved + 1] * qf3;
+                    max_v = std::max({hist[isaved - 1], hist[isaved], hist[isaved + 1]});
+                    min_v = std::min({hist[isaved - 1], hist[isaved], hist[isaved + 1]});
+                    // Fall back to linear if interpolated value is out of range
+                    if (val > max_v || val < min_v) {
+                        if (m.howToInterp == LTRA_INTERP_QUAD) {
+                            // Pure quad mode: keep out-of-range value (ngspice behavior)
+                        } else {
+                            use_linear = true;
+                        }
+                    }
+                }
 
-                // Find the time index just before (currentTime - td)
-                double delayed_t = currentTime - m.td;
-                int isaved = -1;
-                // We need the timePoints array - reconstruct from history
-                // The accept_step stores v1,i1,v2,i2 at each accepted timepoint
-                // We need time points array - store separately
-                // For now, use linear interpolation from history
-                // Find bracket in our internal time tracking
-                // NOTE: in the full integration, time points come from the transient solver
-                // For now we use the accept_step history
-            }
+                if (!use_quad || use_linear ||
+                    m.howToInterp == LTRA_INTERP_LIN || isaved == 0) {
+                    val = hist[isaved] * lf2 + hist[isaved + 1] * lf3;
+                }
+                return val;
+            };
+
+            v1d = interp_value(v1_);
+            i1d = interp_value(i1_);
+            v2d = interp_value(v2_);
+            i2d = interp_value(i2_);
         }
 
-        // Compute convolution contributions for RLC case
+        // -----------------------------------------------------------
+        // RLC convolution
+        // -----------------------------------------------------------
         if (m.specialCase == LTRA_CASE_RLC && timeIndex > 0) {
             // Convolution of h1dash with v1 and v2
             double d1 = 0.0, d2 = 0.0;
@@ -929,7 +1222,9 @@ void LossyTransmissionLine::evaluate(
             }
         }
 
+        // -----------------------------------------------------------
         // RC convolution
+        // -----------------------------------------------------------
         if (m.specialCase == LTRA_CASE_RC && timeIndex > 0) {
             // h1dash convolution with v1 and v2
             double d1 = 0.0, d2 = 0.0;
@@ -1080,6 +1375,7 @@ void LossyTransmissionLine::accept_step(double time,
     i1_.push_back(cur1);
     v2_.push_back(v2);
     i2_.push_back(cur2);
+    times_.push_back(time);
 
     // Update model coefficient arrays if needed
     auto& m = *model_;
@@ -1093,19 +1389,88 @@ void LossyTransmissionLine::accept_step(double time,
     }
 }
 
+void LossyTransmissionLine::init_dc_state(const std::vector<double>& solution) {
+    // Seed history with DC operating point at t=0.
+    // This ensures we have at least one time point for the first transient step.
+    double vp1p = (p1p_ >= 0) ? solution[p1p_] : 0.0;
+    double vp1n = (p1n_ >= 0) ? solution[p1n_] : 0.0;
+    double vp2p = (p2p_ >= 0) ? solution[p2p_] : 0.0;
+    double vp2n = (p2n_ >= 0) ? solution[p2n_] : 0.0;
+    double v1 = vp1p - vp1n;
+    double v2 = vp2p - vp2n;
+    double cur1 = (br1_ >= 0 && br1_ < (int32_t)solution.size()) ? solution[br1_] : 0.0;
+    double cur2 = (br2_ >= 0 && br2_ < (int32_t)solution.size()) ? solution[br2_] : 0.0;
+
+    // Store initial conditions (from DC OP if not already set by IC=)
+    if (!icV1Given_) initVolt1_ = v1;
+    if (!icV2Given_) initVolt2_ = v2;
+    if (!icC1Given_) initCur1_ = cur1;
+    if (!icC2Given_) initCur2_ = cur2;
+
+    // Seed history with t=0 point
+    // Use IC values if given (they override DC OP), matching ngspice behavior
+    if (times_.empty()) {
+        v1_.push_back(icV1Given_ ? initVolt1_ : v1);
+        i1_.push_back(icC1Given_ ? initCur1_ : cur1);
+        v2_.push_back(icV2Given_ ? initVolt2_ : v2);
+        i2_.push_back(icC2Given_ ? initCur2_ : cur2);
+        times_.push_back(0.0);
+
+        // Ensure coefficient arrays are large enough
+        auto& m = *model_;
+        if (m.h1dashCoeffs.size() < 100) {
+            m.h1dashCoeffs.resize(100, 0.0);
+            m.h2Coeffs.resize(100, 0.0);
+            m.h3dashCoeffs.resize(100, 0.0);
+        }
+    }
+}
+
 void LossyTransmissionLine::set_transient(bool enable) {
     transient_ = enable;
     if (!enable) {
         v1_.clear(); i1_.clear();
         v2_.clear(); i2_.clear();
+        times_.clear();
         input1_ = input2_ = 0.0;
     }
 }
 
-double LossyTransmissionLine::compute_trunc_ltra(double /*currentTime*/,
-                                                   double timestep) const {
+double LossyTransmissionLine::compute_trunc(const IntegratorCtx& ctx,
+                                              const SimOptions& opts) const {
+    double currentTime = ctx.current_time;
+    double timestep = ctx.delta;
+    if (timestep <= 0.0) return 1e30;
+
+    // Start with delay-based limits
+    double result = compute_trunc_ltra(currentTime, timestep);
+
+    // LTE-based timestep control (only for RLC with sufficient history and
+    // explicit LTE control enabled)
     const auto& m = *model_;
-    double result = timestep;
+    if (m.specialCase == LTRA_CASE_RLC
+        && m.lteConType != LTRA_CTRL_NONE
+        && !times_.empty() && times_.size() >= 4) {
+        int timeIndex = static_cast<int>(times_.size()) - 1;
+        double lte = ltra::lteCalculate(currentTime, m, *this, times_,
+                                         timeIndex, {});
+        if (lte > 0.0) {
+            // tolerance: chgtol-like tolerance for LTRA
+            double tol = opts.chgtol;
+            if (m.lteConType == LTRA_CTRL_HALF) tol *= 0.5;
+            double new_dt = timestep * std::sqrt(std::max(tol, 1e-30) / lte);
+            new_dt = std::max(new_dt, 1e-18);  // floor
+            result = std::min(result, new_dt);
+        }
+    }
+
+    return result;
+}
+
+double LossyTransmissionLine::compute_trunc_ltra(double /*currentTime*/,
+                                                   double /*timestep*/) const {
+    const auto& m = *model_;
+    double result = 1e30;  // no constraint by default
 
     switch (m.specialCase) {
     case LTRA_CASE_LC:

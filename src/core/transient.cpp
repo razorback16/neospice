@@ -237,6 +237,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             ki->init_dc_state(solution);
         } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
             tl->init_dc_state(solution);
+        } else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get())) {
+            ltl->init_dc_state(solution);
         }
         // BSIM4 state1 is seeded by rotate_state() below.
     }

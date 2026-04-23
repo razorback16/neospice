@@ -158,9 +158,14 @@ public:
     // Transient support
     void accept_step(double time, const std::vector<double>& solution);
     void set_transient(bool enable);
+    void init_dc_state(const std::vector<double>& solution);
 
     // Timestep control
     double compute_trunc_ltra(double current_time, double timestep) const;
+
+    // Timestep control (base class override)
+    double compute_trunc(const IntegratorCtx& ctx,
+                         const SimOptions& opts) const override;
 
     // Parameter query
     std::optional<double> query_param(const std::string& name) const override;
@@ -173,6 +178,29 @@ public:
     int32_t br_eq1() const { return br1_; }
     int32_t br_eq2() const { return br2_; }
     const LTRAModel& model() const { return *model_; }
+
+    // History accessors (for LTE calculation)
+    const std::vector<double>& hist_v1() const { return v1_; }
+    const std::vector<double>& hist_i1() const { return i1_; }
+    const std::vector<double>& hist_v2() const { return v2_; }
+    const std::vector<double>& hist_i2() const { return i2_; }
+    const std::vector<double>& hist_times() const { return times_; }
+    double init_volt1() const { return initVolt1_; }
+    double init_cur1()  const { return initCur1_; }
+    double init_volt2() const { return initVolt2_; }
+    double init_cur2()  const { return initCur2_; }
+
+    // IC setters (for parser)
+    void set_ic(double v1, double i1, double v2, double i2) {
+        initVolt1_ = v1; icV1Given_ = true;
+        initCur1_  = i1; icC1Given_ = true;
+        initVolt2_ = v2; icV2Given_ = true;
+        initCur2_  = i2; icC2Given_ = true;
+    }
+    void set_ic_v1(double v) { initVolt1_ = v; icV1Given_ = true; }
+    void set_ic_i1(double v) { initCur1_  = v; icC1Given_ = true; }
+    void set_ic_v2(double v) { initVolt2_ = v; icV2Given_ = true; }
+    void set_ic_i2(double v) { initCur2_  = v; icC2Given_ = true; }
 
 private:
     int32_t p1p_, p1n_, p2p_, p2n_;  // terminal nodes
@@ -191,6 +219,8 @@ private:
 
     // History arrays for port voltages and currents
     std::vector<double> v1_, i1_, v2_, i2_;
+    // Corresponding time points for history (same length as v1_, etc.)
+    std::vector<double> times_;
 
     // Matrix offsets (20 entries for the 6x6 stamp pattern)
     MatrixOffset off_ibr1_pos1_ = -1, off_ibr1_neg1_ = -1;

@@ -1,0 +1,8 @@
+LTRA Transient RC Line
+* Step input through RC lossy transmission line
+V1 in 0 DC 0 PULSE(0 1 1n 1n 1n 50n 100n)
+R1 out 0 1k
+O1 in 0 out 0 TMOD
+.model TMOD LTRA R=50 C=100p LEN=0.01
+.tran 0.1n 20n
+.end

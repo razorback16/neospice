@@ -758,6 +758,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int32_t p1p, p1n, p2p, p2n;
         std::string model_name;
         int line_number;
+        // Initial conditions
+        double ic_v1 = 0.0, ic_i1 = 0.0, ic_v2 = 0.0, ic_i2 = 0.0;
+        bool ic_v1_given = false, ic_i1_given = false;
+        bool ic_v2_given = false, ic_i2_given = false;
     };
     std::vector<DeferredLTRA> deferred_ltras;
 
@@ -2317,7 +2321,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             ckt.add_device(std::move(tl));
 
         } else if (elem_type == 'o') {
-            // O name p1+ p1- p2+ p2- modelname
+            // O name p1+ p1- p2+ p2- modelname [IC=v1,i1,v2,i2]
             if (tokens.size() < 6) {
                 throw ParseError("Line " + std::to_string(line.line_number) +
                                  ": O element requires name, p1+, p1-, p2+, p2-, modelname");
@@ -2330,6 +2334,40 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             ol.p2n        = ckt.node(tokens[4]);
             ol.model_name = tokens[5];
             ol.line_number = line.line_number;
+
+            // Parse optional parameters after modelname (IC=v1,i1,v2,i2 or V1= I1= V2= I2=)
+            for (size_t ti = 6; ti < tokens.size(); ++ti) {
+                std::string tok_lower = to_lower(tokens[ti]);
+                if (tok_lower.substr(0, 3) == "ic=") {
+                    // IC=v1[,i1[,v2[,i2]]]
+                    std::string ic_str = tokens[ti].substr(3);
+                    std::vector<double> ic_vals;
+                    std::istringstream iss(ic_str);
+                    std::string val_str;
+                    while (std::getline(iss, val_str, ',')) {
+                        if (!val_str.empty()) {
+                            try { ic_vals.push_back(std::stod(val_str)); }
+                            catch (...) { break; }
+                        }
+                    }
+                    if (ic_vals.size() >= 1) { ol.ic_v1 = ic_vals[0]; ol.ic_v1_given = true; }
+                    if (ic_vals.size() >= 2) { ol.ic_i1 = ic_vals[1]; ol.ic_i1_given = true; }
+                    if (ic_vals.size() >= 3) { ol.ic_v2 = ic_vals[2]; ol.ic_v2_given = true; }
+                    if (ic_vals.size() >= 4) { ol.ic_i2 = ic_vals[3]; ol.ic_i2_given = true; }
+                } else if (tok_lower.substr(0, 3) == "v1=") {
+                    try { ol.ic_v1 = std::stod(tokens[ti].substr(3)); ol.ic_v1_given = true; }
+                    catch (...) {}
+                } else if (tok_lower.substr(0, 3) == "i1=") {
+                    try { ol.ic_i1 = std::stod(tokens[ti].substr(3)); ol.ic_i1_given = true; }
+                    catch (...) {}
+                } else if (tok_lower.substr(0, 3) == "v2=") {
+                    try { ol.ic_v2 = std::stod(tokens[ti].substr(3)); ol.ic_v2_given = true; }
+                    catch (...) {}
+                } else if (tok_lower.substr(0, 3) == "i2=") {
+                    try { ol.ic_i2 = std::stod(tokens[ti].substr(3)); ol.ic_i2_given = true; }
+                    catch (...) {}
+                }
+            }
             deferred_ltras.push_back(std::move(ol));
 
         } else if (elem_type == 's') {
@@ -3329,8 +3367,16 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
         }
 
-        ckt.add_device(std::make_unique<LossyTransmissionLine>(
-            ol.name, ol.p1p, ol.p1n, ol.p2p, ol.p2n, lmodel));
+        auto ltra_dev = std::make_unique<LossyTransmissionLine>(
+            ol.name, ol.p1p, ol.p1n, ol.p2p, ol.p2n, lmodel);
+
+        // Apply initial conditions if given
+        if (ol.ic_v1_given) ltra_dev->set_ic_v1(ol.ic_v1);
+        if (ol.ic_i1_given) ltra_dev->set_ic_i1(ol.ic_i1);
+        if (ol.ic_v2_given) ltra_dev->set_ic_v2(ol.ic_v2);
+        if (ol.ic_i2_given) ltra_dev->set_ic_i2(ol.ic_i2);
+
+        ckt.add_device(std::move(ltra_dev));
     }
 
     // Resolve deferred ASRC (B elements) — find VSource pointers for I() refs
