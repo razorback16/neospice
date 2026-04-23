@@ -376,7 +376,7 @@ void B4SOIDevice::evaluate(const std::vector<double>& voltages,
 }
 
 // ---------------------------------------------------------------------------
-// ac_stamp — 67 G entries + 35 C entries extracted from ngspice AC load
+// ac_stamp — ported from ngspice b4soiacld.c
 // ---------------------------------------------------------------------------
 void B4SOIDevice::ac_stamp(const std::vector<double>& /*voltages*/,
                              NumericMatrix& G,
@@ -384,126 +384,662 @@ void B4SOIDevice::ac_stamp(const std::vector<double>& /*voltages*/,
     auto& here = inst_;
     auto* model = model_;
     const double m = here.B4SOIm;
+    const int selfheat = (model->B4SOIshMod == 1) && (here.B4SOIrth0 != 0.0);
 
-    // TODO: Declare local variables for conductances and capacitances.
-    // These should be read from instance fields populated by the DC load.
-    // Example: const double gm = here.PREFIX_gm;
+    // --- Mode-dependent local variables ---
+    double Gm, Gmbs, Gme, GmT, FwdSum, RevSum;
+    double cggb, cgdb, cgsb, cgT;
+    double cdgb, cddb, cdsb, cdeb, cdT;
+    double cbgb, cbdb, cbsb, cbeb, cbT;
+    double ceeb, ceT;
+    double cTt;
+    double gbbg, gbbdp, gbbb, gbbp, gbbsp, gbbT, gbbe;
+    double gddpg, gddpdp, gddpsp, gddpb, gddpT, gddpe;
+    double gsspg, gsspdp, gsspsp, gsspb, gsspT, gsspe;
+    double gppb, gppp;
+    double gTtg, gTtb, gTtdp, gTtsp, gTtt, gTte;
+    double gigg, gigd, gigs, gigb, gige, gigT;
+    double gigpg, gigpp;
+    double gIstotg, gIstotd, gIstots, gIstotb;
+    double gIdtotg, gIdtotd, gIdtots, gIdtotb;
+    double gIgtotg, gIgtotd, gIgtots, gIgtotb;
+    double gcrgd, gcrgg, gcrgs, gcrgb, gcrg;
+    double T0 = 0.0;
 
-    // --- G matrix (conductance) entries ---
-    // Extracted 67 real-part stamps from ngspice AC load.
-    // G: inst_.B4SOIGEgePtr += m * geltd;
-    // G: inst_.B4SOIGgPtr += m * (geltd + gigg + gIgtotg);
-    // G: inst_.B4SOIGdpPtr += m * (gigd + gIgtotd);
-    // G: inst_.B4SOIGspPtr += m * (gigs + gIgtots);
-    // G: inst_.B4SOIGEgePtr += m * gcrg;
-    // G: inst_.B4SOIGEgPtr += m * gcrgg;
-    // G: inst_.B4SOIGEdpPtr += m * gcrgd;
-    // G: inst_.B4SOIGEspPtr += m * gcrgs;
-    // G: inst_.B4SOIGEbPtr += m * gcrgb;
-    // G: inst_.B4SOIGEgePtr += m * geltd;
-    // G: inst_.B4SOIGMgmPtr += m * (geltd + gcrg);
-    // G: inst_.B4SOIGMdpPtr += m * gcrgd;
-    // G: inst_.B4SOIGMgPtr += m * gcrgg;
-    // G: inst_.B4SOIGMspPtr += m * gcrgs;
-    // G: inst_.B4SOIGMbPtr += m * gcrgb;
-    // G: inst_.B4SOIGgPtr += m * (gigg + gIgtotg);
-    // G: inst_.B4SOIGdpPtr += m * (gigd + gIgtotd);
-    // G: inst_.B4SOIGspPtr += m * (gigs + gIgtots);
-    // G: inst_.B4SOIGbPtr += m * (gigb + gIgtotb);
-    // G: inst_.B4SOIDgPtr += m * gdtotg);
-    // G: inst_.B4SOIDspPtr += m * gdtots);
-    // G: inst_.B4SOISdpPtr += m * gstotd);
-    // G: inst_.B4SOISgPtr += m * gstotg);
-    // G: inst_.B4SOIDbPtr += m * gdtotb);
-    // G: inst_.B4SOISbPtr += m * gstotb);
-    // G: inst_.B4SOIDPePtr += m * (Gme + gddpe);
-    // G: inst_.B4SOISPePtr += m * (gsspe - Gme);
-    // G: inst_.B4SOIGePtr += m * gige;
-    // G: inst_.B4SOIEePtr += 0.0;
-    // G: inst_.B4SOIDPgPtr += m * (Gm + gddpg - gIdtotg -gdtotg);
-    // G: inst_.B4SOIBePtr += m * gbbe;
-    // G: inst_.B4SOIBgPtr += m * (gbbg - gigg);
-    // G: inst_.B4SOIBdpPtr += m * (gbbdp - gigd);
-    // G: inst_.B4SOIBspPtr += m * (gbbsp - gigs);
-    // G: inst_.B4SOIBbPtr += m * (gbbb - gigb);
-    // G: inst_.B4SOIDPtempPtr += m * (GmT + gddpT);
-    // G: inst_.B4SOISPtempPtr += m * (-GmT + gsspT);
-    // G: inst_.B4SOIBtempPtr += m * (gbbT - gigT);
-    // G: inst_.B4SOIGtempPtr += m * gigT;
-    // G: inst_.B4SOITemptempPtr += m * (gTtt + 1/here->pParam->B4SOIrth);
-    // G: inst_.B4SOITempgPtr += m * gTtg;
-    // G: inst_.B4SOITempbPtr += m * gTtb;
-    // G: inst_.B4SOITempdpPtr += m * gTtdp;
-    // G: inst_.B4SOITempspPtr += m * gTtsp;
-    // G: inst_.B4SOITempePtr += m * gTte;
-    // G: inst_.B4SOIDdPtr += m * (gdpr + gdtot);
-    // G: inst_.B4SOISsPtr += m * (gspr + gstot);
-    // G: inst_.B4SOIPbPtr += m * gppb);
-    // G: inst_.B4SOIPpPtr += m * gppp);
-    // G: inst_.B4SOIGgPtr += gigpg);
-    // G: inst_.B4SOIGpPtr += m * gigpp);
-    // G: inst_.B4SOIGbPtr += m * gigpp);
-    // G: inst_.B4SOIVbsPtr += 1;
-    // G: inst_.B4SOIIdsPtr += 1;
-    // G: inst_.B4SOIIcPtr += 1;
-    // G: inst_.B4SOIIbsPtr += 1;
-    // G: inst_.B4SOIIbdPtr += 1;
-    // G: inst_.B4SOIIiiPtr += 1;
-    // G: inst_.B4SOIIgidlPtr += 1;
-    // G: inst_.B4SOIItunPtr += 1;
-    // G: inst_.B4SOIIbpPtr += 1;
-    // G: inst_.B4SOICbgPtr += 1;
-    // G: inst_.B4SOICbbPtr += 1;
-    // G: inst_.B4SOICbdPtr += 1;
-    // G: inst_.B4SOIQbfPtr += 1;
-    // G: inst_.B4SOIQjsPtr += 1;
-    // G: inst_.B4SOIQjdPtr += 1;
+    if (here.B4SOImode >= 0) {
+        // Forward mode
+        Gm = here.B4SOIgm;
+        Gmbs = here.B4SOIgmbs;
+        Gme = here.B4SOIgme;
+        GmT = model->B4SOItype * here.B4SOIgmT;
+        FwdSum = Gm + Gmbs + Gme;
+        RevSum = 0.0;
 
-    // --- C matrix (capacitance) entries ---
-    // Extracted 35 imaginary-part stamps from ngspice AC load.
-    // NOTE: ngspice stamps *(ptr+1) += value where value = cap * omega.
-    // neospice C matrix is multiplied by omega by the AC solver,
-    // so stamp the capacitance value directly (without omega).
-    // C: inst_.B4SOIGMgmPtr += m * xcgmgmb;  // divide by omega for C matrix
-    // C: inst_.B4SOIGMdpPtr += m * xcgmdb;  // divide by omega for C matrix
-    // C: inst_.B4SOIGMspPtr += m * xcgmsb;  // divide by omega for C matrix
-    // C: inst_.B4SOIGMePtr += m * xcgmeb;  // divide by omega for C matrix
-    // C: inst_.B4SOIDPgmPtr += m * xcdgmb;  // divide by omega for C matrix
-    // C: inst_.B4SOISPgmPtr += m * xcsgmb;  // divide by omega for C matrix
-    // C: inst_.B4SOIEgmPtr += m * xcegmb;  // divide by omega for C matrix
-    // C: inst_.B4SOIEdpPtr += m * xcedb;  // divide by omega for C matrix
-    // C: inst_.B4SOIEspPtr += m * xcesb;  // divide by omega for C matrix
-    // C: inst_.B4SOIDPePtr += m * xcdeb;  // divide by omega for C matrix
-    // C: inst_.B4SOISPePtr += m * xcseb;  // divide by omega for C matrix
-    // C: inst_.B4SOIEgPtr += m * xcegb;  // divide by omega for C matrix
-    // C: inst_.B4SOIGePtr += m * xcgeb;  // divide by omega for C matrix
-    // C: inst_.B4SOIEePtr += m * xceeb;  // divide by omega for C matrix
-    // C: inst_.B4SOIGgPtr += m * xcggb;  // divide by omega for C matrix
-    // C: inst_.B4SOIGdpPtr += m * xcgdb;  // divide by omega for C matrix
-    // C: inst_.B4SOIGspPtr += m * xcgsb;  // divide by omega for C matrix
-    // C: inst_.B4SOIDPgPtr += m * xcdgb;  // divide by omega for C matrix
-    // C: inst_.B4SOIDPdpPtr += m * xcddb;  // divide by omega for C matrix
-    // C: inst_.B4SOIDPspPtr += m * xcdsb;  // divide by omega for C matrix
-    // C: inst_.B4SOISPgPtr += m * xcsgb;  // divide by omega for C matrix
-    // C: inst_.B4SOISPdpPtr += m * xcsdb;  // divide by omega for C matrix
-    // C: inst_.B4SOISPspPtr += m * xcssb;  // divide by omega for C matrix
-    // C: inst_.B4SOIBePtr += m * xcbeb;  // divide by omega for C matrix
-    // C: inst_.B4SOIBgPtr += m * xcbgb;  // divide by omega for C matrix
-    // C: inst_.B4SOIBdpPtr += m * xcbdb;  // divide by omega for C matrix
-    // C: inst_.B4SOIBspPtr += m * xcbsb;  // divide by omega for C matrix
-    // C: inst_.B4SOITemptempPtr += m * xcTt;  // divide by omega for C matrix
-    // C: inst_.B4SOIDPtempPtr += m * xcdT;  // divide by omega for C matrix
-    // C: inst_.B4SOISPtempPtr += m * xcsT;  // divide by omega for C matrix
-    // C: inst_.B4SOIBtempPtr += m * xcbT;  // divide by omega for C matrix
-    // C: inst_.B4SOIEtempPtr += m * xceT;  // divide by omega for C matrix
-    // C: inst_.B4SOIGtempPtr += m * xcgT;  // divide by omega for C matrix
-    // C: inst_.B4SOIDBdbPtr += m * xcjdbdp);  // divide by omega for C matrix
-    // C: inst_.B4SOISBsbPtr += m * xcjsbsp);  // divide by omega for C matrix
+        cbgb = here.B4SOIcbgb;
+        cbsb = here.B4SOIcbsb;
+        cbdb = here.B4SOIcbdb;
+        cbeb = here.B4SOIcbeb;
+        cbT  = model->B4SOItype * here.B4SOIcbT;
 
-    // TODO: Implement the stamp logic by reading instance fields,
-    // computing y-parameters, and stamping into G and C matrices.
-    // See hisim2_device.cpp or bsim4v7_device.cpp for reference.
-    (void)here; (void)model; (void)m;
+        ceeb = here.B4SOIceeb;
+        ceT  = model->B4SOItype * here.B4SOIceT;
+
+        cggb = here.B4SOIcggb;
+        cgsb = here.B4SOIcgsb;
+        cgdb = here.B4SOIcgdb;
+        cgT  = model->B4SOItype * here.B4SOIcgT;
+
+        cdgb = here.B4SOIcdgb;
+        cdsb = here.B4SOIcdsb;
+        cddb = here.B4SOIcddb;
+        cdeb = here.B4SOIcdeb;
+        cdT  = model->B4SOItype * here.B4SOIcdT;
+
+        cTt = here.pParam->B4SOIcth;
+
+        gigg = here.B4SOIgigg;
+        gigb = here.B4SOIgigb;
+        gige = here.B4SOIgige;
+        gigs = here.B4SOIgigs;
+        gigd = here.B4SOIgigd;
+        gigT = model->B4SOItype * here.B4SOIgigT;
+        gigpg = here.B4SOIgigpg;
+        gigpp = here.B4SOIgigpp;
+
+        gbbg  = -here.B4SOIgbgs;
+        gbbdp = -here.B4SOIgbds;
+        gbbb  = -here.B4SOIgbbs;
+        gbbp  = -here.B4SOIgbps;
+        gbbT  = -model->B4SOItype * here.B4SOIgbT;
+        gbbe  = -here.B4SOIgbes;
+
+        if (here.B4SOIrbodyMod) {
+            gbbdp = -here.B4SOIgiigidld;
+            gbbb  = -here.B4SOIgbgiigbpb;
+        }
+        gbbsp = -(gbbg + gbbdp + gbbb + gbbp + gbbe);
+
+        gddpg  = -here.B4SOIgjdg;
+        gddpdp = -here.B4SOIgjdd;
+        if (!here.B4SOIrbodyMod)
+            gddpb = -here.B4SOIgjdb;
+        else
+            gddpb = here.B4SOIgiigidlb;
+        gddpT  = -model->B4SOItype * here.B4SOIgjdT;
+        gddpe  = -here.B4SOIgjde;
+        gddpsp = -(gddpg + gddpdp + gddpb + gddpe);
+
+        gsspg  = -here.B4SOIgjsg;
+        gsspdp = -here.B4SOIgjsd;
+        if (!here.B4SOIrbodyMod)
+            gsspb = -here.B4SOIgjsb;
+        else
+            gsspb = 0.0;
+        gsspT  = -model->B4SOItype * here.B4SOIgjsT;
+        gsspe  = 0.0;
+        gsspsp = -(gsspg + gsspdp + gsspb + gsspe);
+
+        gppb = -here.B4SOIgbpbs;
+        gppp = -here.B4SOIgbpps;
+
+        gTtg  = here.B4SOIgtempg;
+        gTtb  = here.B4SOIgtempb;
+        gTtdp = here.B4SOIgtempd;
+        gTtt  = here.B4SOIgtempT;
+        gTte  = here.B4SOIgtempe;
+        gTtsp = -(gTtg + gTtb + gTtdp + gTte);
+
+        if (model->B4SOIigcMod) {
+            gIstotg = here.B4SOIgIgsg + here.B4SOIgIgcsg;
+            gIstotd = here.B4SOIgIgcsd;
+            gIstots = here.B4SOIgIgss + here.B4SOIgIgcss;
+            gIstotb = here.B4SOIgIgcsb;
+            gIdtotg = here.B4SOIgIgdg + here.B4SOIgIgcdg;
+            gIdtotd = here.B4SOIgIgdd + here.B4SOIgIgcdd;
+            gIdtots = here.B4SOIgIgcds;
+            gIdtotb = here.B4SOIgIgcdb;
+            gIgtotg = gIstotg + gIdtotg;
+            gIgtotd = gIstotd + gIdtotd;
+            gIgtots = gIstots + gIdtots;
+            gIgtotb = gIstotb + gIdtotb;
+        } else {
+            gIstotg = gIstotd = gIstots = gIstotb = 0.0;
+            gIdtotg = gIdtotd = gIdtots = gIdtotb = 0.0;
+            gIgtotg = gIgtotd = gIgtots = gIgtotb = 0.0;
+        }
+
+        // RF gate charge redistribution
+        if (here.B4SOIrgateMod == 2)
+            T0 = state0_[here.B4SOIvges] - state0_[here.B4SOIvgs];
+        else if (here.B4SOIrgateMod == 3)
+            T0 = state0_[here.B4SOIvgms] - state0_[here.B4SOIvgs];
+        if (here.B4SOIrgateMod > 1) {
+            gcrgd = here.B4SOIgcrgd * T0;
+            gcrgg = here.B4SOIgcrgg * T0;
+            gcrgs = here.B4SOIgcrgs * T0;
+            gcrgb = here.B4SOIgcrgb * T0;
+            gcrgg -= here.B4SOIgcrg;
+            gcrg = here.B4SOIgcrg;
+        } else {
+            gcrg = gcrgd = gcrgg = gcrgs = gcrgb = 0.0;
+        }
+    } else {
+        // Reverse mode
+        Gm = -here.B4SOIgm;
+        Gmbs = -here.B4SOIgmbs;
+        Gme = -here.B4SOIgme;
+        GmT = -model->B4SOItype * here.B4SOIgmT;
+        FwdSum = 0.0;
+        RevSum = -Gm - Gmbs - Gme;
+
+        cdgb = -(here.B4SOIcdgb + here.B4SOIcggb + here.B4SOIcbgb);
+        cdsb = -(here.B4SOIcddb + here.B4SOIcgdb + here.B4SOIcbdb);
+        cddb = -(here.B4SOIcdsb + here.B4SOIcgsb + here.B4SOIcbsb);
+        cdeb = -(here.B4SOIcdeb + here.B4SOIcbeb + here.B4SOIceeb);
+        cdT  = -model->B4SOItype * (here.B4SOIcgT + here.B4SOIcbT
+               + here.B4SOIcdT + here.B4SOIceT);
+
+        ceeb = here.B4SOIceeb;
+        ceT  = model->B4SOItype * here.B4SOIceT;
+
+        cggb = here.B4SOIcggb;
+        cgsb = here.B4SOIcgdb;
+        cgdb = here.B4SOIcgsb;
+        cgT  = model->B4SOItype * here.B4SOIcgT;
+
+        cbgb = here.B4SOIcbgb;
+        cbsb = here.B4SOIcbdb;
+        cbdb = here.B4SOIcbsb;
+        cbeb = here.B4SOIcbeb;
+        cbT  = model->B4SOItype * here.B4SOIcbT;
+
+        cTt = here.pParam->B4SOIcth;
+
+        gigg = here.B4SOIgigg;
+        gigb = here.B4SOIgigb;
+        gige = here.B4SOIgige;
+        gigs = here.B4SOIgigd;
+        gigd = here.B4SOIgigs;
+        gigT = model->B4SOItype * here.B4SOIgigT;
+        gigpg = here.B4SOIgigpg;
+        gigpp = here.B4SOIgigpp;
+
+        gbbg  = -here.B4SOIgbgs;
+        gbbb  = -here.B4SOIgbbs;
+        gbbp  = -here.B4SOIgbps;
+        gbbsp = -here.B4SOIgbds;
+        gbbT  = -model->B4SOItype * here.B4SOIgbT;
+        gbbe  = -here.B4SOIgbes;
+
+        if (here.B4SOIrbodyMod) {
+            gbbsp = -here.B4SOIgiigidld;
+            gbbb  = -here.B4SOIgbgiigbpb;
+        }
+        gbbdp = -(gbbg + gbbsp + gbbb + gbbp + gbbe);
+
+        gddpg  = -here.B4SOIgjsg;
+        gddpsp = -here.B4SOIgjsd;
+        if (!here.B4SOIrbodyMod)
+            gddpb = -here.B4SOIgjsb;
+        else
+            gddpb = 0.0;
+        gddpT  = -model->B4SOItype * here.B4SOIgjsT;
+        gddpe  = 0.0;
+        gddpdp = -(gddpg + gddpsp + gddpb + gddpe);
+
+        gsspg  = -here.B4SOIgjdg;
+        gsspsp = -here.B4SOIgjdd;
+        if (!here.B4SOIrbodyMod)
+            gsspb = -here.B4SOIgjdb;
+        else
+            gsspb = here.B4SOIgiigidlb;
+        gsspT  = -model->B4SOItype * here.B4SOIgjdT;
+        gsspe  = -here.B4SOIgjde;
+        gsspdp = -(gsspg + gsspsp + gsspb + gsspe);
+
+        gppb = -here.B4SOIgbpbs;
+        gppp = -here.B4SOIgbpps;
+
+        gTtg  = here.B4SOIgtempg;
+        gTtb  = here.B4SOIgtempb;
+        gTtsp = here.B4SOIgtempd;
+        gTtt  = here.B4SOIgtempT;
+        gTte  = here.B4SOIgtempe;
+        gTtdp = -(gTtg + gTtb + gTtsp + gTte);
+
+        if (model->B4SOIigcMod) {
+            gIstotg = here.B4SOIgIgsg + here.B4SOIgIgcdg;
+            gIstotd = here.B4SOIgIgcds;
+            gIstots = here.B4SOIgIgss + here.B4SOIgIgcdd;
+            gIstotb = here.B4SOIgIgcdb;
+            gIdtotg = here.B4SOIgIgdg + here.B4SOIgIgcsg;
+            gIdtotd = here.B4SOIgIgdd + here.B4SOIgIgcss;
+            gIdtots = here.B4SOIgIgcsd;
+            gIdtotb = here.B4SOIgIgcsb;
+            gIgtotg = gIstotg + gIdtotg;
+            gIgtotd = gIstotd + gIdtotd;
+            gIgtots = gIstots + gIdtots;
+            gIgtotb = gIstotb + gIdtotb;
+        } else {
+            gIstotg = gIstotd = gIstots = gIstotb = 0.0;
+            gIdtotg = gIdtotd = gIdtots = gIdtotb = 0.0;
+            gIgtotg = gIgtotd = gIgtots = gIgtotb = 0.0;
+        }
+
+        // RF gate charge redistribution (reverse)
+        if (here.B4SOIrgateMod == 2)
+            T0 = state0_[here.B4SOIvges] - state0_[here.B4SOIvgs];
+        else if (here.B4SOIrgateMod == 3)
+            T0 = state0_[here.B4SOIvgms] - state0_[here.B4SOIvgs];
+        if (here.B4SOIrgateMod > 1) {
+            gcrgd = here.B4SOIgcrgs * T0;  // swapped d<->s
+            gcrgg = here.B4SOIgcrgg * T0;
+            gcrgs = here.B4SOIgcrgd * T0;  // swapped d<->s
+            gcrgb = here.B4SOIgcrgb * T0;
+            gcrgg -= here.B4SOIgcrg;
+            gcrg = here.B4SOIgcrg;
+        } else {
+            gcrg = gcrgd = gcrgg = gcrgs = gcrgb = 0.0;
+        }
+    }
+
+    // --- Common quantities (not mode-dependent) ---
+    double gdpr, gspr;
+    if (!model->B4SOIrdsMod) {
+        gdpr = here.B4SOIdrainConductance;
+        gspr = here.B4SOIsourceConductance;
+    } else {
+        gdpr = gspr = 0.0;
+    }
+
+    const double gds = here.B4SOIgds;
+
+    const double GSoverlapCap = here.B4SOIcgso;
+    const double GDoverlapCap = here.B4SOIcgdo;
+    const double GEoverlapCap = here.pParam->B4SOIcgeo;
+    const double EDextrinsicCap = here.B4SOIgcde;
+    const double ESextrinsicCap = here.B4SOIgcse;
+
+    // --- Capacitance values (neospice: raw caps, no omega) ---
+    // ngspice multiplies by omega; we strip that since the AC solver does it.
+    double c_cgmgmb, c_cgmdb, c_cgmsb, c_cgmeb, c_cdgmb, c_csgmb, c_cegmb;
+    double c_cedb, c_cdeb, c_cddb, c_ceeb, c_cesb, c_cssb, c_cseb;
+    double c_cegb, c_ceT, c_cggb, c_cgdb, c_cgsb, c_cgeb, c_cgT;
+    double c_cdgb, c_cdsb, c_cdT;
+    double c_csgb, c_csdb, c_csT;
+    double c_cbgb, c_cbdb, c_cbsb, c_cbeb, c_cbT;
+    double c_cTt;
+    double c_cdbb, c_csbb, c_cdbdb, c_csbsb, c_cjdbdp, c_cjsbsp;
+
+    if (here.B4SOIrgateMod == 3) {
+        c_cgmgmb = GDoverlapCap + GSoverlapCap + GEoverlapCap;
+        c_cgmdb = -GDoverlapCap;
+        c_cgmsb = -GSoverlapCap;
+        c_cgmeb = -GEoverlapCap;
+        c_cdgmb = c_cgmdb;
+        c_csgmb = c_cgmsb;
+        c_cegmb = c_cgmeb;
+
+        c_cedb = -EDextrinsicCap;
+        c_cdeb = cdeb - EDextrinsicCap;
+        c_cddb = cddb + GDoverlapCap + EDextrinsicCap;
+        c_ceeb = ceeb + GEoverlapCap + EDextrinsicCap + ESextrinsicCap;
+        c_cesb = -ESextrinsicCap;
+        c_cssb = GSoverlapCap + ESextrinsicCap - (cgsb + cbsb + cdsb);
+        c_cseb = -(cbeb + cdeb + ceeb + ESextrinsicCap);
+
+        c_cegb = 0.0;
+        c_ceT  = ceT;
+        c_cggb = here.B4SOIcggb;
+        c_cgdb = cgdb;
+        c_cgsb = cgsb;
+        c_cgeb = 0.0;
+        c_cgT  = cgT;
+
+        c_cdgb = cdgb;
+        c_cdsb = cdsb;
+        c_cdT  = cdT;
+
+        c_csgb = -(cggb + cbgb + cdgb);
+        c_csdb = -(cgdb + cbdb + cddb);
+        c_csT  = -(cgT + cbT + cdT + ceT);
+
+        c_cbgb = cbgb;
+        c_cbdb = cbdb;
+        c_cbsb = cbsb;
+        c_cbeb = cbeb;
+        c_cbT  = cbT;
+        c_cTt  = cTt;
+    } else {
+        c_cedb = -EDextrinsicCap;
+        c_cdeb = cdeb - EDextrinsicCap;
+        c_cddb = cddb + GDoverlapCap + EDextrinsicCap;
+        c_ceeb = ceeb + GEoverlapCap + EDextrinsicCap + ESextrinsicCap;
+        c_cesb = -ESextrinsicCap;
+        c_cssb = GSoverlapCap + ESextrinsicCap - (cgsb + cbsb + cdsb);
+        c_cseb = -(cbeb + cdeb + ceeb + ESextrinsicCap);
+
+        c_cegb = -GEoverlapCap;
+        c_ceT  = ceT;
+        c_cggb = cggb + GDoverlapCap + GSoverlapCap + GEoverlapCap;
+        c_cgdb = cgdb - GDoverlapCap;
+        c_cgsb = cgsb - GSoverlapCap;
+        c_cgeb = -GEoverlapCap;
+        c_cgT  = cgT;
+
+        c_cdgb = cdgb - GDoverlapCap;
+        c_cdsb = cdsb;
+        c_cdT  = cdT;
+
+        c_csgb = -(cggb + cbgb + cdgb + GSoverlapCap);
+        c_csdb = -(cgdb + cbdb + cddb);
+        c_csT  = -(cgT + cbT + cdT + ceT);
+
+        c_cbgb = cbgb;
+        c_cbdb = cbdb;
+        c_cbsb = cbsb;
+        c_cbeb = cbeb;
+        c_cbT  = cbT;
+        c_cTt  = cTt;
+
+        c_cdgmb = c_csgmb = c_cegmb = 0.0;
+        c_cgmgmb = c_cgmdb = c_cgmsb = c_cgmeb = 0.0;
+    }
+
+    // --- rbodyMod-dependent capacitances ---
+    if (here.B4SOImode >= 0) {
+        if (!here.B4SOIrbodyMod) {
+            c_cjdbdp = c_cjsbsp = 0.0;
+            c_cdbb = -(c_cdgb + c_cddb + c_cdsb + c_cdgmb + c_cdeb);
+            c_csbb = -(c_csgb + c_csdb + c_cssb + c_csgmb + c_cseb);
+            c_cdbdb = 0.0;
+            c_csbsb = 0.0;
+            c_cbdb = here.B4SOIcbdb;
+            c_cbsb = here.B4SOIcbsb;
+        } else {
+            c_cjdbdp = here.B4SOIcjdb;
+            c_cjsbsp = here.B4SOIcjsb;
+            c_cdbb = -(c_cdgb + c_cddb + c_cdsb + c_cdgmb + c_cdeb) + c_cjdbdp;
+            c_csbb = -(c_csgb + c_csdb + c_cssb + c_csgmb + c_cseb) + c_cjsbsp;
+            c_cdbdb = -here.B4SOIcjdb;
+            c_csbsb = -here.B4SOIcjsb;
+            c_cbdb = here.B4SOIcbdb - c_cdbdb;
+            c_cbsb = here.B4SOIcbsb - c_csbsb;
+        }
+    } else {
+        if (!here.B4SOIrbodyMod) {
+            c_cjdbdp = c_cjsbsp = 0.0;
+            c_cdbb = -(c_cdgb + c_cddb + c_cdsb + c_cdgmb + c_cdeb);
+            c_csbb = -(c_csgb + c_csdb + c_cssb + c_csgmb + c_cseb);
+            c_cdbdb = 0.0;
+            c_csbsb = 0.0;
+            c_cbdb = here.B4SOIcbsb;
+            c_cbsb = here.B4SOIcbdb;
+        } else {
+            c_cjdbdp = here.B4SOIcjsb;
+            c_cjsbsp = here.B4SOIcjdb;
+            c_cdbb = -(c_cdgb + c_cddb + c_cdsb + c_cdgmb + c_cdeb) + c_cjdbdp;
+            c_csbb = -(c_csgb + c_csdb + c_cssb + c_csgmb + c_cseb) + c_cjsbsp;
+            c_cdbdb = -here.B4SOIcjsb;
+            c_csbsb = -here.B4SOIcjdb;
+            c_cbdb = here.B4SOIcbsb - c_cdbdb;
+            c_cbsb = here.B4SOIcbdb - c_csbsb;
+        }
+    }
+
+    // --- rdsMod stamps ---
+    double gstot, gstotd, gstotg, gstots, gstotb;
+    double gdtot, gdtotd, gdtotg, gdtots, gdtotb;
+    if (model->B4SOIrdsMod == 1) {
+        gstot  = here.B4SOIgstot;
+        gstotd = here.B4SOIgstotd;
+        gstotg = here.B4SOIgstotg;
+        gstots = here.B4SOIgstots - gstot;
+        gstotb = here.B4SOIgstotb;
+        gdtot  = here.B4SOIgdtot;
+        gdtotd = here.B4SOIgdtotd - gdtot;
+        gdtotg = here.B4SOIgdtotg;
+        gdtots = here.B4SOIgdtots;
+        gdtotb = here.B4SOIgdtotb;
+    } else {
+        gstot = gstotd = gstotg = gstots = gstotb = 0.0;
+        gdtot = gdtotd = gdtotg = gdtots = gdtotb = 0.0;
+    }
+
+    // =====================================================================
+    // STAMP G and C matrices
+    // =====================================================================
+
+    const double geltd = here.B4SOIgrgeltd;
+
+    // --- Gate network stamps (rgateMod variants) ---
+    if (here.B4SOIrgateMod == 1) {
+        G.add(here.B4SOIGEgePtr, m * geltd);
+        G.add(here.B4SOIGgPtr,   m * (-geltd));
+        G.add(here.B4SOIGEgPtr,  m * (-geltd));
+        G.add(here.B4SOIGgPtr,   m * (geltd + gigg + gIgtotg));
+        G.add(here.B4SOIGdpPtr,  m * (gigd + gIgtotd));
+        G.add(here.B4SOIGspPtr,  m * (gigs + gIgtots));
+        if (here.B4SOIsoiMod != 2)
+            G.add(here.B4SOIGbPtr, m * (-(- gigb - gIgtotb)));
+    } else if (here.B4SOIrgateMod == 2) {
+        G.add(here.B4SOIGEgePtr, m * gcrg);
+        G.add(here.B4SOIGEgPtr,  m * gcrgg);
+        G.add(here.B4SOIGEdpPtr, m * gcrgd);
+        G.add(here.B4SOIGEspPtr, m * gcrgs);
+        if (here.B4SOIsoiMod != 2)
+            G.add(here.B4SOIGEbPtr, m * gcrgb);
+        G.add(here.B4SOIGgePtr,  m * (-gcrg));
+        G.add(here.B4SOIGgPtr,   m * (-(gcrgg - gigg - gIgtotg)));
+        G.add(here.B4SOIGdpPtr,  m * (-(gcrgd - gigd - gIgtotd)));
+        G.add(here.B4SOIGspPtr,  m * (-(gcrgs - gigs - gIgtots)));
+        if (here.B4SOIsoiMod != 2)
+            G.add(here.B4SOIGbPtr, m * (-(gcrgb - gigb - gIgtotb)));
+    } else if (here.B4SOIrgateMod == 3) {
+        G.add(here.B4SOIGEgePtr, m * geltd);
+        G.add(here.B4SOIGEgmPtr, m * (-geltd));
+        G.add(here.B4SOIGMgePtr, m * (-geltd));
+        G.add(here.B4SOIGMgmPtr, m * (geltd + gcrg));
+        C.add(here.B4SOIGMgmPtr, m * c_cgmgmb);
+        G.add(here.B4SOIGMdpPtr, m * gcrgd);
+        C.add(here.B4SOIGMdpPtr, m * c_cgmdb);
+        G.add(here.B4SOIGMgPtr,  m * gcrgg);
+        G.add(here.B4SOIGMspPtr, m * gcrgs);
+        C.add(here.B4SOIGMspPtr, m * c_cgmsb);
+        if (here.B4SOIsoiMod != 2)
+            G.add(here.B4SOIGMbPtr, m * gcrgb);
+        C.add(here.B4SOIGMePtr,  m * c_cgmeb);
+
+        C.add(here.B4SOIDPgmPtr, m * c_cdgmb);
+        G.add(here.B4SOIGgmPtr,  m * (-gcrg));
+        C.add(here.B4SOISPgmPtr, m * c_csgmb);
+        C.add(here.B4SOIEgmPtr,  m * c_cegmb);
+
+        G.add(here.B4SOIGgPtr,   m * (-(gcrgg - gigg - gIgtotg)));
+        G.add(here.B4SOIGdpPtr,  m * (-(gcrgd - gigd - gIgtotd)));
+        G.add(here.B4SOIGspPtr,  m * (-(gcrgs - gigs - gIgtots)));
+        if (here.B4SOIsoiMod != 2)
+            G.add(here.B4SOIGbPtr, m * (-(gcrgb - gigb - gIgtotb)));
+    } else {
+        // rgateMod == 0
+        G.add(here.B4SOIGgPtr,   m * (gigg + gIgtotg));
+        G.add(here.B4SOIGdpPtr,  m * (gigd + gIgtotd));
+        G.add(here.B4SOIGspPtr,  m * (gigs + gIgtots));
+        if (here.B4SOIsoiMod != 2)
+            G.add(here.B4SOIGbPtr, m * (gigb + gIgtotb));
+    }
+
+    // --- rdsMod stamps on D/S external nodes ---
+    if (model->B4SOIrdsMod) {
+        G.add(here.B4SOIDgPtr,  m * gdtotg);
+        G.add(here.B4SOIDspPtr, m * gdtots);
+        G.add(here.B4SOISdpPtr, m * gstotd);
+        G.add(here.B4SOISgPtr,  m * gstotg);
+        if (here.B4SOIsoiMod != 2) {
+            G.add(here.B4SOIDbPtr, m * gdtotb);
+            G.add(here.B4SOISbPtr, m * gstotb);
+        }
+    }
+
+    // --- E-node capacitance stamps ---
+    C.add(here.B4SOIEdpPtr, m * c_cedb);
+    C.add(here.B4SOIEspPtr, m * c_cesb);
+    C.add(here.B4SOIDPePtr, m * c_cdeb);
+    C.add(here.B4SOISPePtr, m * c_cseb);
+    C.add(here.B4SOIEgPtr,  m * c_cegb);
+    C.add(here.B4SOIGePtr,  m * c_cgeb);
+    C.add(here.B4SOIEePtr,  m * c_ceeb);
+
+    // --- G/DP/SP intrinsic capacitance stamps ---
+    C.add(here.B4SOIGgPtr,   m * c_cggb);
+    C.add(here.B4SOIGdpPtr,  m * c_cgdb);
+    C.add(here.B4SOIGspPtr,  m * c_cgsb);
+    C.add(here.B4SOIDPgPtr,  m * c_cdgb);
+    C.add(here.B4SOIDPdpPtr, m * c_cddb);
+    C.add(here.B4SOIDPspPtr, m * c_cdsb);
+    C.add(here.B4SOISPgPtr,  m * c_csgb);
+    C.add(here.B4SOISPdpPtr, m * c_csdb);
+    C.add(here.B4SOISPspPtr, m * c_cssb);
+
+    // --- B-node stamps (soiMod != 2) ---
+    if (here.B4SOIsoiMod != 2) {
+        C.add(here.B4SOIBePtr,  m * c_cbeb);
+        C.add(here.B4SOIBgPtr,  m * c_cbgb);
+        C.add(here.B4SOIBdpPtr, m * c_cbdb);
+        C.add(here.B4SOIBspPtr, m * c_cbsb);
+        C.add(here.B4SOIEbPtr,  m * (-(c_cegb + c_ceeb + c_cedb + c_cesb)));
+        C.add(here.B4SOIGbPtr,  m * (-(c_cggb + c_cgdb + c_cgsb + c_cgeb)));
+        C.add(here.B4SOIDPbPtr, m * c_cdbb);
+        C.add(here.B4SOISPbPtr, m * c_csbb);
+        C.add(here.B4SOIBbPtr,  m * (-(c_cbgb + c_cbdb + c_cbsb + c_cbeb)));
+    }
+
+    // --- Self-heating C stamps ---
+    if (selfheat) {
+        C.add(here.B4SOITemptempPtr, m * c_cTt);
+        C.add(here.B4SOIDPtempPtr,   m * c_cdT);
+        C.add(here.B4SOISPtempPtr,   m * c_csT);
+        C.add(here.B4SOIBtempPtr,    m * c_cbT);
+        C.add(here.B4SOIEtempPtr,    m * c_ceT);
+        C.add(here.B4SOIGtempPtr,    m * c_cgT);
+    }
+
+    // --- SOI body connection G stamps (soiMod != 0) ---
+    if (here.B4SOIsoiMod != 0) {
+        G.add(here.B4SOIDPePtr, m * (Gme + gddpe));
+        G.add(here.B4SOISPePtr, m * (gsspe - Gme));
+        if (here.B4SOIsoiMod != 2) {
+            G.add(here.B4SOIGePtr, m * gige);
+            G.add(here.B4SOIBePtr, m * (-gige));
+        }
+    }
+
+    // --- DP (drain prime) row G stamps ---
+    G.add(here.B4SOIDPgPtr,  m * (Gm + gddpg - gIdtotg - gdtotg));
+    G.add(here.B4SOIDPdpPtr, m * (gdpr + gds + gddpdp + RevSum - gIdtotd - gdtotd));
+    G.add(here.B4SOIDPspPtr, m * (-(gds + FwdSum - gddpsp + gIdtots + gdtots)));
+    G.add(here.B4SOIDPdPtr,  m * (-(gdpr + gdtot)));
+
+    // --- SP (source prime) row G stamps ---
+    G.add(here.B4SOISPgPtr,  m * (-(Gm - gsspg + gIstotg + gstotg)));
+    G.add(here.B4SOISPdpPtr, m * (-(gds + RevSum - gsspdp + gIstotd + gstotd)));
+    G.add(here.B4SOISPspPtr, m * (gspr + gds + FwdSum + gsspsp - gIstots - gstots));
+    G.add(here.B4SOISPsPtr,  m * (-(gspr + gstot)));
+
+    // --- B-node G stamps (soiMod != 2) ---
+    if (here.B4SOIsoiMod != 2) {
+        G.add(here.B4SOIBePtr,  m * gbbe);
+        G.add(here.B4SOIBgPtr,  m * (gbbg - gigg));
+        G.add(here.B4SOIBdpPtr, m * (gbbdp - gigd));
+        G.add(here.B4SOIBspPtr, m * (gbbsp - gigs));
+        G.add(here.B4SOIBbPtr,  m * (gbbb - gigb));
+        G.add(here.B4SOISPbPtr, m * (-(Gmbs - gsspb + gIstotb + gstotb)));
+        G.add(here.B4SOIDPbPtr, m * (-((-gddpb - Gmbs) + gIdtotb + gdtotb)));
+    }
+
+    // --- Self-heating G stamps ---
+    if (selfheat) {
+        G.add(here.B4SOIDPtempPtr,   m * (GmT + gddpT));
+        G.add(here.B4SOISPtempPtr,   m * (-GmT + gsspT));
+        G.add(here.B4SOIBtempPtr,    m * (gbbT - gigT));
+        G.add(here.B4SOIGtempPtr,    m * gigT);
+        G.add(here.B4SOITemptempPtr, m * (gTtt + 1.0 / here.pParam->B4SOIrth));
+        G.add(here.B4SOITempgPtr,    m * gTtg);
+        G.add(here.B4SOITempbPtr,    m * gTtb);
+        G.add(here.B4SOITempdpPtr,   m * gTtdp);
+        G.add(here.B4SOITempspPtr,   m * gTtsp);
+        if (here.B4SOIsoiMod != 0)
+            G.add(here.B4SOITempePtr, m * gTte);
+    }
+
+    // --- D/S external node stamps ---
+    G.add(here.B4SOIDdPtr,  m * (gdpr + gdtot));
+    G.add(here.B4SOIDdpPtr, m * (-(gdpr - gdtotd)));
+    G.add(here.B4SOISsPtr,  m * (gspr + gstot));
+    G.add(here.B4SOISspPtr, m * (-(gspr - gstots)));
+
+    // --- Body contact (bodyMod) ---
+    if (here.B4SOIbodyMod == 1) {
+        G.add(here.B4SOIBpPtr, m * (-gppp));
+        G.add(here.B4SOIPbPtr, m * gppb);
+        G.add(here.B4SOIPpPtr, m * gppp);
+    }
+
+    // --- Ig_agbcp2 stamps (v4.1) ---
+    G.add(here.B4SOIGgPtr, gigpg);
+    if (here.B4SOIbodyMod == 1) {
+        G.add(here.B4SOIPpPtr, m * (-gigpp));
+        G.add(here.B4SOIPgPtr, m * (-gigpg));
+        G.add(here.B4SOIGpPtr, m * gigpp);
+    } else if (here.B4SOIbodyMod == 2) {
+        G.add(here.B4SOIBbPtr, m * (-gigpp));
+        G.add(here.B4SOIBgPtr, m * (-gigpg));
+        G.add(here.B4SOIGbPtr, m * gigpp);
+    }
+
+    // --- rbodyMod stamps (v4.0) ---
+    if (here.B4SOIrbodyMod) {
+        C.add(here.B4SOIDPdbPtr, m * (-c_cjdbdp));
+        G.add(here.B4SOIDPdbPtr, m * (-here.B4SOIGGjdb));
+        C.add(here.B4SOISPsbPtr, m * (-c_cjsbsp));
+        G.add(here.B4SOISPsbPtr, m * (-here.B4SOIGGjsb));
+
+        C.add(here.B4SOIDBdpPtr, m * (-c_cjdbdp));
+        G.add(here.B4SOIDBdpPtr, m * (-here.B4SOIGGjdb));
+        C.add(here.B4SOIDBdbPtr, m * c_cjdbdp);
+        G.add(here.B4SOIDBdbPtr, m * (here.B4SOIGGjdb + here.B4SOIgrbdb));
+
+        G.add(here.B4SOIDBbPtr, m * (-here.B4SOIgrbdb));
+        G.add(here.B4SOISBbPtr, m * (-here.B4SOIgrbsb));
+
+        C.add(here.B4SOISBspPtr, m * (-c_cjsbsp));
+        G.add(here.B4SOISBspPtr, m * (-here.B4SOIGGjsb));
+        C.add(here.B4SOISBsbPtr, m * c_cjsbsp);
+        G.add(here.B4SOISBsbPtr, m * (here.B4SOIGGjsb + here.B4SOIgrbsb));
+
+        G.add(here.B4SOIBdbPtr, m * (-here.B4SOIgrbdb));
+        G.add(here.B4SOIBsbPtr, m * (-here.B4SOIgrbsb));
+        G.add(here.B4SOIBbPtr,  m * (here.B4SOIgrbsb + here.B4SOIgrbdb));
+    }
+
+    // --- Debug probes (debugMod) ---
+    if (here.B4SOIdebugMod != 0) {
+        G.add(here.B4SOIVbsPtr, 1.0);
+        G.add(here.B4SOIIdsPtr, 1.0);
+        G.add(here.B4SOIIcPtr, 1.0);
+        G.add(here.B4SOIIbsPtr, 1.0);
+        G.add(here.B4SOIIbdPtr, 1.0);
+        G.add(here.B4SOIIiiPtr, 1.0);
+        G.add(here.B4SOIIgidlPtr, 1.0);
+        G.add(here.B4SOIItunPtr, 1.0);
+        G.add(here.B4SOIIbpPtr, 1.0);
+        G.add(here.B4SOICbgPtr, 1.0);
+        G.add(here.B4SOICbbPtr, 1.0);
+        G.add(here.B4SOICbdPtr, 1.0);
+        G.add(here.B4SOIQbfPtr, 1.0);
+        G.add(here.B4SOIQjsPtr, 1.0);
+        G.add(here.B4SOIQjdPtr, 1.0);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -676,16 +1212,336 @@ std::optional<double> B4SOIDevice::query_param(const std::string& name) const {
 }
 
 // ---------------------------------------------------------------------------
-// noise_sources — TODO: implement device noise model
+// noise_sources — ported from ngspice b4soinoi.c
 // ---------------------------------------------------------------------------
+static inline int32_t ucb_to_neo(int ucb_node) {
+    return (ucb_node <= 0) ? GROUND_INTERNAL : (ucb_node - 1);
+}
+
+static constexpr double NOISE_MINLOG = 1e-38;
+
 std::vector<Device::NoiseSource> B4SOIDevice::noise_sources(
-        double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
-    // TODO: Port noise sources from the ngspice b4soinoi.c file.
-    // Common noise types:
-    //   Thermal: 4*k*T*G  (conductance noise)
-    //   Shot:    2*q*|I|  (junction current noise)
-    //   Flicker: KF*|I|^AF / f^EF  (1/f noise)
-    return {};
+        double freq, const std::vector<double>& /*dc_solution*/) const {
+    const auto* model = model_;
+    const auto& inst  = inst_;
+    const auto* pParam = inst.pParam;
+
+    if (!pParam) return {};
+
+    const double m   = inst.B4SOIm;
+    const double kT  = BOLTZMANN * sim_temp_;
+    const double fourKT = 4.0 * kT;
+
+    // Node indices (neospice convention)
+    const int32_t dp_neo = ucb_to_neo(inst.B4SOIdNodePrime);
+    const int32_t sp_neo = ucb_to_neo(inst.B4SOIsNodePrime);
+    const int32_t d_neo  = ucb_to_neo(inst.B4SOIdNode);
+    const int32_t s_neo  = ucb_to_neo(inst.B4SOIsNode);
+    const int32_t g_neo  = ucb_to_neo(inst.B4SOIgNode);
+    const int32_t ge_neo = ucb_to_neo(inst.B4SOIgNodeExt);
+    const int32_t gm_neo = ucb_to_neo(inst.B4SOIgNodeMid);
+    const int32_t b_neo  = ucb_to_neo(inst.B4SOIbNode);
+    const int32_t p_neo  = ucb_to_neo(inst.B4SOIpNode);
+    const int32_t sb_neo = ucb_to_neo(inst.B4SOIsbNode);
+    const int32_t db_neo = ucb_to_neo(inst.B4SOIdbNode);
+
+    std::vector<NoiseSource> sources;
+    sources.reserve(16);
+
+    // --- Self-heating temperature ratio ---
+    double tempRatioSH = 1.0;
+    if ((model->B4SOIshMod == 1) && (inst.B4SOIrth0 != 0.0))
+        tempRatioSH = inst.B4SOITempSH / sim_temp_;
+
+    // --- Vdseff/cd ratio with limit ---
+    double Vdseffovcd = 1.0e9;
+    if (inst.B4SOIcd != 0.0) {
+        Vdseffovcd = inst.B4SOIVdseff / inst.B4SOIcd;
+        if (Vdseffovcd >= 1.0e9) Vdseffovcd = 1.0e9;
+    }
+
+    // -----------------------------------------------------------------------
+    // 1. Drain / Source series resistance thermal noise
+    // -----------------------------------------------------------------------
+    double gspr, gdpr;
+    double npart_beta = 0.0, npart_theta = 0.0;
+
+    if (model->B4SOItnoiMod != 1) {
+        // tnoiMod 0 or 2
+        if (model->B4SOIrdsMod == 0) {
+            gspr = inst.B4SOIsourceConductance;
+            gdpr = inst.B4SOIdrainConductance;
+        } else {
+            gspr = inst.B4SOIgstot;
+            gdpr = inst.B4SOIgdtot;
+        }
+    } else {
+        // tnoiMod 1: holistic model modifies gspr/gdpr
+        const double esat = 2.0 * inst.B4SOIvsattemp / inst.B4SOIueff;
+        double T5 = (esat > 0.0 && pParam->B4SOIleff > 0.0)
+                   ? inst.B4SOIVgsteff / esat / pParam->B4SOIleff : 0.0;
+        T5 *= T5;
+        npart_beta  = model->B4SOIrnoia * (1.0 + T5 * model->B4SOItnoia * pParam->B4SOIleff);
+        npart_theta = model->B4SOIrnoib * (1.0 + T5 * model->B4SOItnoib * pParam->B4SOIleff);
+        if (npart_theta > 0.9)
+            npart_theta = 0.9;
+        if (npart_theta > 0.9 * npart_beta)
+            npart_theta = 0.9 * npart_beta;
+
+        if (model->B4SOIrdsMod == 0) {
+            gspr = inst.B4SOIsourceConductance;
+            gdpr = inst.B4SOIdrainConductance;
+        } else {
+            gspr = inst.B4SOIgstot;
+            gdpr = inst.B4SOIgdtot;
+        }
+
+        if (state0_ && inst.B4SOIidovVds > 0.0) {
+            if (state0_[inst.B4SOIvds] >= 0.0)
+                gspr = gspr * (1.0 + npart_theta * npart_theta * gspr / inst.B4SOIidovVds);
+            else
+                gdpr = gdpr * (1.0 + npart_theta * npart_theta * gdpr / inst.B4SOIidovVds);
+        }
+    }
+
+    if (gdpr > 0.0)
+        sources.push_back({dp_neo, d_neo, fourKT * gdpr * tempRatioSH * m});
+    if (gspr > 0.0)
+        sources.push_back({sp_neo, s_neo, fourKT * gspr * tempRatioSH * m});
+
+    // -----------------------------------------------------------------------
+    // 2. Gate resistance thermal noise (rgateMod 1, 2, 3)
+    // -----------------------------------------------------------------------
+    if (inst.B4SOIrgateMod == 1) {
+        if (inst.B4SOIgrgeltd > 0.0)
+            sources.push_back({g_neo, ge_neo, fourKT * inst.B4SOIgrgeltd * tempRatioSH * m});
+    } else if (inst.B4SOIrgateMod == 2) {
+        if (inst.B4SOIgrgeltd > 0.0 && inst.B4SOIgcrg > 0.0) {
+            const double T0_r = 1.0 + inst.B4SOIgrgeltd / inst.B4SOIgcrg;
+            const double T1_r = T0_r * T0_r;
+            sources.push_back({g_neo, ge_neo,
+                               fourKT * (inst.B4SOIgrgeltd / T1_r) * tempRatioSH * m});
+        }
+    } else if (inst.B4SOIrgateMod == 3) {
+        if (inst.B4SOIgrgeltd > 0.0)
+            sources.push_back({gm_neo, ge_neo, fourKT * inst.B4SOIgrgeltd * tempRatioSH * m});
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. Body resistance thermal noise (rbodyMod, rbsb/rbdb)
+    // -----------------------------------------------------------------------
+    if (inst.B4SOIrbodyMod) {
+        if (inst.B4SOIgrbsb > 0.0)
+            sources.push_back({b_neo, sb_neo, fourKT * inst.B4SOIgrbsb * m});
+        if (inst.B4SOIgrbdb > 0.0)
+            sources.push_back({b_neo, db_neo, fourKT * inst.B4SOIgrbdb * tempRatioSH * m});
+    }
+
+    // -----------------------------------------------------------------------
+    // 4. Body contact thermal noise (bodyMod == 1)
+    // -----------------------------------------------------------------------
+    if (inst.B4SOIbodyMod == 1) {
+        const double rbody_total = inst.B4SOIrbodyext + pParam->B4SOIrbody;
+        if (rbody_total > 0.0)
+            sources.push_back({b_neo, p_neo, fourKT * tempRatioSH / rbody_total * m});
+    }
+
+    // -----------------------------------------------------------------------
+    // 5. Channel thermal noise (tnoiMod dependent)
+    // -----------------------------------------------------------------------
+    double channel_noise = 0.0;
+    switch (model->B4SOItnoiMod) {
+      case 0: {
+        // Charge-based model
+        const double ueff = inst.B4SOIueff;
+        const double qinv_abs = std::fabs(inst.B4SOIqinv);
+        const double Leff = pParam->B4SOIleff;
+        const double Leff2 = Leff * Leff;
+        const double rds_term = ueff * qinv_abs * inst.B4SOIrds;
+        const double denom = Leff2 + rds_term;
+        if (denom > 0.0) {
+            const double G_ch = (ueff * qinv_abs / denom) * model->B4SOIntnoi;
+            channel_noise = fourKT * G_ch * tempRatioSH * m;
+        }
+        break;
+      }
+      case 1: {
+        // Holistic model
+        const double T0_n = inst.B4SOIgm + inst.B4SOIgmbs + inst.B4SOIgds;
+        const double T0_sq = T0_n * T0_n;
+        const double esat = 2.0 * inst.B4SOIvsattemp / inst.B4SOIueff;
+        double T5 = (esat > 0.0 && pParam->B4SOIleff > 0.0)
+                   ? inst.B4SOIVgsteff / esat / pParam->B4SOIleff : 0.0;
+        T5 *= T5;
+        const double nb = model->B4SOIrnoia * (1.0 + T5 * model->B4SOItnoia * pParam->B4SOIleff);
+        double nt = model->B4SOIrnoib * (1.0 + T5 * model->B4SOItnoib * pParam->B4SOIleff);
+        if (nt > 0.9) nt = 0.9;
+        if (nt > 0.9 * nb) nt = 0.9 * nb;
+
+        const double igsquare = nt * nt * T0_sq * Vdseffovcd;
+        const double T1_n = nb * (inst.B4SOIgm + inst.B4SOIgmbs) + inst.B4SOIgds;
+        const double T2_n = T1_n * T1_n * Vdseffovcd;
+        const double G_ch = std::max(0.0, T2_n - igsquare);
+        channel_noise = fourKT * G_ch * tempRatioSH * m;
+        break;
+      }
+      case 2:
+      default: {
+        // SPICE2 model
+        const double G_ch = model->B4SOIntnoi * (2.0 / 3.0)
+                          * std::fabs(inst.B4SOIgm + inst.B4SOIgds + inst.B4SOIgmbs);
+        channel_noise = fourKT * G_ch * tempRatioSH * m;
+        break;
+      }
+    }
+    if (channel_noise > 0.0)
+        sources.push_back({dp_neo, sp_neo, channel_noise});
+
+    // -----------------------------------------------------------------------
+    // 6. Flicker (1/f) noise
+    // -----------------------------------------------------------------------
+    if (freq > 0.0) {
+        double flicker_noise = 0.0;
+        const double cd_abs = std::fabs(inst.B4SOIcd);
+        const double Leff = pParam->B4SOIleff;
+        const double weff = pParam->B4SOIweff;
+        const double nf = inst.B4SOInf;
+
+        switch (model->B4SOIfnoiMod) {
+          case 0: {
+            // Simple KF/AF model
+            if (model->B4SOIw0flk > 0.0) {
+                // w0flk-scaled model
+                const double cd_eff = std::fabs(inst.B4SOIcd / weff / nf * model->B4SOIw0flk);
+                const double cd_safe = std::max(cd_eff, NOISE_MINLOG);
+                if (model->B4SOIcox > 0.0 && Leff > 0.0)
+                    flicker_noise = m * nf * weff / model->B4SOIw0flk
+                                  * model->B4SOIkf * std::pow(cd_safe, model->B4SOIaf)
+                                  / (std::pow(freq, model->B4SOIef)
+                                     * std::pow(Leff, model->B4SOIbf) * model->B4SOIcox);
+            } else {
+                const double cd_safe = std::max(cd_abs, NOISE_MINLOG);
+                if (model->B4SOIcox > 0.0 && Leff > 0.0)
+                    flicker_noise = m * model->B4SOIkf * std::pow(cd_safe, model->B4SOIaf)
+                                  / (std::pow(freq, model->B4SOIef)
+                                     * std::pow(Leff, model->B4SOIbf) * model->B4SOIcox);
+            }
+            break;
+          }
+          case 1: {
+            // Unified 1/f noise model (B4SOIEval1ovFNoise)
+            double vgs_n = 0.0, vds_n = 0.0;
+            if (state0_) {
+                vgs_n = state0_[inst.B4SOIvgs];
+                vds_n = state0_[inst.B4SOIvds];
+            }
+            if (vds_n < 0.0) {
+                vds_n = -vds_n;
+                vgs_n = vgs_n + vds_n;
+            }
+
+            // Eval1ovFNoise
+            const double ueff = inst.B4SOIueff;
+            const double esat = (ueff > 0.0) ? 2.0 * inst.B4SOIvsattemp / ueff : 1e10;
+            double DelClm = 0.0;
+            if (model->B4SOIem > 0.0 && pParam->B4SOIlitl > 0.0 && esat > 0.0) {
+                const double T0_f = (((vds_n - inst.B4SOIVdseff) / pParam->B4SOIlitl)
+                                    + model->B4SOIem) / esat;
+                DelClm = pParam->B4SOIlitl * std::log(std::max(T0_f, NOISE_MINLOG));
+                if (DelClm < 0.0) DelClm = 0.0;
+            }
+
+            const double EffFreq = std::pow(freq, model->B4SOIef);
+            const double N0 = model->B4SOIcox * inst.B4SOIVgsteff / CHARGE_Q;
+            const double Nl = model->B4SOIcox * inst.B4SOIVgsteff
+                            * (1.0 - inst.B4SOIAbovVgst2Vtm * inst.B4SOIVdseff) / CHARGE_Q;
+
+            // Use SH temperature if applicable
+            const double temp_noise = ((model->B4SOIshMod == 1) && (inst.B4SOIrth0 != 0.0))
+                                    ? inst.B4SOITempSH : sim_temp_;
+
+            const double T3_f = model->B4SOIoxideTrapDensityA
+                              * std::log(std::max((N0 + inst.B4SOInstar)
+                                  / std::max(Nl + inst.B4SOInstar, NOISE_MINLOG), NOISE_MINLOG));
+            const double T4_f = model->B4SOIoxideTrapDensityB * (N0 - Nl);
+            const double T5_f = model->B4SOIoxideTrapDensityC * 0.5 * (N0 * N0 - Nl * Nl);
+
+            double Ssi = 0.0;
+            if (EffFreq > 0.0 && inst.B4SOIAbulk > 0.0 && model->B4SOIcox > 0.0
+                && Leff > 0.0) {
+                const double T1_f = CHARGE_Q * CHARGE_Q * BOLTZMANN * temp_noise
+                                  * cd_abs * ueff;
+                const double T2_f = 1.0e10 * EffFreq * inst.B4SOIAbulk * model->B4SOIcox
+                                  * Leff * Leff;
+                const double T6_f = BOLTZMANN * temp_noise * cd_abs * cd_abs;
+                const double T7_f = 1.0e10 * EffFreq * Leff * Leff * weff * nf;
+                const double Nls = Nl + inst.B4SOInstar;
+                const double T8_f = model->B4SOIoxideTrapDensityA
+                                  + model->B4SOIoxideTrapDensityB * Nl
+                                  + model->B4SOIoxideTrapDensityC * Nl * Nl;
+                const double T9_f = Nls * Nls;
+
+                if (T2_f > 0.0 && T7_f > 0.0 && T9_f > 0.0)
+                    Ssi = T1_f / T2_f * (T3_f + T4_f + T5_f)
+                        + T6_f / T7_f * DelClm * T8_f / T9_f;
+            }
+
+            // Outer Swi term
+            double Swi = 0.0;
+            const double T10_f = model->B4SOIoxideTrapDensityA * BOLTZMANN * temp_noise;
+            if (weff > 0.0 && nf > 0.0 && Leff > 0.0 && EffFreq > 0.0
+                && inst.B4SOInstar > 0.0) {
+                const double T11_f = weff * nf * Leff * EffFreq * 1.0e10
+                                   * inst.B4SOInstar * inst.B4SOInstar;
+                Swi = T10_f / T11_f * inst.B4SOIcd * inst.B4SOIcd;
+            }
+
+            const double T1_tot = Swi + Ssi;
+            if (T1_tot > 0.0)
+                flicker_noise = m * (Ssi * Swi) / T1_tot;
+            break;
+          }
+          default:
+            break;
+        }
+
+        if (flicker_noise > 0.0)
+            sources.push_back({dp_neo, sp_neo, flicker_noise});
+    }
+
+    // -----------------------------------------------------------------------
+    // 7. Floating body shot noise (source/drain junctions)
+    // -----------------------------------------------------------------------
+    {
+        const double two_q = 2.0 * CHARGE_Q;
+        const double noif = model->B4SOInoif;
+        // Source junction: noif * Ibs
+        if (std::fabs(inst.B4SOIibs) > 0.0)
+            sources.push_back({sp_neo, b_neo, two_q * noif * std::fabs(inst.B4SOIibs) * m});
+        // Drain junction: noif * Ibd
+        if (std::fabs(inst.B4SOIibd) > 0.0)
+            sources.push_back({dp_neo, b_neo, two_q * noif * std::fabs(inst.B4SOIibd) * m});
+    }
+
+    // -----------------------------------------------------------------------
+    // 8. Gate tunneling shot noise
+    // -----------------------------------------------------------------------
+    {
+        const double two_q = 2.0 * CHARGE_Q;
+        // IGS + IGCS (gate to source)
+        const double Igs_total = std::fabs(inst.B4SOIIgs + inst.B4SOIIgcs);
+        if (Igs_total > 0.0)
+            sources.push_back({g_neo, sp_neo, two_q * Igs_total * m});
+        // IGD + IGCD (gate to drain)
+        const double Igd_total = std::fabs(inst.B4SOIIgd + inst.B4SOIIgcd);
+        if (Igd_total > 0.0)
+            sources.push_back({g_neo, dp_neo, two_q * Igd_total * m});
+        // IGB (gate to bulk)
+        if (std::fabs(inst.B4SOIig) > 0.0)
+            sources.push_back({g_neo, b_neo, two_q * std::fabs(inst.B4SOIig) * m});
+    }
+
+    return sources;
 }
 
 // ---------------------------------------------------------------------------

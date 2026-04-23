@@ -101,8 +101,7 @@ TEST_F(BsimsoiValidation, PmosOperatingPoint) {
 // AC Small-Signal — Nmos
 // ============================================================================
 
-TEST_F(BsimsoiValidation, DISABLED_NmosAcResponse) {
-    // TODO: Enable once BSIMSOI AC stamp is implemented (currently a stub).
+TEST_F(BsimsoiValidation, NmosAcResponse) {
     std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/bsimsoi_nmos_ac.cir";
 
     // Run ngspice
