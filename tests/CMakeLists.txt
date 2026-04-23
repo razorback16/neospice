@@ -123,6 +123,7 @@ add_subdirectory(devices/vbic)
 add_subdirectory(devices/bsim3v32)
 add_subdirectory(devices/hisim2)
 add_subdirectory(devices/hisimhv)
+add_subdirectory(devices/bsimsoi)
 
 # Performance benchmarks
 add_executable(bench_ths4131

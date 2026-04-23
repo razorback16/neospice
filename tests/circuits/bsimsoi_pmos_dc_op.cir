@@ -1,0 +1,8 @@
+BSIMSOI PMOS DC Operating Point
+Vdd vdd 0 1.8
+Vg gate 0 1.0
+Rload drain 0 1k
+M1 drain gate vdd vdd vdd vdd PMOD W=10u L=1u
+.model PMOD PMOS LEVEL=10
+.op
+.end

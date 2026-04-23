@@ -29,9 +29,9 @@ model:
     setup: "b4soiset.c"
     load: "b4soild.c"
     temp: "b4soitemp.c"
+    check: "b4soicheck.c"
     mpar: "b4soimpar.c"
     param: "b4soipar.c"
-    check: "b4soicheck.c"
     devsup: "b4soi.c"
   skip_files:
     - "b4soiacld.c"
@@ -51,18 +51,31 @@ model:
   setup_function: "B4SOIsetup"
   temp_function: "B4SOItemp"
   load_function: "B4SOIload"
+  cleanup_linked_lists:
+    - { field: "pSizeDependParamKnot", next_field: "pNext" }
+  version_stamp:
+    field: "B4SOIversion"
+    given_field: "B4SOIversionGiven"
+    value: "4.6.1"
   ac_load_file: "b4soiacld.c"
+  ac_load_function: "B4SOIacLoad"
   noise_file: "b4soinoi.c"
   levels: [10, 58]
   spice_prefix: "M"
-  cleanup_linked_lists:
-    - { field: "pSizeDependParamKnot", next_field: "pNext" }
-  charge_states: [12, 14, 16, 18, 20, 22, 25, 31]
   geometry:
-    - { name: "W",  field: "B4SOIw",  given: "B4SOIwGiven",  default: "1e-6", always_given: true }
-    - { name: "L",  field: "B4SOIl",  given: "B4SOIlGiven",  default: "1e-7", always_given: true }
-    - { name: "M",  field: "B4SOIm",  given: "B4SOImGiven",  default: "1.0",  always_given: true }
-    - { name: "NF", field: "B4SOInf", given: "B4SOInfGiven", default: "1.0",  always_given: true }
+    - { name: "W",   field: "B4SOIw",                given: "B4SOIwGiven",                default: "1e-6",  always_given: true }
+    - { name: "L",   field: "B4SOIl",                given: "B4SOIlGiven",                default: "1e-7",  always_given: true }
+    - { name: "M",   field: "B4SOIm",                given: "B4SOImGiven",                default: "1.0",   always_given: true }
+    - { name: "AD",  field: "B4SOIdrainArea",         given: "B4SOIdrainAreaGiven",         default: "0.0" }
+    - { name: "AS",  field: "B4SOIsourceArea",        given: "B4SOIsourceAreaGiven",        default: "0.0" }
+    - { name: "PD",  field: "B4SOIdrainPerimeter",    given: "B4SOIdrainPerimeterGiven",    default: "0.0" }
+    - { name: "PS",  field: "B4SOIsourcePerimeter",   given: "B4SOIsourcePerimeterGiven",   default: "0.0" }
+    - { name: "NRD", field: "B4SOIdrainSquares",      given: "B4SOIdrainSquaresGiven",      default: "0.0" }
+    - { name: "NRS", field: "B4SOIsourceSquares",     given: "B4SOIsourceSquaresGiven",     default: "0.0" }
+    - { name: "SA",  field: "B4SOIsa",                given: "B4SOIsaGiven",                default: "0.0" }
+    - { name: "SB",  field: "B4SOIsb",                given: "B4SOIsbGiven",                default: "0.0" }
+    - { name: "SD",  field: "B4SOIsd",                given: "B4SOIsdGiven",                default: "0.0" }
+    - { name: "NF",  field: "B4SOInf",                given: "B4SOInfGiven",                default: "1.0",   always_given: true }
   model_types:
     - { spice_name: "nmos", flag_field: "B4SOItype", flag_value: 1 }
     - { spice_name: "pmos", flag_field: "B4SOItype", flag_value: -1 }
