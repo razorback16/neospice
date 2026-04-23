@@ -1,0 +1,68 @@
+model:
+  ngspice_prefix: "B4SOI"
+  neospice_name: "bsimsoi"
+  neospice_namespace: "bsimsoi"
+  instance_struct: "B4SOIinstance"
+  model_struct: "B4SOImodel"
+  instance_tag: "sB4SOIinstance"
+  model_tag: "sB4SOImodel"
+  cpp_instance: "B4SOIInstance"
+  cpp_model: "B4SOIModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "B4SOIdNode" }
+    - { name: "g", field: "B4SOIgNodeExt" }
+    - { name: "s", field: "B4SOIsNode" }
+    - { name: "e", field: "B4SOIeNode" }
+    - { name: "p", field: "B4SOIpNode" }
+    - { name: "b", field: "B4SOIbNode" }
+  state_count: 38
+  state_base_field: "B4SOIstates"
+  next_instance_field: "B4SOInextInstance"
+  instances_field: "B4SOIinstances"
+  next_model_field: "B4SOInextModel"
+  model_ptr_field: "B4SOImodPtr"
+  name_field: "B4SOIname"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "b4soiset.c"
+    load: "b4soild.c"
+    temp: "b4soitemp.c"
+    mpar: "b4soimpar.c"
+    param: "b4soipar.c"
+    check: "b4soicheck.c"
+    devsup: "b4soi.c"
+  skip_files:
+    - "b4soiacld.c"
+    - "b4soinoi.c"
+    - "b4soipzld.c"
+    - "b4soicvtest.c"
+    - "b4soiask.c"
+    - "b4soimask.c"
+    - "b4soidel.c"
+    - "b4soidest.c"
+    - "b4soigetic.c"
+    - "b4soitrunc.c"
+    - "b4soisoachk.c"
+    - "b4soiinit.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "B4SOIsetup"
+  temp_function: "B4SOItemp"
+  load_function: "B4SOIload"
+  ac_load_file: "b4soiacld.c"
+  noise_file: "b4soinoi.c"
+  levels: [10, 58]
+  spice_prefix: "M"
+  cleanup_linked_lists:
+    - { field: "pSizeDependParamKnot", next_field: "pNext" }
+  charge_states: [12, 14, 16, 18, 20, 22, 25, 31]
+  geometry:
+    - { name: "W",  field: "B4SOIw",  given: "B4SOIwGiven",  default: "1e-6", always_given: true }
+    - { name: "L",  field: "B4SOIl",  given: "B4SOIlGiven",  default: "1e-7", always_given: true }
+    - { name: "M",  field: "B4SOIm",  given: "B4SOImGiven",  default: "1.0",  always_given: true }
+    - { name: "NF", field: "B4SOInf", given: "B4SOInfGiven", default: "1.0",  always_given: true }
+  model_types:
+    - { spice_name: "nmos", flag_field: "B4SOItype", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "B4SOItype", flag_value: -1 }
