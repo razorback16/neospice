@@ -13,7 +13,7 @@ adapters for diodes, BJTs, MOSFETs, and any other migrated model.
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Protocol
+from typing import Dict, List, Optional, Protocol, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +122,278 @@ def extract_output_params(devsup_source: str, prefix: str) -> list[dict]:
             'is_output': is_output,
         })
     return results
+
+
+# ---------------------------------------------------------------------------
+# AC stamp extraction from *acld.c
+# ---------------------------------------------------------------------------
+
+def extract_ac_stamps(acld_source: str, prefix: str) -> Dict[str, List[Dict]]:
+    """Extract AC matrix stamps from an ngspice *acld.c source file.
+
+    Returns a dict with:
+      'real_stamps': [{ptr_field, value_expr}]  — entries for G matrix
+      'imag_stamps': [{ptr_field, value_expr}]  — entries for C matrix (divide by omega)
+
+    The ngspice AC load pattern is:
+      *(here->XXXPtr)     += real_value     → goes to G
+      *(here->XXXPtr + 1) += imag_value     → goes to C (value/omega = cap)
+    """
+    real_stamps: List[Dict[str, str]] = []
+    imag_stamps: List[Dict[str, str]] = []
+
+    # Match *(here->FIELDPtr) += expr  and  *(here->FIELDPtr + 1) += expr
+    # Real: *(here->XXXPtr) += value
+    real_pat = re.compile(
+        r'\*\(\s*here->(' + re.escape(prefix) + r'\w+Ptr)\s*\)\s*\+=\s*(.+?)\s*;'
+    )
+    # Imag: *(here->XXXPtr + 1) += value
+    imag_pat = re.compile(
+        r'\*\(\s*here->(' + re.escape(prefix) + r'\w+Ptr)\s*\+\s*1\s*\)\s*\+=\s*(.+?)\s*;'
+    )
+
+    for m in imag_pat.finditer(acld_source):
+        imag_stamps.append({
+            'ptr_field': m.group(1),
+            'value_expr': m.group(2).strip(),
+        })
+
+    for m in real_pat.finditer(acld_source):
+        real_stamps.append({
+            'ptr_field': m.group(1),
+            'value_expr': m.group(2).strip(),
+        })
+
+    return {
+        'real_stamps': real_stamps,
+        'imag_stamps': imag_stamps,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Noise source extraction from *noi.c
+# ---------------------------------------------------------------------------
+
+def extract_noise_sources(noi_source: str, prefix: str) -> List[Dict]:
+    """Extract noise source definitions from an ngspice noise file.
+
+    Returns a list of dicts with:
+      'name':      str  — noise source name (e.g. "rd", "id", "1ovf")
+      'type':      str  — "thermal", "shot", "flicker", or "custom"
+      'node1':     str  — first node field (e.g. "HSM2dNodePrime")
+      'node2':     str  — second node field (e.g. "HSM2dNode")
+      'psd_expr':  str  — PSD expression or description
+    """
+    sources: List[Dict] = []
+
+    # Extract noise source names from the static array
+    names_pat = re.compile(r'"\.(\w+)"')
+    noise_names = names_pat.findall(noi_source)
+
+    # Match THERMNOISE macro calls
+    therm_pat = re.compile(
+        r'NevalSrc\s*\([^,]+,\s*[^,]+,\s*\w+,\s*THERMNOISE\s*,'
+        r'\s*here->(\w+)\s*,\s*here->(\w+)\s*,'
+        r'\s*(.+?)\s*\)'
+    )
+    for m in therm_pat.finditer(noi_source):
+        sources.append({
+            'name': f'thermal_{m.group(1)}',
+            'type': 'thermal',
+            'node1': m.group(1),
+            'node2': m.group(2),
+            'psd_expr': f'4*k*T*({m.group(3).strip()})',
+        })
+
+    # Match SHOTNOISE macro calls
+    shot_pat = re.compile(
+        r'NevalSrc\s*\([^,]+,\s*[^,]+,\s*\w+,\s*SHOTNOISE\s*,'
+        r'\s*here->(\w+)\s*,\s*here->(\w+)\s*,'
+        r'\s*here->(\w+)\s*\)'
+    )
+    for m in shot_pat.finditer(noi_source):
+        sources.append({
+            'name': f'shot_{m.group(3)}',
+            'type': 'shot',
+            'node1': m.group(1),
+            'node2': m.group(2),
+            'psd_expr': f'2*q*|here->{m.group(3)}|',
+        })
+
+    # Match N_GAIN pattern followed by *= 4*CONSTboltz*T*G (thermal with gain)
+    # Common HiSIM pattern: NevalSrc(..., N_GAIN, node1, node2, 0.0);
+    # noizDens[X] *= 4 * CONSTboltz * TTEMP * G;
+    gain_pat = re.compile(
+        r'NevalSrc\s*\([^,]+,\s*[^,]+,\s*\w+,\s*N_GAIN\s*,'
+        r'\s*here->(\w+)\s*,\s*here->(\w+)\s*,'
+        r'\s*\(double\)\s*0\.0\s*\)\s*;'
+        r'[^;]*?noizDens\[\w+\]\s*\*=\s*(.+?)\s*;',
+        re.DOTALL
+    )
+    for m in gain_pat.finditer(noi_source):
+        expr = m.group(3).strip()
+        node1 = m.group(1)
+        node2 = m.group(2)
+        # Classify based on expression
+        if 'CONSTboltz' in expr and 'freq' not in expr.lower():
+            ntype = 'thermal'
+        elif 'freq' in expr.lower() or 'pow' in expr.lower():
+            ntype = 'flicker'
+        else:
+            ntype = 'custom'
+        sources.append({
+            'name': f'{ntype}_{node1}_{node2}',
+            'type': ntype,
+            'node1': node1,
+            'node2': node2,
+            'psd_expr': expr,
+        })
+
+    # Extract flicker noise patterns
+    flicker_pat = re.compile(
+        r'NevalSrc\s*\([^,]+,\s*[^,]+,\s*\w+,\s*N_GAIN\s*,'
+        r'\s*here->(\w+)\s*,\s*here->(\w+)\s*,'
+        r'\s*\(double\)\s*0\.0\s*\)\s*;'
+        r'[^;]*?noizDens\[\w+\]\s*\*=\s*([^;]*(?:freq|pow)[^;]*)\s*;',
+        re.DOTALL
+    )
+    for m in flicker_pat.finditer(noi_source):
+        # Avoid duplicates from the gain_pat above
+        found = False
+        for s in sources:
+            if s['node1'] == m.group(1) and s['node2'] == m.group(2) and s['type'] == 'flicker':
+                found = True
+                break
+        if not found:
+            sources.append({
+                'name': f'flicker_{m.group(1)}_{m.group(2)}',
+                'type': 'flicker',
+                'node1': m.group(1),
+                'node2': m.group(2),
+                'psd_expr': m.group(3).strip(),
+            })
+
+    return sources
+
+
+def _gen_noise_sources(desc, noise_sources: List[Dict]) -> str:
+    """Generate noise_sources() body from extracted noise source definitions."""
+    if not noise_sources:
+        return (
+            '    // TODO: Port noise sources from the ngspice *noise.c file.\n'
+            '    // Common noise types:\n'
+            '    //   Thermal: 4*k*T*G  (conductance noise)\n'
+            '    //   Shot:    2*q*|I|  (junction current noise)\n'
+            '    //   Flicker: KF*|I|^AF / f^EF  (1/f noise)\n'
+            '    // Use sim_temp() for temperature (inherited from Device base class).\n'
+            '    // See bjt_device.cpp and bsim4v7_device.cpp for examples.\n'
+            '    return {};\n'
+        )
+
+    lines = []
+    lines.append('    constexpr double kB = 1.3806226e-23;  // Boltzmann constant')
+    lines.append('    constexpr double q  = 1.602176634e-19; // electron charge')
+    lines.append('    const double T = sim_temp();')
+    lines.append(f'    const double m = inst_.{desc.prefix}m;')
+    lines.append('    std::vector<NoiseSource> ns;')
+    lines.append(f'    ns.reserve({len(noise_sources)});')
+    lines.append('')
+
+    for src in noise_sources:
+        lines.append(f'    // {src["name"]} ({src["type"]}): {src["psd_expr"]}')
+        if src['type'] == 'thermal':
+            lines.append(f'    // TODO: map inst fields for thermal noise PSD = 4*kB*T*G')
+            lines.append(f'    // ns.push_back({{ucb_to_neo(inst_.{src["node1"]}),')
+            lines.append(f'    //               ucb_to_neo(inst_.{src["node2"]}),')
+            lines.append(f'    //               m * 4.0 * kB * T * G}});  // replace G with actual conductance')
+        elif src['type'] == 'shot':
+            lines.append(f'    // TODO: map inst fields for shot noise PSD = 2*q*|I|')
+            lines.append(f'    // ns.push_back({{ucb_to_neo(inst_.{src["node1"]}),')
+            lines.append(f'    //               ucb_to_neo(inst_.{src["node2"]}),')
+            lines.append(f'    //               m * 2.0 * q * std::abs(I)}});  // replace I with actual current')
+        elif src['type'] == 'flicker':
+            lines.append(f'    // TODO: map inst fields for flicker noise PSD = KF*|I|^AF / f^EF')
+            lines.append(f'    // ns.push_back({{ucb_to_neo(inst_.{src["node1"]}),')
+            lines.append(f'    //               ucb_to_neo(inst_.{src["node2"]}),')
+            lines.append(f'    //               m * psd_1f}});  // replace psd_1f with actual 1/f formula')
+        else:
+            lines.append(f'    // TODO: implement custom noise for {src["name"]}')
+        lines.append('')
+
+    lines.append('    (void)freq; (void)dc_solution; (void)kB; (void)q; (void)T; (void)m;')
+    lines.append('    return ns;')
+    return '\n'.join(lines)
+
+
+# ---------------------------------------------------------------------------
+# AC stamp body generator (shim-based approach)
+# ---------------------------------------------------------------------------
+
+def _gen_ac_stamp_from_extraction(desc, acld_source: str) -> str:
+    """Generate ac_stamp() body with scaffolding extracted from the AC load file.
+
+    Extracts real (G matrix) and imaginary (C matrix) stamp entries from the
+    ngspice *acld.c file and generates a scaffolded implementation.  The generated
+    code identifies all matrix entries with their pointer field names and value
+    expressions, ready for manual completion.
+    """
+    prefix = desc.prefix
+    stamps = extract_ac_stamps(acld_source, prefix)
+    real_stamps = stamps['real_stamps']
+    imag_stamps = stamps['imag_stamps']
+
+    lines = []
+    lines.append(f'    auto& here = inst_;')
+    lines.append(f'    auto* model = model_;')
+    lines.append(f'    const double m = here.{prefix}m;')
+    lines.append('')
+
+    if not real_stamps and not imag_stamps:
+        lines.append('    // No AC stamps could be extracted from the AC load file.')
+        lines.append('    // TODO: implement AC stamp manually.')
+        lines.append('    (void)here; (void)model; (void)m;')
+        return '\n'.join(lines)
+
+    lines.append('    // TODO: Declare local variables for conductances and capacitances.')
+    lines.append('    // These should be read from instance fields populated by the DC load.')
+    lines.append('    // Example: const double gm = here.PREFIX_gm;')
+    lines.append('')
+    lines.append(f'    // --- G matrix (conductance) entries ---')
+    lines.append(f'    // Extracted {len(real_stamps)} real-part stamps from ngspice AC load.')
+
+    # Group real stamps by pointer field
+    for s in real_stamps:
+        ptr = s['ptr_field']
+        expr = s['value_expr']
+        lines.append(f'    // G: inst_.{ptr} += {expr};')
+
+    lines.append('')
+    lines.append(f'    // --- C matrix (capacitance) entries ---')
+    lines.append(f'    // Extracted {len(imag_stamps)} imaginary-part stamps from ngspice AC load.')
+    lines.append(f'    // NOTE: ngspice stamps *(ptr+1) += value where value = cap * omega.')
+    lines.append(f'    // neospice C matrix is multiplied by omega by the AC solver,')
+    lines.append(f'    // so stamp the capacitance value directly (without omega).')
+
+    for s in imag_stamps:
+        ptr = s['ptr_field']
+        expr = s['value_expr']
+        lines.append(f'    // C: inst_.{ptr} += {expr};  // divide by omega for C matrix')
+
+    lines.append('')
+    lines.append('    // TODO: Implement the stamp logic by reading instance fields,')
+    lines.append('    // computing y-parameters, and stamping into G and C matrices.')
+    lines.append('    // See hisim2_device.cpp or bsim4v7_device.cpp for reference.')
+    lines.append('    (void)here; (void)model; (void)m;')
+    return '\n'.join(lines)
+
+
+def _gen_ac_stamp_stub(prefix: str) -> str:
+    """Generate a TODO stub for ac_stamp()."""
+    return (
+        f'    // TODO: Port the AC stamp from the ngspice *acld.c file.\n'
+        f'    // Conductances (gm, gds, ...) go into G; capacitances (Cgs, Cgd, ...) into C.\n'
+        f'    // See existing implementations: bsim4v7_device.cpp, hisim2_device.cpp.\n'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +584,9 @@ def generate_adapter_hpp(desc: _Desc) -> str:
 # Implementation generator
 # ---------------------------------------------------------------------------
 
-def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str = "", load_source: str = "", devsup_source: str = "") -> str:
+def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str = "",
+                         load_source: str = "", devsup_source: str = "",
+                         acld_source: str = "", noi_source: str = "") -> str:
     """Return the complete text of the device adapter implementation file.
 
     Parameters
@@ -327,6 +601,12 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
         Generated *_def.hpp header text.  When provided, MatrixOffset fields
         are extracted directly from the header (most reliable).  Falls back
         to TSTALLOC extraction from *setup_source* when empty.
+    acld_source:
+        Raw AC load source text (from ngspice *acld.c).  When provided,
+        noise and AC stamp info may be extracted.
+    noi_source:
+        Raw noise source text (from ngspice *noi.c).  When provided,
+        noise source scaffolding is generated instead of a TODO stub.
     """
     parts: list[str] = []
     ns = desc.namespace
@@ -659,18 +939,32 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("}\n")
     parts.append("\n")
 
-    # --- ac_stamp (stub) ---------------------------------------------------
-    parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append("// ac_stamp — TODO: implement G/C matrix split from ngspice AC load file\n")
-    parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append(f"void {prefix}Device::ac_stamp(const std::vector<double>& /*voltages*/,\n")
-    parts.append(f"        {' ' * len(prefix)}                NumericMatrix& /*G*/,\n")
-    parts.append(f"        {' ' * len(prefix)}                NumericMatrix& /*C*/) {{\n")
-    parts.append(f'    // TODO: Port the AC stamp from the ngspice *acld.c file.\n')
-    parts.append(f'    // Conductances (gm, gds, ...) go into G; capacitances (Cgs, Cgd, ...) into C.\n')
-    parts.append(f'    // See existing implementations: bsim4v7_device.cpp, bjt_device.cpp.\n')
-    parts.append("}\n")
-    parts.append("\n")
+    # --- ac_stamp -----------------------------------------------------------
+    has_ac = bool(acld_source)
+
+    if has_ac:
+        ac_stamps = extract_ac_stamps(acld_source, desc.prefix)
+        n_real = len(ac_stamps['real_stamps'])
+        n_imag = len(ac_stamps['imag_stamps'])
+        parts.append("// ---------------------------------------------------------------------------\n")
+        parts.append(f"// ac_stamp — {n_real} G entries + {n_imag} C entries extracted from ngspice AC load\n")
+        parts.append("// ---------------------------------------------------------------------------\n")
+        parts.append(f"void {prefix}Device::ac_stamp(const std::vector<double>& /*voltages*/,\n")
+        parts.append(f"        {' ' * len(prefix)}                NumericMatrix& G,\n")
+        parts.append(f"        {' ' * len(prefix)}                NumericMatrix& C) {{\n")
+        parts.append(_gen_ac_stamp_from_extraction(desc, acld_source) + "\n")
+        parts.append("}\n")
+        parts.append("\n")
+    else:
+        parts.append("// ---------------------------------------------------------------------------\n")
+        parts.append("// ac_stamp — TODO: implement G/C matrix split from ngspice AC load file\n")
+        parts.append("// ---------------------------------------------------------------------------\n")
+        parts.append(f"void {prefix}Device::ac_stamp(const std::vector<double>& /*voltages*/,\n")
+        parts.append(f"        {' ' * len(prefix)}                NumericMatrix& /*G*/,\n")
+        parts.append(f"        {' ' * len(prefix)}                NumericMatrix& /*C*/) {{\n")
+        parts.append(_gen_ac_stamp_stub(prefix) + "\n")
+        parts.append("}\n")
+        parts.append("\n")
 
     # --- compute_trunc -----------------------------------------------------
     charge_offsets = extract_charge_offsets(load_source, desc.prefix) if load_source else []
@@ -714,20 +1008,26 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("}\n")
     parts.append("\n")
 
-    # --- noise_sources (stub) ----------------------------------------------
-    parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append("// noise_sources — TODO: implement device noise model\n")
-    parts.append("// ---------------------------------------------------------------------------\n")
+    # --- noise_sources ------------------------------------------------------
+    noise_srcs = extract_noise_sources(noi_source, desc.prefix) if noi_source else []
+    noise_body = _gen_noise_sources(desc, noise_srcs)
+    has_real_noise = 'TODO: Port noise' not in noise_body
+
+    freq_param = "freq" if has_real_noise else "/*freq*/"
+    dc_sol_param = "dc_solution" if has_real_noise else "/*dc_solution*/"
+
+    if noise_srcs:
+        parts.append("// ---------------------------------------------------------------------------\n")
+        parts.append(f"// noise_sources — {len(noise_srcs)} sources extracted from ngspice noise file\n")
+        parts.append("// ---------------------------------------------------------------------------\n")
+    else:
+        parts.append("// ---------------------------------------------------------------------------\n")
+        parts.append("// noise_sources — TODO: implement device noise model\n")
+        parts.append("// ---------------------------------------------------------------------------\n")
+
     parts.append(f"std::vector<Device::NoiseSource> {prefix}Device::noise_sources(\n")
-    parts.append(f"        double /*freq*/, const std::vector<double>& /*dc_solution*/) const {{\n")
-    parts.append("    // TODO: Port noise sources from the ngspice *noise.c file.\n")
-    parts.append("    // Common noise types:\n")
-    parts.append("    //   Thermal: 4*k*T*G  (conductance noise)\n")
-    parts.append("    //   Shot:    2*q*|I|  (junction current noise)\n")
-    parts.append("    //   Flicker: KF*|I|^AF / f^EF  (1/f noise)\n")
-    parts.append("    // Use sim_temp() for temperature (inherited from Device base class).\n")
-    parts.append("    // See bjt_device.cpp and bsim4v7_device.cpp for examples.\n")
-    parts.append("    return {};\n")
+    parts.append(f"        double {freq_param}, const std::vector<double>& {dc_sol_param}) const {{\n")
+    parts.append(noise_body + "\n")
     parts.append("}\n")
     parts.append("\n")
 

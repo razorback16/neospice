@@ -140,6 +140,19 @@ class ModelDescriptor:
     # Version stamp — set in make() if not already given ---------------------
     version_stamp: VersionStamp | None = None
 
+    # AC load source file (e.g. "hsm2acld.c") — optional --------------------
+    ac_load_file: str = ""
+    ac_load_function: str = ""
+
+    # Noise source file (e.g. "hsm2noi.c") — optional -----------------------
+    noise_file: str = ""
+
+    # SPICE levels this device maps to (for test circuit generation) ---------
+    levels: List[int] = field(default_factory=list)
+
+    # Element prefix letter (M, Q, J, Z, D, etc.) — for test circuits -------
+    spice_prefix: str = ""
+
     # -----------------------------------------------------------------------
     # Conversion to TransformerConfig
     # -----------------------------------------------------------------------
@@ -282,4 +295,9 @@ def load_descriptor(path: Path) -> ModelDescriptor:
         matrix_ptr_suffix=m.get("matrix_ptr_suffix", "Ptr"),
         cleanup_linked_lists=cleanup_linked_lists,
         version_stamp=version_stamp,
+        ac_load_file=m.get("ac_load_file", ""),
+        ac_load_function=m.get("ac_load_function", ""),
+        noise_file=m.get("noise_file", ""),
+        levels=[int(x) for x in m.get("levels", [])],
+        spice_prefix=m.get("spice_prefix", ""),
     )

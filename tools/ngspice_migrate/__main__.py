@@ -24,7 +24,7 @@ from .gen_adapter import generate_adapter_hpp, generate_adapter_cpp
 from .gen_model_card import generate_model_card_hpp, generate_model_card_cpp
 from .gen_parser import generate_parser_hpp
 from .gen_cmake import generate_cmake
-from .gen_test import generate_test_cmake, generate_test_dc, generate_test_transient
+from .gen_test import generate_test_cmake, generate_test_compare, generate_circuits
 from .validation import validate_migration
 
 
@@ -76,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
     setup_content: str = ""
     load_content: str = ""
     devsup_content: str = ""
+    acld_content: str = ""
+    noi_content: str = ""
 
     print(f"\nTranslating source files (namespace={ns}):")
     for role, filename in desc.source_files.items():
@@ -99,6 +101,24 @@ def main(argv: list[str] | None = None) -> int:
             load_content = translated
         elif role == "devsup":
             devsup_content = translated
+
+    # Read optional AC load file (raw ngspice source for extraction)
+    if desc.ac_load_file:
+        acld_path = ngspice_dir / desc.ac_load_file
+        if acld_path.exists():
+            acld_content = acld_path.read_text(encoding="utf-8", errors="replace")
+            print(f"  read AC load file: {acld_path}")
+        else:
+            print(f"  WARNING: AC load file {acld_path} not found", file=sys.stderr)
+
+    # Read optional noise file (raw ngspice source for extraction)
+    if desc.noise_file:
+        noi_path = ngspice_dir / desc.noise_file
+        if noi_path.exists():
+            noi_content = noi_path.read_text(encoding="utf-8", errors="replace")
+            print(f"  read noise file: {noi_path}")
+        else:
+            print(f"  WARNING: noise file {noi_path} not found", file=sys.stderr)
 
     # ------------------------------------------------------------------
     # 4. Generate _def.hpp from *def*.h
@@ -130,7 +150,9 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     print("\nGenerating adapter files:")
     adapter_hpp = generate_adapter_hpp(desc)
-    adapter_cpp = generate_adapter_cpp(desc, setup_source=setup_content, def_content=def_content, load_source=load_content, devsup_source=devsup_content)
+    adapter_cpp = generate_adapter_cpp(desc, setup_source=setup_content, def_content=def_content,
+                                       load_source=load_content, devsup_source=devsup_content,
+                                       acld_source=acld_content, noi_source=noi_content)
     _write_file(output_dir / f"{ns}_device.hpp", adapter_hpp, dry_run=dry_run)
     _write_file(output_dir / f"{ns}_device.cpp", adapter_cpp, dry_run=dry_run)
     generated_sources.append(f"{ns}_device.cpp")
@@ -177,14 +199,21 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     if args.gen_tests:
         test_dir = args.test_dir if args.test_dir else output_dir.parent.parent.parent / "tests" / "devices" / ns
+        # Circuit files go into the shared tests/circuits/ directory
+        project_root = output_dir.parent.parent.parent if args.test_dir is None else args.test_dir.parent.parent
+        circuits_dir = project_root / "tests" / "circuits"
+
         print(f"\nGenerating test scaffolding in {test_dir}:")
-        circuits_dir = test_dir / "circuits"
         _write_file(test_dir / "CMakeLists.txt", generate_test_cmake(desc), dry_run=dry_run)
-        _write_file(test_dir / f"test_{ns}_dc.cpp", generate_test_dc(desc), dry_run=dry_run)
-        _write_file(test_dir / f"test_{ns}_transient.cpp", generate_test_transient(desc), dry_run=dry_run)
+        _write_file(test_dir / f"test_{ns}_compare.cpp", generate_test_compare(desc), dry_run=dry_run)
+
+        # Generate circuit files into shared circuits directory
+        cir_files = generate_circuits(desc)
+        print(f"\nGenerating {len(cir_files)} test circuit(s) in {circuits_dir}:")
         if not dry_run:
             circuits_dir.mkdir(parents=True, exist_ok=True)
-            print(f"  created {circuits_dir}/")
+        for cir_name, cir_content in cir_files.items():
+            _write_file(circuits_dir / cir_name, cir_content, dry_run=dry_run)
 
     print("\nDone.")
     return 0
