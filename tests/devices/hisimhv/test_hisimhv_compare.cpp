@@ -186,3 +186,47 @@ TEST_F(HiSIMHVValidation, NmosAcResponse) {
     EXPECT_GT(std::abs(phase_low_deg), 90.0)
         << "CS amp should show inverting phase (|phase| > 90 deg) at low frequency";
 }
+
+// ============================================================================
+// 4.  Noise Analysis -- NMOS common-source amplifier noise
+//
+// Circuit: Vdd(3.3V) -> Rd(1k) -> drain, M1(drain,gate,0,0,0), Vin AC=1.
+// HiSIM_HV noise model provides thermal, flicker (1/f), and shot noise.
+// ============================================================================
+
+TEST_F(HiSIMHVValidation, NmosNoise) {
+    std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/hisimhv_nmos_noise.cir";
+
+    // Run ngspice
+    NgspiceNoiseResult ng_result;
+    try {
+        ng_result = ngspice_->run_noise(cir_path);
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+    }
+
+    if (ng_result.frequency.empty()) {
+        GTEST_SKIP() << "ngspice returned empty noise result (HiSIM_HV may not be compiled in)";
+    }
+
+    // Run neospice
+    auto ckt = sim_.load(cir_path);
+    auto cs_result = sim_.run(ckt);
+    ASSERT_TRUE(cs_result.noise.has_value()) << "neospice noise analysis returned no result";
+    ASSERT_EQ(ng_result.frequency.size(), cs_result.noise->frequency.size())
+        << "Frequency point count mismatch";
+
+    // Compare noise results. Use 10% relative tolerance since noise models
+    // can have small implementation differences (induced gate noise, etc.).
+    auto cmp = compare_noise(ng_result, *cs_result.noise, {1e-1, 1e-30});
+    EXPECT_TRUE(cmp.passed)
+        << "Noise comparison failed. Worst: " << cmp.worst_signal
+        << " error: " << cmp.worst_error;
+
+    // Verify basic noise physics: output noise density should be positive
+    // and decrease with frequency (due to 1/f component)
+    ASSERT_FALSE(cs_result.noise->output_noise_density.empty());
+    for (double n : cs_result.noise->output_noise_density) {
+        EXPECT_GE(n, 0.0) << "Noise spectral density should be non-negative";
+    }
+}

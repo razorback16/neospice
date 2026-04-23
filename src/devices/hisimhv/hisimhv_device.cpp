@@ -33,6 +33,10 @@ static inline int neo_to_ucb(int32_t neo) {
     return (neo < 0) ? 0 : (neo + 1);
 }
 
+static inline int32_t ucb_to_neo(int ucb_node) {
+    return (ucb_node <= 0) ? GROUND_INTERNAL : (ucb_node - 1);
+}
+
 // ---------------------------------------------------------------------------
 // make
 // ---------------------------------------------------------------------------
@@ -827,18 +831,99 @@ std::optional<double> HSMHVDevice::query_param(const std::string& name) const {
 }
 
 // ---------------------------------------------------------------------------
-// noise_sources — TODO: implement device noise model
+// noise_sources — HiSIM_HV noise model
+//
+// Implements noise sources from hsmhvnoi.c:
+//   1. Drain/source series resistance thermal noise
+//   2. Channel thermal noise (HiSIM model)
+//   3. Flicker (1/f) noise (HiSIM model)
+//   4. Induced gate noise (projected onto drain-source, correlated component)
+//   5. Shot noise (Igs, Igd, Igb)
 // ---------------------------------------------------------------------------
-std::vector<Device::NoiseSource> HSMHVDevice::noise_sources(
-        double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
-    // TODO: Port noise sources from the ngspice *noise.c file.
-    // Common noise types:
-    //   Thermal: 4*k*T*G  (conductance noise)
-    //   Shot:    2*q*|I|  (junction current noise)
-    //   Flicker: KF*|I|^AF / f^EF  (1/f noise)
-    // Use sim_temp() for temperature (inherited from Device base class).
-    // See bjt_device.cpp and bsim4v7_device.cpp for examples.
-    return {};
+std::vector<Device::NoiseSource>
+HSMHVDevice::noise_sources(double freq,
+                            const std::vector<double>& /*dc_solution*/) const {
+    const auto* model = model_;
+    const auto& inst  = inst_;
+
+    const double m     = inst.HSMHV_m;
+    const double TTEMP = (inst.HSMHV_dtemp_Given) ? (sim_temp_ + inst.HSMHV_dtemp)
+                       : sim_temp_;
+    const double fourKT = 4.0 * BOLTZMANN * TTEMP;
+
+    // Node indices (neospice convention)
+    const int32_t dp_neo = ucb_to_neo(inst.HSMHVdNodePrime);
+    const int32_t sp_neo = ucb_to_neo(inst.HSMHVsNodePrime);
+    const int32_t d_neo  = ucb_to_neo(inst.HSMHVdNode);
+    const int32_t s_neo  = ucb_to_neo(inst.HSMHVsNode);
+    const int32_t gp_neo = ucb_to_neo(inst.HSMHVgNodePrime);
+    const int32_t bp_neo = ucb_to_neo(inst.HSMHVbNodePrime);
+
+    std::vector<NoiseSource> sources;
+    sources.reserve(8);
+
+    // -----------------------------------------------------------------------
+    // 1. Drain / Source series resistance thermal noise
+    //    ngspice: corsrd == 1 || corsrd == 3
+    // -----------------------------------------------------------------------
+    if (model->HSMHV_corsrd == 1 || model->HSMHV_corsrd == 3) {
+        const double gdpr = inst.HSMHVdrainConductance;
+        const double gspr = inst.HSMHVsourceConductance;
+
+        if (gdpr > 0.0)
+            sources.push_back({dp_neo, d_neo, fourKT * gdpr * m});
+        if (gspr > 0.0)
+            sources.push_back({sp_neo, s_neo, fourKT * gspr * m});
+    }
+
+    // -----------------------------------------------------------------------
+    // 2. Channel thermal noise (HiSIM model)
+    //    HSMHV_noithrml is already multiplied by Mfactor in eval code.
+    //    Here we use 'inst.HSMHV_noithrml' which is Mfactor * Nthrml,
+    //    so we do NOT multiply by 'm' again (m == Mfactor).
+    // -----------------------------------------------------------------------
+    double channel_noise = fourKT * inst.HSMHV_noithrml;
+    if (channel_noise > 0.0)
+        sources.push_back({dp_neo, sp_neo, channel_noise});
+
+    // -----------------------------------------------------------------------
+    // 3. Flicker (1/f) noise (HiSIM model)
+    //    HSMHV_noiflick is already multiplied by Mfactor in eval code.
+    //    ngspice divides by freq^falph at noise-analysis time.
+    // -----------------------------------------------------------------------
+    if (freq > 0.0 && inst.HSMHV_noiflick != 0.0) {
+        double flicker = inst.HSMHV_noiflick / std::pow(freq, model->HSMHV_falph);
+        if (flicker > 0.0)
+            sources.push_back({dp_neo, sp_neo, flicker});
+    }
+
+    // -----------------------------------------------------------------------
+    // 4. Induced gate noise (projected onto drain-source, correlated part)
+    //    ngspice: noiigate * noicross^2 * freq^2  (between dp and sp)
+    //    HSMHV_noiigate is already multiplied by Mfactor in eval code.
+    // -----------------------------------------------------------------------
+    if (freq > 0.0 && inst.HSMHV_noiigate > 0.0
+        && inst.HSMHV_noicross != 0.0) {
+        double ign = inst.HSMHV_noiigate
+                   * inst.HSMHV_noicross * inst.HSMHV_noicross
+                   * freq * freq;
+        if (ign > 0.0)
+            sources.push_back({dp_neo, sp_neo, ign});
+    }
+
+    // -----------------------------------------------------------------------
+    // 5. Shot noise (gate tunneling: Igs, Igd, Igb)
+    //    HSMHV_igs/igd/igb are already multiplied by Mfactor in eval code.
+    // -----------------------------------------------------------------------
+    const double CHARGE_Q = 1.60217663e-19;
+    if (std::abs(inst.HSMHV_igs) > 0.0)
+        sources.push_back({gp_neo, sp_neo, 2.0 * CHARGE_Q * std::abs(inst.HSMHV_igs)});
+    if (std::abs(inst.HSMHV_igd) > 0.0)
+        sources.push_back({gp_neo, dp_neo, 2.0 * CHARGE_Q * std::abs(inst.HSMHV_igd)});
+    if (std::abs(inst.HSMHV_igb) > 0.0)
+        sources.push_back({gp_neo, bp_neo, 2.0 * CHARGE_Q * std::abs(inst.HSMHV_igb)});
+
+    return sources;
 }
 
 } // namespace neospice
