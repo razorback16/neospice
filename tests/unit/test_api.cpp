@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <cmath>
 #include "api/neospice.hpp"
 
 using namespace neospice;
@@ -151,4 +152,43 @@ R1 in 0 1k
     // signal_names
     auto names = ac.signal_names();
     EXPECT_FALSE(names.empty());
+}
+
+TEST(NoiseResultAPI, Helpers) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+Noise test
+V1 in 0 DC 0 AC 1
+R1 in out 1k
+R2 out 0 1k
+.noise v(out) V1 dec 10 1 1meg
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.noise.has_value());
+    auto& nr = *result.noise;
+
+    // output_noise_sqrt returns V/sqrt(Hz) (more intuitive than V^2/Hz)
+    auto on_sqrt = nr.output_noise_sqrt();
+    ASSERT_EQ(on_sqrt.size(), nr.frequency.size());
+    for (std::size_t i = 0; i < on_sqrt.size(); ++i)
+        EXPECT_NEAR(on_sqrt[i], std::sqrt(nr.output_noise_density[i]), 1e-30);
+
+    // input_noise_sqrt
+    auto in_sqrt = nr.input_noise_sqrt();
+    ASSERT_EQ(in_sqrt.size(), nr.frequency.size());
+
+    // integrated_output_noise over full band (trapezoidal integration)
+    double integrated = nr.integrated_output_noise(nr.frequency.front(), nr.frequency.back());
+    EXPECT_GT(integrated, 0.0);
+
+    // device_names lists contributing devices
+    auto devs = nr.device_names();
+    EXPECT_FALSE(devs.empty());
+
+    // signal_names
+    auto snames = nr.signal_names();
+    EXPECT_TRUE(std::find(snames.begin(), snames.end(), "onoise") != snames.end());
+    EXPECT_TRUE(std::find(snames.begin(), snames.end(), "inoise") != snames.end());
 }
