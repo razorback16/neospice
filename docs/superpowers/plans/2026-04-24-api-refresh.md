@@ -1,6 +1,6 @@
 # API Refresh: Roadmap Update, Typed Results, SimStatus
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**Status: COMPLETE** — All 10 tasks implemented and committed.
 
 **Goal:** Modernize the public API surface — refresh the outdated roadmap, complete typed result accessors across all result types, and add structured simulation status reporting.
 
@@ -8,16 +8,18 @@
 
 **Tech Stack:** C++20, Google Test, CMake. No new dependencies.
 
+**Note:** After this plan was completed, the R5/R7 refactors changed `AnalysisCommand` to `std::variant` and `SimulationResult` from 8 optionals to `std::variant<std::monostate, DCResult, ...>`. The test code samples below still reference the pre-refactor API (`result.dc.has_value()`, `*result.dc`); actual test code now uses `std::get_if<DCResult>(&result.analysis)` etc.
+
 ---
 
-## Task 1: Refresh ROADMAP.md
+## Task 1: Refresh ROADMAP.md ✓ `9138276`
 
 **Files:**
 - Modify: `docs/ROADMAP.md`
 
 The current roadmap describes neospice as having a handful of devices and a few analyses. The actual state: 28 device types, 8 analysis types, 852 tests, `.subckt`/`.param`/`.lib`/`.func`/`.measure`/`.step` all working. The API Vision section's code examples for typed access already partially exist. Phase 7 lists BSIM-SOI and Verilog-A as future — BSIMSOI is already migrated.
 
-- [ ] **Step 1: Update "Current State" section**
+- [x] **Step 1: Update "Current State" section**
 
 Replace the current state block (lines 1–17) with:
 
@@ -59,7 +61,7 @@ Fourier/THD, parameter sweep (.step), and .measure post-processing.
 - **ngspice-compatible output**: raw file format matches ngspice for drop-in tool compatibility
 ```
 
-- [ ] **Step 2: Update API Vision section**
+- [x] **Step 2: Update API Vision section**
 
 Replace the "Typed Result Access" code block (lines 172–186) to note what already exists:
 
@@ -89,7 +91,7 @@ auto inoise  = noise.integrated_input(1e3, 1e6); // integrated RMS input noise
 ```
 ```
 
-- [ ] **Step 3: Update Phase 7 to reflect completed work**
+- [x] **Step 3: Update Phase 7 to reflect completed work**
 
 Replace the Phase 7 section (lines 139–158) to remove completed items and add actual remaining gaps:
 
@@ -115,7 +117,7 @@ VBIC, JFET, JFET2, HFET1, HFET2, Diode, LTRA, ASRC, and all passives/sources/swi
 - Full `.param` function library (most common functions done)
 ```
 
-- [ ] **Step 4: Update summary table**
+- [x] **Step 4: Update summary table**
 
 Replace the summary table (lines 310–318):
 
@@ -135,12 +137,12 @@ Replace the summary table (lines 310–318):
 | 7     | Extended devices/analyses  | Completeness    | Ongoing  | Active  |
 ```
 
-- [ ] **Step 5: Build and verify no regressions**
+- [x] **Step 5: Build and verify no regressions**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -5`
 Expected: build succeeds (docs-only change)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/ROADMAP.md
@@ -149,7 +151,7 @@ git commit -m "docs: refresh roadmap to reflect 28 devices, 8 analyses, 852 test
 
 ---
 
-## Task 2: Typed Accessors — TransientResult
+## Task 2: Typed Accessors — TransientResult ✓ `0550f51`
 
 **Files:**
 - Modify: `src/core/transient.hpp`
@@ -157,7 +159,7 @@ git commit -m "docs: refresh roadmap to reflect 28 devices, 8 analyses, 852 test
 
 TransientResult has `voltage()` and `current()` but lacks `diff()` (differential voltage) which analog designers use constantly for diff-pair outputs. Also add `signal_names()` for introspection.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/unit/test_api.cpp`:
 
@@ -191,12 +193,12 @@ R2 b 0 1k
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — `diff` and `signal_names` not found on TransientResult.
 
-- [ ] **Step 3: Implement diff() and signal_names()**
+- [x] **Step 3: Implement diff() and signal_names()**
 
 In `src/core/transient.hpp`, add inside `struct TransientResult` after `current()`:
 
@@ -219,12 +221,12 @@ In `src/core/transient.hpp`, add inside `struct TransientResult` after `current(
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimulatorAPI -V 2>&1 | tail -10`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/transient.hpp tests/unit/test_api.cpp
@@ -233,7 +235,7 @@ git commit -m "feat: add diff() and signal_names() to TransientResult"
 
 ---
 
-## Task 3: Typed Accessors — DCSweepResult and DCResult
+## Task 3: Typed Accessors — DCSweepResult and DCResult ✓ `d8f648e`
 
 **Files:**
 - Modify: `src/core/dc.hpp`
@@ -241,7 +243,7 @@ git commit -m "feat: add diff() and signal_names() to TransientResult"
 
 DCSweepResult lacks `diff()` and `signal_names()`. DCResult lacks `signal_names()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/unit/test_api.cpp`:
 
@@ -290,12 +292,12 @@ R4 b 0 1k
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — `signal_names` and `diff` not found.
 
-- [ ] **Step 3: Implement helpers on DCResult and DCSweepResult**
+- [x] **Step 3: Implement helpers on DCResult and DCSweepResult**
 
 In `src/core/dc.hpp`, add inside `struct DCResult` after `diff()`:
 
@@ -330,12 +332,12 @@ In `src/core/dc.hpp`, add inside `struct DCSweepResult` after `current()`:
     }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R "DCResultAPI|DCSweepResultAPI" -V 2>&1 | tail -10`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/dc.hpp tests/unit/test_api.cpp
@@ -344,7 +346,7 @@ git commit -m "feat: add diff() and signal_names() to DCResult/DCSweepResult"
 
 ---
 
-## Task 4: Typed Accessors — ACResult current helpers + signal_names
+## Task 4: Typed Accessors — ACResult current helpers + signal_names ✓ `935f6c7`
 
 **Files:**
 - Modify: `src/core/ac.hpp`
@@ -352,7 +354,7 @@ git commit -m "feat: add diff() and signal_names() to DCResult/DCSweepResult"
 
 ACResult has `magnitude_db()`, `phase_deg()`, `magnitude()` for voltages but not for currents (analog designers need `|I(V1)|` in dB for impedance analysis). Also needs `signal_names()` and `current_magnitude_db()` / `current_phase_deg()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/unit/test_api.cpp`:
 
@@ -388,12 +390,12 @@ R1 in 0 1k
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — `current_magnitude_db`, `current_phase_deg`, `signal_names` not found.
 
-- [ ] **Step 3: Implement current helpers and signal_names on ACResult**
+- [x] **Step 3: Implement current helpers and signal_names on ACResult**
 
 In `src/core/ac.hpp`, add inside `struct ACResult` after `diff_magnitude_db()`:
 
@@ -431,12 +433,12 @@ In `src/core/ac.hpp`, add inside `struct ACResult` after `diff_magnitude_db()`:
     }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R ACResultAPI -V 2>&1 | tail -10`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/ac.hpp tests/unit/test_api.cpp
@@ -445,7 +447,7 @@ git commit -m "feat: add current helpers and signal_names() to ACResult"
 
 ---
 
-## Task 5: Typed Accessors — NoiseResult
+## Task 5: Typed Accessors — NoiseResult ✓ `b8575c9`
 
 **Files:**
 - Modify: `src/core/noise.hpp`
@@ -453,7 +455,7 @@ git commit -m "feat: add current helpers and signal_names() to ACResult"
 
 NoiseResult has zero helper methods — only raw vectors. Analog designers need: per-device accessor with friendly name, integrated RMS noise over a band, and spot noise at a frequency.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/unit/test_api.cpp`:
 
@@ -498,12 +500,12 @@ R2 out 0 1k
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — methods not found on NoiseResult.
 
-- [ ] **Step 3: Implement NoiseResult helpers**
+- [x] **Step 3: Implement NoiseResult helpers**
 
 In `src/core/noise.hpp`, add `#include <cmath>` and `#include <algorithm>` to the includes, then add inside `struct NoiseResult` after the `device_noise` field:
 
@@ -562,12 +564,12 @@ In `src/core/noise.hpp`, add `#include <cmath>` and `#include <algorithm>` to th
     }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R NoiseResultAPI -V 2>&1 | tail -10`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/noise.hpp tests/unit/test_api.cpp
@@ -576,7 +578,7 @@ git commit -m "feat: add typed accessors to NoiseResult (sqrt, integrated, devic
 
 ---
 
-## Task 6: Define SimStatus Struct
+## Task 6: Define SimStatus Struct ✓ `de2a3d8`
 
 **Files:**
 - Create: `src/core/sim_status.hpp`
@@ -585,7 +587,7 @@ git commit -m "feat: add typed accessors to NoiseResult (sqrt, integrated, devic
 
 SimStatus is a lightweight struct that every solve function will populate to report how the simulation converged. It replaces "throw on failure" with structured data for the common case while still allowing throws for truly unrecoverable errors (singular matrix, bad netlist).
 
-- [ ] **Step 1: Write the test for SimStatus construction**
+- [x] **Step 1: Write the test for SimStatus construction**
 
 Create `tests/unit/test_sim_status.cpp`:
 
@@ -618,12 +620,12 @@ TEST(SimStatus, MethodToString) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — header not found.
 
-- [ ] **Step 3: Create sim_status.hpp**
+- [x] **Step 3: Create sim_status.hpp**
 
 Create `src/core/sim_status.hpp`:
 
@@ -662,16 +664,16 @@ struct SimStatus {
 } // namespace neospice
 ```
 
-- [ ] **Step 4: Wire test into CMake**
+- [x] **Step 4: Wire test into CMake**
 
 Find the CMake target that builds `test_api.cpp` and add `test_sim_status.cpp` to the same target's sources list. The file is likely `tests/CMakeLists.txt` or `tests/unit/CMakeLists.txt`.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatus -V 2>&1 | tail -10`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/sim_status.hpp tests/unit/test_sim_status.cpp tests/CMakeLists.txt
@@ -680,7 +682,7 @@ git commit -m "feat: add SimStatus struct for structured convergence reporting"
 
 ---
 
-## Task 7: Embed SimStatus in Result Types
+## Task 7: Embed SimStatus in Result Types ✓ `5bc38f8`
 
 **Files:**
 - Modify: `src/core/dc.hpp`
@@ -694,7 +696,7 @@ git commit -m "feat: add SimStatus struct for structured convergence reporting"
 
 Add a `SimStatus status` field to every result type. Initially it will have the default (converged=true, iterations=0). The next task wires solve functions to populate it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/unit/test_api.cpp`:
 
@@ -751,12 +753,12 @@ C1 out 0 1n
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — no `status` member.
 
-- [ ] **Step 3: Add SimStatus field to all result types**
+- [x] **Step 3: Add SimStatus field to all result types**
 
 Add `#include "core/sim_status.hpp"` and `SimStatus status;` field to each struct:
 
@@ -774,7 +776,7 @@ In `src/core/sens.hpp`, add include at top, and inside `struct SensResult` add `
 
 In `src/core/pz.hpp`, add include at top, and inside `struct PZResult` add `SimStatus status;` as the last field.
 
-- [ ] **Step 4: Build and run full test suite**
+- [x] **Step 4: Build and run full test suite**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all existing tests pass (SimStatus has sane defaults, so nothing breaks). The new tests will fail on `iterations > 0` since solve functions don't populate status yet — that's Task 8. Mark these tests as `DISABLED_` for now:
@@ -787,7 +789,7 @@ Rename the new tests:
 Then run: `ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all pass (disabled tests skipped).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/dc.hpp src/core/transient.hpp src/core/ac.hpp src/core/noise.hpp \
@@ -797,7 +799,7 @@ git commit -m "feat: embed SimStatus field in all result types"
 
 ---
 
-## Task 8: Populate SimStatus in DC and Transient Solvers
+## Task 8: Populate SimStatus in DC and Transient Solvers ✓ `06031ba`
 
 **Files:**
 - Modify: `src/core/dc.cpp`
@@ -806,19 +808,19 @@ git commit -m "feat: embed SimStatus field in all result types"
 
 This is the wiring task — thread SimStatus through the convergence cascade in `solve_dc()` and the transient loop in `solve_transient()`.
 
-- [ ] **Step 1: Re-enable the SimStatus integration tests**
+- [x] **Step 1: Re-enable the SimStatus integration tests**
 
 In `tests/unit/test_api.cpp`, rename back:
 - `DISABLED_DCResultHasStatus` → `DCResultHasStatus`
 - `DISABLED_TransientResultHasStatus` → `TransientResultHasStatus`
 - `DISABLED_ACResultHasStatus` → `ACResultHasStatus`
 
-- [ ] **Step 2: Run tests to confirm they fail**
+- [x] **Step 2: Run tests to confirm they fail**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
 Expected: FAIL on `iterations > 0`.
 
-- [ ] **Step 3: Populate SimStatus in solve_dc()**
+- [x] **Step 3: Populate SimStatus in solve_dc()**
 
 In `src/core/dc.cpp`, add `#include <chrono>` at the top.
 
@@ -862,7 +864,7 @@ In `solve_dc()`, add timing and status tracking. After the existing convergence 
 
 The same pattern applies to `solve_dc_sweep()` — add timing and populate the DCSweepResult's status with the total iterations and elapsed time for the full sweep.
 
-- [ ] **Step 4: Populate SimStatus in solve_transient()**
+- [x] **Step 4: Populate SimStatus in solve_transient()**
 
 In `src/core/transient.cpp`, add `#include <chrono>` at the top.
 
@@ -887,7 +889,7 @@ In `src/core/transient.cpp`, add `#include <chrono>` at the top.
     tran_result.status = sim_status;
 ```
 
-- [ ] **Step 5: Populate SimStatus in solve_ac()**
+- [x] **Step 5: Populate SimStatus in solve_ac()**
 
 In `src/core/ac.cpp`, add `#include <chrono>` at the top.
 
@@ -905,17 +907,17 @@ The AC solve first does a DC operating point. Capture its status:
     ac_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
 ```
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
 Expected: all 3 PASS.
 
-- [ ] **Step 7: Run full test suite for regressions**
+- [x] **Step 7: Run full test suite for regressions**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/core/dc.cpp src/core/transient.cpp src/core/ac.cpp tests/unit/test_api.cpp
@@ -924,7 +926,7 @@ git commit -m "feat: populate SimStatus in DC, transient, and AC solvers"
 
 ---
 
-## Task 9: Populate SimStatus in Remaining Solvers
+## Task 9: Populate SimStatus in Remaining Solvers ✓ `e1b0a70`
 
 **Files:**
 - Modify: `src/core/noise.cpp`
@@ -935,7 +937,7 @@ git commit -m "feat: populate SimStatus in DC, transient, and AC solvers"
 
 Same pattern as Task 8 for the remaining analysis types.
 
-- [ ] **Step 1: Write tests**
+- [x] **Step 1: Write tests**
 
 Add to `tests/unit/test_api.cpp`:
 
@@ -991,12 +993,12 @@ R2 out 0 1k
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R "SimStatusIntegration.*Noise|SimStatusIntegration.*TF|SimStatusIntegration.*Sens" -V 2>&1 | tail -15`
 Expected: FAIL on `elapsed_seconds > 0.0`.
 
-- [ ] **Step 3: Add timing to noise, TF, sens, and PZ solvers**
+- [x] **Step 3: Add timing to noise, TF, sens, and PZ solvers**
 
 In each of `src/core/noise.cpp`, `src/core/tf.cpp`, `src/core/sens.cpp`, `src/core/pz.cpp`:
 
@@ -1011,17 +1013,17 @@ In each of `src/core/noise.cpp`, `src/core/tf.cpp`, `src/core/sens.cpp`, `src/co
 
 For `solve_tf()` and `solve_sens()`, also capture the DC iterations from the internal DC solve.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
 Expected: all PASS.
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 Run: `ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all tests pass, zero regressions.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/noise.cpp src/core/tf.cpp src/core/sens.cpp src/core/pz.cpp \
@@ -1031,19 +1033,19 @@ git commit -m "feat: populate SimStatus in noise, TF, sensitivity, and PZ solver
 
 ---
 
-## Task 10: Deduplicate apply_save_filter in neospice.cpp
+## Task 10: Deduplicate apply_save_filter in neospice.cpp ✓ `064cfd6`
 
 **Files:**
 - Modify: `src/api/neospice.cpp`
 
 The `apply_save_filter` function is copy-pasted 4 times with identical logic (DCResult, DCSweepResult, TransientResult, ACResult). Replace with a single template.
 
-- [ ] **Step 1: Run full test suite to establish baseline**
+- [x] **Step 1: Run full test suite to establish baseline**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all pass.
 
-- [ ] **Step 2: Replace 4 overloads with one template**
+- [x] **Step 2: Replace 4 overloads with one template**
 
 In `src/api/neospice.cpp`, replace all four `apply_save_filter` functions (the block from roughly line 26 to line 92) with:
 
@@ -1070,12 +1072,12 @@ static void apply_save_filter(Result& r, const std::vector<std::string>& sigs) {
 }
 ```
 
-- [ ] **Step 3: Build and run full test suite**
+- [x] **Step 3: Build and run full test suite**
 
 Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all pass, zero regressions.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/api/neospice.cpp
