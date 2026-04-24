@@ -64,6 +64,12 @@ struct NoiseResult {
         return names;
     }
 
+    const std::vector<double>& device_noise_density(const std::string& name) const {
+        auto it = device_noise.find(name);
+        if (it != device_noise.end()) return it->second;
+        throw std::out_of_range("Noise device not found: " + name);
+    }
+
     std::vector<std::string> signal_names() const {
         std::vector<std::string> names = {"onoise", "inoise"};
         for (const auto& [k, v] : device_noise) names.push_back(k);

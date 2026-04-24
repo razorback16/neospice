@@ -193,6 +193,33 @@ R2 out 0 1k
     EXPECT_TRUE(std::find(snames.begin(), snames.end(), "inoise") != snames.end());
 }
 
+TEST(NoiseResultAPI, DeviceNoiseDensity) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+Noise per-device
+V1 in 0 DC 0 AC 1
+R1 in out 1k
+R2 out 0 1k
+.noise v(out) V1 dec 10 1 1meg
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<NoiseResult>(result.analysis));
+    auto& nr = std::get<NoiseResult>(result.analysis);
+
+    auto devs = nr.device_names();
+    ASSERT_FALSE(devs.empty());
+    for (const auto& d : devs) {
+        const auto& density = nr.device_noise_density(d);
+        ASSERT_EQ(density.size(), nr.frequency.size());
+        for (auto v : density)
+            EXPECT_GE(v, 0.0);
+    }
+
+    EXPECT_THROW(nr.device_noise_density("nonexistent"), std::out_of_range);
+}
+
 TEST(SimStatusIntegration, DCResultHasStatus) {
     neospice::Simulator sim;
     std::string netlist = R"(
