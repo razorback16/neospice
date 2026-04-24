@@ -74,6 +74,38 @@ struct ACResult {
             result[i] = 20.0 * std::log10(std::max(std::abs(d[i]), 1e-30));
         return result;
     }
+
+    std::vector<double> current_magnitude_db(const std::string& dev) const {
+        const auto& c = current(dev);
+        std::vector<double> result(c.size());
+        for (std::size_t i = 0; i < c.size(); ++i)
+            result[i] = 20.0 * std::log10(std::max(std::abs(c[i]), 1e-30));
+        return result;
+    }
+
+    std::vector<double> current_phase_deg(const std::string& dev) const {
+        const auto& c = current(dev);
+        std::vector<double> result(c.size());
+        for (std::size_t i = 0; i < c.size(); ++i)
+            result[i] = std::atan2(c[i].imag(), c[i].real()) * (180.0 / M_PI);
+        return result;
+    }
+
+    std::vector<double> current_magnitude(const std::string& dev) const {
+        const auto& c = current(dev);
+        std::vector<double> result(c.size());
+        for (std::size_t i = 0; i < c.size(); ++i)
+            result[i] = std::abs(c[i]);
+        return result;
+    }
+
+    std::vector<std::string> signal_names() const {
+        std::vector<std::string> names;
+        names.reserve(voltages.size() + currents.size());
+        for (const auto& [k, v] : voltages) names.push_back(k);
+        for (const auto& [k, v] : currents) names.push_back(k);
+        return names;
+    }
 };
 
 ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,

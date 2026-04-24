@@ -122,3 +122,33 @@ R4 b 0 1k
     auto names = sw.signal_names();
     EXPECT_TRUE(std::find(names.begin(), names.end(), "v(a)") != names.end());
 }
+
+TEST(ACResultAPI, CurrentMagnitudeAndSignalNames) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+AC current
+V1 in 0 DC 0 AC 1
+R1 in 0 1k
+.ac dec 10 100 1meg
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.ac.has_value());
+    auto& ac = *result.ac;
+
+    // Current magnitude in dB
+    auto idb = ac.current_magnitude_db("v1");
+    ASSERT_EQ(idb.size(), ac.frequency.size());
+    // At all frequencies, I(V1) = V/R = 1/1000 => 20*log10(1e-3) = -60 dB
+    for (auto v : idb)
+        EXPECT_NEAR(v, -60.0, 0.1);
+
+    // Current phase
+    auto iph = ac.current_phase_deg("v1");
+    ASSERT_EQ(iph.size(), ac.frequency.size());
+
+    // signal_names
+    auto names = ac.signal_names();
+    EXPECT_FALSE(names.empty());
+}
