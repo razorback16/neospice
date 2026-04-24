@@ -4,6 +4,7 @@
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <stdexcept>
 
@@ -44,6 +45,7 @@ static double extract_output(const DCResult& dc, const std::string& output_var) 
 }
 
 SensResult solve_sens(Circuit& ckt, const std::string& output_var) {
+    auto t_start = std::chrono::steady_clock::now();
     SensResult result;
     result.output_var = to_lower(output_var);
 
@@ -119,6 +121,9 @@ SensResult solve_sens(Circuit& ckt, const std::string& output_var) {
         }
     }
 
+    auto t_end = std::chrono::steady_clock::now();
+    result.status.converged = true;
+    result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
     return result;
 }
 

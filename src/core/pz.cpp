@@ -5,6 +5,7 @@
 #include "core/convergence.hpp"
 #include "core/klu_solver.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -22,6 +23,7 @@ PZResult solve_pz(Circuit& ckt,
                   const std::string& out_pos, const std::string& out_neg,
                   PZTransferType transfer, PZType type)
 {
+    auto t_start = std::chrono::steady_clock::now();
     const int32_t n = ckt.num_vars();
 
     // 1. DC operating point (same approach as ac.cpp)
@@ -172,6 +174,9 @@ PZResult solve_pz(Circuit& ckt,
         }
     }
 
+    auto t_end = std::chrono::steady_clock::now();
+    result.status.converged = true;
+    result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
     return result;
 }
 

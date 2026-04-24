@@ -6,6 +6,7 @@
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <complex>
 #include <stdexcept>
@@ -22,6 +23,7 @@ NoiseResult solve_noise(Circuit& ckt,
                         const std::string& input_src,
                         AnalysisCommand::ACMode mode,
                         int npoints, double fstart, double fstop) {
+    auto t_start = std::chrono::steady_clock::now();
     const int32_t n = ckt.num_vars();
 
     // ---------------------------------------------------------------
@@ -396,6 +398,9 @@ NoiseResult solve_noise(Circuit& ckt,
         }
     }
 
+    auto t_end = std::chrono::steady_clock::now();
+    noise_result.status.converged = true;
+    noise_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
     return noise_result;
 }
 

@@ -245,3 +245,54 @@ C1 out 0 1n
     EXPECT_TRUE(result.ac->status.converged);
     EXPECT_GT(result.ac->status.elapsed_seconds, 0.0);
 }
+
+TEST(SimStatusIntegration, NoiseResultHasStatus) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+Noise status
+V1 in 0 DC 0 AC 1
+R1 in out 1k
+R2 out 0 1k
+.noise v(out) V1 dec 10 1 1meg
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.noise.has_value());
+    EXPECT_TRUE(result.noise->status.converged);
+    EXPECT_GT(result.noise->status.elapsed_seconds, 0.0);
+}
+
+TEST(SimStatusIntegration, TFResultHasStatus) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+TF status
+V1 in 0 10
+R1 in out 1k
+R2 out 0 1k
+.tf v(out) V1
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.tf.has_value());
+    EXPECT_TRUE(result.tf->status.converged);
+    EXPECT_GT(result.tf->status.elapsed_seconds, 0.0);
+}
+
+TEST(SimStatusIntegration, SensResultHasStatus) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+Sens status
+V1 in 0 10
+R1 in out 1k
+R2 out 0 1k
+.sens v(out)
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.sens.has_value());
+    EXPECT_TRUE(result.sens->status.converged);
+    EXPECT_GT(result.sens->status.elapsed_seconds, 0.0);
+}

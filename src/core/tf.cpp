@@ -11,6 +11,7 @@
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <stdexcept>
 
@@ -23,6 +24,7 @@ static std::string to_lower(std::string s) {
 
 TFResult solve_tf(Circuit& ckt, const std::string& output_var,
                   const std::string& input_src) {
+    auto t_start = std::chrono::steady_clock::now();
     // ---------------------------------------------------------------
     // 1. DC operating point
     // ---------------------------------------------------------------
@@ -271,6 +273,9 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
         std::string out_dev = out_lower.substr(2, out_lower.size() - 3);
         if (out_dev == src_lower) {
             tf.output_impedance = tf.input_impedance;
+            auto t_end = std::chrono::steady_clock::now();
+            tf.status.converged = true;
+            tf.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
             return tf;
         }
     }
@@ -303,6 +308,9 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
         }
     }
 
+    auto t_end = std::chrono::steady_clock::now();
+    tf.status.converged = true;
+    tf.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
     return tf;
 }
 
