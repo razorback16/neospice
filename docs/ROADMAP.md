@@ -2,16 +2,36 @@
 
 ## Current State
 
-neospice is a modern C++ SPICE simulator that matches ngspice's numerical accuracy
-while delivering 1.5–6x performance improvement. Core analyses (DC, Transient, AC,
-Noise, DC Sweep, Fourier, Measure) and devices (R/C/L, V/I, Diode, BSIM4v7, BJT,
-JFET, controlled sources, switches, transmission lines, coupled inductors) are
-production-ready with full ngspice validation.
+neospice is a modern C++ SPICE simulator with 28 device models and 8 analysis types,
+validated against ngspice across 852 tests with tolerances as tight as 1e-6.
 
-### What sets neospice apart today
+### Analyses
+DC operating point, DC sweep (nested 2-parameter), transient (adaptive Trap/Gear-2/BE),
+AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero,
+Fourier/THD, parameter sweep (.step), and .measure post-processing.
+
+### Device Models
+| Category | Devices |
+|----------|---------|
+| Passives | R (TC, RAC, flicker noise), C, L, K (mutual) |
+| Sources | V, I (DC/PULSE/SIN/PWL/EXP/SFFM/AM) |
+| Dependent | E, G, F, H (linear + POLY + TABLE) |
+| Behavioral | B (auto-diff Jacobian, DDT, IDT, PWL, TABLE, TEMP) |
+| Switches | S (voltage), W (current) — hysteresis |
+| T-Line | T (lossless Branin), O (LTRA lossy) |
+| Diode/BJT | Diode, BJT (Gummel-Poon), VBIC (level 4/9/12/13) |
+| JFET/HFET | JFET, JFET2, HFET1, HFET2 |
+| MOSFET | MOS1, MOS3, MOS9, BSIM3v32, BSIM3, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV |
+
+### Netlist Features
+`.param` expressions, `.subckt`/`.ends`, `.include`/`.lib`, `.global`, `.ic`, `.nodeset`,
+`.options`, `.func`, `.measure`, `.save`, `.step`, SPICE suffixes (k/m/u/n/p/f/T).
+
+### What sets neospice apart
 - **Performance**: 1.5–6x faster than ngspice in-process; zero subprocess overhead as a library
-- **Embeddable C++ API**: clean `Simulator`/`Circuit`/`Result` interface vs ngspice's callback-heavy shared library
-- **Modern codebase**: C++20 with a clean Device abstraction — easy to extend, audit, and optimize
+- **Embeddable C++ API**: clean `Simulator`/`Circuit`/`Result` interface
+- **Auto-differentiation**: B-source expressions get exact Jacobians (no numerical perturbation)
+- **Modern codebase**: C++20, clean Device abstraction, auto-migration tooling for ngspice models
 - **ngspice-compatible output**: raw file format matches ngspice for drop-in tool compatibility
 
 ---
@@ -139,22 +159,21 @@ matrix operations to GPU.
 
 **Priority: Ongoing**
 
-Fill remaining gaps relative to ngspice's feature set.
-
-### Devices
-- BSIM-CMG (FinFET) model
-- BSIM-SOI model
+### Devices — Remaining Gaps
+- BSIM-CMG (FinFET) model — next-gen compact model, industry demand
 - Verilog-A device model compilation (long-term — enables user-defined models)
+- Priority 3 legacy devices (MOS2, MOS6, etc.) — low demand, available via migration tool
 
-### Analyses
-- Pole-zero analysis (`.pz`)
-- Transfer function analysis (`.tf`)
+### Devices — Completed
+MOS1, MOS3, MOS9, BSIM3v32, BSIM3, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV, BJT,
+VBIC, JFET, JFET2, HFET1, HFET2, Diode, LTRA, ASRC, and all passives/sources/switches.
+
+### Analyses — Remaining Gaps
 - Distortion analysis (`.disto`)
 
-### Netlist Features
-- Hierarchical subcircuit support (currently flattened)
+### Netlist Features — Remaining Gaps
 - XSPICE digital/mixed-signal code models
-- `.param` expressions with full function support
+- Full `.param` function library (most common functions done)
 
 ---
 
@@ -164,25 +183,28 @@ The API evolves through layers — each builds on the previous. The current API
 is netlist-in, struct-out. The target is a fully programmatic, composable,
 streaming-capable simulation engine.
 
-### Typed Result Access
+### Typed Result Access (partially implemented)
 
-Replace `std::map<string, ...>` lookups with direct accessors and convenience
-helpers that eliminate boilerplate every user writes today.
+The main result types already provide typed accessors. DC, transient, AC, and
+DC sweep results have `.voltage()`, `.current()` helpers. AC adds
+`.magnitude_db()`, `.phase_deg()`, `.magnitude()`, `.diff()`, `.diff_magnitude_db()`.
+DC has `.diff()`. Remaining gaps: noise helpers, transient diff, DC sweep
+convenience, and current-based magnitude/phase on AC.
 
 ```cpp
+// Already working today:
 auto ac = sim.run_ac(ckt, DEC, 10, 1, 100e6);
+auto gain_db = ac.magnitude_db("out");       // vector<double>
+auto phase   = ac.phase_deg("out");          // vector<double>
+auto vdiff   = ac.diff("out_p", "out_n");    // vector<complex>
+double vout  = dc.voltage("out");            // scalar
+double ibias = dc.current("v1");             // scalar
 
-std::span<const double> freq = ac.frequency();
-std::span<const std::complex<double>> vout = ac.voltage("out");
-
-// Convenience — things every analog designer computes
-auto gain_db  = ac.magnitude_db("out");       // vector<double>
-auto phase    = ac.phase_deg("out");          // vector<double>
-auto vdiff    = ac.diff("out_p", "out_n");    // vector<complex>
-
-// DC is scalar
-double vout_dc = dc.voltage("out");
-double ibias   = dc.current("v1");
+// Planned additions:
+auto status  = ac.status;                    // SimStatus: converged, method, iterations
+auto tran_d  = tran.diff("out_p", "out_n");  // vector<double> differential
+auto onoise  = noise.output_noise("r1");     // per-device accessor
+auto inoise  = noise.integrated_input(1e3, 1e6); // integrated RMS input noise
 ```
 
 ### Programmatic Circuit Construction
@@ -307,12 +329,14 @@ results = ns.sweep(ckt, param="r1", values=np.linspace(100, 10e3, 50),
 
 ## Summary
 
-| Phase | Feature                    | Impact          | Effort   |
-|-------|----------------------------|-----------------|----------|
-| 1     | Python bindings            | Adoption        | Medium   |
-| 2     | Parallel sweeps            | Performance     | Medium   |
-| 3     | WASM build                 | Accessibility   | Low      |
-| 4     | Sensitivity/gradients      | Optimization    | High     |
-| 5     | Incremental re-simulation  | Interactivity   | Medium   |
-| 6     | GPU acceleration           | Large circuits  | High     |
-| 7     | Extended devices/analyses  | Completeness    | Ongoing  |
+| Phase | Feature                    | Impact          | Effort   | Status |
+|-------|----------------------------|-----------------|----------|--------|
+| —     | Typed result access        | Usability       | Low      | Partial |
+| —     | SimStatus error model      | Reliability     | Low      | Planned |
+| 1     | Python bindings            | Adoption        | Medium   | Planned |
+| 2     | WASM build                 | Accessibility   | Low      | Planned |
+| 3     | Sensitivity/gradients      | Optimization    | High     | Planned |
+| 4     | Parallel sweeps            | Performance     | Medium   | Planned |
+| 5     | Incremental re-simulation  | Interactivity   | Medium   | Planned |
+| 6     | GPU acceleration           | Large circuits  | High     | Planned |
+| 7     | Extended devices/analyses  | Completeness    | Ongoing  | Active  |
