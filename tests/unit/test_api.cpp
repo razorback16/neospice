@@ -79,3 +79,46 @@ R2 b 0 1k
     EXPECT_TRUE(std::find(names.begin(), names.end(), "v(a)") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "v(b)") != names.end());
 }
+
+TEST(DCResultAPI, SignalNames) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+DC signals
+V1 in 0 10
+R1 in out 1k
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+
+    auto names = result.dc->signal_names();
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "v(out)") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "v(in)") != names.end());
+}
+
+TEST(DCSweepResultAPI, DiffAndSignalNames) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+Sweep diff
+V1 in 0 5
+R1 in a 1k
+R2 in b 2k
+R3 a 0 1k
+R4 b 0 1k
+.dc V1 0 10 1
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc_sweep.has_value());
+    auto& sw = *result.dc_sweep;
+
+    auto d = sw.diff("a", "b");
+    ASSERT_EQ(d.size(), sw.sweep_values.size());
+
+    auto names = sw.signal_names();
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "v(a)") != names.end());
+}

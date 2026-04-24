@@ -32,6 +32,14 @@ struct DCResult {
     double diff(const std::string& node_p, const std::string& node_n) const {
         return voltage(node_p) - voltage(node_n);
     }
+
+    std::vector<std::string> signal_names() const {
+        std::vector<std::string> names;
+        names.reserve(node_voltages.size() + branch_currents.size());
+        for (const auto& [k, v] : node_voltages) names.push_back(k);
+        for (const auto& [k, v] : branch_currents) names.push_back(k);
+        return names;
+    }
 };
 
 struct DCSweepResult {
@@ -56,6 +64,23 @@ struct DCSweepResult {
         it = currents.find(dev);
         if (it != currents.end()) return it->second;
         throw std::out_of_range("DC sweep current not found: " + dev);
+    }
+
+    std::vector<double> diff(const std::string& node_p, const std::string& node_n) const {
+        const auto& vp = voltage(node_p);
+        const auto& vn = voltage(node_n);
+        std::vector<double> result(vp.size());
+        for (std::size_t i = 0; i < vp.size(); ++i)
+            result[i] = vp[i] - vn[i];
+        return result;
+    }
+
+    std::vector<std::string> signal_names() const {
+        std::vector<std::string> names;
+        names.reserve(voltages.size() + currents.size());
+        for (const auto& [k, v] : voltages) names.push_back(k);
+        for (const auto& [k, v] : currents) names.push_back(k);
+        return names;
     }
 };
 
