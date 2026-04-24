@@ -192,3 +192,56 @@ R2 out 0 1k
     EXPECT_TRUE(std::find(snames.begin(), snames.end(), "onoise") != snames.end());
     EXPECT_TRUE(std::find(snames.begin(), snames.end(), "inoise") != snames.end());
 }
+
+TEST(SimStatusIntegration, DCResultHasStatus) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+Status test
+V1 in 0 10
+R1 in out 1k
+R2 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.dc.has_value());
+    EXPECT_TRUE(result.dc->status.converged);
+    EXPECT_GT(result.dc->status.iterations, 0);
+    EXPECT_GT(result.dc->status.elapsed_seconds, 0.0);
+}
+
+TEST(SimStatusIntegration, TransientResultHasStatus) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+RC status
+V1 in 0 5
+R1 in out 1k
+C1 out 0 1u
+.tran 10u 5m
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.transient.has_value());
+    EXPECT_TRUE(result.transient->status.converged);
+    EXPECT_GT(result.transient->status.iterations, 0);
+    EXPECT_GT(result.transient->status.elapsed_seconds, 0.0);
+}
+
+TEST(SimStatusIntegration, ACResultHasStatus) {
+    neospice::Simulator sim;
+    std::string netlist = R"(
+AC status
+V1 in 0 DC 0 AC 1
+R1 in out 1k
+C1 out 0 1n
+.ac dec 10 100 10meg
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(result.ac.has_value());
+    EXPECT_TRUE(result.ac->status.converged);
+    EXPECT_GT(result.ac->status.elapsed_seconds, 0.0);
+}

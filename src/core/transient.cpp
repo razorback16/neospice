@@ -15,6 +15,7 @@
 #include "devices/ltra.hpp"
 #include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace neospice {
@@ -68,6 +69,8 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
 
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                                 bool uic) {
+    auto t_start = std::chrono::steady_clock::now();
+    int total_newton_iters = 0;
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
@@ -115,21 +118,25 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
+        total_newton_iters += result.iterations;
     } else {
         ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
+            total_newton_iters += result.iterations;
         } else {
             ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
             result = source_stepping(ckt, solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
+                total_newton_iters += result.iterations;
             } else {
                 ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
                 result = pseudo_transient(ckt, solver, solution, ckt.options);
                 if (result.converged) {
                     solution = result.solution;
+                    total_newton_iters += result.iterations;
                 } else {
                     throw ConvergenceError("DC operating point failed to converge");
                 }
@@ -483,6 +490,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             continue;
         }
         solution = nr.solution;
+        total_newton_iters += nr.iterations;
 
         // Global LTE check — skip first 2 steps (need 3 history points)
         // and skip 3 steps after a source breakpoint so the second-difference
@@ -675,6 +683,12 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     }
 
     tran_result.rejected_steps = ctrl.rejected_count();
+
+    auto t_end = std::chrono::steady_clock::now();
+    tran_result.status.converged = true;
+    tran_result.status.iterations = total_newton_iters;
+    tran_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
+
     return tran_result;
 }
 

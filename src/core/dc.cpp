@@ -9,6 +9,7 @@
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <stdexcept>
 
@@ -32,6 +33,7 @@ static std::string make_branch_key(const std::string& dname) {
 }
 
 DCResult solve_dc(Circuit& ckt) {
+    auto t_start = std::chrono::steady_clock::now();
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
@@ -71,29 +73,41 @@ DCResult solve_dc(Circuit& ckt) {
     constexpr int MODEINITJCT_BIT = 0x200;
     constexpr int MODEINITFIX_BIT = 0x400;
 
+    SimStatus sim_status;
+
     // 3. Try newton_solve first (initial junction guess mode)
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
+        sim_status.iterations = result.iterations;
     } else {
         // 4. Try gmin stepping (fix/iterate mode)
         ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
         result = gmin_stepping(ckt, solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
+            sim_status.iterations = result.iterations;
+            sim_status.convergence_method = ConvergenceMethod::GMIN_STEPPING;
+            sim_status.warnings.push_back("gmin stepping used");
         } else {
             // 5. Try source stepping
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
             result = source_stepping(ckt, solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
+                sim_status.iterations = result.iterations;
+                sim_status.convergence_method = ConvergenceMethod::SOURCE_STEPPING;
+                sim_status.warnings.push_back("source stepping used");
             } else {
                 // 6. Try pseudo-transient continuation
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
                 result = pseudo_transient(ckt, solver, solution, ckt.options);
                 if (result.converged) {
                     solution = result.solution;
+                    sim_status.iterations = result.iterations;
+                    sim_status.convergence_method = ConvergenceMethod::PSEUDO_TRANSIENT;
+                    sim_status.warnings.push_back("pseudo-transient continuation used");
                 } else {
                     // 7. All failed
                     throw ConvergenceError("DC operating point failed to converge");
@@ -135,6 +149,10 @@ DCResult solve_dc(Circuit& ckt) {
                 add_dc_current(bs->branch_index(), dev->name());
     }
 
+    auto t_end = std::chrono::steady_clock::now();
+    sim_status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
+    dc_result.status = sim_status;
+
     return dc_result;
 }
 
@@ -162,6 +180,7 @@ static std::vector<double> make_sweep_values(double start, double stop, double s
 }
 
 DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& params) {
+    auto t_start = std::chrono::steady_clock::now();
     if (params.empty()) {
         throw std::invalid_argument("DC sweep requires at least one sweep parameter");
     }
@@ -344,6 +363,10 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     // Restore original source values
     src0->set_dc_value(orig_val0);
     if (src1) src1->set_dc_value(orig_val1);
+
+    auto t_end = std::chrono::steady_clock::now();
+    sweep_result.status.converged = true;
+    sweep_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
 
     return sweep_result;
 }

@@ -11,6 +11,7 @@
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
+#include <chrono>
 #include <stdexcept>
 
 namespace neospice {
@@ -32,6 +33,7 @@ static std::string make_branch_key(const std::string& dname) {
 
 ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
                   int npoints, double fstart, double fstop) {
+    auto t_start = std::chrono::steady_clock::now();
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
@@ -265,6 +267,10 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
             c_ptrs[k][fi] = {rhs_z[2*br], rhs_z[2*br+1]};
         }
     }
+
+    auto t_end = std::chrono::steady_clock::now();
+    ac_result.status.converged = true;
+    ac_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
 
     return ac_result;
 }
