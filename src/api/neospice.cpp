@@ -23,71 +23,24 @@ std::string lower(const std::string& s) {
 // .save filtering helpers
 // ---------------------------------------------------------------------------
 
-static void apply_save_filter(DCResult& r, const std::vector<std::string>& sigs) {
+template<typename Result>
+static void apply_save_filter(Result& r, const std::vector<std::string>& sigs) {
     if (sigs.empty()) return;
     std::unordered_set<std::string> keep(sigs.begin(), sigs.end());
-    for (auto it = r.node_voltages.begin(); it != r.node_voltages.end(); ) {
-        if (keep.count(it->first) == 0)
-            it = r.node_voltages.erase(it);
-        else
-            ++it;
-    }
-    for (auto it = r.branch_currents.begin(); it != r.branch_currents.end(); ) {
-        if (keep.count(it->first) == 0)
-            it = r.branch_currents.erase(it);
-        else
-            ++it;
-    }
-}
-
-static void apply_save_filter(DCSweepResult& r, const std::vector<std::string>& sigs) {
-    if (sigs.empty()) return;
-    std::unordered_set<std::string> keep(sigs.begin(), sigs.end());
-    for (auto it = r.voltages.begin(); it != r.voltages.end(); ) {
-        if (keep.count(it->first) == 0)
-            it = r.voltages.erase(it);
-        else
-            ++it;
-    }
-    for (auto it = r.currents.begin(); it != r.currents.end(); ) {
-        if (keep.count(it->first) == 0)
-            it = r.currents.erase(it);
-        else
-            ++it;
-    }
-}
-
-static void apply_save_filter(TransientResult& r, const std::vector<std::string>& sigs) {
-    if (sigs.empty()) return;
-    std::unordered_set<std::string> keep(sigs.begin(), sigs.end());
-    for (auto it = r.voltages.begin(); it != r.voltages.end(); ) {
-        if (keep.count(it->first) == 0)
-            it = r.voltages.erase(it);
-        else
-            ++it;
-    }
-    for (auto it = r.currents.begin(); it != r.currents.end(); ) {
-        if (keep.count(it->first) == 0)
-            it = r.currents.erase(it);
-        else
-            ++it;
-    }
-}
-
-static void apply_save_filter(ACResult& r, const std::vector<std::string>& sigs) {
-    if (sigs.empty()) return;
-    std::unordered_set<std::string> keep(sigs.begin(), sigs.end());
-    for (auto it = r.voltages.begin(); it != r.voltages.end(); ) {
-        if (keep.count(it->first) == 0)
-            it = r.voltages.erase(it);
-        else
-            ++it;
-    }
-    for (auto it = r.currents.begin(); it != r.currents.end(); ) {
-        if (keep.count(it->first) == 0)
-            it = r.currents.erase(it);
-        else
-            ++it;
+    auto erase_missing = [&keep](auto& map) {
+        for (auto it = map.begin(); it != map.end(); ) {
+            if (keep.count(it->first) == 0)
+                it = map.erase(it);
+            else
+                ++it;
+        }
+    };
+    if constexpr (requires { r.node_voltages; }) {
+        erase_missing(r.node_voltages);
+        erase_missing(r.branch_currents);
+    } else {
+        erase_missing(r.voltages);
+        erase_missing(r.currents);
     }
 }
 
