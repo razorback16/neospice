@@ -1,5 +1,6 @@
 #pragma once
 #include "core/circuit.hpp"
+#include "core/sim_status.hpp"
 #include "core/timestep.hpp"
 #include <vector>
 #include <string>
@@ -50,6 +51,8 @@ struct TransientResult {
         for (const auto& [k, v] : currents) names.push_back(k);
         return names;
     }
+
+    SimStatus status;
 };
 
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,

@@ -1,5 +1,6 @@
 #pragma once
 #include "core/circuit.hpp"
+#include "core/sim_status.hpp"
 #include <complex>
 #include <vector>
 #include <string>
@@ -106,6 +107,8 @@ struct ACResult {
         for (const auto& [k, v] : currents) names.push_back(k);
         return names;
     }
+
+    SimStatus status;
 };
 
 ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,

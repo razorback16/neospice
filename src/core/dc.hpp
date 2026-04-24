@@ -1,5 +1,6 @@
 #pragma once
 #include "core/circuit.hpp"
+#include "core/sim_status.hpp"
 #include <string>
 #include <map>
 #include <vector>
@@ -40,6 +41,8 @@ struct DCResult {
         for (const auto& [k, v] : branch_currents) names.push_back(k);
         return names;
     }
+
+    SimStatus status;
 };
 
 struct DCSweepResult {
@@ -82,6 +85,8 @@ struct DCSweepResult {
         for (const auto& [k, v] : currents) names.push_back(k);
         return names;
     }
+
+    SimStatus status;
 };
 
 DCResult solve_dc(Circuit& ckt);

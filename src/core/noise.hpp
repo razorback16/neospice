@@ -1,5 +1,6 @@
 #pragma once
 #include "core/circuit.hpp"
+#include "core/sim_status.hpp"
 #include <string>
 #include <map>
 #include <vector>
@@ -68,6 +69,8 @@ struct NoiseResult {
         for (const auto& [k, v] : device_noise) names.push_back(k);
         return names;
     }
+
+    SimStatus status;
 };
 
 /// Run noise analysis on the circuit.

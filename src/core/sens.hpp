@@ -1,5 +1,6 @@
 #pragma once
 #include "core/circuit.hpp"
+#include "core/sim_status.hpp"
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@ struct SensResult {
         double normalized;      // sensitivity * param_value / output_value (dimensionless)
     };
     std::vector<Entry> entries;
+    SimStatus status;
 };
 
 SensResult solve_sens(Circuit& ckt, const std::string& output_var);

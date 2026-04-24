@@ -1,4 +1,5 @@
 #pragma once
+#include "core/sim_status.hpp"
 #include <complex>
 #include <string>
 #include <vector>
@@ -17,6 +18,7 @@ struct PZResult {
     PZTransferType transfer_type;
     std::string input_pos, input_neg;
     std::string output_pos, output_neg;
+    SimStatus status;
 };
 
 PZResult solve_pz(Circuit& ckt,
