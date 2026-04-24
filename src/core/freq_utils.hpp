@@ -16,7 +16,7 @@ namespace neospice {
 /// @param fstart  Start frequency (Hz) — must be > 0
 /// @param fstop   Stop frequency  (Hz) — must be >= fstart > 0
 /// @returns       Ordered vector of frequency values; empty on invalid input.
-inline std::vector<double> generate_frequencies(AnalysisCommand::ACMode mode,
+inline std::vector<double> generate_frequencies(ACMode mode,
                                                 int npoints,
                                                 double fstart, double fstop) {
     std::vector<double> freqs;
@@ -24,7 +24,7 @@ inline std::vector<double> generate_frequencies(AnalysisCommand::ACMode mode,
         return freqs;
 
     switch (mode) {
-    case AnalysisCommand::DEC: {
+    case ACMode::DEC: {
         double decades = std::log10(fstop / fstart);
         int total = static_cast<int>(std::round(decades * npoints)) + 1;
         freqs.reserve(total);
@@ -34,7 +34,7 @@ inline std::vector<double> generate_frequencies(AnalysisCommand::ACMode mode,
         }
         break;
     }
-    case AnalysisCommand::OCT: {
+    case ACMode::OCT: {
         double octaves = std::log2(fstop / fstart);
         int total = static_cast<int>(std::round(octaves * npoints)) + 1;
         freqs.reserve(total);
@@ -44,7 +44,7 @@ inline std::vector<double> generate_frequencies(AnalysisCommand::ACMode mode,
         }
         break;
     }
-    case AnalysisCommand::LIN: {
+    case ACMode::LIN: {
         freqs.reserve(npoints);
         double step = (npoints > 1) ? (fstop - fstart) / (npoints - 1) : 0.0;
         for (int i = 0; i < npoints; ++i) {

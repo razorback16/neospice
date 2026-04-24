@@ -2,6 +2,8 @@
 
 #include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
+#include "devices/ucb_device_init.hpp"
+#include "devices/ucb_utils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -31,15 +33,6 @@ BSIM4v7ModelCard::~BSIM4v7ModelCard() {
         p = next;
     }
     ucb.pSizeDependParamKnot = nullptr;
-}
-
-// ---------------------------------------------------------------------------
-// Neospice -> UCB node translation.
-// Neospice uses GROUND_INTERNAL = -1 for ground and consecutive non-negative
-// indices for real nodes.  UCB uses 0 for ground and >=1 for real nodes.
-// ---------------------------------------------------------------------------
-static inline int neo_to_ucb(int32_t neo) {
-    return (neo < 0) ? 0 : (neo + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -113,73 +106,30 @@ BSIM4v7Device::make(std::string name,
 // declare_internal_nodes
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::declare_internal_nodes(Circuit& ckt) {
-    SparsityBuilder scratch(1);
-    Shim::Matrix shim_matrix(scratch);
-
-    Shim::Ckt setup_ckt;
-    setup_ckt.CKTtemp    = T_NOMINAL;
-    setup_ckt.CKTnomTemp = T_NOMINAL;
-    setup_ckt.CKTinternalNodeCounter = 1000;
-
-    setup_ckt.node_alloc = [&ckt, this](const char* name) -> int {
-        std::string full = "__" + name_ + "_" + name;
-        int32_t neo = ckt.node(full);
-        ckt.mark_internal_node(neo);
-        return neo + 1;  // UCB convention: ground=0, real>=1
-    };
-
-    // Splice this instance as sole member so BSIM4v7setup only processes *this*.
-    BSIM4v7Instance* saved_head      = model_->BSIM4v7instances;
-    BSIM4v7Instance* saved_next_inst = inst_.BSIM4v7nextInstance;
-    BSIM4v7Model*    saved_next_mod  = model_->BSIM4v7nextModel;
-    model_->BSIM4v7instances  = &inst_;
-    inst_.BSIM4v7nextInstance = nullptr;
-    model_->BSIM4v7nextModel  = nullptr;
-
-    int states = 0;
-    int rc = BSIM4v7setup(&shim_matrix, model_, &setup_ckt, &states);
-
-    model_->BSIM4v7instances  = saved_head;
-    inst_.BSIM4v7nextInstance = saved_next_inst;
-    model_->BSIM4v7nextModel  = saved_next_mod;
-
-    if (rc != Shim::OK) {
-        throw std::runtime_error("BSIM4v7setup failed with rc=" + std::to_string(rc));
-    }
-
-    const auto& journal = shim_matrix.reservation_journal();
-    journal_.assign(journal.begin(), journal.end());
-
-    // Recompute max_neo_node_ to cover internal nodes.
-    for (auto [r, c] : journal_) {
-        int mx = std::max(r, c);
-        if (mx > 0) {
-            int32_t neo = mx - 1;
-            if (neo > max_neo_node_) max_neo_node_ = neo;
-        }
-    }
+    ucb_declare_internal_nodes<Shim::Matrix, Shim::Ckt>(
+        ckt, name_,
+        [this](Shim::Matrix& m, Shim::Ckt& c) {
+            UCB_SPLICE_INSTANCE(BSIM4v7);
+            int states = 0;
+            int rc = BSIM4v7setup(&m, model_, &c, &states);
+            UCB_UNSPLICE_INSTANCE(BSIM4v7);
+            return rc;
+        },
+        "BSIM4v7setup", journal_, max_neo_node_);
 }
 
 // ---------------------------------------------------------------------------
 // stamp_pattern
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::stamp_pattern(SparsityBuilder& builder) const {
-    for (auto [r, c] : journal_) {
-        if (r <= 0 || c <= 0) continue;
-        builder.add(r - 1, c - 1);
-    }
+    ucb_stamp_pattern(journal_, builder);
 }
 
 // ---------------------------------------------------------------------------
 // assign_offsets
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::assign_offsets(const SparsityPattern& pattern) {
-    std::vector<MatrixOffset> offsets(journal_.size(), -1);
-    for (std::size_t i = 0; i < journal_.size(); ++i) {
-        auto [r, c] = journal_[i];
-        if (r <= 0 || c <= 0) continue;
-        offsets[i] = pattern.offset(r - 1, c - 1);
-    }
+    const auto offsets = ucb_compute_offsets(journal_, pattern);
 
 #define RESOLVE(f)                                                       \
     do {                                                                 \
@@ -1120,12 +1070,6 @@ double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
 // ---------------------------------------------------------------------------
 // query_param — post-simulation parameter query (ask/mask)
 // ---------------------------------------------------------------------------
-static std::string str_tolower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return s;
-}
-
 std::optional<double>
 BSIM4v7Device::query_param(const std::string& name) const {
     const std::string key = str_tolower(name);
@@ -1192,10 +1136,6 @@ BSIM4v7Device::query_param(const std::string& name) const {
 // Gate-induced correlated noise (CORLNOIZ, tnoiMod 2) is handled by
 // correlated_noise_sources() which returns CorrelatedNoiseSource entries.
 // ---------------------------------------------------------------------------
-static inline int32_t ucb_to_neo(int ucb_node) {
-    return (ucb_node <= 0) ? GROUND_INTERNAL : (ucb_node - 1);
-}
-
 // Minimum for log()  — mirrors N_MINLOG in ngspice
 static constexpr double NOISE_MINLOG = 1e-38;
 

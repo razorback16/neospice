@@ -847,74 +847,69 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         // Dot commands
         if (first[0] == '.') {
             if (first == ".op") {
-                AnalysisCommand cmd;
-                cmd.type = AnalysisCommand::OP;
-                ckt.analyses.push_back(cmd);
+                ckt.analyses.push_back(OpCmd{});
             } else if (first == ".tran") {
                 if (tokens.size() < 3) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .tran requires tstep and tstop");
                 }
-                AnalysisCommand cmd;
-                cmd.type = AnalysisCommand::TRAN;
-                cmd.tran_tstep = parse_spice_number(tokens[1]);
-                cmd.tran_tstop = parse_spice_number(tokens[2]);
+                TranCmd tran;
+                tran.tstep = parse_spice_number(tokens[1]);
+                tran.tstop = parse_spice_number(tokens[2]);
                 // Check remaining tokens for UIC keyword
                 for (size_t k = 3; k < tokens.size(); ++k) {
                     if (to_lower(tokens[k]) == "uic") {
-                        cmd.tran_uic = true;
+                        tran.uic = true;
                     }
                 }
-                ckt.analyses.push_back(cmd);
+                ckt.analyses.push_back(tran);
             } else if (first == ".ac") {
                 if (tokens.size() < 5) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .ac requires mode npoints fstart fstop");
                 }
-                AnalysisCommand cmd;
-                cmd.type = AnalysisCommand::AC;
+                ACCmd ac;
                 std::string mode = to_lower(tokens[1]);
-                if (mode == "dec") cmd.ac_mode = AnalysisCommand::DEC;
-                else if (mode == "oct") cmd.ac_mode = AnalysisCommand::OCT;
-                else if (mode == "lin") cmd.ac_mode = AnalysisCommand::LIN;
+                if (mode == "dec") ac.mode = ACMode::DEC;
+                else if (mode == "oct") ac.mode = ACMode::OCT;
+                else if (mode == "lin") ac.mode = ACMode::LIN;
                 else throw ParseError("Unknown AC mode: " + tokens[1]);
-                cmd.ac_npoints = static_cast<int>(parse_spice_number(tokens[2]));
-                cmd.ac_fstart = parse_spice_number(tokens[3]);
-                cmd.ac_fstop = parse_spice_number(tokens[4]);
-                ckt.analyses.push_back(cmd);
+                ac.npoints = static_cast<int>(parse_spice_number(tokens[2]));
+                ac.fstart = parse_spice_number(tokens[3]);
+                ac.fstop = parse_spice_number(tokens[4]);
+                ckt.analyses.push_back(ac);
             } else if (first == ".noise") {
                 // .noise V(out) Vin dec 10 1 1e9
                 if (tokens.size() < 7) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .noise requires V(output) input_source mode npoints fstart fstop");
                 }
-                AnalysisCommand cmd;
-                cmd.type = AnalysisCommand::NOISE;
+                NoiseCmd ncmd;
 
                 // Parse output spec: V(node) or v(node)
                 std::string out_spec = tokens[1];
                 std::string out_lower = to_lower(out_spec);
                 if (out_lower.size() > 3 && out_lower.substr(0, 2) == "v(" && out_lower.back() == ')') {
-                    cmd.noise_output = out_lower.substr(2, out_lower.size() - 3);
+                    ncmd.output = out_lower.substr(2, out_lower.size() - 3);
                 } else {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .noise output must be V(node)");
                 }
 
                 // Input source name
-                cmd.noise_input_src = tokens[2];
+                ncmd.input_src = tokens[2];
 
-                // Frequency sweep parameters (reuse ac_mode, ac_npoints, ac_fstart, ac_fstop)
+                // Frequency sweep parameters
                 std::string mode = to_lower(tokens[3]);
-                if (mode == "dec") cmd.ac_mode = AnalysisCommand::DEC;
-                else if (mode == "oct") cmd.ac_mode = AnalysisCommand::OCT;
-                else if (mode == "lin") cmd.ac_mode = AnalysisCommand::LIN;
+                if (mode == "dec") ncmd.mode = ACMode::DEC;
+                else if (mode == "oct") ncmd.mode = ACMode::OCT;
+                else if (mode == "lin") ncmd.mode = ACMode::LIN;
                 else throw ParseError("Line " + std::to_string(line.line_number) +
                                       ": Unknown noise sweep mode: " + tokens[3]);
-                cmd.ac_npoints = static_cast<int>(parse_spice_number(tokens[4]));
-                cmd.ac_fstart = parse_spice_number(tokens[5]);
-                cmd.ac_fstop = parse_spice_number(tokens[6]);
-                ckt.analyses.push_back(cmd);
+                ncmd.npoints = static_cast<int>(parse_spice_number(tokens[4]));
+                ncmd.fstart = parse_spice_number(tokens[5]);
+                ncmd.fstop = parse_spice_number(tokens[6]);
+                ckt.analyses.push_back(ncmd);
             } else if (first == ".dc") {
                 // .dc Vsrc1 start1 stop1 step1 [Vsrc2 start2 stop2 step2]
                 // Each sweep group is 4 tokens: source_name start stop step
@@ -922,8 +917,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .dc requires source start stop step");
                 }
-                AnalysisCommand cmd;
-                cmd.type = AnalysisCommand::DC_SWEEP;
+                DCSweepCmd dcmd;
                 size_t i = 1;
                 while (i + 3 < tokens.size() + 1 && i < tokens.size()) {
                     // Need 4 tokens: name start stop step
@@ -939,15 +933,15 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         throw ParseError("Line " + std::to_string(line.line_number) +
                                          ": .dc sweep parameters must be numbers");
                     }
-                    cmd.dc_sweep_params.push_back(sp);
+                    dcmd.params.push_back(sp);
                     i += 4;
-                    if (cmd.dc_sweep_params.size() >= 2) break; // support at most 2 sweeps
+                    if (dcmd.params.size() >= 2) break; // support at most 2 sweeps
                 }
-                if (cmd.dc_sweep_params.empty()) {
+                if (dcmd.params.empty()) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .dc requires at least one sweep group");
                 }
-                ckt.analyses.push_back(cmd);
+                ckt.analyses.push_back(dcmd);
             } else if (first == ".options") {
                 for (size_t i = 1; i < tokens.size(); ++i) {
                     auto eq_pos = tokens[i].find('=');
@@ -1222,11 +1216,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .tf requires output variable and input source");
                 }
-                AnalysisCommand cmd;
-                cmd.type = AnalysisCommand::TF;
-                cmd.tf_output = to_lower(tokens[1]);
-                cmd.tf_input_src = to_lower(tokens[2]);
-                ckt.analyses.push_back(cmd);
+                TFCmd tf;
+                tf.output = to_lower(tokens[1]);
+                tf.input_src = to_lower(tokens[2]);
+                ckt.analyses.push_back(tf);
             } else if (first == ".sens") {
                 // .sens output_var
                 // e.g., .sens V(out)
@@ -1234,38 +1227,36 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .sens requires output variable");
                 }
-                AnalysisCommand cmd;
-                cmd.type = AnalysisCommand::SENS;
-                cmd.sens_output = to_lower(tokens[1]);
-                ckt.analyses.push_back(cmd);
+                SensCmd sens;
+                sens.output = to_lower(tokens[1]);
+                ckt.analyses.push_back(sens);
             } else if (first == ".pz") {
                 // .pz node1 node2 node3 node4 VOL|CUR POL|ZER|PZ
                 if (tokens.size() < 7) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .pz requires 6 arguments: n1 n2 n3 n4 VOL|CUR POL|ZER|PZ");
                 }
-                AnalysisCommand cmd;
-                cmd.type = AnalysisCommand::PZ;
-                cmd.pz_in_pos  = to_lower(tokens[1]);
-                cmd.pz_in_neg  = to_lower(tokens[2]);
-                cmd.pz_out_pos = to_lower(tokens[3]);
-                cmd.pz_out_neg = to_lower(tokens[4]);
+                PZCmd pzcmd;
+                pzcmd.in_pos  = to_lower(tokens[1]);
+                pzcmd.in_neg  = to_lower(tokens[2]);
+                pzcmd.out_pos = to_lower(tokens[3]);
+                pzcmd.out_neg = to_lower(tokens[4]);
                 std::string transfer = to_lower(tokens[5]);
                 if (transfer == "vol")
-                    cmd.pz_transfer = PZTransferType::VOLTAGE;
+                    pzcmd.transfer = PZTransferType::VOLTAGE;
                 else if (transfer == "cur")
-                    cmd.pz_transfer = PZTransferType::CURRENT;
+                    pzcmd.transfer = PZTransferType::CURRENT;
                 else
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .pz transfer type must be VOL or CUR");
                 std::string pz = to_lower(tokens[6]);
-                if (pz == "pol")      cmd.pz_type = PZType::POLES;
-                else if (pz == "zer") cmd.pz_type = PZType::ZEROS;
-                else if (pz == "pz")  cmd.pz_type = PZType::BOTH;
+                if (pz == "pol")      pzcmd.type = PZType::POLES;
+                else if (pz == "zer") pzcmd.type = PZType::ZEROS;
+                else if (pz == "pz")  pzcmd.type = PZType::BOTH;
                 else
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": .pz type must be POL, ZER, or PZ");
-                ckt.analyses.push_back(cmd);
+                ckt.analyses.push_back(pzcmd);
             } else if (first == ".four" || first == ".fourier") {
                 // .four freq signal1 [signal2 ...]
                 if (tokens.size() >= 3) {
@@ -2661,7 +2652,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.add_device(std::move(dev));
     }
     for (auto& [name, card] : dio_cards) {
-        ckt.add_dio_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
 
     // Resolve deferred MOSFETs.  Level dispatch:
@@ -2993,31 +2984,31 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     }
     // Transfer card ownership to the Circuit (cards must outlive the devices).
     for (auto& [name, card] : bsim4_cards) {
-        ckt.add_bsim4_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : mos1_cards) {
-        ckt.add_mos1_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : mos3_cards) {
-        ckt.add_mos3_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : mos9_cards) {
-        ckt.add_mos9_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : bsim3_cards) {
-        ckt.add_bsim3_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : bsim3v32_cards) {
-        ckt.add_bsim3v32_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : hisim2_cards) {
-        ckt.add_hisim2_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : hisimhv_cards) {
-        ckt.add_hisimhv_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : bsimsoi_cards) {
-        ckt.add_bsimsoi_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
 
     // Resolve deferred BJTs (Q-cards dispatch to BJT or VBIC based on LEVEL)
@@ -3091,10 +3082,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         }
     }
     for (auto& [name, card] : bjt_cards) {
-        ckt.add_bjt_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : vbic_cards) {
-        ckt.add_vbic_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
 
     // Resolve deferred JFETs (J-cards dispatch to JFET or JFET2 based on LEVEL)
@@ -3174,10 +3165,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         }
     }
     for (auto& [name, card] : jfet_cards) {
-        ckt.add_jfet_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : jfet2_cards) {
-        ckt.add_jfet2_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
 
     // Resolve deferred HFETs (Z elements with nhfet/phfet)
@@ -3253,10 +3244,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         }
     }
     for (auto& [name, card] : hfet1_cards) {
-        ckt.add_hfet1_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : hfet2_cards) {
-        ckt.add_hfet2_model_card(std::move(card));
+        ckt.add_model_card(std::move(card));
     }
 
     // Resolve deferred coupled inductors (K elements) — find inductor devices by name.

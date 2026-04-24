@@ -212,21 +212,21 @@ TEST_F(HiSIMHVValidation, NmosNoise) {
     // Run neospice
     auto ckt = sim_.load(cir_path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.noise.has_value()) << "neospice noise analysis returned no result";
-    ASSERT_EQ(ng_result.frequency.size(), cs_result.noise->frequency.size())
+    ASSERT_TRUE(std::holds_alternative<NoiseResult>(cs_result.analysis)) << "neospice noise analysis returned no result";
+    ASSERT_EQ(ng_result.frequency.size(), std::get<NoiseResult>(cs_result.analysis).frequency.size())
         << "Frequency point count mismatch";
 
     // Compare noise results. Use 10% relative tolerance since noise models
     // can have small implementation differences (induced gate noise, etc.).
-    auto cmp = compare_noise(ng_result, *cs_result.noise, {1e-1, 1e-30});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-1, 1e-30});
     EXPECT_TRUE(cmp.passed)
         << "Noise comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
 
     // Verify basic noise physics: output noise density should be positive
     // and decrease with frequency (due to 1/f component)
-    ASSERT_FALSE(cs_result.noise->output_noise_density.empty());
-    for (double n : cs_result.noise->output_noise_density) {
+    ASSERT_FALSE(std::get<NoiseResult>(cs_result.analysis).output_noise_density.empty());
+    for (double n : std::get<NoiseResult>(cs_result.analysis).output_noise_density) {
         EXPECT_GE(n, 0.0) << "Noise spectral density should be non-negative";
     }
 }

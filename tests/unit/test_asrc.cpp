@@ -504,8 +504,8 @@ R2 out 0 1Meg
 .end
 )");
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.transient.has_value());
-    const auto& tr = *result.transient;
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    const auto& tr = std::get<TransientResult>(result.analysis);
     const auto& t = tr.time;
     const auto& v_out = tr.voltage("out");
     // At the last timepoint (t ~ 0.5), V(out) should be ~ 0.5
@@ -528,8 +528,8 @@ R2 out 0 1Meg
 .end
 )");
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.transient.has_value());
-    const auto& tr = *result.transient;
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    const auto& tr = std::get<TransientResult>(result.analysis);
     const auto& t = tr.time;
     const auto& v_out = tr.voltage("out");
     // At the last timepoint (t ~ 0.5), V(out) should be ~ 10.5

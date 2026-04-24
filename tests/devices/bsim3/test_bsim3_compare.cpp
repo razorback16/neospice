@@ -220,7 +220,7 @@ TEST_F(BSIM3Validation, NMOS_CS_Amplifier_AC) {
     // Run neospice AC analysis
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.ac.has_value())
+    ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis))
         << "AC analysis result is missing — ac_stamp may not be implemented for BSIM3";
 
     // Filter out internal nodes (names containing '#' from ngspice)
@@ -240,7 +240,7 @@ TEST_F(BSIM3Validation, NMOS_CS_Amplifier_AC) {
     // the same model and linearize at the same DC operating point.
     // Use 25% relative tolerance (same as BSIM4v7 AC test) to account for
     // sensitivity to DC bias differences at high frequency.
-    auto cmp = compare_ac(ng_result, *cs_result.ac, {0.25, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {0.25, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -253,10 +253,10 @@ TEST_F(BSIM3Validation, NMOS_AC_NonZero_Output) {
 
     auto ckt = sim_.load(path);
     auto result = sim_.run(ckt);
-    ASSERT_TRUE(result.ac.has_value())
+    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis))
         << "AC analysis result is missing";
 
-    auto& ac = *result.ac;
+    auto& ac = std::get<ACResult>(result.analysis);
     ASSERT_FALSE(ac.frequency.empty());
 
     // v(drain) should exist and have non-zero magnitude at mid-band
@@ -288,7 +288,7 @@ TEST_F(BSIM3Validation, CMOS_Inverter_Transient) {
     // Run neospice
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value())
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis))
         << "Transient analysis result is missing";
 
     // Filter out internal nodes from ngspice result
@@ -301,8 +301,8 @@ TEST_F(BSIM3Validation, CMOS_Inverter_Transient) {
     }
 
     ng_result.currents.clear();
-    cs_result.transient->currents.clear();
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {2e-1, 5e-2});
+    std::get<TransientResult>(cs_result.analysis).currents.clear();
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -315,9 +315,9 @@ TEST_F(BSIM3Validation, CMOS_Inverter_Transitions) {
 
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
-    auto& tran = *cs_result.transient;
+    auto& tran = std::get<TransientResult>(cs_result.analysis);
     ASSERT_GT(tran.time.size(), 10u);
     ASSERT_TRUE(tran.voltages.count("v(out)") > 0);
 

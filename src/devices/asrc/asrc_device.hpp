@@ -75,9 +75,9 @@ public:
 
     /// Apply temperature-dependent scaling factor.
     /// Called once during circuit finalize (or whenever temperature changes).
-    void process_temperature(double sim_temp, double sim_tnom);
+    void process_temperature(double sim_temp, double sim_tnom) override;
 
-    int32_t branch_index() const { return branch_idx_; }
+    int32_t branch_index() const override { return branch_idx_; }
     Mode mode() const { return mode_; }
     const asrc::CompiledExpression& expression() const { return expr_; }
 

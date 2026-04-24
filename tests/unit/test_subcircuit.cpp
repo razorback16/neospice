@@ -353,7 +353,7 @@ R1 a b 100
 
     EXPECT_EQ(ckt.devices().size(), 0u);
     ASSERT_EQ(ckt.analyses.size(), 1u);
-    EXPECT_EQ(ckt.analyses[0].type, AnalysisCommand::OP);
+    EXPECT_TRUE(std::holds_alternative<OpCmd>(ckt.analyses[0]));
 }
 
 // -----------------------------------------------------------------------

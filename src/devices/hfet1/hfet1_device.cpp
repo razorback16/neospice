@@ -2,6 +2,8 @@
 
 #include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
+#include "devices/ucb_device_init.hpp"
+#include "devices/ucb_utils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -25,13 +27,6 @@ using namespace neospice::hfet1;
 // HFETAModelCard destructor
 // ---------------------------------------------------------------------------
 HFETAModelCard::~HFETAModelCard() = default;
-
-// ---------------------------------------------------------------------------
-// Neospice -> UCB node translation.
-// ---------------------------------------------------------------------------
-static inline int neo_to_ucb(int32_t neo) {
-    return (neo < 0) ? 0 : (neo + 1);
-}
 
 // ---------------------------------------------------------------------------
 // make
@@ -76,73 +71,30 @@ HFETADevice::make(std::string name,
 // declare_internal_nodes
 // ---------------------------------------------------------------------------
 void HFETADevice::declare_internal_nodes(Circuit& ckt) {
-    SparsityBuilder scratch(1);
-    Shim::Matrix shim_matrix(scratch);
-
-    Shim::Ckt setup_ckt;
-    setup_ckt.CKTtemp    = T_NOMINAL;
-    setup_ckt.CKTnomTemp = T_NOMINAL;
-    setup_ckt.CKTinternalNodeCounter = 1000;
-
-    setup_ckt.node_alloc = [&ckt, this](const char* name) -> int {
-        std::string full = "__" + name_ + "_" + name;
-        int32_t neo = ckt.node(full);
-        ckt.mark_internal_node(neo);
-        return neo + 1;  // UCB convention: ground=0, real>=1
-    };
-
-    // Splice this instance as sole member so HFETAsetup only processes *this*.
-    HFETAInstance* saved_head      = model_->HFETAinstances;
-    HFETAInstance* saved_next_inst = inst_.HFETAnextInstance;
-    HFETAModel*    saved_next_mod  = model_->HFETAnextModel;
-    model_->HFETAinstances  = &inst_;
-    inst_.HFETAnextInstance = nullptr;
-    model_->HFETAnextModel  = nullptr;
-
-    int states = 0;
-    int rc = HFETAsetup(&shim_matrix, model_, &setup_ckt, &states);
-
-    model_->HFETAinstances  = saved_head;
-    inst_.HFETAnextInstance = saved_next_inst;
-    model_->HFETAnextModel  = saved_next_mod;
-
-    if (rc != Shim::OK) {
-        throw std::runtime_error("HFETAsetup failed with rc=" + std::to_string(rc));
-    }
-
-    const auto& journal = shim_matrix.reservation_journal();
-    journal_.assign(journal.begin(), journal.end());
-
-    // Recompute max_neo_node_ to cover internal nodes.
-    for (auto [r, c] : journal_) {
-        int mx = std::max(r, c);
-        if (mx > 0) {
-            int32_t neo = mx - 1;
-            if (neo > max_neo_node_) max_neo_node_ = neo;
-        }
-    }
+    ucb_declare_internal_nodes<Shim::Matrix, Shim::Ckt>(
+        ckt, name_,
+        [this](Shim::Matrix& m, Shim::Ckt& c) {
+            UCB_SPLICE_INSTANCE(HFETA);
+            int states = 0;
+            int rc = HFETAsetup(&m, model_, &c, &states);
+            UCB_UNSPLICE_INSTANCE(HFETA);
+            return rc;
+        },
+        "HFETAsetup", journal_, max_neo_node_);
 }
 
 // ---------------------------------------------------------------------------
 // stamp_pattern
 // ---------------------------------------------------------------------------
 void HFETADevice::stamp_pattern(SparsityBuilder& builder) const {
-    for (auto [r, c] : journal_) {
-        if (r <= 0 || c <= 0) continue;
-        builder.add(r - 1, c - 1);
-    }
+    ucb_stamp_pattern(journal_, builder);
 }
 
 // ---------------------------------------------------------------------------
 // assign_offsets
 // ---------------------------------------------------------------------------
 void HFETADevice::assign_offsets(const SparsityPattern& pattern) {
-    std::vector<MatrixOffset> offsets(journal_.size(), -1);
-    for (std::size_t i = 0; i < journal_.size(); ++i) {
-        auto [r, c] = journal_[i];
-        if (r <= 0 || c <= 0) continue;
-        offsets[i] = pattern.offset(r - 1, c - 1);
-    }
+    const auto offsets = ucb_compute_offsets(journal_, pattern);
 
 #define RESOLVE(f)                                                       \
     do {                                                                 \
@@ -420,12 +372,6 @@ double HFETADevice::compute_trunc(const IntegratorCtx& ctx,
 // ---------------------------------------------------------------------------
 // query_param — post-simulation parameter query
 // ---------------------------------------------------------------------------
-static std::string str_tolower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return s;
-}
-
 std::optional<double>
 HFETADevice::query_param(const std::string& name) const {
     const std::string key = str_tolower(name);

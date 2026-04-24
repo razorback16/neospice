@@ -330,7 +330,7 @@ C1 out 0 160n
     auto result = sim.run(ckt);
 
     // Transient should have run
-    ASSERT_TRUE(result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
 
     // print_output should contain Fourier results (appended last)
     ASSERT_FALSE(result.print_output.empty());
@@ -339,7 +339,7 @@ C1 out 0 160n
     EXPECT_NE(four_out.find("THD"), std::string::npos);
 
     // Also verify via compute_fourier directly
-    auto four_results = compute_fourier(1000.0, {"v(out)"}, *result.transient);
+    auto four_results = compute_fourier(1000.0, {"v(out)"}, std::get<TransientResult>(result.analysis));
     ASSERT_EQ(four_results.size(), 1u);
 
     // Fundamental should be ≈ 0.707 V (within 10% — depends on exact RC time)
@@ -364,9 +364,9 @@ R2 mid 0 1k
 )");
 
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
 
-    auto four_results = compute_fourier(500.0, {"v(in)", "v(mid)"}, *result.transient);
+    auto four_results = compute_fourier(500.0, {"v(in)", "v(mid)"}, std::get<TransientResult>(result.analysis));
     ASSERT_EQ(four_results.size(), 2u);
 
     // v(in) fundamental ≈ 2 V

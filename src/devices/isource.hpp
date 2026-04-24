@@ -1,6 +1,7 @@
 #pragma once
 #include "devices/device.hpp"
 #include "devices/vsource.hpp"  // for PulseParams, SinParams, SourceFunction
+#include <complex>
 
 namespace neospice {
 
@@ -48,6 +49,8 @@ public:
     SourceFunction source_function() const { return func_; }
 
     // Device interface — no matrix entries, RHS only
+    void apply_ac_excitation(std::vector<std::complex<double>>& ac_rhs,
+                             int32_t n) override;
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,

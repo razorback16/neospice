@@ -34,7 +34,7 @@ public:
 
     /// Apply temperature-dependent adjustment to effective resistance.
     /// Called once during circuit finalize (or whenever temperature changes).
-    void process_temperature(double sim_temp, double sim_tnom);
+    void process_temperature(double sim_temp, double sim_tnom) override;
 
     /// Optional flicker (1/f) noise parameters.
     /// If noise_kf == 0 (default), no flicker noise is added (backward compatible).

@@ -21,7 +21,7 @@ static std::string to_lower(std::string s) {
 NoiseResult solve_noise(Circuit& ckt,
                         const std::string& output_node,
                         const std::string& input_src,
-                        AnalysisCommand::ACMode mode,
+                        ACMode mode,
                         int npoints, double fstart, double fstop) {
     auto t_start = std::chrono::steady_clock::now();
     const int32_t n = ckt.num_vars();

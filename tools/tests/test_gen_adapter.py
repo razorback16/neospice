@@ -247,10 +247,9 @@ class TestAdapterCpp:
         cpp = generate_adapter_cpp(desc)
         assert "DIOModelCard::~DIOModelCard() = default;" in cpp
 
-    def test_neo_to_ucb(self, desc: StubDescriptor) -> None:
+    def test_ucb_utils_include(self, desc: StubDescriptor) -> None:
         cpp = generate_adapter_cpp(desc)
-        assert "static inline int neo_to_ucb(int32_t neo)" in cpp
-        assert "(neo < 0) ? 0 : (neo + 1)" in cpp
+        assert '#include "devices/ucb_utils.hpp"' in cpp
 
     def test_make_factory(self, desc: StubDescriptor) -> None:
         cpp = generate_adapter_cpp(desc)

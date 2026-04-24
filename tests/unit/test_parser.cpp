@@ -18,7 +18,7 @@ R2 mid 0 1k
     EXPECT_EQ(ckt.num_nodes(), 2); // in, mid
     EXPECT_EQ(ckt.devices().size(), 3u); // V1, R1, R2
     EXPECT_EQ(ckt.analyses.size(), 1u);
-    EXPECT_EQ(ckt.analyses[0].type, AnalysisCommand::OP);
+    EXPECT_TRUE(std::holds_alternative<OpCmd>(ckt.analyses[0]));
 }
 
 TEST(Parser, TransientAnalysis) {
@@ -34,9 +34,10 @@ C1 out 0 1u
     auto ckt = parser.parse(netlist);
     EXPECT_EQ(ckt.devices().size(), 3u);
     ASSERT_EQ(ckt.analyses.size(), 1u);
-    EXPECT_EQ(ckt.analyses[0].type, AnalysisCommand::TRAN);
-    EXPECT_NEAR(ckt.analyses[0].tran_tstep, 0.1e-6, 1e-12);
-    EXPECT_NEAR(ckt.analyses[0].tran_tstop, 50e-6, 1e-12);
+    ASSERT_TRUE(std::holds_alternative<TranCmd>(ckt.analyses[0]));
+    auto& tran = std::get<TranCmd>(ckt.analyses[0]);
+    EXPECT_NEAR(tran.tstep, 0.1e-6, 1e-12);
+    EXPECT_NEAR(tran.tstop, 50e-6, 1e-12);
 }
 
 TEST(Parser, ACAnalysis) {
@@ -51,8 +52,8 @@ C1 out 0 1n
     NetlistParser parser;
     auto ckt = parser.parse(netlist);
     ASSERT_EQ(ckt.analyses.size(), 1u);
-    EXPECT_EQ(ckt.analyses[0].type, AnalysisCommand::AC);
-    EXPECT_EQ(ckt.analyses[0].ac_npoints, 10);
+    ASSERT_TRUE(std::holds_alternative<ACCmd>(ckt.analyses[0]));
+    EXPECT_EQ(std::get<ACCmd>(ckt.analyses[0]).npoints, 10);
 }
 
 TEST(Parser, DiodeWithModel) {

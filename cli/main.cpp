@@ -37,47 +37,40 @@ int main(int argc, char* argv[]) {
         auto result = sim.run(ckt);
         auto t_sim = Clock::now();
 
-        bool has_any = result.dc || result.ac || result.transient || result.dc_sweep;
-        if (!has_any) {
+        if (std::holds_alternative<std::monostate>(result.analysis)) {
             std::cerr << "No analysis commands found in netlist\n";
             return 1;
         }
 
         if (split) {
-            int written = 0;
-            bool multi = (!!result.dc + !!result.ac + !!result.transient + !!result.dc_sweep) > 1;
-            if (result.dc) {
-                auto path = multi
-                    ? std::filesystem::path(output_path).replace_extension(".dc.raw").string()
-                    : output_path;
-                neospice::write_raw(path, *result.dc, ckt.title);
-                std::cout << "DC results written to " << path << "\n";
-                ++written;
-            }
-            if (result.ac) {
-                auto path = multi
-                    ? std::filesystem::path(output_path).replace_extension(".ac.raw").string()
-                    : output_path;
-                neospice::write_raw(path, *result.ac, ckt.title);
-                std::cout << "AC results written to " << path << "\n";
-                ++written;
-            }
-            if (result.transient) {
-                auto path = multi
-                    ? std::filesystem::path(output_path).replace_extension(".tran.raw").string()
-                    : output_path;
-                neospice::write_raw(path, *result.transient, ckt.title);
-                std::cout << "Transient results written to " << path << "\n";
-                ++written;
-            }
-            if (result.dc_sweep) {
-                auto path = multi
-                    ? std::filesystem::path(output_path).replace_extension(".dcsweep.raw").string()
-                    : output_path;
-                neospice::write_raw(path, *result.dc_sweep, ckt.title);
-                std::cout << "DC sweep results written to " << path << "\n";
-                ++written;
-            }
+            std::visit(neospice::overloaded{
+                [](std::monostate) {},
+                [&](const neospice::DCResult& dc) {
+                    neospice::write_raw(output_path, dc, ckt.title);
+                    std::cout << "DC results written to " << output_path << "\n";
+                },
+                [&](const neospice::ACResult& ac) {
+                    auto path = std::filesystem::path(output_path)
+                        .replace_extension(".ac.raw").string();
+                    neospice::write_raw(path, ac, ckt.title);
+                    std::cout << "AC results written to " << path << "\n";
+                },
+                [&](const neospice::TransientResult& tran) {
+                    auto path = std::filesystem::path(output_path)
+                        .replace_extension(".tran.raw").string();
+                    neospice::write_raw(path, tran, ckt.title);
+                    std::cout << "Transient results written to " << path << "\n";
+                },
+                [&](const neospice::DCSweepResult& sw) {
+                    auto path = std::filesystem::path(output_path)
+                        .replace_extension(".dcsweep.raw").string();
+                    neospice::write_raw(path, sw, ckt.title);
+                    std::cout << "DC sweep results written to " << path << "\n";
+                },
+                [](const auto&) {
+                    // NoiseResult, TFResult, SensResult, PZResult — no raw writer
+                }
+            }, result.analysis);
         } else {
             neospice::write_raw(output_path, result, ckt.title);
             std::cout << "Results written to " << output_path << "\n";

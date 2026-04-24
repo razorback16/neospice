@@ -121,12 +121,12 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RDSMOD) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.dc.has_value());
+    ASSERT_TRUE(std::holds_alternative<DCResult>(cs_result.analysis));
     // ngspice is the expected side so we only compare external nodes
     // (internal nodes like dNodePrime/sNodePrime are not in ngspice output).
     // Model matches ngspice to floating-point precision; gate current i(v2)
     // is the worst signal at noise floor.  Measured worst: i(v2) < 1e-3.
-    auto cmp = compare_dc(ng_result, *cs_result.dc, {1e-3, 1e-9});
+    auto cmp = compare_dc(ng_result, std::get<DCResult>(cs_result.analysis), {1e-3, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -136,7 +136,7 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RGATEMOD) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.dc.has_value());
+    ASSERT_TRUE(std::holds_alternative<DCResult>(cs_result.analysis));
     // ngspice exposes internal nodes (e.g. v(m1#gate)) that we name
     // differently (__m1_gate) --- strip them from the expected side so we
     // only compare circuit-netlist nodes (no '#' in the node name).
@@ -150,7 +150,7 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RGATEMOD) {
     // RGATEMOD=1 model matches ngspice to floating-point precision.
     // Gate current i(v2) at noise floor is worst signal.
     // Measured worst: i(v2) error=0.002 (abstol-limited).
-    auto cmp = compare_dc(ng_result, *cs_result.dc, {1e-2, 1e-9});
+    auto cmp = compare_dc(ng_result, std::get<DCResult>(cs_result.analysis), {1e-2, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -160,7 +160,7 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RBODYMOD) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.dc.has_value());
+    ASSERT_TRUE(std::holds_alternative<DCResult>(cs_result.analysis));
     // ngspice exposes internal body nodes (e.g. v(m1#body)) that we name
     // differently --- strip them from the expected side so we only compare
     // circuit-netlist nodes (no '#' in the node name).
@@ -173,7 +173,7 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RBODYMOD) {
     }
     // RBODYMOD model matches ngspice to floating-point precision.
     // Measured worst: i(v2) error=0.001 (abstol-limited).
-    auto cmp = compare_dc(ng_result, *cs_result.dc, {1e-3, 1e-9});
+    auto cmp = compare_dc(ng_result, std::get<DCResult>(cs_result.analysis), {1e-3, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -187,12 +187,12 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
     auto ng_edges = extract_edges(ng_result.time, ng_result.voltages.at("v(out)"),
                                   0.0, 1.8, 1e-9);
-    auto cs_edges = extract_edges(cs_result.transient->time,
-                                  cs_result.transient->voltages.at("v(out)"),
+    auto cs_edges = extract_edges(std::get<TransientResult>(cs_result.analysis).time,
+                                  std::get<TransientResult>(cs_result.analysis).voltages.at("v(out)"),
                                   0.0, 1.8, 1e-9);
     ASSERT_EQ(ng_edges.size(), cs_edges.size());
 
@@ -213,12 +213,12 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
     auto ng_edges = extract_edges(ng_result.time, ng_result.voltages.at("v(out)"),
                                   0.0, 1.8, 200e-12);
-    auto cs_edges = extract_edges(cs_result.transient->time,
-                                  cs_result.transient->voltages.at("v(out)"),
+    auto cs_edges = extract_edges(std::get<TransientResult>(cs_result.analysis).time,
+                                  std::get<TransientResult>(cs_result.analysis).voltages.at("v(out)"),
                                   0.0, 1.8, 200e-12);
     ASSERT_EQ(ng_edges.size(), cs_edges.size());
 
@@ -254,14 +254,14 @@ TEST_F(NgspiceCompareTest, RingOscillator5Stage) {
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     OscillatorTolerance tol{
         /*period_relative=*/1e-3,
         /*amplitude_relative=*/1e-3,
         /*dc_absolute=*/5e-2,
         /*mid_absolute=*/5e-2,
         /*min_periods=*/3};
-    auto cmp = compare_transient_oscillator(*cs_result.transient, ng_result, tol);
+    auto cmp = compare_transient_oscillator(std::get<TransientResult>(cs_result.analysis), ng_result, tol);
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

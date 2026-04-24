@@ -1,6 +1,7 @@
 #pragma once
 #include "devices/device.hpp"
 #include <cmath>
+#include <complex>
 #include <vector>
 
 namespace neospice {
@@ -45,7 +46,9 @@ public:
 
     /// Assign the branch (extra) variable index in the MNA system.
     void set_branch_index(int32_t idx);
-    int32_t branch_index() const { return branch_idx_; }
+    int32_t branch_index() const override { return branch_idx_; }
+    void apply_ac_excitation(std::vector<std::complex<double>>& ac_rhs,
+                             int32_t n) override;
 
     /// Node accessors (needed by .tf analysis).
     int32_t pos_node() const { return np_; }

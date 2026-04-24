@@ -92,8 +92,8 @@ R1 cathode 0 1
     Circuit ckt = sim.parse(netlist);
     SimulationResult result = sim.run(ckt);
 
-    ASSERT_TRUE(result.dc_sweep.has_value());
-    auto& sw = *result.dc_sweep;
+    ASSERT_TRUE(std::holds_alternative<DCSweepResult>(result.analysis));
+    auto& sw = std::get<DCSweepResult>(result.analysis);
 
     // Reverse bias: nearly zero current (V_cathode ≈ 0)
     // Forward bias around 0.6 V: exponential current
@@ -175,8 +175,8 @@ R2 out 0 1k
     Circuit ckt = sim.parse(netlist);
     SimulationResult result = sim.run(ckt);
 
-    ASSERT_TRUE(result.dc_sweep.has_value());
-    auto& sw = *result.dc_sweep;
+    ASSERT_TRUE(std::holds_alternative<DCSweepResult>(result.analysis));
+    auto& sw = std::get<DCSweepResult>(result.analysis);
     ASSERT_EQ(sw.sweep_values.size(), 6u);
 
     for (size_t i = 0; i < sw.sweep_values.size(); ++i) {
@@ -204,8 +204,8 @@ R3 out 0 1k
     Circuit ckt = sim.parse(netlist);
     SimulationResult result = sim.run(ckt);
 
-    ASSERT_TRUE(result.dc_sweep.has_value());
-    auto& sw = *result.dc_sweep;
+    ASSERT_TRUE(std::holds_alternative<DCSweepResult>(result.analysis));
+    auto& sw = std::get<DCSweepResult>(result.analysis);
     EXPECT_EQ(sw.sweep_var, "v2");
     ASSERT_EQ(sw.sweep_values.size(), 9u);
 

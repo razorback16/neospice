@@ -141,12 +141,12 @@ TEST(TF, NetlistParser) {
     auto ckt = sim.load(path);
     auto result = sim.run(ckt);
 
-    ASSERT_TRUE(result.tf.has_value());
+    ASSERT_TRUE(std::holds_alternative<TFResult>(result.analysis));
 
     // Same circuit as ResistiveDividerVSource
-    EXPECT_NEAR(result.tf->transfer_function, 10000.0 / 13000.0, 1e-6);
-    EXPECT_NEAR(result.tf->input_impedance, 13000.0, 1e-3);
-    EXPECT_NEAR(result.tf->output_impedance, 30000.0 / 13.0, 1e-3);
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).transfer_function, 10000.0 / 13000.0, 1e-6);
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).input_impedance, 13000.0, 1e-3);
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).output_impedance, 30000.0 / 13.0, 1e-3);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,10 +164,10 @@ R2 out 0 1k
 )");
     auto result = sim.run(ckt);
 
-    ASSERT_TRUE(result.tf.has_value());
-    EXPECT_NEAR(result.tf->transfer_function, 0.5, 1e-6);
-    EXPECT_NEAR(result.tf->input_impedance, 2000.0, 1e-3);
-    EXPECT_NEAR(result.tf->output_impedance, 500.0, 1e-3);
+    ASSERT_TRUE(std::holds_alternative<TFResult>(result.analysis));
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).transfer_function, 0.5, 1e-6);
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).input_impedance, 2000.0, 1e-3);
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).output_impedance, 500.0, 1e-3);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,17 +223,17 @@ TEST(TF, NgspiceComparison) {
     Simulator sim;
     auto ckt = sim.load(cir_path);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.tf.has_value());
+    ASSERT_TRUE(std::holds_alternative<TFResult>(result.analysis));
 
     // Compare (tight tolerance — both are direct solvers)
-    EXPECT_NEAR(result.tf->transfer_function, ng_tf, 1e-6)
-        << "TF mismatch: neospice=" << result.tf->transfer_function
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).transfer_function, ng_tf, 1e-6)
+        << "TF mismatch: neospice=" << std::get<TFResult>(result.analysis).transfer_function
         << " ngspice=" << ng_tf;
-    EXPECT_NEAR(result.tf->input_impedance, ng_zin, 1e-3)
-        << "Zin mismatch: neospice=" << result.tf->input_impedance
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).input_impedance, ng_zin, 1e-3)
+        << "Zin mismatch: neospice=" << std::get<TFResult>(result.analysis).input_impedance
         << " ngspice=" << ng_zin;
-    EXPECT_NEAR(result.tf->output_impedance, ng_zout, 1e-3)
-        << "Zout mismatch: neospice=" << result.tf->output_impedance
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).output_impedance, ng_zout, 1e-3)
+        << "Zout mismatch: neospice=" << std::get<TFResult>(result.analysis).output_impedance
         << " ngspice=" << ng_zout;
 }
 
@@ -253,12 +253,12 @@ R4 b 0 4k
 .end
 )");
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.tf.has_value());
+    ASSERT_TRUE(std::holds_alternative<TFResult>(result.analysis));
 
     // V(a) = V1 * R3/(R1+R3) = 3/4
     // V(b) = V1 * R4/(R2+R4) = 4/6 = 2/3
     // TF = V(a) - V(b) = 3/4 - 2/3 = 9/12 - 8/12 = 1/12
-    EXPECT_NEAR(result.tf->transfer_function, 1.0 / 12.0, 1e-6);
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).transfer_function, 1.0 / 12.0, 1e-6);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,16 +301,16 @@ R2 out 0 2k
     Simulator sim;
     auto ckt = sim.parse(cir_text);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.tf.has_value());
+    ASSERT_TRUE(std::holds_alternative<TFResult>(result.analysis));
 
-    EXPECT_NEAR(result.tf->transfer_function, ng_tf, 1e-3)
-        << "TF mismatch: neospice=" << result.tf->transfer_function
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).transfer_function, ng_tf, 1e-3)
+        << "TF mismatch: neospice=" << std::get<TFResult>(result.analysis).transfer_function
         << " ngspice=" << ng_tf;
-    EXPECT_NEAR(result.tf->input_impedance, ng_zin, 1e-1)
-        << "Zin mismatch: neospice=" << result.tf->input_impedance
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).input_impedance, ng_zin, 1e-1)
+        << "Zin mismatch: neospice=" << std::get<TFResult>(result.analysis).input_impedance
         << " ngspice=" << ng_zin;
-    EXPECT_NEAR(result.tf->output_impedance, ng_zout, 1e-1)
-        << "Zout mismatch: neospice=" << result.tf->output_impedance
+    EXPECT_NEAR(std::get<TFResult>(result.analysis).output_impedance, ng_zout, 1e-1)
+        << "Zout mismatch: neospice=" << std::get<TFResult>(result.analysis).output_impedance
         << " ngspice=" << ng_zout;
 
     std::remove(tmp_path.c_str());

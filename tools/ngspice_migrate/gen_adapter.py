@@ -619,6 +619,8 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("\n")
     parts.append('#include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx\n')
     parts.append('#include "core/types.hpp"          // SimOptions defaults\n')
+    parts.append('#include "devices/ucb_device_init.hpp"\n')
+    parts.append('#include "devices/ucb_utils.hpp"\n')
     parts.append("\n")
     parts.append("#include <cmath>\n")
     if has_cleanup:
@@ -660,17 +662,6 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
         parts.append("}\n")
     else:
         parts.append(f"{prefix}ModelCard::~{prefix}ModelCard() = default;\n")
-    parts.append("\n")
-
-    # --- neo_to_ucb helper -------------------------------------------------
-    parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append("// Neospice -> UCB node translation.\n")
-    parts.append("// Neospice uses GROUND_INTERNAL = -1 for ground and consecutive non-negative\n")
-    parts.append("// indices for real nodes.  UCB uses 0 for ground and >=1 for real nodes.\n")
-    parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append("static inline int neo_to_ucb(int32_t neo) {\n")
-    parts.append("    return (neo < 0) ? 0 : (neo + 1);\n")
-    parts.append("}\n")
     parts.append("\n")
 
     # --- make() factory ----------------------------------------------------
@@ -738,44 +729,26 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("\n")
 
     # --- declare_internal_nodes --------------------------------------------
+    # Derive the UCB macro prefix from the instances_field.  For example,
+    # instances_field="BJTinstances"  →  ucb_prefix="BJT".
+    ucb_prefix = desc.instances_field.removesuffix("instances") if desc.instances_field else ""
+
     parts.append("// ---------------------------------------------------------------------------\n")
     parts.append("// declare_internal_nodes\n")
     parts.append("// ---------------------------------------------------------------------------\n")
     parts.append(f"void {prefix}Device::declare_internal_nodes(Circuit& ckt) {{\n")
-    parts.append("    SparsityBuilder scratch(1);\n")
-    parts.append("    Shim::Matrix shim_matrix(scratch);\n")
-    parts.append("\n")
-    parts.append("    Shim::Ckt setup_ckt;\n")
-    parts.append("    setup_ckt.CKTtemp    = T_NOMINAL;\n")
-    parts.append("    setup_ckt.CKTnomTemp = T_NOMINAL;\n")
-    parts.append("    setup_ckt.CKTinternalNodeCounter = 1000;\n")
-    parts.append("\n")
-
-    if desc.has_internal_nodes:
-        parts.append("    setup_ckt.node_alloc = [&ckt, this](const char* name) -> int {\n")
-        parts.append('        std::string full = "__" + name_ + "_" + name;\n')
-        parts.append("        int32_t neo = ckt.node(full);\n")
-        parts.append("        return neo + 1;  // UCB convention: ground=0, real>=1\n")
-        parts.append("    };\n")
-        parts.append("\n")
-
-    parts.append("    int states = 0;\n")
-    parts.append(f"    int rc = {desc.setup_function}(&shim_matrix, model_, &setup_ckt, &states);\n")
-    parts.append("    if (rc != Shim::OK) {\n")
-    parts.append(f'        throw std::runtime_error("{desc.setup_function} failed with rc=" + std::to_string(rc));\n')
-    parts.append("    }\n")
-    parts.append("\n")
-    parts.append("    const auto& journal = shim_matrix.reservation_journal();\n")
-    parts.append("    journal_.assign(journal.begin(), journal.end());\n")
-    parts.append("\n")
-    parts.append("    // Recompute max_neo_node_ to cover internal nodes.\n")
-    parts.append("    for (auto [r, c] : journal_) {\n")
-    parts.append("        int mx = std::max(r, c);\n")
-    parts.append("        if (mx > 0) {\n")
-    parts.append("            int32_t neo = mx - 1;\n")
-    parts.append("            if (neo > max_neo_node_) max_neo_node_ = neo;\n")
-    parts.append("        }\n")
-    parts.append("    }\n")
+    parts.append("    ucb_declare_internal_nodes<Shim::Matrix, Shim::Ckt>(\n")
+    parts.append("        ckt, name_,\n")
+    parts.append("        [this](Shim::Matrix& m, Shim::Ckt& c) {\n")
+    if ucb_prefix:
+        parts.append(f"            UCB_SPLICE_INSTANCE({ucb_prefix});\n")
+    parts.append("            int states = 0;\n")
+    parts.append(f"            int rc = {desc.setup_function}(&m, model_, &c, &states);\n")
+    if ucb_prefix:
+        parts.append(f"            UCB_UNSPLICE_INSTANCE({ucb_prefix});\n")
+    parts.append("            return rc;\n")
+    parts.append("        },\n")
+    parts.append(f'        "{desc.setup_function}", journal_, max_neo_node_);\n')
     parts.append("}\n")
     parts.append("\n")
 
@@ -784,10 +757,7 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("// stamp_pattern\n")
     parts.append("// ---------------------------------------------------------------------------\n")
     parts.append(f"void {prefix}Device::stamp_pattern(SparsityBuilder& builder) const {{\n")
-    parts.append("    for (auto [r, c] : journal_) {\n")
-    parts.append("        if (r <= 0 || c <= 0) continue;\n")
-    parts.append("        builder.add(r - 1, c - 1);\n")
-    parts.append("    }\n")
+    parts.append("    ucb_stamp_pattern(journal_, builder);\n")
     parts.append("}\n")
     parts.append("\n")
 
@@ -796,12 +766,7 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("// assign_offsets\n")
     parts.append("// ---------------------------------------------------------------------------\n")
     parts.append(f"void {prefix}Device::assign_offsets(const SparsityPattern& pattern) {{\n")
-    parts.append("    std::vector<MatrixOffset> offsets(journal_.size(), -1);\n")
-    parts.append("    for (std::size_t i = 0; i < journal_.size(); ++i) {\n")
-    parts.append("        auto [r, c] = journal_[i];\n")
-    parts.append("        if (r <= 0 || c <= 0) continue;\n")
-    parts.append("        offsets[i] = pattern.offset(r - 1, c - 1);\n")
-    parts.append("    }\n")
+    parts.append("    const auto offsets = ucb_compute_offsets(journal_, pattern);\n")
     parts.append("\n")
     parts.append("#define RESOLVE(f)                                                       \\\n")
     parts.append("    do {                                                                 \\\n")

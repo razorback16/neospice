@@ -64,7 +64,7 @@ TEST_F(VBICValidation, GummelPlot) {
     auto ng_result = ngspice_->run_dc_sweep(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.dc_sweep.has_value());
+    ASSERT_TRUE(std::holds_alternative<DCSweepResult>(cs_result.analysis));
 
     // Strip internal ngspice nodes (names containing '#')
     for (auto it = ng_result.voltages.begin();
@@ -83,7 +83,7 @@ TEST_F(VBICValidation, GummelPlot) {
     }
 
     // Compare sweep values — check both have same number of points.
-    ASSERT_EQ(ng_result.sweep_values.size(), cs_result.dc_sweep->sweep_values.size());
+    ASSERT_EQ(ng_result.sweep_values.size(), std::get<DCSweepResult>(cs_result.analysis).sweep_values.size());
 
     // Compare current waveforms across the sweep.  At low VBE (sub-threshold),
     // currents are on the order of pA and the difference between simulators
@@ -92,8 +92,8 @@ TEST_F(VBICValidation, GummelPlot) {
     // the physically meaningful region (VBE > ~0.5V where Ic >> 1 nA).
     // Relative tolerance of 1% catches real model discrepancies.
     for (const auto& [name, ng_vec] : ng_result.currents) {
-        auto it = cs_result.dc_sweep->currents.find(name);
-        if (it == cs_result.dc_sweep->currents.end()) continue;
+        auto it = std::get<DCSweepResult>(cs_result.analysis).currents.find(name);
+        if (it == std::get<DCSweepResult>(cs_result.analysis).currents.end()) continue;
         const auto& cs_vec = it->second;
         ASSERT_EQ(ng_vec.size(), cs_vec.size());
 
@@ -148,7 +148,7 @@ TEST_F(VBICValidation, AcSmallSignal) {
     auto ng_result = ngspice_->run_ac(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.ac.has_value());
+    ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis));
 
     // Strip internal ngspice nodes
     for (auto it = ng_result.voltages.begin();
@@ -166,7 +166,7 @@ TEST_F(VBICValidation, AcSmallSignal) {
             ++it;
     }
 
-    auto cmp = compare_ac(ng_result, *cs_result.ac, {1e-2, 1e-9});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-2, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -183,7 +183,7 @@ TEST_F(VBICValidation, SwitchingTransient) {
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
     // Strip internal ngspice nodes
     for (auto it = ng_result.voltages.begin();
@@ -201,7 +201,7 @@ TEST_F(VBICValidation, SwitchingTransient) {
             ++it;
     }
 
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {2.7e-1, 5e-2});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2.7e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

@@ -49,8 +49,8 @@ R3 out 0 1k
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.dc.has_value());
-    const DCResult& dc = *res.dc;
+    ASSERT_TRUE(std::holds_alternative<DCResult>(res.analysis));
+    const DCResult& dc = std::get<DCResult>(res.analysis);
 
     // Only V(out) and I(V1) should be present
     EXPECT_EQ(dc.node_voltages.count("v(out)"),  1u);
@@ -82,8 +82,8 @@ R2 out 0 1k
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.dc.has_value());
-    const DCResult& dc = *res.dc;
+    ASSERT_TRUE(std::holds_alternative<DCResult>(res.analysis));
+    const DCResult& dc = std::get<DCResult>(res.analysis);
 
     // All nodes (excluding ground which is index 0 — v(0) is gnd)
     EXPECT_GE(dc.node_voltages.size(), 2u);  // at least v(in), v(out)
@@ -134,8 +134,8 @@ C1 out 0 1n
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.transient.has_value());
-    const TransientResult& tr = *res.transient;
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(res.analysis));
+    const TransientResult& tr = std::get<TransientResult>(res.analysis);
 
     // v(out) must be present
     EXPECT_TRUE(tr.voltages.count("v(out)") > 0);
@@ -161,8 +161,8 @@ C1 out 0 1n
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.transient.has_value());
-    const TransientResult& tr = *res.transient;
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(res.analysis));
+    const TransientResult& tr = std::get<TransientResult>(res.analysis);
 
     EXPECT_TRUE(tr.voltages.count("v(in)")  > 0);
     EXPECT_TRUE(tr.voltages.count("v(out)") > 0);
@@ -186,8 +186,8 @@ C1 out 0 1n
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.ac.has_value());
-    const ACResult& ac = *res.ac;
+    ASSERT_TRUE(std::holds_alternative<ACResult>(res.analysis));
+    const ACResult& ac = std::get<ACResult>(res.analysis);
 
     EXPECT_TRUE(ac.voltages.count("v(out)") > 0);
     EXPECT_TRUE(ac.currents.count("i(v1)")  > 0);
@@ -210,8 +210,8 @@ C1 out 0 1n
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.ac.has_value());
-    const ACResult& ac = *res.ac;
+    ASSERT_TRUE(std::holds_alternative<ACResult>(res.analysis));
+    const ACResult& ac = std::get<ACResult>(res.analysis);
 
     EXPECT_TRUE(ac.voltages.count("v(in)")  > 0);
     EXPECT_TRUE(ac.voltages.count("v(out)") > 0);
@@ -236,8 +236,8 @@ R3 out 0 1k
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.dc_sweep.has_value());
-    const DCSweepResult& sw = *res.dc_sweep;
+    ASSERT_TRUE(std::holds_alternative<DCSweepResult>(res.analysis));
+    const DCSweepResult& sw = std::get<DCSweepResult>(res.analysis);
 
     EXPECT_TRUE(sw.voltages.count("v(out)") > 0);
     EXPECT_TRUE(sw.currents.count("i(v1)")  > 0);
@@ -261,8 +261,8 @@ R2 out 0 1k
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.dc_sweep.has_value());
-    const DCSweepResult& sw = *res.dc_sweep;
+    ASSERT_TRUE(std::holds_alternative<DCSweepResult>(res.analysis));
+    const DCSweepResult& sw = std::get<DCSweepResult>(res.analysis);
 
     EXPECT_TRUE(sw.voltages.count("v(in)")  > 0);
     EXPECT_TRUE(sw.voltages.count("v(out)") > 0);
@@ -288,8 +288,8 @@ R3 out 0 1k
     Circuit ckt = sim.parse(netlist);
     SimulationResult res = sim.run(ckt);
 
-    ASSERT_TRUE(res.dc.has_value());
-    const DCResult& dc = *res.dc;
+    ASSERT_TRUE(std::holds_alternative<DCResult>(res.analysis));
+    const DCResult& dc = std::get<DCResult>(res.analysis);
 
     EXPECT_TRUE(dc.node_voltages.count("v(mid)")  > 0);
     EXPECT_TRUE(dc.branch_currents.count("i(v1)") > 0);

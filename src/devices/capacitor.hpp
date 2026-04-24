@@ -52,7 +52,7 @@ public:
     void apply_ic_override();  // Override v_prev with IC value (call after init_dc_state)
 
     /// Apply temperature-dependent adjustment to effective capacitance.
-    void process_temperature(double sim_temp, double sim_tnom);
+    void process_temperature(double sim_temp, double sim_tnom) override;
 
 private:
     int32_t np_, nn_;

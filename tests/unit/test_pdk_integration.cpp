@@ -974,7 +974,7 @@ X1 inp outp rdiv r1=3k r2=1k
     auto ckt = sim.parse(netlist_text);
     auto result = sim.run(ckt);
 
-    ASSERT_TRUE(result.dc.has_value());
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     // V(outp) = 8 * 1k/(3k+1k) = 2.0V
-    EXPECT_NEAR(result.dc->node_voltages["v(outp)"], 2.0, 1e-2);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(outp)"], 2.0, 1e-2);
 }

@@ -203,6 +203,16 @@ void VSource::ac_stamp(const std::vector<double>& /*voltages*/,
     add_if_valid(G, off_branch_nn_, -1.0);
 }
 
+void VSource::apply_ac_excitation(std::vector<std::complex<double>>& ac_rhs,
+                                  int32_t n) {
+    if (ac_mag_ != 0.0) {
+        int32_t br = branch_idx_;
+        if (br >= 0 && br < n) {
+            ac_rhs[br] = std::polar(ac_mag_, ac_phase_deg_ * (M_PI / 180.0));
+        }
+    }
+}
+
 std::vector<double> VSource::get_breakpoints(double tstart, double tstop) const {
     std::vector<double> bps;
 

@@ -1,30 +1,10 @@
 #include "core/circuit.hpp"
-#include "devices/bsim4v7/bsim4v7_device.hpp"  // complete BSIM4v7ModelCard for unique_ptr
-#include "devices/mos1/mos1_device.hpp"        // complete MOS1ModelCard for unique_ptr
-#include "devices/mos3/mos3_device.hpp"        // complete MOS3ModelCard for unique_ptr
-#include "devices/mos9/mos9_device.hpp"        // complete MOS9ModelCard for unique_ptr
-#include "devices/bjt/bjt_device.hpp"           // complete BJTModelCard for unique_ptr
-#include "devices/jfet/jfet_device.hpp"         // complete JFETModelCard for unique_ptr
-#include "devices/jfet2/jfet2_device.hpp"       // complete JFET2ModelCard for unique_ptr
-#include "devices/dio/dio_device.hpp"           // complete DIOModelCard for unique_ptr
-#include "devices/vbic/vbic_device.hpp"         // complete VBICModelCard for unique_ptr
-#include "devices/bsim3/bsim3_device.hpp"      // complete BSIM3ModelCard for unique_ptr
-#include "devices/hfet1/hfet1_device.hpp"      // complete HFETAModelCard for unique_ptr
-#include "devices/hfet2/hfet2_device.hpp"      // complete HFET2ModelCard for unique_ptr
-#include "devices/bsim3v32/bsim3v32_device.hpp" // complete BSIM3v32ModelCard for unique_ptr
-#include "devices/hisim2/hisim2_device.hpp"    // complete HSM2ModelCard for unique_ptr
-#include "devices/hisimhv/hisimhv_device.hpp"  // complete HSMHVModelCard for unique_ptr
-#include "devices/bsimsoi/bsimsoi_device.hpp"  // complete B4SOIModelCard for unique_ptr
-#include "devices/resistor.hpp"
-#include "devices/capacitor.hpp"
-#include "devices/inductor.hpp"
-#include "devices/asrc/asrc_device.hpp"
 #include <cassert>
 #include <stdexcept>
 
 namespace neospice {
 
-// Out-of-line special members so BSIM4v7ModelCard can be incomplete in the header.
+// Out-of-line special members so ModelCardHolder's vtable is emitted here.
 Circuit::Circuit() = default;
 Circuit::~Circuit() = default;
 Circuit::Circuit(Circuit&&) noexcept = default;
@@ -86,70 +66,6 @@ void Circuit::add_device(std::unique_ptr<Device> dev) {
     devices_.push_back(std::move(dev));
 }
 
-void Circuit::add_bsim4_model_card(std::unique_ptr<BSIM4v7ModelCard> card) {
-    bsim4_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_bjt_model_card(std::unique_ptr<BJTModelCard> card) {
-    bjt_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_jfet_model_card(std::unique_ptr<JFETModelCard> card) {
-    jfet_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_jfet2_model_card(std::unique_ptr<JFET2ModelCard> card) {
-    jfet2_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_mos1_model_card(std::unique_ptr<MOS1ModelCard> card) {
-    mos1_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_mos3_model_card(std::unique_ptr<MOS3ModelCard> card) {
-    mos3_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_mos9_model_card(std::unique_ptr<MOS9ModelCard> card) {
-    mos9_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_dio_model_card(std::unique_ptr<DIOModelCard> card) {
-    dio_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_vbic_model_card(std::unique_ptr<VBICModelCard> card) {
-    vbic_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_bsim3_model_card(std::unique_ptr<BSIM3ModelCard> card) {
-    bsim3_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_hfet1_model_card(std::unique_ptr<HFETAModelCard> card) {
-    hfet1_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_hfet2_model_card(std::unique_ptr<HFET2ModelCard> card) {
-    hfet2_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_bsim3v32_model_card(std::unique_ptr<BSIM3v32ModelCard> card) {
-    bsim3v32_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_hisim2_model_card(std::unique_ptr<HSM2ModelCard> card) {
-    hisim2_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_hisimhv_model_card(std::unique_ptr<HSMHVModelCard> card) {
-    hisimhv_model_cards_.push_back(std::move(card));
-}
-
-void Circuit::add_bsimsoi_model_card(std::unique_ptr<B4SOIModelCard> card) {
-    bsimsoi_model_cards_.push_back(std::move(card));
-}
-
 void Circuit::finalize() {
     assert(!pattern_ && "Circuit::finalize() called twice");
 
@@ -184,17 +100,12 @@ void Circuit::finalize() {
         dev->assign_offsets(*pattern_);
     }
 
-    // 5. Process temperature-dependent parameters for R/C/L devices.
+    // 5. Process temperature-dependent parameters for R/C/L/B devices.
     //    This mirrors ngspice's REStemp/CAPtemp/INDtemp calls.
+    //    Device::process_temperature() is a no-op by default; subclasses
+    //    with temperature coefficients override it.
     for (auto& dev : devices_) {
-        if (auto* r = dynamic_cast<Resistor*>(dev.get()))
-            r->process_temperature(options.temp, options.tnom);
-        else if (auto* c = dynamic_cast<Capacitor*>(dev.get()))
-            c->process_temperature(options.temp, options.tnom);
-        else if (auto* l = dynamic_cast<Inductor*>(dev.get()))
-            l->process_temperature(options.temp, options.tnom);
-        else if (auto* b = dynamic_cast<ASRCDevice*>(dev.get()))
-            b->process_temperature(options.temp, options.tnom);
+        dev->process_temperature(options.temp, options.tnom);
     }
 
     // 6. Allocate state ring buffers and bind per-device base offsets.

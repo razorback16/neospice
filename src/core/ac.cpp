@@ -3,13 +3,6 @@
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/klu_solver.hpp"
-#include "devices/vsource.hpp"
-#include "devices/isource.hpp"
-#include "devices/inductor.hpp"
-#include "devices/vcvs.hpp"
-#include "devices/ccvs.hpp"
-#include "devices/vcvs_nonlinear.hpp"
-#include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
@@ -31,7 +24,7 @@ static std::string make_branch_key(const std::string& dname) {
     return "i(" + lower + ")";
 }
 
-ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
+ACResult solve_ac(Circuit& ckt, ACMode mode,
                   int npoints, double fstart, double fstop) {
     auto t_start = std::chrono::steady_clock::now();
     const int32_t n = ckt.num_vars();
@@ -131,25 +124,7 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
     // 4. Build AC excitation vector (complex RHS)
     std::vector<std::complex<double>> ac_rhs(n, {0.0, 0.0});
     for (auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-            if (vs->ac_mag() != 0.0) {
-                int32_t br = vs->branch_index();
-                if (br >= 0 && br < n) {
-                    ac_rhs[br] = std::polar(vs->ac_mag(), vs->ac_phase_rad());
-                }
-            }
-        }
-    }
-    for (auto& dev : ckt.devices()) {
-        if (auto* is = dynamic_cast<ISource*>(dev.get())) {
-            if (is->ac_mag() != 0.0) {
-                auto exc = std::polar(is->ac_mag(), is->ac_phase_rad());
-                int32_t np = is->pos_node();
-                int32_t nn = is->neg_node();
-                if (np >= 0 && np < n) ac_rhs[np] -= exc;
-                if (nn >= 0 && nn < n) ac_rhs[nn] += exc;
-            }
-        }
+        dev->apply_ac_excitation(ac_rhs, n);
     }
 
     // 5. Generate frequency points
@@ -192,21 +167,7 @@ ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
             current_slots.push_back({make_branch_key(dname), br});
     };
     for (auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<VSource*>(dev.get()))
-            add_current(vs->branch_index(), dev->name());
-        else if (auto* ind = dynamic_cast<Inductor*>(dev.get()))
-            add_current(ind->branch_index(), dev->name());
-        else if (auto* e = dynamic_cast<VCVS*>(dev.get()))
-            add_current(e->branch_index(), dev->name());
-        else if (auto* h = dynamic_cast<CCVS*>(dev.get()))
-            add_current(h->branch_index(), dev->name());
-        else if (auto* enl = dynamic_cast<NonlinearVCVS*>(dev.get()))
-            add_current(enl->branch_index(), dev->name());
-        else if (auto* etbl = dynamic_cast<TableVCVS*>(dev.get()))
-            add_current(etbl->branch_index(), dev->name());
-        else if (auto* bs = dynamic_cast<ASRCDevice*>(dev.get()))
-            if (bs->mode() == ASRCDevice::Mode::VOLTAGE)
-                add_current(bs->branch_index(), dev->name());
+        add_current(dev->branch_index(), dev->name());
     }
 
     // Prepare result + cache direct pointers for zero-lookup frequency loop

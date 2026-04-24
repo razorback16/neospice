@@ -284,17 +284,17 @@ TEST_F(ASRCValidation, ACGain) {
     // Run neospice
     auto ckt = sim_.load(cir_path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.ac.has_value()) << "neospice should produce AC result";
+    ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis)) << "neospice should produce AC result";
 
-    auto cmp = compare_ac(ng_result, *cs_result.ac, {1e-3, 1e-9});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-3, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 
     // Verify gain at a mid-band frequency
     // V(out) should be 5*V(in) = 5+0j at all frequencies
-    if (!cs_result.ac->voltages.empty() &&
-        cs_result.ac->voltages.count("v(out)")) {
-        const auto& vout = cs_result.ac->voltages.at("v(out)");
+    if (!std::get<ACResult>(cs_result.analysis).voltages.empty() &&
+        std::get<ACResult>(cs_result.analysis).voltages.count("v(out)")) {
+        const auto& vout = std::get<ACResult>(cs_result.analysis).voltages.at("v(out)");
         ASSERT_FALSE(vout.empty());
         // Check magnitude at first frequency point
         double mag = std::abs(vout[0]);

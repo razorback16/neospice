@@ -3,11 +3,6 @@
 #include "core/convergence.hpp"
 #include "core/klu_solver.hpp"
 #include "devices/vsource.hpp"
-#include "devices/inductor.hpp"
-#include "devices/vcvs.hpp"
-#include "devices/ccvs.hpp"
-#include "devices/vcvs_nonlinear.hpp"
-#include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -132,21 +127,7 @@ DCResult solve_dc(Circuit& ckt) {
             dc_result.branch_currents[make_branch_key(dname)] = solution[br];
     };
     for (const auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
-            add_dc_current(vs->branch_index(), dev->name());
-        else if (auto* ind = dynamic_cast<const Inductor*>(dev.get()))
-            add_dc_current(ind->branch_index(), dev->name());
-        else if (auto* e = dynamic_cast<const VCVS*>(dev.get()))
-            add_dc_current(e->branch_index(), dev->name());
-        else if (auto* h = dynamic_cast<const CCVS*>(dev.get()))
-            add_dc_current(h->branch_index(), dev->name());
-        else if (auto* enl = dynamic_cast<const NonlinearVCVS*>(dev.get()))
-            add_dc_current(enl->branch_index(), dev->name());
-        else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
-            add_dc_current(etbl->branch_index(), dev->name());
-        else if (auto* bs = dynamic_cast<const ASRCDevice*>(dev.get()))
-            if (bs->mode() == ASRCDevice::Mode::VOLTAGE)
-                add_dc_current(bs->branch_index(), dev->name());
+        add_dc_current(dev->branch_index(), dev->name());
     }
 
     auto t_end = std::chrono::steady_clock::now();
@@ -275,21 +256,7 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
             sc_slots.push_back({make_branch_key(dname), br});
     };
     for (const auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<const VSource*>(dev.get()))
-            add_sweep_slot(vs->branch_index(), dev->name());
-        else if (auto* ind = dynamic_cast<const Inductor*>(dev.get()))
-            add_sweep_slot(ind->branch_index(), dev->name());
-        else if (auto* e = dynamic_cast<const VCVS*>(dev.get()))
-            add_sweep_slot(e->branch_index(), dev->name());
-        else if (auto* h = dynamic_cast<const CCVS*>(dev.get()))
-            add_sweep_slot(h->branch_index(), dev->name());
-        else if (auto* enl = dynamic_cast<const NonlinearVCVS*>(dev.get()))
-            add_sweep_slot(enl->branch_index(), dev->name());
-        else if (auto* etbl = dynamic_cast<const TableVCVS*>(dev.get()))
-            add_sweep_slot(etbl->branch_index(), dev->name());
-        else if (auto* bs = dynamic_cast<const ASRCDevice*>(dev.get()))
-            if (bs->mode() == ASRCDevice::Mode::VOLTAGE)
-                add_sweep_slot(bs->branch_index(), dev->name());
+        add_sweep_slot(dev->branch_index(), dev->name());
     }
 
     std::vector<std::vector<double>*> sv_ptrs, sc_ptrs;

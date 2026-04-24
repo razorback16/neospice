@@ -111,7 +111,7 @@ struct ACResult {
     SimStatus status;
 };
 
-ACResult solve_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
+ACResult solve_ac(Circuit& ckt, ACMode mode,
                   int npoints, double fstart, double fstop);
 
 } // namespace neospice

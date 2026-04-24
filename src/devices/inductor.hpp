@@ -10,7 +10,7 @@ public:
     Inductor(std::string name, int32_t node_pos, int32_t node_neg, double inductance);
 
     void set_branch_index(int32_t idx);
-    int32_t branch_index() const { return branch_idx_; }
+    int32_t branch_index() const override { return branch_idx_; }
 
     int32_t extra_vars() const override { return 1; }
     void assign_branch_index(int32_t& next) override {
@@ -51,7 +51,7 @@ public:
     void apply_ic_override(std::vector<double>& sol);  // Override i_prev/solution with IC value
 
     /// Apply temperature-dependent adjustment to effective inductance.
-    void process_temperature(double sim_temp, double sim_tnom);
+    void process_temperature(double sim_temp, double sim_tnom) override;
 
     std::vector<std::string> output_currents() const override;
 

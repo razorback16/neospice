@@ -103,8 +103,8 @@ D1 out 0 DMOD
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
 
-    ASSERT_TRUE(result.dc_sweep.has_value());
-    auto& sw = *result.dc_sweep;
+    ASSERT_TRUE(std::holds_alternative<DCSweepResult>(result.analysis));
+    auto& sw = std::get<DCSweepResult>(result.analysis);
 
     // Should have at least one sweep point
     ASSERT_GE(sw.sweep_values.size(), 1u);
@@ -136,8 +136,8 @@ D1 out 0 DMOD
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
 
-    ASSERT_TRUE(result.ac.has_value());
-    auto& ac = *result.ac;
+    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis));
+    auto& ac = std::get<ACResult>(result.analysis);
 
     // Should have frequency points
     ASSERT_GT(ac.frequency.size(), 5u);

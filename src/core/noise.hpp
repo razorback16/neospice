@@ -96,7 +96,7 @@ struct NoiseResult {
 NoiseResult solve_noise(Circuit& ckt,
                         const std::string& output_node,
                         const std::string& input_src,
-                        AnalysisCommand::ACMode mode,
+                        ACMode mode,
                         int npoints, double fstart, double fstop);
 
 } // namespace neospice

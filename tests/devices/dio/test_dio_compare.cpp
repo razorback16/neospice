@@ -41,8 +41,8 @@ TEST_F(NgspiceCompareTest, DiodeRectifierTransient) {
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {1.5e-1, 1e-1});
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1.5e-1, 1e-1});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -56,12 +56,12 @@ TEST_F(NgspiceCompareTest, DiodeNoise) {
     auto ng_result = ngspice_->run_noise(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.noise.has_value());
-    ASSERT_EQ(ng_result.frequency.size(), cs_result.noise->frequency.size());
+    ASSERT_TRUE(std::holds_alternative<NoiseResult>(cs_result.analysis));
+    ASSERT_EQ(ng_result.frequency.size(), std::get<NoiseResult>(cs_result.analysis).frequency.size());
     // Diode shot noise + resistor thermal noise; both white (flat)
     // Tolerance wider than resistor-only because ngspice includes Rs thermal
     // noise and flicker noise that our simplified model omits.
-    auto cmp = compare_noise(ng_result, *cs_result.noise, {5e-2, 1e-15});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {5e-2, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

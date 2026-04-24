@@ -35,7 +35,7 @@ public:
                   std::vector<double> coefficients);
 
     void set_branch_index(int32_t idx);
-    int32_t branch_index() const { return branch_idx_; }
+    int32_t branch_index() const override { return branch_idx_; }
 
     int32_t extra_vars() const override { return 1; }
     void assign_branch_index(int32_t& next) override {

@@ -2,8 +2,8 @@
 
 #include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
-
-#include <algorithm>
+#include "devices/ucb_device_init.hpp"
+#include "devices/ucb_utils.hpp"
 #include <cmath>
 #include <optional>
 #include <stdexcept>
@@ -24,15 +24,6 @@ using namespace neospice::dio;
 // DIOModelCard destructor
 // ---------------------------------------------------------------------------
 DIOModelCard::~DIOModelCard() = default;
-
-// ---------------------------------------------------------------------------
-// Neospice -> UCB node translation.
-// Neospice uses GROUND_INTERNAL = -1 for ground and consecutive non-negative
-// indices for real nodes.  UCB uses 0 for ground and >=1 for real nodes.
-// ---------------------------------------------------------------------------
-static inline int neo_to_ucb(int32_t neo) {
-    return (neo < 0) ? 0 : (neo + 1);
-}
 
 // ---------------------------------------------------------------------------
 // make
@@ -80,73 +71,30 @@ DIODevice::make(std::string name,
 // declare_internal_nodes
 // ---------------------------------------------------------------------------
 void DIODevice::declare_internal_nodes(Circuit& ckt) {
-    SparsityBuilder scratch(1);
-    Shim::Matrix shim_matrix(scratch);
-
-    Shim::Ckt setup_ckt;
-    setup_ckt.CKTtemp    = T_NOMINAL;
-    setup_ckt.CKTnomTemp = T_NOMINAL;
-    setup_ckt.CKTinternalNodeCounter = 1000;
-
-    setup_ckt.node_alloc = [&ckt, this](const char* name) -> int {
-        std::string full = "__" + name_ + "_" + name;
-        int32_t neo = ckt.node(full);
-        ckt.mark_internal_node(neo);
-        return neo + 1;  // UCB convention: ground=0, real>=1
-    };
-
-    // Splice this instance as sole member so DIOsetup only processes *this*.
-    DIOInstance* saved_head      = model_->DIOinstances;
-    DIOInstance* saved_next_inst = inst_.DIOnextInstance;
-    DIOModel*    saved_next_mod  = model_->DIOnextModel;
-    model_->DIOinstances  = &inst_;
-    inst_.DIOnextInstance = nullptr;
-    model_->DIOnextModel  = nullptr;
-
-    int states = 0;
-    int rc = DIOsetup(&shim_matrix, model_, &setup_ckt, &states);
-
-    model_->DIOinstances  = saved_head;
-    inst_.DIOnextInstance = saved_next_inst;
-    model_->DIOnextModel  = saved_next_mod;
-
-    if (rc != Shim::OK) {
-        throw std::runtime_error("DIOsetup failed with rc=" + std::to_string(rc));
-    }
-
-    const auto& journal = shim_matrix.reservation_journal();
-    journal_.assign(journal.begin(), journal.end());
-
-    // Recompute max_neo_node_ to cover internal nodes.
-    for (auto [r, c] : journal_) {
-        int mx = std::max(r, c);
-        if (mx > 0) {
-            int32_t neo = mx - 1;
-            if (neo > max_neo_node_) max_neo_node_ = neo;
-        }
-    }
+    ucb_declare_internal_nodes<Shim::Matrix, Shim::Ckt>(
+        ckt, name_,
+        [this](Shim::Matrix& m, Shim::Ckt& c) {
+            UCB_SPLICE_INSTANCE(DIO);
+            int states = 0;
+            int rc = DIOsetup(&m, model_, &c, &states);
+            UCB_UNSPLICE_INSTANCE(DIO);
+            return rc;
+        },
+        "DIOsetup", journal_, max_neo_node_);
 }
 
 // ---------------------------------------------------------------------------
 // stamp_pattern
 // ---------------------------------------------------------------------------
 void DIODevice::stamp_pattern(SparsityBuilder& builder) const {
-    for (auto [r, c] : journal_) {
-        if (r <= 0 || c <= 0) continue;
-        builder.add(r - 1, c - 1);
-    }
+    ucb_stamp_pattern(journal_, builder);
 }
 
 // ---------------------------------------------------------------------------
 // assign_offsets
 // ---------------------------------------------------------------------------
 void DIODevice::assign_offsets(const SparsityPattern& pattern) {
-    std::vector<MatrixOffset> offsets(journal_.size(), -1);
-    for (std::size_t i = 0; i < journal_.size(); ++i) {
-        auto [r, c] = journal_[i];
-        if (r <= 0 || c <= 0) continue;
-        offsets[i] = pattern.offset(r - 1, c - 1);
-    }
+    const auto offsets = ucb_compute_offsets(journal_, pattern);
 
 #define RESOLVE(f)                                                       \
     do {                                                                 \
@@ -329,12 +277,6 @@ bool DIODevice::device_converged() const {
 // ---------------------------------------------------------------------------
 // query_param — operating-point parameter query
 // ---------------------------------------------------------------------------
-static std::string str_tolower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return s;
-}
-
 std::optional<double> DIODevice::query_param(const std::string& name) const {
     const std::string key = str_tolower(name);
     const double m = inst_.DIOm;

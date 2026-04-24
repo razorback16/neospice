@@ -52,6 +52,26 @@ public:
     virtual void assign_branch_index(int32_t& /*next*/) {}
     virtual std::vector<std::string> output_currents() const { return {}; }
 
+    /// Return the MNA branch variable index for devices that carry an extra
+    /// branch current variable (voltage sources, inductors, controlled
+    /// sources, ASRC in voltage mode).  Returns -1 when the device has no
+    /// branch variable.  Subclasses that call assign_branch_index() should
+    /// override this.
+    virtual int32_t branch_index() const { return -1; }
+
+    /// Apply temperature-dependent parameter adjustments.
+    /// Called during Circuit::finalize() with the simulation temperature and
+    /// nominal temperature.  Subclasses that have temperature coefficients
+    /// (resistors, capacitors, inductors, ASRC) override this.
+    virtual void process_temperature(double /*sim_temp*/, double /*sim_tnom*/) {}
+
+    /// Stamp this device's AC excitation into the complex RHS vector.
+    /// Called during AC analysis to build the AC stimulus.  Only independent
+    /// sources (VSource, ISource) with non-zero AC magnitude override this.
+    /// @param n  total number of MNA variables (size of ac_rhs)
+    virtual void apply_ac_excitation(std::vector<std::complex<double>>& /*ac_rhs*/,
+                                     int32_t /*n*/) {}
+
     /// Number of BSIM-style state slots per instance (0 for stateless devices).
     /// Summed by Circuit during finalize() to size the per-circuit state buffers.
     virtual int32_t state_vars() const { return 0; }

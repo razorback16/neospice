@@ -14,13 +14,13 @@ TEST(StepSweep, SourceSweep) {
     EXPECT_DOUBLE_EQ(sr.step_values[5], 5.0);
 
     // At V1=5V, V(out) should be 2.5V (voltage divider)
-    ASSERT_TRUE(sr.results[5].dc.has_value());
-    double vout = sr.results[5].dc->voltage("out");
+    ASSERT_TRUE(std::holds_alternative<DCResult>(sr.results[5].analysis));
+    double vout = std::get<DCResult>(sr.results[5].analysis).voltage("out");
     EXPECT_NEAR(vout, 2.5, 1e-6);
 
     // At V1=0V, V(out) should be 0V
-    ASSERT_TRUE(sr.results[0].dc.has_value());
-    double vout0 = sr.results[0].dc->voltage("out");
+    ASSERT_TRUE(std::holds_alternative<DCResult>(sr.results[0].analysis));
+    double vout0 = std::get<DCResult>(sr.results[0].analysis).voltage("out");
     EXPECT_NEAR(vout0, 0.0, 1e-6);
 }
 
@@ -39,6 +39,6 @@ V1 in 0 1
     const auto& sr = *result.step;
     EXPECT_EQ(sr.step_values.size(), 3u); // 27, 77, 127
     // Higher temp => higher resistance => lower current
-    ASSERT_TRUE(sr.results[0].dc.has_value());
-    ASSERT_TRUE(sr.results[2].dc.has_value());
+    ASSERT_TRUE(std::holds_alternative<DCResult>(sr.results[0].analysis));
+    ASSERT_TRUE(std::holds_alternative<DCResult>(sr.results[2].analysis));
 }

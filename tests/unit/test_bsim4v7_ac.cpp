@@ -27,7 +27,7 @@ TEST_F(BSIM4v7ACTest, NMOS_CS_Amplifier_AC) {
     // Run neospice AC analysis
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.ac.has_value())
+    ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis))
         << "AC analysis result is missing — ac_stamp may not be implemented";
 
     // Filter out internal nodes (names containing '#' from ngspice or '__' from neospice)
@@ -55,7 +55,7 @@ TEST_F(BSIM4v7ACTest, NMOS_CS_Amplifier_AC) {
     // reach ~22% at high frequencies because the circuit biases the MOSFET
     // with Vds ≈ 35 mV (near triode), making AC gain very sensitive to the
     // DC operating point.
-    auto cmp = compare_ac(ng_result, *cs_result.ac, {0.25, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {0.25, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -68,10 +68,10 @@ TEST_F(BSIM4v7ACTest, NMOS_AC_NonZero_Output) {
 
     auto ckt = sim_.load(path);
     auto result = sim_.run(ckt);
-    ASSERT_TRUE(result.ac.has_value())
+    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis))
         << "AC analysis result is missing";
 
-    auto& ac = *result.ac;
+    auto& ac = std::get<ACResult>(result.analysis);
     ASSERT_FALSE(ac.frequency.empty());
 
     // v(drain) should exist and have non-zero magnitude at mid-band
@@ -110,10 +110,10 @@ M2 out in 0 0 NMOD W=10u L=100n
     // Run via neospice
     auto ckt = sim_.parse(netlist);
     auto result = sim_.run(ckt);
-    ASSERT_TRUE(result.ac.has_value())
+    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis))
         << "AC analysis result is missing for CMOS inverter";
 
-    auto& ac = *result.ac;
+    auto& ac = std::get<ACResult>(result.analysis);
     ASSERT_FALSE(ac.frequency.empty());
 
     // v(out) should exist
@@ -136,7 +136,7 @@ TEST_F(BSIM4v7ACTest, NMOS_NQS_AC) {
     auto ng_result = ngspice_->run_ac(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.ac.has_value())
+    ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis))
         << "AC analysis result is missing for NQS circuit";
 
     for (auto it = ng_result.voltages.begin(); it != ng_result.voltages.end(); ) {
@@ -147,7 +147,7 @@ TEST_F(BSIM4v7ACTest, NMOS_NQS_AC) {
     }
     ng_result.currents.erase("i(vg)");
 
-    auto cmp = compare_ac(ng_result, *cs_result.ac, {0.05, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {0.05, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "NQS AC worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

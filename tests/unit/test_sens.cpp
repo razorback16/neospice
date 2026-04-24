@@ -135,13 +135,13 @@ TEST(Sens, NetlistParser) {
     auto ckt = sim.load(path);
     auto result = sim.run(ckt);
 
-    ASSERT_TRUE(result.sens.has_value());
-    EXPECT_NEAR(result.sens->output_value, 5.0, 1e-6);
-    EXPECT_EQ(result.sens->entries.size(), 3u);
+    ASSERT_TRUE(std::holds_alternative<SensResult>(result.analysis));
+    EXPECT_NEAR(std::get<SensResult>(result.analysis).output_value, 5.0, 1e-6);
+    EXPECT_EQ(std::get<SensResult>(result.analysis).entries.size(), 3u);
 
-    auto* r1 = find_entry(*result.sens, "r1");
-    auto* r2 = find_entry(*result.sens, "r2");
-    auto* v1 = find_entry(*result.sens, "v1");
+    auto* r1 = find_entry(std::get<SensResult>(result.analysis), "r1");
+    auto* r2 = find_entry(std::get<SensResult>(result.analysis), "r2");
+    auto* v1 = find_entry(std::get<SensResult>(result.analysis), "v1");
     ASSERT_NE(r1, nullptr);
     ASSERT_NE(r2, nullptr);
     ASSERT_NE(v1, nullptr);
@@ -166,8 +166,8 @@ R2 out 0 8k
 )");
     auto result = sim.run(ckt);
 
-    ASSERT_TRUE(result.sens.has_value());
-    EXPECT_NEAR(result.sens->output_value, 4.0, 1e-6);
+    ASSERT_TRUE(std::holds_alternative<SensResult>(result.analysis));
+    EXPECT_NEAR(std::get<SensResult>(result.analysis).output_value, 4.0, 1e-6);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,12 +235,12 @@ TEST(Sens, NgspiceComparison) {
     Simulator sim;
     auto ckt = sim.load(cir_path);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.sens.has_value());
+    ASSERT_TRUE(std::holds_alternative<SensResult>(result.analysis));
 
-    EXPECT_NEAR(result.sens->output_value, 5.0, 1e-6);
+    EXPECT_NEAR(std::get<SensResult>(result.analysis).output_value, 5.0, 1e-6);
 
-    auto* r1 = find_entry(*result.sens, "r1");
-    auto* v1 = find_entry(*result.sens, "v1");
+    auto* r1 = find_entry(std::get<SensResult>(result.analysis), "r1");
+    auto* v1 = find_entry(std::get<SensResult>(result.analysis), "v1");
     ASSERT_NE(r1, nullptr);
     ASSERT_NE(v1, nullptr);
 
@@ -272,10 +272,10 @@ R4 b 0 4k
 .end
 )");
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.sens.has_value());
+    ASSERT_TRUE(std::holds_alternative<SensResult>(result.analysis));
 
-    EXPECT_NEAR(result.sens->output_value, 5.0 / 6.0, 1e-6);
+    EXPECT_NEAR(std::get<SensResult>(result.analysis).output_value, 5.0 / 6.0, 1e-6);
 
     // Just verify the output is correct and entries exist
-    EXPECT_GE(result.sens->entries.size(), 5u);  // 4 resistors + 1 vsource
+    EXPECT_GE(std::get<SensResult>(result.analysis).entries.size(), 5u);  // 4 resistors + 1 vsource
 }

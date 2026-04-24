@@ -163,6 +163,15 @@ void ISource::evaluate(const std::vector<double>& /*voltages*/,
     add_rhs_if_valid(rhs, nn_,  I);
 }
 
+void ISource::apply_ac_excitation(std::vector<std::complex<double>>& ac_rhs,
+                                  int32_t n) {
+    if (ac_mag_ != 0.0) {
+        auto exc = std::polar(ac_mag_, ac_phase_deg_ * (M_PI / 180.0));
+        if (np_ >= 0 && np_ < n) ac_rhs[np_] -= exc;
+        if (nn_ >= 0 && nn_ < n) ac_rhs[nn_] += exc;
+    }
+}
+
 std::vector<double> ISource::get_breakpoints(double tstart, double tstop) const {
     std::vector<double> bps;
 

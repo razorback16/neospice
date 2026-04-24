@@ -17,8 +17,8 @@ R2 out 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.dc.has_value());
-    EXPECT_NEAR(result.dc->node_voltages["v(out)"], 5.0, 1e-6);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], 5.0, 1e-6);
 }
 
 TEST(SimulatorAPI, RunTransient) {
@@ -33,8 +33,8 @@ C1 out 0 1u
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.transient.has_value());
-    EXPECT_GT(result.transient->time.size(), 10u);
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    EXPECT_GT(std::get<TransientResult>(result.analysis).time.size(), 10u);
 }
 
 TEST(SimulatorAPI, RunAC) {
@@ -49,8 +49,8 @@ C1 out 0 1n
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.ac.has_value());
-    EXPECT_GT(result.ac->frequency.size(), 10u);
+    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis));
+    EXPECT_GT(std::get<ACResult>(result.analysis).frequency.size(), 10u);
 }
 
 TEST(TransientResultAPI, DiffVoltage) {
@@ -66,8 +66,8 @@ R2 b 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.transient.has_value());
-    auto& tran = *result.transient;
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    auto& tran = std::get<TransientResult>(result.analysis);
 
     // diff() returns v(a) - v(b) at every time point
     auto d = tran.diff("a", "b");
@@ -93,9 +93,9 @@ R2 out 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.dc.has_value());
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
 
-    auto names = result.dc->signal_names();
+    auto names = std::get<DCResult>(result.analysis).signal_names();
     EXPECT_TRUE(std::find(names.begin(), names.end(), "v(out)") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "v(in)") != names.end());
 }
@@ -114,8 +114,8 @@ R4 b 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.dc_sweep.has_value());
-    auto& sw = *result.dc_sweep;
+    ASSERT_TRUE(std::holds_alternative<DCSweepResult>(result.analysis));
+    auto& sw = std::get<DCSweepResult>(result.analysis);
 
     auto d = sw.diff("a", "b");
     ASSERT_EQ(d.size(), sw.sweep_values.size());
@@ -135,8 +135,8 @@ R1 in 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.ac.has_value());
-    auto& ac = *result.ac;
+    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis));
+    auto& ac = std::get<ACResult>(result.analysis);
 
     // Current magnitude in dB
     auto idb = ac.current_magnitude_db("v1");
@@ -166,8 +166,8 @@ R2 out 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.noise.has_value());
-    auto& nr = *result.noise;
+    ASSERT_TRUE(std::holds_alternative<NoiseResult>(result.analysis));
+    auto& nr = std::get<NoiseResult>(result.analysis);
 
     // output_noise_sqrt returns V/sqrt(Hz) (more intuitive than V^2/Hz)
     auto on_sqrt = nr.output_noise_sqrt();
@@ -205,10 +205,10 @@ R2 out 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.dc.has_value());
-    EXPECT_TRUE(result.dc->status.converged);
-    EXPECT_GT(result.dc->status.iterations, 0);
-    EXPECT_GT(result.dc->status.elapsed_seconds, 0.0);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    EXPECT_TRUE(std::get<DCResult>(result.analysis).status.converged);
+    EXPECT_GT(std::get<DCResult>(result.analysis).status.iterations, 0);
+    EXPECT_GT(std::get<DCResult>(result.analysis).status.elapsed_seconds, 0.0);
 }
 
 TEST(SimStatusIntegration, TransientResultHasStatus) {
@@ -223,10 +223,10 @@ C1 out 0 1u
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.transient.has_value());
-    EXPECT_TRUE(result.transient->status.converged);
-    EXPECT_GT(result.transient->status.iterations, 0);
-    EXPECT_GT(result.transient->status.elapsed_seconds, 0.0);
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    EXPECT_TRUE(std::get<TransientResult>(result.analysis).status.converged);
+    EXPECT_GT(std::get<TransientResult>(result.analysis).status.iterations, 0);
+    EXPECT_GT(std::get<TransientResult>(result.analysis).status.elapsed_seconds, 0.0);
 }
 
 TEST(SimStatusIntegration, ACResultHasStatus) {
@@ -241,9 +241,9 @@ C1 out 0 1n
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.ac.has_value());
-    EXPECT_TRUE(result.ac->status.converged);
-    EXPECT_GT(result.ac->status.elapsed_seconds, 0.0);
+    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis));
+    EXPECT_TRUE(std::get<ACResult>(result.analysis).status.converged);
+    EXPECT_GT(std::get<ACResult>(result.analysis).status.elapsed_seconds, 0.0);
 }
 
 TEST(SimStatusIntegration, NoiseResultHasStatus) {
@@ -258,9 +258,9 @@ R2 out 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.noise.has_value());
-    EXPECT_TRUE(result.noise->status.converged);
-    EXPECT_GT(result.noise->status.elapsed_seconds, 0.0);
+    ASSERT_TRUE(std::holds_alternative<NoiseResult>(result.analysis));
+    EXPECT_TRUE(std::get<NoiseResult>(result.analysis).status.converged);
+    EXPECT_GT(std::get<NoiseResult>(result.analysis).status.elapsed_seconds, 0.0);
 }
 
 TEST(SimStatusIntegration, TFResultHasStatus) {
@@ -275,9 +275,9 @@ R2 out 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.tf.has_value());
-    EXPECT_TRUE(result.tf->status.converged);
-    EXPECT_GT(result.tf->status.elapsed_seconds, 0.0);
+    ASSERT_TRUE(std::holds_alternative<TFResult>(result.analysis));
+    EXPECT_TRUE(std::get<TFResult>(result.analysis).status.converged);
+    EXPECT_GT(std::get<TFResult>(result.analysis).status.elapsed_seconds, 0.0);
 }
 
 TEST(SimStatusIntegration, SensResultHasStatus) {
@@ -292,7 +292,7 @@ R2 out 0 1k
 )";
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.sens.has_value());
-    EXPECT_TRUE(result.sens->status.converged);
-    EXPECT_GT(result.sens->status.elapsed_seconds, 0.0);
+    ASSERT_TRUE(std::holds_alternative<SensResult>(result.analysis));
+    EXPECT_TRUE(std::get<SensResult>(result.analysis).status.converged);
+    EXPECT_GT(std::get<SensResult>(result.analysis).status.elapsed_seconds, 0.0);
 }

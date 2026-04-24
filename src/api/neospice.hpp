@@ -10,6 +10,7 @@
 #include "core/measure.hpp"
 #include <string>
 #include <optional>
+#include <variant>
 #include <vector>
 #include <memory>
 
@@ -17,15 +18,16 @@ namespace neospice {
 
 struct StepResult;  // forward declaration
 
+using AnalysisResult = std::variant<std::monostate,
+                                    DCResult, TransientResult, ACResult,
+                                    DCSweepResult, NoiseResult, TFResult,
+                                    SensResult, PZResult>;
+
 struct SimulationResult {
-    std::optional<DCResult> dc;
-    std::optional<TransientResult> transient;
-    std::optional<ACResult> ac;
-    std::optional<DCSweepResult> dc_sweep;
-    std::optional<NoiseResult> noise;
-    std::optional<TFResult> tf;
-    std::optional<SensResult> sens;
-    std::optional<PZResult> pz;
+    // Exactly one analysis result per run
+    AnalysisResult analysis;
+
+    // Orthogonal to the main analysis:
     std::optional<MeasureResult> measures;
     std::vector<std::string> print_output;  // formatted .print/.plot output
     std::unique_ptr<StepResult> step;       // non-null when .step sweep ran
@@ -56,11 +58,11 @@ public:
 
     DCResult run_dc(Circuit& ckt);
     TransientResult run_transient(Circuit& ckt, double tstep, double tstop);
-    ACResult run_ac(Circuit& ckt, AnalysisCommand::ACMode mode,
+    ACResult run_ac(Circuit& ckt, ACMode mode,
                     int npoints, double fstart, double fstop);
     NoiseResult run_noise(Circuit& ckt, const std::string& output_node,
                           const std::string& input_src,
-                          AnalysisCommand::ACMode mode,
+                          ACMode mode,
                           int npoints, double fstart, double fstop);
     DCSweepResult run_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& params);
     TFResult run_tf(Circuit& ckt, const std::string& output_var,

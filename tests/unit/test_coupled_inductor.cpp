@@ -595,8 +595,8 @@ TEST_F(CoupledInductorNgspiceTest, ACTransformer) {
     auto ng_result = ngspice_->run_ac(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.ac.has_value());
-    auto cmp = compare_ac(ng_result, *cs_result.ac, {1e-3, 1e-9});
+    ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis));
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-3, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -624,8 +624,8 @@ TEST_F(CoupledInductorNgspiceTest, CoupledInductorTransient) {
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5e-1, 1e-1});
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-1, 1e-1});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

@@ -5,11 +5,6 @@
 #include "core/klu_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
-#include "devices/inductor.hpp"
-#include "devices/vcvs.hpp"
-#include "devices/ccvs.hpp"
-#include "devices/vcvs_nonlinear.hpp"
-#include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -197,15 +192,7 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
         // Find the device's branch index
         for (auto& dev : ckt.devices()) {
             if (to_lower(dev->name()) == dev_name) {
-                if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-                    out_branch = vs->branch_index();
-                } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
-                    out_branch = ind->branch_index();
-                } else if (auto* e = dynamic_cast<VCVS*>(dev.get())) {
-                    out_branch = e->branch_index();
-                } else if (auto* h = dynamic_cast<CCVS*>(dev.get())) {
-                    out_branch = h->branch_index();
-                }
+                out_branch = dev->branch_index();
                 break;
             }
         }

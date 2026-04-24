@@ -26,14 +26,14 @@ R2 out 0 1k
     ASSERT_FALSE(ckt.analyses.empty());
     bool found_noise = false;
     for (const auto& cmd : ckt.analyses) {
-        if (cmd.type == AnalysisCommand::NOISE) {
+        if (auto* nc = std::get_if<NoiseCmd>(&cmd)) {
             found_noise = true;
-            EXPECT_EQ(cmd.noise_output, "out");
-            EXPECT_EQ(cmd.noise_input_src, "V1");
-            EXPECT_EQ(cmd.ac_mode, AnalysisCommand::DEC);
-            EXPECT_EQ(cmd.ac_npoints, 10);
-            EXPECT_DOUBLE_EQ(cmd.ac_fstart, 1.0);
-            EXPECT_DOUBLE_EQ(cmd.ac_fstop, 1e9);
+            EXPECT_EQ(nc->output, "out");
+            EXPECT_EQ(nc->input_src, "V1");
+            EXPECT_EQ(nc->mode, ACMode::DEC);
+            EXPECT_EQ(nc->npoints, 10);
+            EXPECT_DOUBLE_EQ(nc->fstart, 1.0);
+            EXPECT_DOUBLE_EQ(nc->fstop, 1e9);
         }
     }
     EXPECT_TRUE(found_noise);
@@ -208,10 +208,10 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
 
-    ASSERT_TRUE(result.noise.has_value());
-    EXPECT_GT(result.noise->frequency.size(), 0u);
-    EXPECT_GT(result.noise->output_noise_density.size(), 0u);
-    EXPECT_GT(result.noise->input_noise_density.size(), 0u);
+    ASSERT_TRUE(std::holds_alternative<NoiseResult>(result.analysis));
+    EXPECT_GT(std::get<NoiseResult>(result.analysis).frequency.size(), 0u);
+    EXPECT_GT(std::get<NoiseResult>(result.analysis).output_noise_density.size(), 0u);
+    EXPECT_GT(std::get<NoiseResult>(result.analysis).input_noise_density.size(), 0u);
 }
 
 // ---------------------------------------------------------------------------
@@ -318,12 +318,12 @@ R2 out 0 1k
 
     bool found_noise = false;
     for (const auto& cmd : ckt.analyses) {
-        if (cmd.type == AnalysisCommand::NOISE) {
+        if (auto* nc = std::get_if<NoiseCmd>(&cmd)) {
             found_noise = true;
-            EXPECT_EQ(cmd.noise_output, "out");
-            EXPECT_EQ(cmd.noise_input_src, "v1");
-            EXPECT_EQ(cmd.ac_mode, AnalysisCommand::LIN);
-            EXPECT_EQ(cmd.ac_npoints, 5);
+            EXPECT_EQ(nc->output, "out");
+            EXPECT_EQ(nc->input_src, "v1");
+            EXPECT_EQ(nc->mode, ACMode::LIN);
+            EXPECT_EQ(nc->npoints, 5);
         }
     }
     EXPECT_TRUE(found_noise);

@@ -16,11 +16,11 @@ C1 out 0 1u
 .end
 )");
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.pz.has_value());
-    ASSERT_GE(result.pz->poles.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<PZResult>(result.analysis));
+    ASSERT_GE(std::get<PZResult>(result.analysis).poles.size(), 1u);
     // Expect a pole near s = -1000
     bool found_pole = false;
-    for (auto& p : result.pz->poles) {
+    for (auto& p : std::get<PZResult>(result.analysis).poles) {
         if (std::abs(p.real() + 1000.0) < 100.0 && std::abs(p.imag()) < 100.0) {
             found_pole = true;
             break;
@@ -39,13 +39,14 @@ R1 in out 1k
 .end
 )");
     ASSERT_EQ(ckt.analyses.size(), 1u);
-    EXPECT_EQ(ckt.analyses[0].type, AnalysisCommand::PZ);
-    EXPECT_EQ(ckt.analyses[0].pz_in_pos, "in");
-    EXPECT_EQ(ckt.analyses[0].pz_in_neg, "0");
-    EXPECT_EQ(ckt.analyses[0].pz_out_pos, "out");
-    EXPECT_EQ(ckt.analyses[0].pz_out_neg, "0");
-    EXPECT_EQ(ckt.analyses[0].pz_transfer, PZTransferType::VOLTAGE);
-    EXPECT_EQ(ckt.analyses[0].pz_type, PZType::POLES);
+    ASSERT_TRUE(std::holds_alternative<PZCmd>(ckt.analyses[0]));
+    auto& pz = std::get<PZCmd>(ckt.analyses[0]);
+    EXPECT_EQ(pz.in_pos, "in");
+    EXPECT_EQ(pz.in_neg, "0");
+    EXPECT_EQ(pz.out_pos, "out");
+    EXPECT_EQ(pz.out_neg, "0");
+    EXPECT_EQ(pz.transfer, PZTransferType::VOLTAGE);
+    EXPECT_EQ(pz.type, PZType::POLES);
 }
 
 TEST(PoleZero, PZParserCurrent) {
@@ -58,8 +59,10 @@ R1 in out 1k
 .end
 )");
     ASSERT_EQ(ckt.analyses.size(), 1u);
-    EXPECT_EQ(ckt.analyses[0].pz_transfer, PZTransferType::CURRENT);
-    EXPECT_EQ(ckt.analyses[0].pz_type, PZType::ZEROS);
+    ASSERT_TRUE(std::holds_alternative<PZCmd>(ckt.analyses[0]));
+    auto& pz = std::get<PZCmd>(ckt.analyses[0]);
+    EXPECT_EQ(pz.transfer, PZTransferType::CURRENT);
+    EXPECT_EQ(pz.type, PZType::ZEROS);
 }
 
 TEST(PoleZero, PZParserBoth) {
@@ -72,7 +75,8 @@ R1 in out 1k
 .end
 )");
     ASSERT_EQ(ckt.analyses.size(), 1u);
-    EXPECT_EQ(ckt.analyses[0].pz_type, PZType::BOTH);
+    ASSERT_TRUE(std::holds_alternative<PZCmd>(ckt.analyses[0]));
+    EXPECT_EQ(std::get<PZCmd>(ckt.analyses[0]).type, PZType::BOTH);
 }
 
 TEST(PoleZero, PZParserError) {
@@ -99,8 +103,8 @@ C1 out 0 1u
 .end
 )");
     auto result = sim.run(ckt);
-    ASSERT_TRUE(result.pz.has_value());
-    EXPECT_GE(result.pz->poles.size(), 1u);
-    EXPECT_TRUE(result.pz->zeros.empty());
-    EXPECT_EQ(result.pz->type, PZType::POLES);
+    ASSERT_TRUE(std::holds_alternative<PZResult>(result.analysis));
+    EXPECT_GE(std::get<PZResult>(result.analysis).poles.size(), 1u);
+    EXPECT_TRUE(std::get<PZResult>(result.analysis).zeros.empty());
+    EXPECT_EQ(std::get<PZResult>(result.analysis).type, PZType::POLES);
 }

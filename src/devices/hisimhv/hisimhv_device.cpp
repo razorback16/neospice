@@ -2,6 +2,8 @@
 
 #include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
+#include "devices/ucb_device_init.hpp"
+#include "devices/ucb_utils.hpp"
 
 #include <cmath>
 #include <optional>
@@ -23,19 +25,6 @@ using namespace neospice::hisimhv;
 // HSMHVModelCard destructor
 // ---------------------------------------------------------------------------
 HSMHVModelCard::~HSMHVModelCard() = default;
-
-// ---------------------------------------------------------------------------
-// Neospice -> UCB node translation.
-// Neospice uses GROUND_INTERNAL = -1 for ground and consecutive non-negative
-// indices for real nodes.  UCB uses 0 for ground and >=1 for real nodes.
-// ---------------------------------------------------------------------------
-static inline int neo_to_ucb(int32_t neo) {
-    return (neo < 0) ? 0 : (neo + 1);
-}
-
-static inline int32_t ucb_to_neo(int ucb_node) {
-    return (ucb_node <= 0) ? GROUND_INTERNAL : (ucb_node - 1);
-}
 
 // ---------------------------------------------------------------------------
 // make
@@ -117,59 +106,30 @@ void HSMHVDevice::set_ic(double vds, bool vds_given,
 // declare_internal_nodes
 // ---------------------------------------------------------------------------
 void HSMHVDevice::declare_internal_nodes(Circuit& ckt) {
-    SparsityBuilder scratch(1);
-    Shim::Matrix shim_matrix(scratch);
-
-    Shim::Ckt setup_ckt;
-    setup_ckt.CKTtemp    = T_NOMINAL;
-    setup_ckt.CKTnomTemp = T_NOMINAL;
-    setup_ckt.CKTinternalNodeCounter = 1000;
-
-    setup_ckt.node_alloc = [&ckt, this](const char* name) -> int {
-        std::string full = "__" + name_ + "_" + name;
-        int32_t neo = ckt.node(full);
-        return neo + 1;  // UCB convention: ground=0, real>=1
-    };
-
-    int states = 0;
-    int rc = HSMHVsetup(&shim_matrix, model_, &setup_ckt, &states);
-    if (rc != Shim::OK) {
-        throw std::runtime_error("HSMHVsetup failed with rc=" + std::to_string(rc));
-    }
-
-    const auto& journal = shim_matrix.reservation_journal();
-    journal_.assign(journal.begin(), journal.end());
-
-    // Recompute max_neo_node_ to cover internal nodes.
-    for (auto [r, c] : journal_) {
-        int mx = std::max(r, c);
-        if (mx > 0) {
-            int32_t neo = mx - 1;
-            if (neo > max_neo_node_) max_neo_node_ = neo;
-        }
-    }
+    ucb_declare_internal_nodes<Shim::Matrix, Shim::Ckt>(
+        ckt, name_,
+        [this](Shim::Matrix& m, Shim::Ckt& c) {
+            UCB_SPLICE_INSTANCE(HSMHV);
+            int states = 0;
+            int rc = HSMHVsetup(&m, model_, &c, &states);
+            UCB_UNSPLICE_INSTANCE(HSMHV);
+            return rc;
+        },
+        "HSMHVsetup", journal_, max_neo_node_);
 }
 
 // ---------------------------------------------------------------------------
 // stamp_pattern
 // ---------------------------------------------------------------------------
 void HSMHVDevice::stamp_pattern(SparsityBuilder& builder) const {
-    for (auto [r, c] : journal_) {
-        if (r <= 0 || c <= 0) continue;
-        builder.add(r - 1, c - 1);
-    }
+    ucb_stamp_pattern(journal_, builder);
 }
 
 // ---------------------------------------------------------------------------
 // assign_offsets
 // ---------------------------------------------------------------------------
 void HSMHVDevice::assign_offsets(const SparsityPattern& pattern) {
-    std::vector<MatrixOffset> offsets(journal_.size(), -1);
-    for (std::size_t i = 0; i < journal_.size(); ++i) {
-        auto [r, c] = journal_[i];
-        if (r <= 0 || c <= 0) continue;
-        offsets[i] = pattern.offset(r - 1, c - 1);
-    }
+    const auto offsets = ucb_compute_offsets(journal_, pattern);
 
 #define RESOLVE(f)                                                       \
     do {                                                                 \
@@ -754,14 +714,6 @@ double HSMHVDevice::compute_trunc(const IntegratorCtx& ctx,
 // ---------------------------------------------------------------------------
 bool HSMHVDevice::device_converged() const {
     return last_noncon_ == 0;
-}
-
-// ---------------------------------------------------------------------------
-// str_tolower helper
-// ---------------------------------------------------------------------------
-static std::string str_tolower(std::string s) {
-    for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return s;
 }
 
 // ---------------------------------------------------------------------------

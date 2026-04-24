@@ -143,11 +143,11 @@ TEST_F(LTRAValidation, TransientRC) {
     // Run neospice
     auto ckt = sim_.load(cir_path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
     // Verify that v(out) is present and has reasonable values
-    ASSERT_TRUE(cs_result.transient->voltages.count("v(out)") > 0);
-    const auto& v_out = cs_result.transient->voltages.at("v(out)");
+    ASSERT_TRUE(std::get<TransientResult>(cs_result.analysis).voltages.count("v(out)") > 0);
+    const auto& v_out = std::get<TransientResult>(cs_result.analysis).voltages.at("v(out)");
     ASSERT_GT(v_out.size(), 10u);
 
     // Verify v(out) reaches steady state near 1V (after the pulse rises)
@@ -157,15 +157,15 @@ TEST_F(LTRAValidation, TransientRC) {
     EXPECT_NEAR(v_first, 0.0, 0.01) << "v(out) should start at 0";
 
     // Compare voltage waveform with ngspice (loose tolerance for edge timing)
-    auto cmp = compare_transient(*cs_result.transient, ng_result, {5.0, 1e-2});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5.0, 1e-2});
     // We use very loose relative tolerance because edge timing differences
     // cause large relative errors at fast transients. Focus on absolute error.
     // Check that absolute error in v(out) is small (< 0.1V)
     bool v_out_ok = true;
     if (ng_result.voltages.count("v(out)")) {
         const auto& ng_v = ng_result.voltages.at("v(out)");
-        for (size_t i = 0; i < cs_result.transient->time.size(); ++i) {
-            double t = cs_result.transient->time[i];
+        for (size_t i = 0; i < std::get<TransientResult>(cs_result.analysis).time.size(); ++i) {
+            double t = std::get<TransientResult>(cs_result.analysis).time[i];
             double ns_val = v_out[i];
             // Interpolate ngspice
             double ng_val = 0;
@@ -206,10 +206,10 @@ TEST_F(LTRAValidation, TransientRLC) {
     // Run neospice
     auto ckt = sim_.load(cir_path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
-    ASSERT_TRUE(cs_result.transient->voltages.count("v(out)") > 0);
-    const auto& v_out = cs_result.transient->voltages.at("v(out)");
+    ASSERT_TRUE(std::get<TransientResult>(cs_result.analysis).voltages.count("v(out)") > 0);
+    const auto& v_out = std::get<TransientResult>(cs_result.analysis).voltages.at("v(out)");
     ASSERT_GT(v_out.size(), 10u);
 
     // Check that v(out) absolute error vs ngspice is bounded
@@ -217,8 +217,8 @@ TEST_F(LTRAValidation, TransientRLC) {
     double worst_abs = 0;
     if (ng_result.voltages.count("v(out)")) {
         const auto& ng_v = ng_result.voltages.at("v(out)");
-        for (size_t i = 0; i < cs_result.transient->time.size(); ++i) {
-            double t = cs_result.transient->time[i];
+        for (size_t i = 0; i < std::get<TransientResult>(cs_result.analysis).time.size(); ++i) {
+            double t = std::get<TransientResult>(cs_result.analysis).time[i];
             double ns_val = v_out[i];
             double ng_val = 0;
             for (size_t j = 1; j < ng_result.time.size(); ++j) {
@@ -259,10 +259,10 @@ TEST_F(LTRAValidation, TransientLC) {
     // Run neospice
     auto ckt = sim_.load(cir_path);
     auto cs_result = sim_.run(ckt);
-    ASSERT_TRUE(cs_result.transient.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
-    ASSERT_TRUE(cs_result.transient->voltages.count("v(out)") > 0);
-    const auto& v_out = cs_result.transient->voltages.at("v(out)");
+    ASSERT_TRUE(std::get<TransientResult>(cs_result.analysis).voltages.count("v(out)") > 0);
+    const auto& v_out = std::get<TransientResult>(cs_result.analysis).voltages.at("v(out)");
     ASSERT_GT(v_out.size(), 10u);
 
     // Check that v(out) absolute error vs ngspice is bounded
@@ -270,8 +270,8 @@ TEST_F(LTRAValidation, TransientLC) {
     double worst_abs = 0;
     if (ng_result.voltages.count("v(out)")) {
         const auto& ng_v = ng_result.voltages.at("v(out)");
-        for (size_t i = 0; i < cs_result.transient->time.size(); ++i) {
-            double t = cs_result.transient->time[i];
+        for (size_t i = 0; i < std::get<TransientResult>(cs_result.analysis).time.size(); ++i) {
+            double t = std::get<TransientResult>(cs_result.analysis).time[i];
             double ns_val = v_out[i];
             double ng_val = 0;
             for (size_t j = 1; j < ng_result.time.size(); ++j) {

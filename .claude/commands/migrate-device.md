@@ -111,11 +111,13 @@ output is clean — search for `SenCond`, `CKTsenInfo`, `PERTURBATION`, `TRANSEN
 Common macros the tool doesn't handle:
 - `TSTALLOC(ptr, row, col)` — matrix pointer reservation in setup
 - `DEVfetlim`, `DEVlimvds`, `DEVpnjlim` — voltage limiting functions; implement in the shim or inline
-- `MAX`, `MIN` — replace with `std::max`, `std::min`
 
-Macros the tool **does** handle: `NIintegrate`, `IOPA`/`IOPR`/`IOP`/`OPR`/`OP`, physical
-constants (`CONSTKoverQ`, `CONSTe`, `CONSTboltz`, `REFTEMP`, `OFF`), `IF_COMPLEX`,
-`CKTtroubleElt`, `CKTsenInfo` stubs.
+Standard UCB macros (`MAX`, `MIN`, `FABS`, `CHARGE`, `CONSTvt0`, `IOP`/`IOPU`/`IP`/`OP`,
+etc.) are provided by `src/devices/ucb_compat.hpp`. The migration tool emits
+`#include "devices/ucb_compat.hpp"` in every translated file automatically.
+
+Other macros the tool handles: `NIintegrate`, physical constants (`CONSTKoverQ`,
+`CONSTe`, `CONSTboltz`, `REFTEMP`, `OFF`), `IF_COMPLEX`, `CKTtroubleElt`, `CKTsenInfo` stubs.
 
 ### 3.4 Build and iterate
 
@@ -143,7 +145,7 @@ generates commented scaffolding in `ac_stamp()`. You need to:
 
 Handle NQS/frequency-dependent conductances as unsupported with a warning (see BSIM4v7).
 
-**References**: `bsim3v32_device.cpp:347`, `hisimhv_device.cpp:371`, `bsimsoi_device.cpp:381`, `bjt_device.cpp:309`
+**References**: `bsim3v32_device.cpp:295`, `hisimhv_device.cpp:331`, `bsimsoi_device.cpp:345`, `bjt_device.cpp:258`
 
 ---
 
@@ -162,7 +164,7 @@ PSD expressions. You need to:
 5. Use `sim_temp()` for temperature — **never** declare a local `sim_temp_` member (shadows base class)
 6. Convert UCB 1-based nodes to neospice 0-based: `neo_node = ucb_node - 1`
 
-**References**: `bjt_device.cpp:419`, `bsim3v32_device.cpp:787`, `hisimhv_device.cpp:844`, `bsimsoi_device.cpp:1223`
+**References**: `bjt_device.cpp:368`, `bsim3v32_device.cpp:729`, `hisimhv_device.cpp:796`, `bsimsoi_device.cpp:1175`
 
 ---
 
@@ -178,7 +180,7 @@ Only override manually if the device has conditional charge logic or mode-depend
 integration (rare). Verify the auto-generated version against the ngspice `*trunc.c`
 or load function for completeness.
 
-**References**: `bsim3v32_device.cpp:656`, `hisim2_device.cpp:858`, `bjt_device.cpp:373`
+**References**: `bsim3v32_device.cpp:604`, `hisim2_device.cpp:804`, `bjt_device.cpp:322`
 
 ---
 
@@ -188,6 +190,8 @@ or load function for completeness.
 
 The tool generates `device_converged()` and `last_noncon_` automatically. The framework
 calls `device_converged()` after node-voltage convergence (`newton.cpp:151`).
+The framework also invokes `branch_index()` for MNA-branch-bearing devices and
+`process_temperature()` for temperature-dependent devices via virtual dispatch.
 
 Only override if the device uses a separate `*cvtest.c` with `#ifdef NEWCONV` logic
 that goes beyond the standard `CKTnoncon` check.
@@ -211,7 +215,7 @@ A simple setter that writes the IC values + Given flags onto the UCB instance st
 Parse `ic=V1,V2,V3` on the element line. Handle empty fields (`ic=0.5,,0.1` means V2
 not given). Split on comma, parse each non-empty field with `std::stod`, call `set_ic()`.
 
-**References**: `bsim3v32_device.cpp:330`, `bjt_device.cpp:292`, `bsimsoi_device.cpp:1550`
+**References**: `bsim3v32_device.cpp:278`, `bjt_device.cpp:241`, `bsimsoi_device.cpp:1502`
 
 ---
 
@@ -229,7 +233,7 @@ field mappings from the ngspice `*ask.c` switch table.
 - **Voltages, geometry (W, L, area)**: do NOT scale
 - **Resistances**: scale by `1/m`
 
-**References**: `bsim3v32_device.cpp:724`, `hisimhv_device.cpp:770`, `hisim2_device.cpp:926`
+**References**: `bsim3v32_device.cpp:666`, `hisimhv_device.cpp:722`, `hisim2_device.cpp:866`
 
 ---
 
@@ -237,15 +241,19 @@ field mappings from the ngspice `*ask.c` switch table.
 
 **Status**: Model card + parser helper auto-generated when `model_types` defined. Element parsing is manual.
 
-The tool generates `<ns>_model_card.hpp/cpp` (full `to_<ns>_card()` with mPTable lookup
-and mParam dispatch) and `<ns>_parser.hpp` (a `create_<ns>_model_card()` helper).
+The tool generates `<ns>_model_card.hpp/cpp` and `<ns>_parser.hpp`. The model card
+conversion uses `convert_model_card_params<>()` from `src/devices/model_card_utils.hpp` —
+each device only provides a traits struct (param table pointer, size, mParam function,
+type info) and the template handles the lookup + dispatch.
 
 ### Manual wiring needed
 
 1. **Model dispatch**: Add the include and `to_<ns>_card()` call in the main parser's
-   model type dispatch (see `netlist_parser.cpp:2775` for BSIM3v32 example)
+   model type dispatch (see `netlist_parser.cpp:2762` for BSIM3v32 example)
 2. **Element parsing**: Add parsing for the device's element card prefix in `netlist_parser.cpp`
    (parse terminal nodes, look up model card, parse geometry + `ic=`, create device, add to circuit)
+3. **Model card ownership**: Call `ckt.add_model_card(std::move(card))` — the generic
+   template method handles any model card type
 
 ### SPICE element prefixes
 
@@ -309,14 +317,14 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 |---|---|---|
 | Struct definitions (_def.hpp) | Yes | - |
 | Shim layer (CKT, matrix, constants) | Yes | - |
-| Physical constants, stubs, type flags | Yes | - |
-| Parameter table macros (IOPA etc.) | Yes | - |
-| Adapter skeleton (Device interface) | Yes | - |
+| Physical constants, stubs (ucb_compat.hpp) | Yes | - |
+| Parameter table macros (ucb_compat.hpp) | Yes | - |
+| Adapter skeleton (uses ucb_device_init.hpp) | Yes | - |
 | Convergence wiring (last_noncon_) | Yes | - |
 | Sensitivity stripping | Yes | Verify output |
 | Setup / Load / Temp / Param / Mpar | Yes | Build fixes |
 | CMakeLists.txt | Yes | - |
-| Model card conversion | Yes (when `model_types` defined) | - |
+| Model card (uses model_card_utils.hpp) | Yes (when `model_types` defined) | - |
 | Truncation error (LTE) | Yes (from charge offsets) | Override if conditional |
 | AC stamp (G/C split) | Scaffolded (when `ac_load_file`) | Map expressions to fields |
 | Noise model | Scaffolded (when `noise_file`) | Map expressions to fields |
@@ -331,10 +339,16 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 
 ## Architecture Reference
 
+### Shared Device Headers
+- `src/devices/ucb_compat.hpp` — standard UCB macros (constants, math, param table builders)
+- `src/devices/ucb_utils.hpp` — `neo_to_ucb()`, `ucb_to_neo()`, `str_tolower()`
+- `src/devices/ucb_device_init.hpp` — `ucb_declare_internal_nodes()`, `ucb_stamp_pattern()`, `ucb_compute_offsets()`, `UCB_SPLICE_INSTANCE()`
+- `src/devices/model_card_utils.hpp` — `convert_model_card_params<>()` template
+
 ### Node Convention
 - neospice: `GROUND_INTERNAL = -1`, real nodes >= 0
 - UCB/ngspice: ground = 0, real nodes >= 1
-- `neo_to_ucb(neo)` converts: `(neo < 0) ? 0 : (neo + 1)`
+- `neo_to_ucb(neo)` from `ucb_utils.hpp` converts: `(neo < 0) ? 0 : (neo + 1)`
 
 ### State Ring Buffer
 - 3 levels: `state0_` (current), `state1_` (previous), `state2_` (two steps ago)
@@ -355,6 +369,6 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 - `mode` bits: MODEDC=0x70, MODETRAN=0x100, MODEINITJCT=0x200, MODEINITFIX=0x400, MODEINITTRAN=0x1000
 
 ### Framework Wiring
-- Device LTE: `transient.cpp:507` calls `dev->compute_trunc()`
+- Device LTE: `transient.cpp:452` calls `dev->compute_trunc()` (via `evaluate_lte()` helper)
 - Device convergence: `newton.cpp:151` calls `dev->device_converged()`
 - Both already wired — just override the virtual methods

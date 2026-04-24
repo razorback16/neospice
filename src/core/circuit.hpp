@@ -6,30 +6,10 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace neospice {
-
-// Forward declarations — Circuit owns model card instances on behalf of
-// device objects that hold non-owning pointers to their parsed .model.
-// Full definitions live in devices/*/device.hpp; we only need
-// the complete type in circuit.cpp (for unique_ptr destruction).
-struct BSIM4v7ModelCard;
-struct MOS1ModelCard;
-struct MOS3ModelCard;
-struct MOS9ModelCard;
-struct BSIM3ModelCard;
-struct BSIM3v32ModelCard;
-struct BJTModelCard;
-struct JFETModelCard;
-struct JFET2ModelCard;
-struct DIOModelCard;
-struct VBICModelCard;
-struct HFETAModelCard;
-struct HFET2ModelCard;
-struct HSM2ModelCard;
-struct HSMHVModelCard;
-struct B4SOIModelCard;
 
 struct DCSweepParam {
     std::string source_name;
@@ -85,30 +65,76 @@ struct FourierCommand {
     std::vector<std::string> signals;       // e.g., {"v(out)", "i(r1)"}
 };
 
-struct AnalysisCommand {
-    enum Type { OP, TRAN, AC, DC_SWEEP, NOISE, TF, SENS, PZ };
-    Type type;
-    double tran_tstep = 0, tran_tstop = 0;
-    bool tran_uic = false;   // Use Initial Conditions
-    enum ACMode { DEC, OCT, LIN };
-    ACMode ac_mode = DEC;
-    int ac_npoints = 10;
-    double ac_fstart = 1.0, ac_fstop = 1e6;
-    // DC sweep parameters (1 or 2 entries for nested sweep)
-    std::vector<DCSweepParam> dc_sweep_params;
-    // Noise analysis parameters
-    std::string noise_output;      // e.g., "v(out)" — the output voltage node
-    std::string noise_input_src;   // e.g., "vin" — the input voltage source name
-    // TF analysis parameters
-    std::string tf_output;         // e.g., "v(out)" or "i(vout)"
-    std::string tf_input_src;      // e.g., "vin" — the input source name
-    // SENS analysis parameters
-    std::string sens_output;       // e.g., "v(out)" — the output variable
-    // PZ analysis parameters
-    std::string pz_in_pos, pz_in_neg, pz_out_pos, pz_out_neg;
-    PZTransferType pz_transfer = PZTransferType::VOLTAGE;
-    PZType pz_type = PZType::BOTH;
+// Frequency-sweep mode shared by AC and noise analyses.
+enum class ACMode { DEC, OCT, LIN };
+
+// Per-analysis command structs — each holds only the fields relevant to that
+// analysis type, replacing the old flat AnalysisCommand union-of-everything.
+struct OpCmd {};
+
+struct TranCmd {
+    double tstep = 0;
+    double tstop = 0;
+    bool uic = false;   // Use Initial Conditions
 };
+
+struct ACCmd {
+    ACMode mode = ACMode::DEC;
+    int npoints = 10;
+    double fstart = 1.0;
+    double fstop = 1e6;
+};
+
+struct DCSweepCmd {
+    std::vector<DCSweepParam> params;  // 1 or 2 entries for nested sweep
+};
+
+struct NoiseCmd {
+    std::string output;      // e.g., "out" — the output voltage node
+    std::string input_src;   // e.g., "vin" — the input voltage source name
+    ACMode mode = ACMode::DEC;
+    int npoints = 10;
+    double fstart = 1.0;
+    double fstop = 1e6;
+};
+
+struct TFCmd {
+    std::string output;      // e.g., "v(out)" or "i(vout)"
+    std::string input_src;   // e.g., "vin" — the input source name
+};
+
+struct SensCmd {
+    std::string output;      // e.g., "v(out)" — the output variable
+};
+
+struct PZCmd {
+    std::string in_pos, in_neg, out_pos, out_neg;
+    PZTransferType transfer = PZTransferType::VOLTAGE;
+    PZType type = PZType::BOTH;
+};
+
+// The variant-based analysis command type.
+using AnalysisCmdVariant = std::variant<OpCmd, TranCmd, ACCmd, DCSweepCmd,
+                                        NoiseCmd, TFCmd, SensCmd, PZCmd>;
+
+// AnalysisCommand inherits from the variant so that std::visit works directly,
+// while also providing backward-compatible nested type aliases (ACMode, DEC, etc.)
+// used by neospice.hpp and test code.
+struct AnalysisCommand : AnalysisCmdVariant {
+    using AnalysisCmdVariant::AnalysisCmdVariant;
+    using AnalysisCmdVariant::operator=;
+
+    // Backward-compat nested type + constants so that existing code such as
+    // AnalysisCommand::ACMode, AnalysisCommand::DEC, etc. keeps compiling.
+    using ACMode = neospice::ACMode;
+    static constexpr auto DEC = ACMode::DEC;
+    static constexpr auto OCT = ACMode::OCT;
+    static constexpr auto LIN = ACMode::LIN;
+};
+
+// Overloaded helper for std::visit with lambdas.
+template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 // IntegratorCtx is defined in core/types.hpp (included above) so that
 // Device (which only includes types.hpp) can reference it for compute_trunc().
@@ -124,38 +150,14 @@ public:
 
     void add_device(std::unique_ptr<Device> dev);
 
-    /// Take ownership of a BSIM4v7ModelCard so it outlives any BSIM4v7Device
-    /// that holds a non-owning pointer to it.  The parser calls this once per
-    /// distinct .model LEVEL=14 card after building all devices that share it.
-    void add_bsim4_model_card(std::unique_ptr<BSIM4v7ModelCard> card);
-
-    /// Take ownership of a BJTModelCard so it outlives any BJTDevice
-    /// that holds a non-owning pointer to it.
-    void add_bjt_model_card(std::unique_ptr<BJTModelCard> card);
-
-    /// Take ownership of a JFETModelCard so it outlives any JFETDevice
-    /// that holds a non-owning pointer to it.
-    void add_jfet_model_card(std::unique_ptr<JFETModelCard> card);
-    void add_jfet2_model_card(std::unique_ptr<JFET2ModelCard> card);
-    void add_mos1_model_card(std::unique_ptr<MOS1ModelCard> card);
-    void add_mos3_model_card(std::unique_ptr<MOS3ModelCard> card);
-    void add_mos9_model_card(std::unique_ptr<MOS9ModelCard> card);
-    void add_dio_model_card(std::unique_ptr<DIOModelCard> card);
-    void add_vbic_model_card(std::unique_ptr<VBICModelCard> card);
-    void add_hfet1_model_card(std::unique_ptr<HFETAModelCard> card);
-    void add_hfet2_model_card(std::unique_ptr<HFET2ModelCard> card);
-
-    /// Take ownership of a BSIM3ModelCard so it outlives any BSIM3Device
-    /// that holds a non-owning pointer to it.
-    void add_bsim3_model_card(std::unique_ptr<BSIM3ModelCard> card);
-
-    /// Take ownership of a BSIM3v32ModelCard so it outlives any BSIM3v32Device
-    /// that holds a non-owning pointer to it.
-    void add_bsim3v32_model_card(std::unique_ptr<BSIM3v32ModelCard> card);
-
-    void add_hisim2_model_card(std::unique_ptr<HSM2ModelCard> card);
-    void add_hisimhv_model_card(std::unique_ptr<HSMHVModelCard> card);
-    void add_bsimsoi_model_card(std::unique_ptr<B4SOIModelCard> card);
+    /// Take ownership of a model card so it outlives any device that holds
+    /// a non-owning pointer to it.  T must be a complete type at the call
+    /// site (the template captures the destructor via TypedModelCardHolder).
+    template <typename T>
+    void add_model_card(std::unique_ptr<T> card) {
+        model_cards_.push_back(
+            std::make_unique<TypedModelCardHolder<T>>(std::move(card)));
+    }
 
     /// Assign branch indices, build sparsity pattern, assign offsets.
     void finalize();
@@ -193,8 +195,8 @@ public:
 
     IntegratorCtx integrator_ctx;
 
-    // Default construct / destruct / move defined in .cpp so BSIM4v7ModelCard
-    // can remain an incomplete type at this header's inclusion sites.
+    // Default construct / destruct / move defined in .cpp so that
+    // ModelCardHolder's vtable is emitted in a single TU.
     Circuit();
     ~Circuit();
     Circuit(Circuit&&) noexcept;
@@ -202,29 +204,26 @@ public:
     Circuit(const Circuit&)            = delete;
     Circuit& operator=(const Circuit&) = delete;
 
+    /// Type-erased wrapper so Circuit can own any model card type without
+    /// needing the complete type in this header.  The virtual destructor
+    /// ensures proper cleanup through the base pointer.
+    struct ModelCardHolder {
+        virtual ~ModelCardHolder() = default;
+    };
+
+    template <typename T>
+    struct TypedModelCardHolder : ModelCardHolder {
+        std::unique_ptr<T> card;
+        explicit TypedModelCardHolder(std::unique_ptr<T> c) : card(std::move(c)) {}
+    };
+
 private:
     void rebind_device_states();  // re-invoke set_state_ptrs on every device
-
 
     std::vector<std::unique_ptr<Device>> devices_;
     // Owns model card instances for the lifetime of the Circuit so
     // device non-owning model_ pointers stay valid.
-    std::vector<std::unique_ptr<BSIM4v7ModelCard>> bsim4_model_cards_;
-    std::vector<std::unique_ptr<MOS1ModelCard>> mos1_model_cards_;
-    std::vector<std::unique_ptr<MOS3ModelCard>> mos3_model_cards_;
-    std::vector<std::unique_ptr<MOS9ModelCard>> mos9_model_cards_;
-    std::vector<std::unique_ptr<BJTModelCard>> bjt_model_cards_;
-    std::vector<std::unique_ptr<JFETModelCard>> jfet_model_cards_;
-    std::vector<std::unique_ptr<JFET2ModelCard>> jfet2_model_cards_;
-    std::vector<std::unique_ptr<DIOModelCard>> dio_model_cards_;
-    std::vector<std::unique_ptr<VBICModelCard>> vbic_model_cards_;
-    std::vector<std::unique_ptr<BSIM3ModelCard>> bsim3_model_cards_;
-    std::vector<std::unique_ptr<HFETAModelCard>> hfet1_model_cards_;
-    std::vector<std::unique_ptr<HFET2ModelCard>> hfet2_model_cards_;
-    std::vector<std::unique_ptr<BSIM3v32ModelCard>> bsim3v32_model_cards_;
-    std::vector<std::unique_ptr<HSM2ModelCard>> hisim2_model_cards_;
-    std::vector<std::unique_ptr<HSMHVModelCard>> hisimhv_model_cards_;
-    std::vector<std::unique_ptr<B4SOIModelCard>> bsimsoi_model_cards_;
+    std::vector<std::unique_ptr<ModelCardHolder>> model_cards_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     std::vector<bool>                        internal_nodes_;
