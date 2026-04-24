@@ -35,6 +35,7 @@ add_executable(neospice_tests
     unit/test_comparator.cpp
     unit/test_oscillator_comparator.cpp
     unit/test_api.cpp
+    unit/test_sim_status.cpp
     unit/test_raw_writer.cpp
     unit/test_ngspice_compare.cpp
     unit/test_bsim4v7_ucb_setup.cpp
