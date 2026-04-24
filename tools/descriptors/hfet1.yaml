@@ -50,5 +50,5 @@ model:
     - { name: "W", field: "HFETAwidth", given: "HFETAwidthGiven", default: "20e-6" }
     - { name: "M", field: "HFETAm", given: "HFETAmGiven", default: "1.0" }
   model_types:
-    - { spice_name: "nhfet", flag_field: "HFETAtype", flag_value: 1 }
-    - { spice_name: "phfet", flag_field: "HFETAtype", flag_value: -1 }
+    - { spice_name: "nhfet", flag_field: "HFETAtype", flag_value: 1, has_type_given: false }
+    - { spice_name: "phfet", flag_field: "HFETAtype", flag_value: -1, has_type_given: false }

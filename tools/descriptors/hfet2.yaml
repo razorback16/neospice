@@ -50,5 +50,5 @@ model:
     - { name: "W", field: "HFET2width", given: "HFET2widthGiven", default: "20e-6" }
     - { name: "M", field: "HFET2m", given: "HFET2mGiven", default: "1.0" }
   model_types:
-    - { spice_name: "nhfet", flag_field: "HFET2type", flag_value: 1 }
-    - { spice_name: "phfet", flag_field: "HFET2type", flag_value: -1 }
+    - { spice_name: "nhfet", flag_field: "HFET2type", flag_value: 1, has_type_given: false }
+    - { spice_name: "phfet", flag_field: "HFET2type", flag_value: -1, has_type_given: false }

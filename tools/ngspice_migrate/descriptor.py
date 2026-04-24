@@ -66,6 +66,13 @@ class ModelType:
     spice_name: str     # e.g. "nmos", "pmos", "d", "npn", "pnp", "njf", "pjf"
     flag_field: str     # e.g. "BSIM4v7type" — empty string if no type flag needed
     flag_value: int     # e.g. 1 for NMOS, -1 for PMOS, 0 if no flag
+    has_type_given: bool = True   # True if UCB struct has a given field
+    flag_given_field: str = ""    # Override given field name; defaults to flag_field + "Given"
+
+    @property
+    def given_field(self) -> str:
+        """Return the UCB field name for the type-given flag."""
+        return self.flag_given_field or (self.flag_field + "Given")
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +263,8 @@ def load_descriptor(path: Path) -> ModelDescriptor:
             spice_name=mt["spice_name"],
             flag_field=mt.get("flag_field", ""),
             flag_value=int(mt.get("flag_value", 0)),
+            has_type_given=mt.get("has_type_given", True),
+            flag_given_field=mt.get("flag_given_field", ""),
         )
         for mt in m.get("model_types", [])
     ]

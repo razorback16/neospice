@@ -50,5 +50,5 @@ model:
     - { name: "area", field: "JFET2area", given: "JFET2areaGiven", default: "1.0" }
     - { name: "m", field: "JFET2m", given: "JFET2mGiven", default: "1.0" }
   model_types:
-    - { spice_name: "njf", flag_field: "JFET2type", flag_value: 1 }
-    - { spice_name: "pjf", flag_field: "JFET2type", flag_value: -1 }
+    - { spice_name: "njf", flag_field: "JFET2type", flag_value: 1, has_type_given: false }
+    - { spice_name: "pjf", flag_field: "JFET2type", flag_value: -1, has_type_given: false }

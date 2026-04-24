@@ -65,5 +65,5 @@ model:
     - { name: "NRS", field: "HSMHV_nrs", given: "HSMHV_nrs_Given", default: "0.0" }
     - { name: "NF",  field: "HSMHV_nf",  given: "HSMHV_nf_Given",  default: "1.0",   always_given: true }
   model_types:
-    - { spice_name: "nmos", flag_field: "HSMHV_type", flag_value: 1 }
-    - { spice_name: "pmos", flag_field: "HSMHV_type", flag_value: -1 }
+    - { spice_name: "nmos", flag_field: "HSMHV_type", flag_value: 1, flag_given_field: "HSMHV_type_Given" }
+    - { spice_name: "pmos", flag_field: "HSMHV_type", flag_value: -1, flag_given_field: "HSMHV_type_Given" }
