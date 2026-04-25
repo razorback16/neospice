@@ -129,14 +129,19 @@ add_subdirectory(devices/hisimhv)
 add_subdirectory(devices/bsimsoi)
 
 # Performance benchmarks
+set(NGSPICE_LIB_PATH "$ENV{HOME}/Codes/ngspice/build-shared/src/.libs/libngspice.so"
+    CACHE FILEPATH "Path to libngspice.so shared library")
+set(NGSPICE_LIB_DIR "$ENV{HOME}/Codes/ngspice/build-shared/src"
+    CACHE PATH "SPICE_LIB_DIR for ngspice spinit lookup")
+
 add_executable(bench_ths4131
     bench/bench_ths4131.cpp
-    framework/ngspice_runner.cpp
 )
 
-target_link_libraries(bench_ths4131 PRIVATE neospice_lib)
+target_link_libraries(bench_ths4131 PRIVATE neospice_lib dl)
 target_include_directories(bench_ths4131 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(bench_ths4131 PRIVATE
-    NGSPICE_BINARY="/usr/bin/ngspice"
+    NGSPICE_LIB_PATH="${NGSPICE_LIB_PATH}"
+    NGSPICE_LIB_DIR="${NGSPICE_LIB_DIR}"
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )

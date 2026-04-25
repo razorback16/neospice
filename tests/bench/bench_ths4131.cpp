@@ -1,16 +1,16 @@
-// Performance benchmark: neospice vs ngspice on THS4131 diff amp.
-// Measures parse, DC operating point, and AC analysis wall-clock time.
+// Performance benchmark: neospice vs ngspice (shared library) on THS4131.
+// Both simulators run in-process — no subprocess fork, no file I/O.
 
 #include "api/neospice.hpp"
-#include "framework/ngspice_runner.hpp"
+#include "framework/ngspice_lib.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <numeric>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <numeric>
-#include <cmath>
 
 using namespace neospice;
 using Clock = std::chrono::high_resolution_clock;
@@ -51,6 +51,7 @@ int main() {
 
     std::printf("=== THS4131 Fully-Differential Op-Amp Benchmark ===\n");
     std::printf("Circuit: ths4131_diff_amp.cir (14 BJTs, 3 model types)\n");
+    std::printf("Both simulators run in-process (no fork, no file I/O)\n");
     std::printf("Warmup: %d, Measured runs: %d\n\n", WARMUP, RUNS);
 
     // Print circuit stats from a single load
@@ -65,10 +66,17 @@ int main() {
         std::printf("  AC sweep: DEC 10, 1 Hz - 100 MHz (81 points)\n\n");
     }
 
-    double neo_parse_us = 0, neo_dc_us = 0, neo_ac_us = 0, neo_full_us = 0;
-    double ng_full_us = 0;
+    // Initialize ngspice shared library
+    NgspiceLib ng(NGSPICE_LIB_PATH, NGSPICE_LIB_DIR);
 
-    // --- neospice: parse/load only ---
+    // =====================================================================
+    // Phase-by-phase: neospice
+    // =====================================================================
+    std::printf("--- neospice (native C++) ---\n");
+
+    double neo_parse_us = 0, neo_dc_us = 0, neo_ac_us = 0, neo_full_us = 0;
+
+    // Parse only
     {
         Simulator sim;
         std::vector<double> times;
@@ -81,10 +89,10 @@ int main() {
         }
         auto s = compute_stats(times);
         neo_parse_us = s.median_us;
-        print_row("neospice parse+expand", s);
+        print_row("parse + finalize", s);
     }
 
-    // --- neospice: DC only ---
+    // DC only
     {
         Simulator sim;
         std::vector<double> times;
@@ -101,10 +109,10 @@ int main() {
         }
         auto s = compute_stats(times);
         neo_dc_us = s.median_us;
-        print_row("neospice DC (.op)", s);
+        print_row("DC operating point", s);
     }
 
-    // --- neospice: AC only (after DC) ---
+    // AC only (after DC)
     {
         Simulator sim;
         std::vector<double> times;
@@ -123,10 +131,10 @@ int main() {
         }
         auto s = compute_stats(times);
         neo_ac_us = s.median_us;
-        print_row("neospice AC (81 freq points)", s);
+        print_row("AC sweep (81 points)", s);
     }
 
-    // --- neospice: full end-to-end ---
+    // Full end-to-end
     {
         Simulator sim;
         std::vector<double> times;
@@ -143,75 +151,134 @@ int main() {
         }
         auto s = compute_stats(times);
         neo_full_us = s.median_us;
-        print_row("neospice TOTAL (parse+DC+AC)", s);
+        print_row("TOTAL (parse+DC+AC)", s);
     }
 
-    std::printf("\n");
+    // =====================================================================
+    // Phase-by-phase: ngspice (shared library, in-process)
+    // =====================================================================
+    std::printf("\n--- ngspice (shared library, in-process) ---\n");
 
-    // --- ngspice: full batch ---
+    double ng_parse_us = 0, ng_dc_us = 0, ng_ac_us = 0, ng_full_us = 0;
+
+    // Parse only
     {
-        NgspiceRunner ng(NGSPICE_BINARY);
         std::vector<double> times;
         for (int i = 0; i < WARMUP; ++i) {
-            try { ng.run_dc(cir_path); } catch (...) {}
+            ng.load_circuit(cir_path);
+            ng.reset();
         }
         for (int i = 0; i < RUNS; ++i) {
             auto t0 = Clock::now();
-            try {
-                ng.run_dc(cir_path);
-            } catch (...) {
-                continue;
-            }
+            ng.load_circuit(cir_path);
             auto t1 = Clock::now();
+            ng.reset();
             times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
         }
-        if (!times.empty()) {
-            auto s = compute_stats(times);
-            ng_full_us = s.median_us;
-            print_row("ngspice TOTAL (batch: fork+parse+sim+raw)", s);
-        } else {
-            std::printf("  ngspice: all runs failed\n");
-        }
+        auto s = compute_stats(times);
+        ng_parse_us = s.median_us;
+        print_row("parse + expand", s);
     }
 
-    // --- neospice AC phase breakdown ---
+    // DC only (source, then op)
     {
-        Simulator sim;
-        auto ckt = sim.load(cir_path);
-        sim.run_dc(ckt);
-
-        auto t_total_start = Clock::now();
-        auto ac = sim.run_ac(ckt, AnalysisCommand::DEC, 10, 1.0, 100e6);
-        auto t_total_end = Clock::now();
-
-        double total_us = std::chrono::duration<double, std::micro>(
-            t_total_end - t_total_start).count();
-        int nfreq = static_cast<int>(ac.frequency.size());
-        std::printf("\n  AC phase breakdown (single run):\n");
-        std::printf("    Total AC: %.0f µs for %d freq points (%.1f µs/point)\n",
-                    total_us, nfreq, total_us / nfreq);
-    }
-
-    // --- Summary ---
-    std::printf("\n--- Summary ---\n");
-    std::printf("  neospice breakdown:  parse %.0f µs + DC %.0f µs + AC %.0f µs = %.2f ms\n",
-                neo_parse_us, neo_dc_us, neo_ac_us,
-                (neo_parse_us + neo_dc_us + neo_ac_us) / 1000.0);
-    std::printf("  neospice end-to-end: %.2f ms\n", neo_full_us / 1000.0);
-    std::printf("  ngspice  end-to-end: %.2f ms\n", ng_full_us / 1000.0);
-    if (ng_full_us > 0 && neo_full_us > 0) {
-        double ratio = ng_full_us / neo_full_us;
-        if (ratio >= 1.0) {
-            std::printf("  neospice is %.1fx faster than ngspice\n", ratio);
-        } else {
-            std::printf("  ngspice is %.1fx faster than neospice\n", 1.0 / ratio);
+        std::vector<double> times;
+        for (int i = 0; i < WARMUP; ++i) {
+            ng.load_circuit(cir_path);
+            ng.op();
+            ng.reset();
         }
+        for (int i = 0; i < RUNS; ++i) {
+            ng.load_circuit(cir_path);
+            auto t0 = Clock::now();
+            ng.op();
+            auto t1 = Clock::now();
+            ng.reset();
+            times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+        }
+        auto s = compute_stats(times);
+        ng_dc_us = s.median_us;
+        print_row("DC operating point", s);
     }
-    std::printf("\n  Note: ngspice timing includes process fork/exec + .raw file I/O.\n");
-    std::printf("        Both include netlist parsing and subcircuit expansion.\n");
+
+    // AC only (after DC)
+    {
+        std::vector<double> times;
+        for (int i = 0; i < WARMUP; ++i) {
+            ng.load_circuit(cir_path);
+            ng.op();
+            ng.ac("dec", 10, 1.0, 100e6);
+            ng.reset();
+        }
+        for (int i = 0; i < RUNS; ++i) {
+            ng.load_circuit(cir_path);
+            ng.op();
+            auto t0 = Clock::now();
+            ng.ac("dec", 10, 1.0, 100e6);
+            auto t1 = Clock::now();
+            ng.reset();
+            times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+        }
+        auto s = compute_stats(times);
+        ng_ac_us = s.median_us;
+        print_row("AC sweep (81 points)", s);
+    }
+
+    // Full end-to-end (source + run)
+    {
+        std::vector<double> times;
+        for (int i = 0; i < WARMUP; ++i) {
+            ng.load_circuit(cir_path);
+            ng.command("run");
+            ng.reset();
+        }
+        for (int i = 0; i < RUNS; ++i) {
+            auto t0 = Clock::now();
+            ng.load_circuit(cir_path);
+            ng.command("run");
+            auto t1 = Clock::now();
+            ng.reset();
+            times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+        }
+        auto s = compute_stats(times);
+        ng_full_us = s.median_us;
+        print_row("TOTAL (parse+DC+AC)", s);
+    }
 
     // =====================================================================
-    // Multi-density sweep comparison
+    // Summary
+    // =====================================================================
+    std::printf("\n=== Summary ===\n");
+    std::printf("  %-25s %12s %12s %8s\n", "Phase", "neospice", "ngspice", "Speedup");
+    std::printf("  %-25s %12s %12s %8s\n", "-----", "--------", "-------", "-------");
+
+    auto print_summary = [](const char* phase, double neo_us, double ng_us) {
+        auto fmt_time = [](double us, char* buf, int sz) {
+            if (us < 1000.0)
+                std::snprintf(buf, sz, "%.0f µs", us);
+            else
+                std::snprintf(buf, sz, "%.2f ms", us / 1000.0);
+        };
+        char neo_buf[32], ng_buf[32];
+        fmt_time(neo_us, neo_buf, sizeof(neo_buf));
+        fmt_time(ng_us, ng_buf, sizeof(ng_buf));
+        double speedup = ng_us / neo_us;
+        if (speedup >= 1.0)
+            std::printf("  %-25s %12s %12s %7.1fx\n", phase, neo_buf, ng_buf, speedup);
+        else
+            std::printf("  %-25s %12s %12s %6.1fx *\n", phase, neo_buf, ng_buf, 1.0/speedup);
+    };
+
+    print_summary("Parse", neo_parse_us, ng_parse_us);
+    print_summary("DC (.op)", neo_dc_us, ng_dc_us);
+    print_summary("AC (81 pts)", neo_ac_us, ng_ac_us);
+    print_summary("End-to-end", neo_full_us, ng_full_us);
+
+    std::printf("\n  (* = ngspice faster by that factor)\n");
+    std::printf("  Both simulators run in-process. No fork/exec, no file I/O.\n");
+
+    // =====================================================================
+    // Multi-density AC sweep comparison
     // =====================================================================
     std::printf("\n=== Multi-Density AC Sweep Comparison ===\n\n");
 
@@ -229,21 +296,14 @@ int main() {
         {1000, 1.0, 100e6,  "DEC 1000, 1 Hz - 100 MHz",  8001, 20},
     };
 
-    const char* ng_circuits[] = {
-        "/ths4131_diff_amp.cir",
-        "/ths4131_bench_medium.cir",
-        "/ths4131_bench_large.cir",
-    };
-
     std::printf("  %-36s %12s %12s %8s %12s %12s\n",
                 "Sweep", "neospice", "ngspice", "Speedup", "neo/pt", "ng/pt");
     std::printf("  %-36s %12s %12s %8s %12s %12s\n",
                 "-----", "--------", "-------", "-------", "------", "-----");
 
-    for (int si = 0; si < 3; ++si) {
-        auto& sw = sweeps[si];
-
-        // --- neospice end-to-end (parse + DC + AC) ---
+    for (auto& sw : sweeps) {
+        // neospice: parse + DC + AC
+        double neo_median_us;
         {
             Simulator sim;
             std::vector<double> times;
@@ -260,48 +320,53 @@ int main() {
                 auto t1 = Clock::now();
                 times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
             }
-            auto neo_s = compute_stats(times);
+            auto s = compute_stats(times);
+            neo_median_us = s.median_us;
+        }
 
-            // --- ngspice end-to-end (fork + parse + sim + raw) ---
-            double ng_median = 0;
-            bool ng_ok = false;
-            if (ng_circuits[si]) {
-                std::string ng_cir = std::string(TEST_CIRCUITS_DIR) + ng_circuits[si];
-                NgspiceRunner ng(NGSPICE_BINARY);
-                std::vector<double> ng_times;
-                for (int i = 0; i < WARMUP; ++i) {
-                    try { ng.run_dc(ng_cir); } catch (...) {}
-                }
-                for (int i = 0; i < sw.runs; ++i) {
-                    auto t0 = Clock::now();
-                    try { ng.run_dc(ng_cir); } catch (...) { continue; }
-                    auto t1 = Clock::now();
-                    ng_times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
-                }
-                if (!ng_times.empty()) {
-                    auto ng_s = compute_stats(ng_times);
-                    ng_median = ng_s.median_us;
-                    ng_ok = true;
-                }
+        // ngspice: source + op + ac (in-process)
+        double ng_median_us;
+        {
+            char ac_cmd[128];
+            std::snprintf(ac_cmd, sizeof(ac_cmd), "ac dec %d %g %g",
+                          sw.npoints, sw.fstart, sw.fstop);
+            std::vector<double> times;
+            for (int i = 0; i < WARMUP; ++i) {
+                ng.load_circuit(cir_path);
+                ng.op();
+                ng.command(ac_cmd);
+                ng.reset();
             }
-
-            double neo_ms = neo_s.median_us / 1000.0;
-            double neo_per_pt = neo_s.median_us / sw.freq_count;
-
-            if (ng_ok) {
-                double ng_ms = ng_median / 1000.0;
-                double ng_per_pt = ng_median / sw.freq_count;
-                double speedup = ng_median / neo_s.median_us;
-                std::printf("  %-36s %9.2f ms %9.2f ms %7.1fx %9.1f µs %9.1f µs\n",
-                            sw.label, neo_ms, ng_ms, speedup, neo_per_pt, ng_per_pt);
-            } else {
-                std::printf("  %-36s %9.2f ms %12s %8s %9.1f µs %12s\n",
-                            sw.label, neo_ms, "N/A", "N/A", neo_per_pt, "N/A");
+            for (int i = 0; i < sw.runs; ++i) {
+                auto t0 = Clock::now();
+                ng.load_circuit(cir_path);
+                ng.op();
+                ng.command(ac_cmd);
+                auto t1 = Clock::now();
+                ng.reset();
+                times.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
             }
+            auto s = compute_stats(times);
+            ng_median_us = s.median_us;
+        }
+
+        double neo_ms = neo_median_us / 1000.0;
+        double ng_ms = ng_median_us / 1000.0;
+        double neo_per_pt = neo_median_us / sw.freq_count;
+        double ng_per_pt = ng_median_us / sw.freq_count;
+        double speedup = ng_median_us / neo_median_us;
+
+        if (speedup >= 1.0) {
+            std::printf("  %-36s %9.2f ms %9.2f ms %7.1fx %9.1f µs %9.1f µs\n",
+                        sw.label, neo_ms, ng_ms, speedup, neo_per_pt, ng_per_pt);
+        } else {
+            std::printf("  %-36s %9.2f ms %9.2f ms %6.1fx * %9.1f µs %9.1f µs\n",
+                        sw.label, neo_ms, ng_ms, 1.0/speedup, neo_per_pt, ng_per_pt);
         }
     }
 
-    std::printf("\n  Note: neospice = in-process (parse+DC+AC). ngspice = subprocess (fork+parse+sim+RAW I/O).\n");
+    std::printf("\n  Both simulators in-process. Timing includes parse + DC + AC.\n");
+    std::printf("  (* = ngspice faster by that factor)\n");
 
     return 0;
 }
