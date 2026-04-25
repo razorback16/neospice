@@ -323,3 +323,57 @@ R2 out 0 1k
     EXPECT_TRUE(std::get<SensResult>(result.analysis).status.converged);
     EXPECT_GT(std::get<SensResult>(result.analysis).status.elapsed_seconds, 0.0);
 }
+
+TEST(AnalysisChaining, TransientFromDC) {
+    neospice::Simulator sim;
+    auto ckt = sim.parse(R"(
+Chain test
+V1 in 0 10
+R1 in out 1k
+C1 out 0 1u
+.op
+.end
+)");
+    auto dc = sim.run_dc(ckt);
+    EXPECT_NEAR(dc.voltage("out"), 10.0, 1e-6);
+
+    auto ckt2 = sim.parse(R"(
+Chain transient
+V1 in 0 5
+R1 in out 1k
+C1 out 0 1u
+.end
+)");
+    neospice::TransientOptions opts;
+    opts.ic_from = &dc;
+    auto tran = sim.run_transient(ckt2, 10e-6, 5e-3, opts);
+
+    EXPECT_GT(tran.voltage("out").front(), 5.0);
+}
+
+TEST(AnalysisChaining, ACFromDC) {
+    neospice::Simulator sim;
+    auto ckt = sim.parse(R"(
+AC chain
+V1 in 0 DC 5 AC 1
+R1 in out 1k
+R2 out 0 1k
+.op
+.end
+)");
+    auto dc = sim.run_dc(ckt);
+
+    auto ckt2 = sim.parse(R"(
+AC from DC
+V1 in 0 DC 5 AC 1
+R1 in out 1k
+R2 out 0 1k
+.end
+)");
+    neospice::ACOptions opts;
+    opts.op_from = &dc;
+    auto ac = sim.run_ac(ckt2, neospice::ACMode::DEC, 10, 100, 1e6, opts);
+    EXPECT_GT(ac.frequency.size(), 10u);
+    auto gain = ac.magnitude_db("out");
+    EXPECT_NEAR(gain[0], -6.02, 0.5);
+}

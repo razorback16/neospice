@@ -58,8 +58,13 @@ public:
 
     DCResult run_dc(Circuit& ckt);
     TransientResult run_transient(Circuit& ckt, double tstep, double tstop);
+    TransientResult run_transient(Circuit& ckt, double tstep, double tstop,
+                                  const TransientOptions& opts);
     ACResult run_ac(Circuit& ckt, ACMode mode,
                     int npoints, double fstart, double fstop);
+    ACResult run_ac(Circuit& ckt, ACMode mode,
+                    int npoints, double fstart, double fstop,
+                    const ACOptions& opts);
     NoiseResult run_noise(Circuit& ckt, const std::string& output_node,
                           const std::string& input_src,
                           ACMode mode,

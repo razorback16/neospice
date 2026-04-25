@@ -84,6 +84,21 @@ ACResult Simulator::run_ac(Circuit& ckt, ACMode mode,
     return result;
 }
 
+TransientResult Simulator::run_transient(Circuit& ckt, double tstep, double tstop,
+                                         const TransientOptions& opts) {
+    auto result = solve_transient(ckt, tstep, tstop, opts);
+    apply_save_filter(result, ckt.save_signals);
+    return result;
+}
+
+ACResult Simulator::run_ac(Circuit& ckt, ACMode mode,
+                           int npoints, double fstart, double fstop,
+                           const ACOptions& opts) {
+    auto result = solve_ac(ckt, mode, npoints, fstart, fstop, opts);
+    apply_save_filter(result, ckt.save_signals);
+    return result;
+}
+
 NoiseResult Simulator::run_noise(Circuit& ckt, const std::string& output_node,
                                  const std::string& input_src,
                                  ACMode mode,

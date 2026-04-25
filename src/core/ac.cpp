@@ -236,4 +236,21 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     return ac_result;
 }
 
+ACResult solve_ac(Circuit& ckt, ACMode mode,
+                  int npoints, double fstart, double fstop,
+                  const ACOptions& opts) {
+    if (opts.op_from) {
+        for (const auto& [key, val] : opts.op_from->node_voltages) {
+            if (key.size() > 3 && key.front() == 'v' && key[1] == '(') {
+                std::string node_name = key.substr(2, key.size() - 3);
+                int32_t idx = ckt.node_index(node_name);
+                if (idx >= 0) {
+                    ckt.nodeset[idx] = val;
+                }
+            }
+        }
+    }
+    return solve_ac(ckt, mode, npoints, fstart, fstop);
+}
+
 } // namespace neospice

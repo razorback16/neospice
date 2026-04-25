@@ -1,5 +1,6 @@
 #pragma once
 #include "core/circuit.hpp"
+#include "core/dc.hpp"
 #include "core/sim_status.hpp"
 #include <complex>
 #include <vector>
@@ -111,7 +112,14 @@ struct ACResult {
     SimStatus status;
 };
 
+struct ACOptions {
+    const DCResult* op_from = nullptr;
+};
+
 ACResult solve_ac(Circuit& ckt, ACMode mode,
                   int npoints, double fstart, double fstop);
+ACResult solve_ac(Circuit& ckt, ACMode mode,
+                  int npoints, double fstart, double fstop,
+                  const ACOptions& opts);
 
 } // namespace neospice

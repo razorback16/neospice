@@ -1,5 +1,6 @@
 #pragma once
 #include "core/circuit.hpp"
+#include "core/dc.hpp"
 #include "core/sim_status.hpp"
 #include "core/timestep.hpp"
 #include <vector>
@@ -55,7 +56,14 @@ struct TransientResult {
     SimStatus status;
 };
 
+struct TransientOptions {
+    const DCResult* ic_from = nullptr;
+    bool uic = false;
+};
+
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                                 bool uic = false);
+TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
+                                const TransientOptions& opts);
 
 } // namespace neospice

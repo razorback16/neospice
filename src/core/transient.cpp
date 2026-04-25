@@ -788,4 +788,20 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     return tran_result;
 }
 
+TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
+                                const TransientOptions& opts) {
+    if (opts.ic_from) {
+        for (const auto& [key, val] : opts.ic_from->node_voltages) {
+            if (key.size() > 3 && key.front() == 'v' && key[1] == '(') {
+                std::string node_name = key.substr(2, key.size() - 3);
+                int32_t idx = ckt.node_index(node_name);
+                if (idx >= 0) {
+                    ckt.ic[idx] = val;
+                }
+            }
+        }
+    }
+    return solve_transient(ckt, tstep, tstop, opts.uic);
+}
+
 } // namespace neospice
