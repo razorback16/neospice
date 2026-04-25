@@ -66,8 +66,8 @@ int main() {
         std::printf("  AC sweep: DEC 10, 1 Hz - 100 MHz (81 points)\n\n");
     }
 
-    // Initialize ngspice shared library
-    NgspiceLib ng(NGSPICE_LIB_PATH, NGSPICE_LIB_DIR);
+    // Initialize ngspice shared library (system libngspice)
+    NgspiceLib ng;
 
     // =====================================================================
     // Phase-by-phase: neospice
