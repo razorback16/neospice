@@ -331,8 +331,13 @@ results = ns.sweep(ckt, param="r1", values=np.linspace(100, 10e3, 50),
 
 | Phase | Feature                    | Impact          | Effort   | Status |
 |-------|----------------------------|-----------------|----------|--------|
-| —     | Typed result access        | Usability       | Low      | Partial |
-| —     | SimStatus error model      | Reliability     | Low      | Planned |
+| —     | Typed result access        | Usability       | Low      | Done |
+| —     | SimStatus error model      | Reliability     | Low      | Done |
+| —     | Noise per-device accessor  | Usability       | Low      | Done |
+| —     | Analysis chaining          | Usability       | Low      | Done |
+| —     | CircuitBuilder fluent API  | Usability       | Medium   | Done |
+| —     | Circuit introspection      | Usability       | Medium   | Done |
+| —     | Generic set_param()        | Optimization    | Medium   | Done |
 | 1     | Python bindings            | Adoption        | Medium   | Planned |
 | 2     | WASM build                 | Accessibility   | Low      | Planned |
 | 3     | Sensitivity/gradients      | Optimization    | High     | Planned |
