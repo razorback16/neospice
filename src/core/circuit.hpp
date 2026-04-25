@@ -4,6 +4,7 @@
 #include "core/pz.hpp"
 #include "devices/device.hpp"
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -139,6 +140,13 @@ template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 // IntegratorCtx is defined in core/types.hpp (included above) so that
 // Device (which only includes types.hpp) can reference it for compute_trunc().
 
+struct DeviceInfo {
+    std::string name;
+    std::string type;
+    std::vector<std::string> nodes;
+    std::optional<double> value;
+};
+
 class Circuit {
 public:
     /// Map node name to internal index. "0", "gnd", "GND" → GROUND_INTERNAL (-1)
@@ -181,6 +189,14 @@ public:
 
     void mark_internal_node(int32_t idx);
     bool is_internal_node(int32_t idx) const;
+
+    std::vector<std::string> node_names() const;
+    std::vector<std::string> device_names() const;
+    DeviceInfo device_info(const std::string& name) const;
+    std::vector<std::string> devices_at_node(const std::string& node) const;
+    Device* find_device(const std::string& name);
+    const Device* find_device(const std::string& name) const;
+    bool set_param(const std::string& device_name, double value);
 
     std::string                         title;
     SimOptions                          options;

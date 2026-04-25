@@ -1,4 +1,5 @@
 #include "core/circuit.hpp"
+#include <algorithm>
 #include <cassert>
 #include <stdexcept>
 
@@ -156,6 +157,86 @@ void Circuit::rotate_state() {
     state2_.swap(state1_);
     state1_ = state0_;   // value copy; same backing buffer
     rebind_device_states();
+}
+
+std::vector<std::string> Circuit::node_names() const {
+    std::vector<std::string> names;
+    for (int32_t i = 0; i < next_node_; ++i) {
+        if (!is_internal_node(i))
+            names.push_back(node_names_[i]);
+    }
+    return names;
+}
+
+std::vector<std::string> Circuit::device_names() const {
+    std::vector<std::string> names;
+    names.reserve(devices_.size());
+    for (const auto& dev : devices_)
+        names.push_back(dev->name());
+    return names;
+}
+
+Device* Circuit::find_device(const std::string& name) {
+    std::string lower_name = name;
+    std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    for (auto& dev : devices_) {
+        std::string dev_lower = dev->name();
+        std::transform(dev_lower.begin(), dev_lower.end(), dev_lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (dev_lower == lower_name) return dev.get();
+    }
+    return nullptr;
+}
+
+const Device* Circuit::find_device(const std::string& name) const {
+    return const_cast<Circuit*>(this)->find_device(name);
+}
+
+DeviceInfo Circuit::device_info(const std::string& name) const {
+    const Device* dev = find_device(name);
+    if (!dev) throw std::out_of_range("Device not found: " + name);
+
+    DeviceInfo info;
+    info.name = dev->name();
+    info.type = dev->device_type();
+    info.value = dev->primary_value();
+    for (int32_t idx : dev->external_nodes()) {
+        if (idx == GROUND_INTERNAL)
+            info.nodes.push_back("0");
+        else if (idx >= 0 && idx < next_node_)
+            info.nodes.push_back(node_names_[idx]);
+    }
+    return info;
+}
+
+std::vector<std::string> Circuit::devices_at_node(const std::string& node) const {
+    int32_t target;
+    if (node == "0" || node == "gnd" || node == "GND")
+        target = GROUND_INTERNAL;
+    else {
+        auto it = node_map_.find(node);
+        if (it == node_map_.end()) return {};
+        target = it->second;
+    }
+
+    std::vector<std::string> result;
+    for (const auto& dev : devices_) {
+        auto nodes = dev->external_nodes();
+        for (int32_t n : nodes) {
+            if (n == target) {
+                result.push_back(dev->name());
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+bool Circuit::set_param(const std::string& device_name, double value) {
+    Device* dev = find_device(device_name);
+    if (!dev) return false;
+    return dev->set_value(value);
 }
 
 } // namespace neospice

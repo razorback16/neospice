@@ -1,6 +1,7 @@
 #pragma once
 #include "core/types.hpp"
 #include "core/matrix.hpp"
+#include <cctype>
 #include <complex>
 #include <optional>
 #include <string>
@@ -17,6 +18,26 @@ public:
     explicit Device(std::string name) : name_(std::move(name)) {}
     virtual ~Device() = default;
     const std::string& name() const { return name_; }
+
+    virtual std::string device_type() const {
+        if (name_.empty()) return "unknown";
+        switch (static_cast<unsigned char>(std::toupper(name_[0]))) {
+            case 'R': return "R"; case 'C': return "C"; case 'L': return "L";
+            case 'V': return "V"; case 'I': return "I"; case 'K': return "K";
+            case 'D': return "D"; case 'Q': return "Q"; case 'J': return "J";
+            case 'M': return "M"; case 'E': return "E"; case 'G': return "G";
+            case 'F': return "F"; case 'H': return "H"; case 'S': return "S";
+            case 'W': return "W"; case 'B': return "B"; case 'T': return "T";
+            case 'O': return "O"; case 'X': return "X";
+            default: return "unknown";
+        }
+    }
+
+    virtual std::vector<int32_t> external_nodes() const { return {}; }
+
+    virtual std::optional<double> primary_value() const { return std::nullopt; }
+
+    virtual bool set_value(double /*value*/) { return false; }
 
     /// Called by Circuit::finalize() before branch assignment and sparsity
     /// build. Devices that need internal MNA nodes (e.g. BSIM4 resistance

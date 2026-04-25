@@ -77,6 +77,8 @@ public:
     int32_t p2_pos() const { return p2p_; }
     int32_t p2_neg() const { return p2n_; }
 
+    std::vector<int32_t> external_nodes() const override { return {p1p_, p1n_, p2p_, p2n_}; }
+
 private:
     int32_t p1p_, p1n_, p2p_, p2n_;
     double z0_, td_;

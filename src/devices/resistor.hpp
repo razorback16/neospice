@@ -32,6 +32,12 @@ public:
     void set_rac(double r) { rac_ = r; }
     double rac() const { return rac_; }
 
+    std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
+    std::optional<double> primary_value() const override { return resistance_eff_; }
+    bool set_value(double value) override {
+        resistance_nom_ = value; resistance_eff_ = value; return true;
+    }
+
     /// Apply temperature-dependent adjustment to effective resistance.
     /// Called once during circuit finalize (or whenever temperature changes).
     void process_temperature(double sim_temp, double sim_tnom) override;

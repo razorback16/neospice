@@ -36,6 +36,12 @@ public:
     double inductance() const { return inductance_eff_; }
     double inductance_nom() const { return inductance_nom_; }
 
+    std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
+    std::optional<double> primary_value() const override { return inductance_eff_; }
+    bool set_value(double value) override {
+        inductance_nom_ = value; inductance_eff_ = value; return true;
+    }
+
     /// Temperature coefficient setters (instance-level parameters)
     void set_tc1(double tc1) { tc1_ = tc1; }
     void set_tc2(double tc2) { tc2_ = tc2; }

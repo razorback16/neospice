@@ -63,6 +63,8 @@ public:
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
 
+    std::vector<int32_t> external_nodes() const override { return {np_, nn_, ncp_, ncn_}; }
+
     const SwitchModel& model() const { return model_; }
 
 private:
@@ -110,6 +112,8 @@ public:
     bool device_converged() const override { return !state_changed_; }
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
+
+    std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
 
     const SwitchModel& model() const { return model_; }
 

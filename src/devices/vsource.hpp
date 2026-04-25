@@ -71,6 +71,10 @@ public:
     void set_dc_value(double v) { dc_value_ = v; }
     double dc_value() const { return dc_value_; }
 
+    std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
+    std::optional<double> primary_value() const override { return dc_value_; }
+    bool set_value(double value) override { dc_value_ = value; return true; }
+
     /// Called before evaluate() during transient analysis.
     void set_time(double t) { current_time_ = t; }
 

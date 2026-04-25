@@ -43,6 +43,8 @@ public:
 
     void set_multiplier(double m) { m_ = m; }
 
+    std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
+
 private:
     int32_t        np_;      // output positive node  (GROUND_INTERNAL = -1)
     int32_t        nn_;      // output negative node  (GROUND_INTERNAL = -1)
