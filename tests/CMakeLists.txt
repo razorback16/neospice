@@ -89,6 +89,7 @@ add_executable(neospice_tests
     unit/test_pz.cpp
     unit/test_step.cpp
     unit/test_ringing.cpp
+    unit/test_circuit_builder.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
