@@ -1,13 +1,38 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/map.h>
 #include <nanobind/stl/optional.h>
+#include <nanobind/stl/complex.h>
 #include "api/neospice.hpp"
 #include "api/circuit_builder.hpp"
+#include <cstring>
 
 namespace nb = nanobind;
 using namespace neospice;
+
+// Helper: copy std::vector<double> into a heap-allocated NumPy array
+static nb::ndarray<nb::numpy, double, nb::shape<-1>>
+make_owned_double_array(const std::vector<double>& vec) {
+    size_t n = vec.size();
+    double* data = new double[n];
+    std::memcpy(data, vec.data(), n * sizeof(double));
+    nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+    return nb::ndarray<nb::numpy, double, nb::shape<-1>>(data, {n}, owner);
+}
+
+// Helper: copy std::vector<std::complex<double>> into a heap-allocated NumPy array
+static nb::ndarray<nb::numpy, std::complex<double>, nb::shape<-1>>
+make_owned_complex_array(const std::vector<std::complex<double>>& vec) {
+    size_t n = vec.size();
+    auto* data = new std::complex<double>[n];
+    std::memcpy(data, vec.data(), n * sizeof(std::complex<double>));
+    nb::capsule owner(data, [](void* p) noexcept {
+        delete[] static_cast<std::complex<double>*>(p);
+    });
+    return nb::ndarray<nb::numpy, std::complex<double>, nb::shape<-1>>(data, {n}, owner);
+}
 
 NB_MODULE(_core, m) {
     m.doc() = "neospice: fast SPICE circuit simulator";
@@ -140,4 +165,196 @@ NB_MODULE(_core, m) {
     cb.def("include", &CircuitBuilder::include, nb::rv_policy::reference);
     cb.def("raw_line", &CircuitBuilder::raw_line, nb::rv_policy::reference);
     cb.def("build", &CircuitBuilder::build);
+
+    // --- DCResult ---
+    nb::class_<DCResult>(m, "DCResult")
+        .def("voltage", [](DCResult& self, const std::string& node) -> double {
+            try { return self.voltage(node); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(node.c_str());
+            }
+        })
+        .def("current", [](DCResult& self, const std::string& dev) -> double {
+            try { return self.current(dev); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(dev.c_str());
+            }
+        })
+        .def("diff", [](DCResult& self, const std::string& np, const std::string& nn) {
+            try { return self.diff(np, nn); }
+            catch (const std::out_of_range& e) {
+                throw nb::key_error(e.what());
+            }
+        })
+        .def("signal_names", &DCResult::signal_names)
+        .def_ro("status", &DCResult::status);
+
+    // --- TransientResult ---
+    nb::class_<TransientResult>(m, "TransientResult")
+        .def_prop_ro("time", [](TransientResult& self) {
+            return make_owned_double_array(self.time);
+        }, nb::rv_policy::move)
+        .def("voltage", [](TransientResult& self, const std::string& node) {
+            try { return make_owned_double_array(self.voltage(node)); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(node.c_str());
+            }
+        })
+        .def("current", [](TransientResult& self, const std::string& dev) {
+            try { return make_owned_double_array(self.current(dev)); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(dev.c_str());
+            }
+        })
+        .def("diff", [](TransientResult& self, const std::string& np, const std::string& nn) {
+            try { return make_owned_double_array(self.diff(np, nn)); }
+            catch (const std::out_of_range& e) {
+                throw nb::key_error(e.what());
+            }
+        })
+        .def("signal_names", &TransientResult::signal_names)
+        .def_ro("rejected_steps", &TransientResult::rejected_steps)
+        .def_ro("status", &TransientResult::status);
+
+    // --- ACResult ---
+    nb::class_<ACResult>(m, "ACResult")
+        .def_prop_ro("frequency", [](ACResult& self) {
+            return make_owned_double_array(self.frequency);
+        }, nb::rv_policy::move)
+        .def("voltage", [](ACResult& self, const std::string& node) {
+            try { return make_owned_complex_array(self.voltage(node)); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(node.c_str());
+            }
+        })
+        .def("current", [](ACResult& self, const std::string& dev) {
+            try { return make_owned_complex_array(self.current(dev)); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(dev.c_str());
+            }
+        })
+        .def("magnitude_db", [](ACResult& self, const std::string& node) {
+            try { return make_owned_double_array(self.magnitude_db(node)); }
+            catch (const std::out_of_range&) { throw nb::key_error(node.c_str()); }
+        })
+        .def("phase_deg", [](ACResult& self, const std::string& node) {
+            try { return make_owned_double_array(self.phase_deg(node)); }
+            catch (const std::out_of_range&) { throw nb::key_error(node.c_str()); }
+        })
+        .def("magnitude", [](ACResult& self, const std::string& node) {
+            try { return make_owned_double_array(self.magnitude(node)); }
+            catch (const std::out_of_range&) { throw nb::key_error(node.c_str()); }
+        })
+        .def("diff", [](ACResult& self, const std::string& np, const std::string& nn) {
+            try { return make_owned_complex_array(self.diff(np, nn)); }
+            catch (const std::out_of_range& e) {
+                throw nb::key_error(e.what());
+            }
+        })
+        .def("diff_magnitude_db", [](ACResult& self,
+                const std::string& np, const std::string& nn) {
+            try { return make_owned_double_array(self.diff_magnitude_db(np, nn)); }
+            catch (const std::out_of_range& e) { throw nb::key_error(e.what()); }
+        })
+        .def("current_magnitude_db", [](ACResult& self, const std::string& dev) {
+            try { return make_owned_double_array(self.current_magnitude_db(dev)); }
+            catch (const std::out_of_range&) { throw nb::key_error(dev.c_str()); }
+        })
+        .def("current_phase_deg", [](ACResult& self, const std::string& dev) {
+            try { return make_owned_double_array(self.current_phase_deg(dev)); }
+            catch (const std::out_of_range&) { throw nb::key_error(dev.c_str()); }
+        })
+        .def("current_magnitude", [](ACResult& self, const std::string& dev) {
+            try { return make_owned_double_array(self.current_magnitude(dev)); }
+            catch (const std::out_of_range&) { throw nb::key_error(dev.c_str()); }
+        })
+        .def("signal_names", &ACResult::signal_names)
+        .def_ro("status", &ACResult::status);
+
+    // --- DCSweepResult ---
+    nb::class_<DCSweepResult>(m, "DCSweepResult")
+        .def_prop_ro("sweep_values", [](DCSweepResult& self) {
+            return make_owned_double_array(self.sweep_values);
+        }, nb::rv_policy::move)
+        .def_ro("sweep_var", &DCSweepResult::sweep_var)
+        .def("voltage", [](DCSweepResult& self, const std::string& node) {
+            try { return make_owned_double_array(self.voltage(node)); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(node.c_str());
+            }
+        })
+        .def("current", [](DCSweepResult& self, const std::string& dev) {
+            try { return make_owned_double_array(self.current(dev)); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(dev.c_str());
+            }
+        })
+        .def("diff", [](DCSweepResult& self,
+                const std::string& np, const std::string& nn) {
+            try { return make_owned_double_array(self.diff(np, nn)); }
+            catch (const std::out_of_range& e) { throw nb::key_error(e.what()); }
+        })
+        .def("signal_names", &DCSweepResult::signal_names)
+        .def_ro("status", &DCSweepResult::status);
+
+    // --- NoiseResult ---
+    nb::class_<NoiseResult>(m, "NoiseResult")
+        .def_prop_ro("frequency", [](NoiseResult& self) {
+            return make_owned_double_array(self.frequency);
+        }, nb::rv_policy::move)
+        .def_prop_ro("output_noise_density", [](NoiseResult& self) {
+            return make_owned_double_array(self.output_noise_density);
+        }, nb::rv_policy::move)
+        .def_prop_ro("input_noise_density", [](NoiseResult& self) {
+            return make_owned_double_array(self.input_noise_density);
+        }, nb::rv_policy::move)
+        .def("output_noise_sqrt", [](NoiseResult& self) {
+            return make_owned_double_array(self.output_noise_sqrt());
+        })
+        .def("input_noise_sqrt", [](NoiseResult& self) {
+            return make_owned_double_array(self.input_noise_sqrt());
+        })
+        .def("integrated_output_noise", &NoiseResult::integrated_output_noise)
+        .def("integrated_input_noise", &NoiseResult::integrated_input_noise)
+        .def("device_names", &NoiseResult::device_names)
+        .def("device_noise_density", [](NoiseResult& self, const std::string& name) {
+            try { return make_owned_double_array(self.device_noise_density(name)); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(name.c_str());
+            }
+        })
+        .def("signal_names", &NoiseResult::signal_names)
+        .def_ro("status", &NoiseResult::status);
+
+    // --- TFResult ---
+    nb::class_<TFResult>(m, "TFResult")
+        .def_ro("output_var", &TFResult::output_var)
+        .def_ro("input_src", &TFResult::input_src)
+        .def_ro("transfer_function", &TFResult::transfer_function)
+        .def_ro("input_impedance", &TFResult::input_impedance)
+        .def_ro("output_impedance", &TFResult::output_impedance)
+        .def_ro("status", &TFResult::status);
+
+    // --- SensResult ---
+    nb::class_<SensResult::Entry>(m, "SensEntry")
+        .def_ro("element", &SensResult::Entry::element)
+        .def_ro("parameter", &SensResult::Entry::parameter)
+        .def_ro("sensitivity", &SensResult::Entry::sensitivity)
+        .def_ro("normalized", &SensResult::Entry::normalized);
+
+    nb::class_<SensResult>(m, "SensResult")
+        .def_ro("output_var", &SensResult::output_var)
+        .def_ro("output_value", &SensResult::output_value)
+        .def_ro("entries", &SensResult::entries)
+        .def_ro("status", &SensResult::status);
+
+    // --- PZResult ---
+    nb::class_<PZResult>(m, "PZResult")
+        .def_prop_ro("poles", [](PZResult& self) {
+            return make_owned_complex_array(self.poles);
+        }, nb::rv_policy::move)
+        .def_prop_ro("zeros", [](PZResult& self) {
+            return make_owned_complex_array(self.zeros);
+        }, nb::rv_policy::move)
+        .def_ro("status", &PZResult::status);
 }
