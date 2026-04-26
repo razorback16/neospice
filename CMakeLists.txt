@@ -17,15 +17,8 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(OPENBLAS REQUIRED IMPORTED_TARGET openblas)
 
 # SLEEF
-find_path(SLEEF_INCLUDE_DIR sleef.h
-    PATHS /usr/include/x86_64-linux-gnu
-    REQUIRED
-)
-find_library(SLEEF_LIBRARY
-    NAMES sleef
-    PATHS /usr/lib/x86_64-linux-gnu
-    REQUIRED
-)
+find_path(SLEEF_INCLUDE_DIR sleef.h REQUIRED)
+find_library(SLEEF_LIBRARY NAMES sleef REQUIRED)
 
 # Optional OpenMP
 find_package(OpenMP)
