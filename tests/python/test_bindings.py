@@ -329,3 +329,76 @@ class TestSimulationResult:
         ckt = sim.load(os.path.join(CIRCUITS_DIR, "resistor_divider.cir"))
         result = sim.run(ckt)
         assert result.step is None
+
+
+class TestConvenienceFunctions:
+    def test_dc_from_file(self):
+        path = os.path.join(CIRCUITS_DIR, "resistor_divider.cir")
+        result = neospice.dc(path)
+        assert isinstance(result, neospice.DCResult)
+        assert abs(result.voltage("mid") - 5.0) < 0.01
+
+    def test_dc_from_string(self):
+        result = neospice.dc(
+            "Divider\nV1 in 0 DC 10\nR1 in mid 1k\nR2 mid 0 1k\n.op\n.end\n"
+        )
+        assert isinstance(result, neospice.DCResult)
+        assert abs(result.voltage("mid") - 5.0) < 0.01
+
+    def test_ac(self):
+        path = os.path.join(CIRCUITS_DIR, "rc_ac.cir")
+        result = neospice.ac(path, mode="dec", npoints=10, fstart=100, fstop=1e9)
+        assert isinstance(result, neospice.ACResult)
+        assert len(result.frequency) > 5
+
+    def test_ac_with_enum_mode(self):
+        path = os.path.join(CIRCUITS_DIR, "rc_ac.cir")
+        result = neospice.ac(
+            path, mode=neospice.ACMode.DEC, npoints=10, fstart=100, fstop=1e9
+        )
+        assert isinstance(result, neospice.ACResult)
+
+    def test_transient(self):
+        path = os.path.join(CIRCUITS_DIR, "rc_lowpass.cir")
+        result = neospice.transient(path, tstep=0.1e-6, tstop=50e-6)
+        assert isinstance(result, neospice.TransientResult)
+        assert len(result.time) > 10
+
+    def test_noise(self):
+        path = os.path.join(CIRCUITS_DIR, "rc_lowpass_noise.cir")
+        result = neospice.noise(
+            path, output="out", input_src="v1",
+            mode="dec", npoints=10, fstart=100, fstop=10e6,
+        )
+        assert isinstance(result, neospice.NoiseResult)
+
+    def test_dc_sweep(self):
+        path = os.path.join(CIRCUITS_DIR, "diode_dc_sweep.cir")
+        p = neospice.DCSweepParam()
+        p.source_name = "v1"
+        p.start = -1.0
+        p.stop = 1.0
+        p.step = 0.01
+        result = neospice.dc_sweep(path, [p])
+        assert isinstance(result, neospice.DCSweepResult)
+
+    def test_tf(self):
+        path = os.path.join(CIRCUITS_DIR, "tf_resistive_divider.cir")
+        result = neospice.tf(path, output="v(out)", input_src="v1")
+        assert isinstance(result, neospice.TFResult)
+
+    def test_sens(self):
+        path = os.path.join(CIRCUITS_DIR, "sens_divider.cir")
+        result = neospice.sens(path, output="v(out)")
+        assert isinstance(result, neospice.SensResult)
+
+    def test_run(self):
+        path = os.path.join(CIRCUITS_DIR, "resistor_divider.cir")
+        result = neospice.run(path)
+        assert isinstance(result, neospice.SimulationResult)
+        assert result.analysis_type == "dc"
+
+    def test_custom_options(self):
+        path = os.path.join(CIRCUITS_DIR, "resistor_divider.cir")
+        result = neospice.dc(path, reltol=1e-4)
+        assert isinstance(result, neospice.DCResult)
