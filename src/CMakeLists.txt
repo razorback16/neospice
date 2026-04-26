@@ -21,6 +21,7 @@ add_library(neospice_lib
     core/matrix.cpp
     core/klu_solver.cpp
     core/linear_solver.cpp
+    core/small_solver.cpp
     core/circuit.cpp
     core/newton.cpp
     core/convergence.cpp
