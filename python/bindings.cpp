@@ -5,12 +5,25 @@
 #include <nanobind/stl/map.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/complex.h>
+#include <nanobind/stl/unique_ptr.h>
+#include <nanobind/stl/unordered_map.h>
 #include "api/neospice.hpp"
 #include "api/circuit_builder.hpp"
 #include <cstring>
 
 namespace nb = nanobind;
 using namespace neospice;
+
+// SimulationResult contains unique_ptr<StepResult> → not copyable.
+// StepResult contains vector<SimulationResult> → also not copyable.
+// std::is_copy_constructible gives a false positive for StepResult because
+// vector's copy ctor is not SFINAE-constrained; override the trait here.
+NAMESPACE_BEGIN(NB_NAMESPACE)
+NAMESPACE_BEGIN(detail)
+template <> struct is_copy_constructible<SimulationResult> : std::false_type {};
+template <> struct is_copy_constructible<StepResult>       : std::false_type {};
+NAMESPACE_END(detail)
+NAMESPACE_END(NB_NAMESPACE)
 
 // Helper: copy std::vector<double> into a heap-allocated NumPy array
 static nb::ndarray<nb::numpy, double, nb::shape<-1>>
@@ -357,4 +370,77 @@ NB_MODULE(_core, m) {
             return make_owned_complex_array(self.zeros);
         }, nb::rv_policy::move)
         .def_ro("status", &PZResult::status);
+
+    // --- MeasureResult ---
+    nb::class_<MeasureResult>(m, "MeasureResult")
+        .def_ro("values", &MeasureResult::values);
+
+    // --- StepResult ---
+    nb::class_<StepResult>(m, "StepResult")
+        .def_prop_ro("step_values", [](StepResult& self) {
+            size_t n = self.step_values.size();
+            double* data = new double[n];
+            std::memcpy(data, self.step_values.data(), n * sizeof(double));
+            nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+            return nb::ndarray<nb::numpy, double, nb::shape<-1>>(data, {n}, owner);
+        })
+        .def_ro("step_variable", &StepResult::step_variable)
+        .def_ro("results", &StepResult::results);
+
+    // --- SimulationResult ---
+    nb::class_<SimulationResult>(m, "SimulationResult")
+        .def_prop_ro("analysis_type", [](const SimulationResult& self) -> nb::object {
+            return std::visit([](auto&& arg) -> nb::object {
+                using T = std::decay_t<decltype(arg)>;
+                if constexpr (std::is_same_v<T, std::monostate>) return nb::none();
+                else if constexpr (std::is_same_v<T, DCResult>) return nb::str("dc");
+                else if constexpr (std::is_same_v<T, TransientResult>) return nb::str("transient");
+                else if constexpr (std::is_same_v<T, ACResult>) return nb::str("ac");
+                else if constexpr (std::is_same_v<T, DCSweepResult>) return nb::str("dc_sweep");
+                else if constexpr (std::is_same_v<T, NoiseResult>) return nb::str("noise");
+                else if constexpr (std::is_same_v<T, TFResult>) return nb::str("tf");
+                else if constexpr (std::is_same_v<T, SensResult>) return nb::str("sens");
+                else if constexpr (std::is_same_v<T, PZResult>) return nb::str("pz");
+                else return nb::none();
+            }, self.analysis);
+        })
+        .def_prop_ro("dc", [](const SimulationResult& self) -> nb::object {
+            auto* p = std::get_if<DCResult>(&self.analysis);
+            return p ? nb::cast(*p, nb::rv_policy::copy) : nb::none();
+        })
+        .def_prop_ro("transient", [](const SimulationResult& self) -> nb::object {
+            auto* p = std::get_if<TransientResult>(&self.analysis);
+            return p ? nb::cast(*p, nb::rv_policy::copy) : nb::none();
+        })
+        .def_prop_ro("ac", [](const SimulationResult& self) -> nb::object {
+            auto* p = std::get_if<ACResult>(&self.analysis);
+            return p ? nb::cast(*p, nb::rv_policy::copy) : nb::none();
+        })
+        .def_prop_ro("dc_sweep", [](const SimulationResult& self) -> nb::object {
+            auto* p = std::get_if<DCSweepResult>(&self.analysis);
+            return p ? nb::cast(*p, nb::rv_policy::copy) : nb::none();
+        })
+        .def_prop_ro("noise", [](const SimulationResult& self) -> nb::object {
+            auto* p = std::get_if<NoiseResult>(&self.analysis);
+            return p ? nb::cast(*p, nb::rv_policy::copy) : nb::none();
+        })
+        .def_prop_ro("tf", [](const SimulationResult& self) -> nb::object {
+            auto* p = std::get_if<TFResult>(&self.analysis);
+            return p ? nb::cast(*p, nb::rv_policy::copy) : nb::none();
+        })
+        .def_prop_ro("sens", [](const SimulationResult& self) -> nb::object {
+            auto* p = std::get_if<SensResult>(&self.analysis);
+            return p ? nb::cast(*p, nb::rv_policy::copy) : nb::none();
+        })
+        .def_prop_ro("pz", [](const SimulationResult& self) -> nb::object {
+            auto* p = std::get_if<PZResult>(&self.analysis);
+            return p ? nb::cast(*p, nb::rv_policy::copy) : nb::none();
+        })
+        .def_prop_ro("measures", [](const SimulationResult& self) -> nb::object {
+            return self.measures ? nb::cast(*self.measures) : nb::none();
+        })
+        .def_prop_ro("step", [](const SimulationResult& self) -> nb::object {
+            return self.step ? nb::cast(*self.step) : nb::none();
+        })
+        .def_ro("print_output", &SimulationResult::print_output);
 }

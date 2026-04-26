@@ -297,3 +297,35 @@ class TestSensResult:
         assert hasattr(e, "element")
         assert hasattr(e, "sensitivity")
         assert hasattr(e, "normalized")
+
+
+class TestSimulationResult:
+    def test_run_returns_simulation_result(self):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, "resistor_divider.cir"))
+        result = sim.run(ckt)
+        assert isinstance(result, neospice.SimulationResult)
+        assert result.analysis_type == "dc"
+        assert result.dc is not None
+        assert result.transient is None
+        assert result.ac is None
+
+    def test_run_ac_analysis_type(self):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, "rc_ac.cir"))
+        result = sim.run(ckt)
+        assert result.analysis_type == "ac"
+        assert result.ac is not None
+        assert result.dc is None
+
+    def test_measures_none_when_absent(self):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, "resistor_divider.cir"))
+        result = sim.run(ckt)
+        assert result.measures is None
+
+    def test_step_none_when_absent(self):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, "resistor_divider.cir"))
+        result = sim.run(ckt)
+        assert result.step is None
