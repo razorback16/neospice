@@ -1,4 +1,8 @@
+import os
+
 import neospice
+
+CIRCUITS_DIR = os.path.join(os.path.dirname(__file__), "..", "circuits")
 
 
 class TestEnums:
@@ -56,3 +60,38 @@ class TestDCSweepParam:
         p.step = 0.1
         assert p.source_name == "V1"
         assert p.stop == 5.0
+
+
+class TestSimulatorLoadParse:
+    def test_load_file(self):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, "resistor_divider.cir"))
+        assert isinstance(ckt, neospice.Circuit)
+        assert ckt.title == "resistor divider"
+
+    def test_parse_string(self):
+        sim = neospice.Simulator()
+        ckt = sim.parse("Test\nV1 a 0 DC 1\nR1 a 0 1k\n.op\n.end\n")
+        assert isinstance(ckt, neospice.Circuit)
+        assert "a" in ckt.node_names()
+
+    def test_circuit_introspection(self):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, "resistor_divider.cir"))
+        nodes = ckt.node_names()
+        assert "in" in nodes
+        assert "mid" in nodes
+        devs = ckt.device_names()
+        assert len(devs) == 3  # V1, R1, R2
+
+
+class TestCircuitBuilder:
+    def test_build_and_run_dc(self):
+        ckt = (neospice.CircuitBuilder()
+            .title("Divider")
+            .vsource("V1", "in", "0", neospice.SourceSpec())
+            .resistor("R1", "in", "out", 1e3)
+            .resistor("R2", "out", "0", 1e3)
+            .build())
+        assert isinstance(ckt, neospice.Circuit)
+        assert ckt.title == "divider"

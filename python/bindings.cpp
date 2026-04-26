@@ -1,6 +1,8 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
+#include <nanobind/stl/map.h>
+#include <nanobind/stl/optional.h>
 #include "api/neospice.hpp"
 #include "api/circuit_builder.hpp"
 
@@ -81,4 +83,61 @@ NB_MODULE(_core, m) {
         .def_rw("start", &DCSweepParam::start)
         .def_rw("stop", &DCSweepParam::stop)
         .def_rw("step", &DCSweepParam::step);
+
+    // --- Circuit (move-only) ---
+    nb::class_<Circuit>(m, "Circuit")
+        .def_ro("title", &Circuit::title)
+        .def("node_names", &Circuit::node_names)
+        .def("device_names", &Circuit::device_names)
+        .def("device_info", &Circuit::device_info)
+        .def("set_param", &Circuit::set_param);
+
+    nb::class_<DeviceInfo>(m, "DeviceInfo")
+        .def_ro("name", &DeviceInfo::name)
+        .def_ro("type", &DeviceInfo::type)
+        .def_ro("nodes", &DeviceInfo::nodes)
+        .def_ro("value", &DeviceInfo::value);
+
+    // --- Simulator ---
+    nb::class_<Simulator>(m, "Simulator")
+        .def(nb::init<>())
+        .def(nb::init<SimulatorOptions>())
+        .def("load", &Simulator::load)
+        .def("parse", &Simulator::parse)
+        .def("run_dc", &Simulator::run_dc)
+        .def("run_transient",
+             nb::overload_cast<Circuit&, double, double>(&Simulator::run_transient))
+        .def("run_transient_with_opts",
+             nb::overload_cast<Circuit&, double, double, const TransientOptions&>(
+                 &Simulator::run_transient))
+        .def("run_ac",
+             nb::overload_cast<Circuit&, ACMode, int, double, double>(
+                 &Simulator::run_ac))
+        .def("run_ac_with_opts",
+             nb::overload_cast<Circuit&, ACMode, int, double, double, const ACOptions&>(
+                 &Simulator::run_ac))
+        .def("run_noise", &Simulator::run_noise)
+        .def("run_dc_sweep", &Simulator::run_dc_sweep)
+        .def("run_tf", &Simulator::run_tf)
+        .def("run_sens", &Simulator::run_sens)
+        .def("run", &Simulator::run)
+        .def("run_step_sweep", &Simulator::run_step_sweep);
+
+    // --- CircuitBuilder (fluent API) ---
+    auto cb = nb::class_<CircuitBuilder>(m, "CircuitBuilder");
+    cb.def(nb::init<>());
+    cb.def("title", &CircuitBuilder::title, nb::rv_policy::reference);
+    cb.def("resistor", &CircuitBuilder::resistor, nb::rv_policy::reference);
+    cb.def("capacitor", &CircuitBuilder::capacitor, nb::rv_policy::reference);
+    cb.def("inductor", &CircuitBuilder::inductor, nb::rv_policy::reference);
+    cb.def("vsource", &CircuitBuilder::vsource, nb::rv_policy::reference);
+    cb.def("vsource_pulse", &CircuitBuilder::vsource_pulse, nb::rv_policy::reference);
+    cb.def("vsource_sin", &CircuitBuilder::vsource_sin, nb::rv_policy::reference);
+    cb.def("isource", &CircuitBuilder::isource, nb::rv_policy::reference);
+    cb.def("diode", &CircuitBuilder::diode, nb::rv_policy::reference);
+    cb.def("subcircuit", &CircuitBuilder::subcircuit, nb::rv_policy::reference);
+    cb.def("model", &CircuitBuilder::model, nb::rv_policy::reference);
+    cb.def("include", &CircuitBuilder::include, nb::rv_policy::reference);
+    cb.def("raw_line", &CircuitBuilder::raw_line, nb::rv_policy::reference);
+    cb.def("build", &CircuitBuilder::build);
 }
