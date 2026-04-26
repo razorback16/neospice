@@ -139,17 +139,18 @@ auto conn = ckt.devices_at_node("out");   // {"R1", "C1"}
 
 Benchmarked in-process against ngspice-42 on Intel Core Ultra 9 285K, GCC 14, `-O3`. Both simulators linked as libraries -- no subprocess overhead, no file I/O in timed sections. Median of 10-30 runs.
 
-| Benchmark | neospice | ngspice | Speedup |
+| Benchmark | ngspice | neospice | Speedup |
 |---|---:|---:|---:|
-| **Parse** THS4131 (77 nodes) | 189 us | 435 us | 2.3x |
-| **Parse** resistor divider | 8 us | 43 us | 5.2x |
-| **DC OP** THS4131 (14 BJTs) | 340 us | 622 us | 1.8x |
-| **DC OP** resistor divider | 10 us | 48 us | 5.1x |
-| **AC** THS4131, 81 points | 547 us | 967 us | 1.8x |
-| **AC** RC lowpass, 91 points | 15 us | 111 us | 7.5x |
-| **Noise** THS4131 | 1.23 ms | 1.93 ms | 1.6x |
-| **DC sweep** resistor, 101 pts | 77 us | 299 us | 3.9x |
-| **Transient** THS4131, 10us | 6.4 ms | 18.4 ms | 2.9x |
+| **Parse** THS4131 (77 nodes) | 436 us | 196 us | 2.2x |
+| **Parse** resistor divider | 44 us | 8 us | 5.3x |
+| **DC OP** THS4131 (14 BJTs) | 624 us | 337 us | 1.8x |
+| **DC OP** resistor divider | 50 us | 6 us | 7.8x |
+| **AC** THS4131, 81 points | 979 us | 544 us | 1.8x |
+| **AC** RC lowpass, 91 points | 114 us | 15 us | 7.7x |
+| **Noise** resistor divider, 91 pts | 88 us | 55 us | 1.6x |
+| **DC sweep** V1, 1001 pts | 819 us | 209 us | 3.9x |
+| **Transient** pulse source | 995 us | 342 us | 2.9x |
+| **Total** (all benchmarks) | **28.6 ms** | **26.0 ms** | **1.10x** |
 
 See [docs/performance-comparison-with-ngspice.md](docs/performance-comparison-with-ngspice.md) for the full methodology and results.
 

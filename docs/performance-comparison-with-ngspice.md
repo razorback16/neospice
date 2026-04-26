@@ -8,8 +8,8 @@ noise, and DC sweep. Both simulators run **in-process** via shared library
 linkage — no subprocess spawning, no file I/O — ensuring a fair comparison
 of parser and numerical kernel performance.
 
-neospice is faster at parsing (2–5×), DC operating point (1.8–5.1×), AC
-analysis (1.1–7.5×), noise (1.6×), DC sweep (3.9×), and most transient
+neospice is faster at parsing (2–5×), DC operating point (1.8–7.8×), AC
+analysis (1.2–7.7×), noise (1.6×), DC sweep (3.9×), and most transient
 workloads (1.7–2.9×). ngspice retains a transient advantage on oscillatory
 circuits (3.3×) due to timestep control differences.
 
@@ -65,28 +65,34 @@ storage and adaptive refactorize.
 
 ### 2.1 Comprehensive benchmark
 
-| Benchmark | neospice | ngspice | Factor | Winner |
+| Benchmark | ngspice | neospice | Factor | Winner |
 |---|---:|---:|---:|---|
 | **Parse** | | | | |
-| THS4131 (77 nodes, 58 devices) | 189 µs | 435 µs | **2.3×** | neospice |
-| Resistor divider (3 devices) | 8 µs | 43 µs | **5.2×** | neospice |
+| THS4131 (77 nodes, 58 devices) | 436 µs | 196 µs | **2.2×** | neospice |
+| Resistor divider (3 devices) | 44 µs | 8 µs | **5.3×** | neospice |
 | **DC Operating Point** | | | | |
-| THS4131 (14 BJTs) | 340 µs | 622 µs | **1.8×** | neospice |
-| Resistor divider | 10 µs | 48 µs | **5.1×** | neospice |
+| THS4131 (14 BJTs) | 624 µs | 337 µs | **1.8×** | neospice |
+| Resistor divider | 50 µs | 6 µs | **7.8×** | neospice |
 | **AC Small-Signal** | | | | |
-| THS4131, DEC 10, 81 pts | 547 µs | 967 µs | **1.8×** | neospice |
-| THS4131, DEC 1000, 8 001 pts | 18.5 ms | 20.7 ms | **1.1×** | neospice |
-| RC lowpass, DEC 10, 91 pts | 15 µs | 111 µs | **7.5×** | neospice |
+| THS4131, DEC 10, 81 pts | 979 µs | 544 µs | **1.8×** | neospice |
+| THS4131, DEC 1000, 8 001 pts | 21.7 ms | 18.5 ms | **1.2×** | neospice |
+| RC lowpass, DEC 10, 91 pts | 114 µs | 15 µs | **7.7×** | neospice |
 | **Transient** | | | | |
-| RC lowpass, 500 µs | 642 µs | 1.11 ms | **1.7×** | neospice |
-| RLC series, 100 µs | 5.17 ms | 1.55 ms | **3.3×** | ngspice |
-| Pulse source, 100 µs | 344 µs | 988 µs | **2.9×** | neospice |
+| RC lowpass, 500 µs | 1.12 ms | 642 µs | **1.7×** | neospice |
+| RLC series, 100 µs | 1.57 ms | 5.19 ms | **3.3×** | ngspice |
+| Pulse source, 100 µs | 995 µs | 342 µs | **2.9×** | neospice |
 | **Noise** | | | | |
-| Resistor divider, DEC 10, 91 pts | 55 µs | 87 µs | **1.6×** | neospice |
+| Resistor divider, DEC 10, 91 pts | 88 µs | 55 µs | **1.6×** | neospice |
 | **DC Sweep** | | | | |
-| V1 −5..+5 V, 1 001 pts | 208 µs | 812 µs | **3.9×** | neospice |
+| V1 −5..+5 V, 1 001 pts | 819 µs | 209 µs | **3.9×** | neospice |
 | **End-to-End** | | | | |
-| THS4131 (.op + .ac dec 10) | 549 µs | 726 µs | **1.3×** | neospice |
+| THS4131 (.op + .ac dec 10) | 732 µs | 536 µs | **1.4×** | neospice |
+| | | | | |
+| **Total (all individual benchmarks)** | **28.6 ms** | **26.0 ms** | **1.10×** | neospice |
+
+The aggregate total is dominated by the dense AC sweep (DEC 1000), which
+accounts for ~75% of total time and shows only a 1.2× difference. Per-analysis
+speedups range from 1.6–7.8× on most workloads.
 
 ### 2.2 Improvement from SmallSolver sparse tier
 
@@ -115,11 +121,11 @@ nodes, and performs symbolic sparsity analysis in one pass. ngspice's parser
 is a multi-pass C implementation. The advantage is proportionally larger on
 small circuits due to ngspice's fixed initialization overhead (~40 µs).
 
-**DC operating point (1.8–5.1×).** Lower per-iteration overhead in matrix
+**DC operating point (1.8–7.8×).** Lower per-iteration overhead in matrix
 assembly and Newton solve. For tiny circuits the advantage is amplified by
 ngspice's minimum initialization cost.
 
-**AC analysis (1.1–7.5×).** SmallSolver's sparse complex LU achieves
+**AC analysis (1.2–7.7×).** SmallSolver's sparse complex LU achieves
 ~2× throughput over KLU's `klu_z_refactor`/`klu_z_solve` at n=87. This
 closes the per-point gap with Sparse 1.3, making neospice faster across
 all tested AC densities. The complex refactorize reuses the real L/U
@@ -177,14 +183,14 @@ The AC hot-loop profile for THS4131 (n=87) with SmallSolver:
 | Regime | Winner | Factor | Primary mechanism |
 |---|---|---:|---|
 | Parsing | neospice | 2–5× | Single-pass C++ parser |
-| Small circuits (any analysis) | neospice | 5–7× | Minimal initialization overhead |
+| Small circuits (any analysis) | neospice | 5–8× | Minimal initialization overhead |
 | DC operating point | neospice | 1.8× | Lower per-iteration overhead |
-| AC analysis (all densities) | neospice | 1.1–7.5× | SmallSolver sparse complex LU |
+| AC analysis (all densities) | neospice | 1.2–7.7× | SmallSolver sparse complex LU |
 | Transient (passive/switched) | neospice | 1.7–2.9× | Efficient breakpoint handling |
 | Transient (oscillatory) | ngspice | 3.3× | Fewer timesteps to target accuracy |
 | Noise | neospice | 1.6× | Same sparse complex path as AC |
 | DC sweep | neospice | 3.9× | Fast structure-reusing refactorize |
-| End-to-end (typical mixed) | neospice | 1.3× | Parsing + solver advantages |
+| End-to-end (typical mixed) | neospice | 1.4× | Parsing + solver advantages |
 
 neospice is faster in all scenarios except oscillatory transient circuits.
 The SmallSolver sparse tier eliminated ngspice's previous per-point solver
