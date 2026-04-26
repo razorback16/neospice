@@ -5,7 +5,7 @@
 namespace neospice {
 
 std::unique_ptr<LinearSolver> create_solver(int32_t n) {
-    if (n < 200) {
+    if (n < 12) {
         return std::make_unique<SmallSolver>();
     }
     return std::make_unique<KLUSolver>();

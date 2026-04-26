@@ -47,9 +47,9 @@ A key architectural difference: neospice uses a **two-tier solver** behind an
 abstract `LinearSolver` interface, while the system ngspice uses the built-in
 **Sparse 1.3** library.
 
-- **SmallSolver** (n < 200): dense column-major LU with partial pivoting.
-  For n >= 25, AMD ordering is applied before scatter to reduce fill.
-- **KLU** (n >= 200): SuiteSparse KLU with supernodal blocking and BTF.
+- **SmallSolver** (n < 12): dense column-major LU with partial pivoting.
+  Avoids KLU setup overhead for trivial circuits.
+- **KLU** (n >= 12): SuiteSparse KLU with supernodal blocking and BTF.
 
 A `create_solver(n)` factory function dispatches to the appropriate backend.
 Both tiers share the same `LinearSolver` interface (`symbolic`, `numeric`,
@@ -239,13 +239,13 @@ the dense O(n^3) factorization cannot.
 
 The crossover occurs much earlier than anticipated. For the banded matrices
 typical of SPICE circuits (nnz/n ratio ~7), even at n=10 the dense
-approach is marginally slower than KLU's sparse factorization. The SmallSolver
-threshold of n < 200 is too aggressive; a threshold of n < 10 would better
-match the actual crossover point.
+approach is marginally slower than KLU's sparse factorization. The factory
+threshold was tuned to n < 12 based on these measurements.
 
-However, the SmallSolver still serves a purpose: it avoids the KLU library
-dependency for the tiniest circuits and provides a self-contained fallback.
-The `create_solver(n)` factory can be tuned once more workloads are profiled.
+SmallSolver avoids KLU's setup overhead for trivial circuits and provides
+a self-contained fallback. The abstract `LinearSolver` interface allows
+adding a true sparse LU solver in the future to close the gap with
+ngspice's Sparse 1.3 in the n=25-200 range.
 
 **Key observations:**
 
