@@ -1,4 +1,5 @@
 #include "core/small_solver.hpp"
+#include <suitesparse/amd.h>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -13,6 +14,23 @@ void SmallSolver::symbolic(const SparsityPattern& pattern) {
     CSCData csc = pattern.to_csc();
     col_ptr_ = std::move(csc.col_ptr);
     row_idx_ = std::move(csc.row_idx);
+
+    use_dense_ = (n_ < DENSE_LIMIT);
+
+    if (!use_dense_) {
+        // AMD ordering for sparse tier
+        amd_perm_.resize(n_);
+        amd_inv_.resize(n_);
+        int status = amd_order(n_, col_ptr_.data(), row_idx_.data(),
+                               amd_perm_.data(), nullptr, nullptr);
+        if (status != AMD_OK && status != AMD_OK_BUT_JUMBLED) {
+            // Fall back to identity permutation
+            for (int32_t i = 0; i < n_; ++i) amd_perm_[i] = i;
+        }
+        // Build inverse permutation
+        for (int32_t i = 0; i < n_; ++i) amd_inv_[amd_perm_[i]] = i;
+    }
+
     lu_.resize(n_ * n_, 0.0);
     pivot_.resize(n_);
     lu_z_.resize(2 * n_ * n_, 0.0);
@@ -28,6 +46,20 @@ void SmallSolver::scatter_to_dense(const double* csc_values) {
         for (int32_t k = col_ptr_[j]; k < col_ptr_[j + 1]; ++k) {
             int32_t i = row_idx_[k];
             lu_[j * n_ + i] = csc_values[k];
+        }
+    }
+}
+
+void SmallSolver::scatter_to_dense_amd(const double* csc_values) {
+    std::fill(lu_.begin(), lu_.end(), 0.0);
+    // Scatter with AMD column+row permutation: PAP^T
+    // For CSC entry (row=i, col=j) with value v:
+    //   permuted position: (amd_inv_[i], amd_inv_[j])
+    for (int32_t j = 0; j < n_; ++j) {
+        int32_t pj = amd_inv_[j];  // permuted column
+        for (int32_t k = col_ptr_[j]; k < col_ptr_[j + 1]; ++k) {
+            int32_t pi = amd_inv_[row_idx_[k]];  // permuted row
+            lu_[pj * n_ + pi] = csc_values[k];
         }
     }
 }
@@ -97,7 +129,11 @@ void SmallSolver::numeric(const SparsityPattern& pattern, const NumericMatrix& m
     CSCData csc = pattern.to_csc();
     col_ptr_ = std::move(csc.col_ptr);
     row_idx_ = std::move(csc.row_idx);
-    scatter_to_dense(mat.data());
+    if (use_dense_) {
+        scatter_to_dense(mat.data());
+    } else {
+        scatter_to_dense_amd(mat.data());
+    }
     dense_factor();
     factored_ = true;
 }
@@ -107,7 +143,11 @@ void SmallSolver::refactorize(const NumericMatrix& mat) {
         throw std::logic_error("SmallSolver::refactorize: symbolic() not called");
     if (!factored_)
         throw std::logic_error("SmallSolver::refactorize: numeric() not called");
-    scatter_to_dense(mat.data());
+    if (use_dense_) {
+        scatter_to_dense(mat.data());
+    } else {
+        scatter_to_dense_amd(mat.data());
+    }
     dense_factor();
 }
 
@@ -118,7 +158,18 @@ void SmallSolver::solve(std::vector<double>& rhs) {
         throw std::logic_error("SmallSolver::solve: numeric() not called");
     if (static_cast<int32_t>(rhs.size()) != n_)
         throw std::invalid_argument("SmallSolver::solve: rhs size mismatch");
-    dense_solve(rhs.data());
+
+    if (use_dense_) {
+        dense_solve(rhs.data());
+    } else {
+        // Permute RHS: tmp[amd_inv_[i]] = rhs[i]
+        std::vector<double> tmp(n_);
+        for (int32_t i = 0; i < n_; ++i) tmp[amd_inv_[i]] = rhs[i];
+        // Solve in permuted space
+        dense_solve(tmp.data());
+        // Un-permute: rhs[i] = tmp[amd_inv_[i]]
+        for (int32_t i = 0; i < n_; ++i) rhs[i] = tmp[amd_inv_[i]];
+    }
 }
 
 void SmallSolver::scatter_to_dense_complex(const double* ax) {
@@ -127,6 +178,19 @@ void SmallSolver::scatter_to_dense_complex(const double* ax) {
         for (int32_t k = col_ptr_[j]; k < col_ptr_[j + 1]; ++k) {
             int32_t i = row_idx_[k];
             int32_t idx = 2 * (j * n_ + i);
+            lu_z_[idx]     = ax[2 * k];
+            lu_z_[idx + 1] = ax[2 * k + 1];
+        }
+    }
+}
+
+void SmallSolver::scatter_to_dense_complex_amd(const double* ax) {
+    std::fill(lu_z_.begin(), lu_z_.end(), 0.0);
+    for (int32_t j = 0; j < n_; ++j) {
+        int32_t pj = amd_inv_[j];
+        for (int32_t k = col_ptr_[j]; k < col_ptr_[j + 1]; ++k) {
+            int32_t pi = amd_inv_[row_idx_[k]];
+            int32_t idx = 2 * (pj * n_ + pi);
             lu_z_[idx]     = ax[2 * k];
             lu_z_[idx + 1] = ax[2 * k + 1];
         }
@@ -230,7 +294,11 @@ void SmallSolver::numeric_complex(const SparsityPattern& pattern,
     CSCData csc = pattern.to_csc();
     col_ptr_ = std::move(csc.col_ptr);
     row_idx_ = std::move(csc.row_idx);
-    scatter_to_dense_complex(ax.data());
+    if (use_dense_) {
+        scatter_to_dense_complex(ax.data());
+    } else {
+        scatter_to_dense_complex_amd(ax.data());
+    }
     dense_factor_complex();
     factored_z_ = true;
 }
@@ -240,7 +308,11 @@ void SmallSolver::refactorize_complex(const std::vector<double>& ax) {
         throw std::logic_error("SmallSolver::refactorize_complex: symbolic() not called");
     if (!factored_z_)
         throw std::logic_error("SmallSolver::refactorize_complex: numeric_complex() not called");
-    scatter_to_dense_complex(ax.data());
+    if (use_dense_) {
+        scatter_to_dense_complex(ax.data());
+    } else {
+        scatter_to_dense_complex_amd(ax.data());
+    }
     dense_factor_complex();
 }
 
@@ -251,7 +323,23 @@ void SmallSolver::solve_complex(std::vector<double>& rhs) {
         throw std::logic_error("SmallSolver::solve_complex: numeric_complex() not called");
     if (static_cast<int32_t>(rhs.size()) != 2 * n_)
         throw std::invalid_argument("SmallSolver::solve_complex: rhs size must be 2*n");
-    dense_solve_complex(rhs.data());
+
+    if (use_dense_) {
+        dense_solve_complex(rhs.data());
+    } else {
+        // Permute RHS
+        std::vector<double> tmp(2 * n_);
+        for (int32_t i = 0; i < n_; ++i) {
+            tmp[2 * amd_inv_[i]]     = rhs[2 * i];
+            tmp[2 * amd_inv_[i] + 1] = rhs[2 * i + 1];
+        }
+        dense_solve_complex(tmp.data());
+        // Un-permute
+        for (int32_t i = 0; i < n_; ++i) {
+            rhs[2 * i]     = tmp[2 * amd_inv_[i]];
+            rhs[2 * i + 1] = tmp[2 * amd_inv_[i] + 1];
+        }
+    }
 }
 
 }  // namespace neospice

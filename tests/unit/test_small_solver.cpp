@@ -265,3 +265,163 @@ TEST(SmallSolver, Solve24x24) {
     for (int32_t i = 0; i < n; ++i)
         EXPECT_NEAR(rhs_small[i], rhs_klu[i], 1e-10);
 }
+
+TEST(SmallSolver, SparseTier25x25) {
+    // 25x25 tridiagonal -- crosses dense/sparse boundary
+    int32_t n = 25;
+    SparsityBuilder sb(n);
+    for (int32_t i = 0; i < n; ++i) {
+        sb.add(i, i);
+        if (i > 0) sb.add(i, i-1);
+        if (i < n-1) sb.add(i, i+1);
+    }
+    SparsityPattern pat = sb.build();
+    NumericMatrix mat(pat);
+    for (int32_t i = 0; i < n; ++i) {
+        mat.add(pat.offset(i, i), 4.0);
+        if (i > 0) mat.add(pat.offset(i, i-1), -1.0);
+        if (i < n-1) mat.add(pat.offset(i, i+1), -1.0);
+    }
+
+    SmallSolver solver;
+    solver.symbolic(pat);
+    solver.numeric(pat, mat);
+
+    KLUSolver klu;
+    klu.symbolic(pat);
+    klu.numeric(pat, mat);
+
+    std::vector<double> rhs_s(n), rhs_k(n);
+    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_k[i] = static_cast<double>(i + 1);
+
+    solver.solve(rhs_s);
+    klu.solve(rhs_k);
+
+    for (int32_t i = 0; i < n; ++i)
+        EXPECT_NEAR(rhs_s[i], rhs_k[i], 1e-10);
+}
+
+TEST(SmallSolver, SparseTier100x100) {
+    // 100x100 banded sparse (diagonal + 3 sub/super-diagonals)
+    int32_t n = 100;
+    SparsityBuilder sb(n);
+    for (int32_t i = 0; i < n; ++i) {
+        sb.add(i, i);  // diagonal
+    }
+    // Add off-diagonal entries
+    for (int32_t j = 0; j < n; ++j) {
+        for (int32_t k = 1; k <= 3 && j+k < n; ++k) {
+            sb.add(j+k, j);
+            sb.add(j, j+k);
+        }
+    }
+    SparsityPattern pat = sb.build();
+    NumericMatrix mat(pat);
+
+    // Diagonally dominant: diag = 20, off-diag = 1
+    for (auto& [r, c] : pat.entries()) {
+        mat.add(pat.offset(r, c), (r == c) ? 20.0 : 1.0);
+    }
+
+    SmallSolver solver;
+    solver.symbolic(pat);
+    solver.numeric(pat, mat);
+
+    KLUSolver klu;
+    klu.symbolic(pat);
+    klu.numeric(pat, mat);
+
+    std::vector<double> rhs_s(n), rhs_k(n);
+    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_k[i] = static_cast<double>(i % 7 + 1);
+
+    solver.solve(rhs_s);
+    klu.solve(rhs_k);
+
+    for (int32_t i = 0; i < n; ++i)
+        EXPECT_NEAR(rhs_s[i], rhs_k[i], 1e-9);
+}
+
+TEST(SmallSolver, SparseTierRefactorize) {
+    int32_t n = 50;
+    SparsityBuilder sb(n);
+    for (int32_t i = 0; i < n; ++i) {
+        sb.add(i, i);
+        if (i > 0) sb.add(i, i-1);
+        if (i < n-1) sb.add(i, i+1);
+    }
+    SparsityPattern pat = sb.build();
+    NumericMatrix mat(pat);
+    for (int32_t i = 0; i < n; ++i) {
+        mat.add(pat.offset(i, i), 4.0);
+        if (i > 0) mat.add(pat.offset(i, i-1), -1.0);
+        if (i < n-1) mat.add(pat.offset(i, i+1), -1.0);
+    }
+
+    SmallSolver solver;
+    solver.symbolic(pat);
+    solver.numeric(pat, mat);
+
+    // Refactorize with different values
+    mat.clear();
+    for (int32_t i = 0; i < n; ++i) {
+        mat.add(pat.offset(i, i), 8.0);
+        if (i > 0) mat.add(pat.offset(i, i-1), -2.0);
+        if (i < n-1) mat.add(pat.offset(i, i+1), -2.0);
+    }
+
+    solver.refactorize(mat);
+
+    KLUSolver klu;
+    klu.symbolic(pat);
+    klu.numeric(pat, mat);
+
+    std::vector<double> rhs_s(n), rhs_k(n);
+    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_k[i] = 1.0;
+
+    solver.solve(rhs_s);
+    klu.solve(rhs_k);
+
+    for (int32_t i = 0; i < n; ++i)
+        EXPECT_NEAR(rhs_s[i], rhs_k[i], 1e-10);
+}
+
+TEST(SmallSolver, SparseTierComplex50x50) {
+    int32_t n = 50;
+    SparsityBuilder sb(n);
+    for (int32_t i = 0; i < n; ++i) {
+        sb.add(i, i);
+        if (i > 0) sb.add(i, i-1);
+        if (i < n-1) sb.add(i, i+1);
+    }
+    SparsityPattern pat = sb.build();
+    int32_t nnz = pat.nnz();
+
+    // Build complex ax: diag = (10+1i), off-diag = (-1+0.5i)
+    std::vector<double> ax(2 * nnz, 0.0);
+    int32_t idx = 0;
+    for (auto& [r, c] : pat.entries()) {
+        if (r == c) { ax[2*idx] = 10.0; ax[2*idx+1] = 1.0; }
+        else { ax[2*idx] = -1.0; ax[2*idx+1] = 0.5; }
+        ++idx;
+    }
+
+    SmallSolver solver;
+    solver.symbolic(pat);
+    solver.numeric_complex(pat, ax);
+
+    KLUSolver klu;
+    klu.symbolic(pat);
+    klu.numeric_complex(pat, ax);
+
+    std::vector<double> rhs_s(2*n), rhs_k(2*n);
+    for (int32_t i = 0; i < n; ++i) {
+        rhs_s[2*i] = rhs_k[2*i] = static_cast<double>(i+1);
+        rhs_s[2*i+1] = rhs_k[2*i+1] = 0.5;
+    }
+
+    solver.solve_complex(rhs_s);
+    klu.solve_complex(rhs_k);
+
+    for (int32_t i = 0; i < 2*n; ++i)
+        EXPECT_NEAR(rhs_s[i], rhs_k[i], 1e-9);
+}

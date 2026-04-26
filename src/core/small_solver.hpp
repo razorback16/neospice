@@ -19,13 +19,20 @@ public:
     void solve_complex(std::vector<double>& rhs) override;
 
 private:
+    static constexpr int32_t DENSE_LIMIT = 25;
+
     int32_t n_ = 0;
     bool symbolized_ = false;
     bool factored_ = false;
+    bool use_dense_ = true;
 
     // CSC structure from symbolic
     std::vector<int32_t> col_ptr_;
     std::vector<int32_t> row_idx_;
+
+    // AMD ordering (sparse tier, n >= DENSE_LIMIT)
+    std::vector<int32_t> amd_perm_;    // AMD column permutation P[new] = old
+    std::vector<int32_t> amd_inv_;     // inverse: amd_inv_[old] = new
 
     // Dense tier: column-major n x n LU factors (in-place)
     std::vector<double> lu_;
@@ -37,10 +44,12 @@ private:
     bool factored_z_ = false;
 
     void scatter_to_dense(const double* csc_values);
+    void scatter_to_dense_amd(const double* csc_values);
     void dense_factor();
     void dense_solve(double* rhs) const;
 
     void scatter_to_dense_complex(const double* ax);
+    void scatter_to_dense_complex_amd(const double* ax);
     void dense_factor_complex();
     void dense_solve_complex(double* rhs) const;
 };
