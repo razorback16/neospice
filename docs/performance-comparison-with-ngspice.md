@@ -90,9 +90,11 @@ storage and adaptive refactorize.
 | | | | | |
 | **Total (all individual benchmarks)** | **28.6 ms** | **26.0 ms** | **1.10×** | neospice |
 
-The aggregate total is dominated by the dense AC sweep (DEC 1000), which
-accounts for ~75% of total time and shows only a 1.2× difference. Per-analysis
-speedups range from 1.6–7.8× on most workloads.
+The total sums the 12 individual benchmarks above, excluding End-to-End
+(which is a composite of parse + DC OP + AC for THS4131, already counted
+individually). The aggregate is dominated by the dense AC sweep (DEC 1000),
+which accounts for ~75% of total time and shows only a 1.2× difference.
+Per-analysis speedups range from 1.6–7.8× on most workloads.
 
 ### 2.2 Improvement from SmallSolver sparse tier
 

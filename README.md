@@ -146,11 +146,14 @@ Benchmarked in-process against ngspice-42 on Intel Core Ultra 9 285K, GCC 14, `-
 | **DC OP** THS4131 (14 BJTs) | 624 us | 337 us | 1.8x |
 | **DC OP** resistor divider | 50 us | 6 us | 7.8x |
 | **AC** THS4131, 81 points | 979 us | 544 us | 1.8x |
+| **AC** THS4131, 8001 points | 21.7 ms | 18.5 ms | 1.2x |
 | **AC** RC lowpass, 91 points | 114 us | 15 us | 7.7x |
+| **Transient** RC lowpass, 500 us | 1.12 ms | 642 us | 1.7x |
+| **Transient** RLC series, 100 us | 1.57 ms | 5.19 ms | 3.3x ngspice |
+| **Transient** pulse source, 100 us | 995 us | 342 us | 2.9x |
 | **Noise** resistor divider, 91 pts | 88 us | 55 us | 1.6x |
 | **DC sweep** V1, 1001 pts | 819 us | 209 us | 3.9x |
-| **Transient** pulse source | 995 us | 342 us | 2.9x |
-| **Total** (all benchmarks) | **28.6 ms** | **26.0 ms** | **1.10x** |
+| **Total** | **28.6 ms** | **26.0 ms** | **1.10x** |
 
 See [docs/performance-comparison-with-ngspice.md](docs/performance-comparison-with-ngspice.md) for the full methodology and results.
 
