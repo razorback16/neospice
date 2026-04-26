@@ -154,3 +154,9 @@ target_compile_definitions(bench_comprehensive PRIVATE
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )
 
+add_executable(bench_small_solver
+    bench/bench_small_solver.cpp
+)
+target_link_libraries(bench_small_solver PRIVATE neospice_lib)
+target_include_directories(bench_small_solver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
