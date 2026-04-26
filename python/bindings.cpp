@@ -66,6 +66,15 @@ NB_MODULE(_core, m) {
         .value("SOURCE_STEPPING", ConvergenceMethod::SOURCE_STEPPING)
         .value("PSEUDO_TRANSIENT", ConvergenceMethod::PSEUDO_TRANSIENT);
 
+    nb::enum_<PZType>(m, "PZType")
+        .value("POLES", PZType::POLES)
+        .value("ZEROS", PZType::ZEROS)
+        .value("BOTH", PZType::BOTH);
+
+    nb::enum_<PZTransferType>(m, "PZTransferType")
+        .value("VOLTAGE", PZTransferType::VOLTAGE)
+        .value("CURRENT", PZTransferType::CURRENT);
+
     // --- SimStatus ---
     nb::class_<SimStatus>(m, "SimStatus")
         .def_ro("converged", &SimStatus::converged)
@@ -369,6 +378,12 @@ NB_MODULE(_core, m) {
         .def_prop_ro("zeros", [](PZResult& self) {
             return make_owned_complex_array(self.zeros);
         }, nb::rv_policy::move)
+        .def_ro("type", &PZResult::type)
+        .def_ro("transfer_type", &PZResult::transfer_type)
+        .def_ro("input_pos", &PZResult::input_pos)
+        .def_ro("input_neg", &PZResult::input_neg)
+        .def_ro("output_pos", &PZResult::output_pos)
+        .def_ro("output_neg", &PZResult::output_neg)
         .def_ro("status", &PZResult::status);
 
     // --- MeasureResult ---

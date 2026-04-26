@@ -18,6 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up QEMU for aarch64
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - uses: pypa/cibuildwheel@v2.21
         env:
           CIBW_ARCHS_LINUX: "x86_64 aarch64"

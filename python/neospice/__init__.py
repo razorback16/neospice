@@ -19,6 +19,8 @@ from neospice._core import (  # noqa: F401
     NoiseResult,
     PulseSpec,
     PZResult,
+    PZTransferType,
+    PZType,
     SensEntry,
     SensResult,
     SimStatus,
@@ -44,8 +46,14 @@ def _resolve_mode(mode: str | ACMode) -> ACMode:
     return _MODE_MAP[mode.lower()]
 
 
+_VALID_OPTS = frozenset({"abstol", "reltol", "vntol", "trtol", "gmin"})
+
+
 def _make_sim(**opts: Any) -> Simulator:
     if opts:
+        bad = opts.keys() - _VALID_OPTS
+        if bad:
+            raise TypeError(f"Unknown simulator option(s): {', '.join(sorted(bad))}")
         so = SimulatorOptions()
         for k, v in opts.items():
             setattr(so, k, v)
