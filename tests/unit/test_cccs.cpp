@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "devices/cccs.hpp"
 #include "devices/vsource.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "api/neospice.hpp"
 #include <complex>
 #include <cmath>

@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 
 #include "core/circuit.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "core/newton.hpp"
 #include "core/types.hpp"
 #include "devices/device.hpp"
@@ -58,10 +58,10 @@ TEST(SimOptionsPlumbing, NonDefaultTempReachesDeviceViaIntegratorCtx) {
     ckt.options.temp = 77.0;
     ckt.integrator_ctx.options = &ckt.options;
 
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
-    auto result = newton_solve(ckt, solver, solution, ckt.options);
+    auto result = newton_solve(ckt, *solver, solution, ckt.options);
     ASSERT_TRUE(result.converged);
 
     ASSERT_FALSE(probe->temps().empty());
@@ -79,10 +79,10 @@ TEST(SimOptionsPlumbing, DefaultTempIsTNominal) {
 
     ckt.integrator_ctx.options = &ckt.options;
 
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
-    auto result = newton_solve(ckt, solver, solution, ckt.options);
+    auto result = newton_solve(ckt, *solver, solution, ckt.options);
     ASSERT_TRUE(result.converged);
 
     ASSERT_FALSE(probe->temps().empty());

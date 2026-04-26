@@ -1,7 +1,7 @@
 #include "core/transient.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "core/timestep.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
@@ -125,7 +125,7 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
 // ===================================================================
 // Tries Newton, then gmin stepping, source stepping, pseudo-transient.
 // Returns the converged solution; throws ConvergenceError on failure.
-static void compute_dc_operating_point(Circuit& ckt, KLUSolver& solver,
+static void compute_dc_operating_point(Circuit& ckt, LinearSolver& solver,
                                        std::vector<double>& solution,
                                        int& total_newton_iters) {
     // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
@@ -293,7 +293,7 @@ static void initialize_device_dc_state(Circuit& ckt, std::vector<double>& soluti
 // ===================================================================
 // Helper: Re-solve at t=0 when transmission lines have IC values
 // ===================================================================
-static void resolve_tl_initial_conditions(Circuit& ckt, KLUSolver& solver,
+static void resolve_tl_initial_conditions(Circuit& ckt, LinearSolver& solver,
                                           std::vector<double>& solution,
                                           double tstep) {
     bool tl_has_ic = false;
@@ -581,9 +581,9 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // 1. DC operating point
     // ---------------------------------------------------------------
     std::vector<double> solution(n, 0.0);
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
-    compute_dc_operating_point(ckt, solver, solution, total_newton_iters);
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
+    compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
 
     // Seed state1 with DC op-point (BSIM4 reads from CKTstate1)
     ckt.rotate_state();
@@ -616,7 +616,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // ---------------------------------------------------------------
     enable_transient_on_devices(ckt, tstep, use_gear);
     initialize_device_dc_state(ckt, solution, uic);
-    resolve_tl_initial_conditions(ckt, solver, solution, tstep);
+    resolve_tl_initial_conditions(ckt, *solver, solution, tstep);
 
     // Store t=0 output point
     store_point(0.0, solution);
@@ -692,7 +692,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         fill_integrator_context(ckt, dt, step_count, ctrl);
 
         // Newton-Raphson solve
-        auto nr = newton_solve(ckt, solver, solution, ckt.options);
+        auto nr = newton_solve(ckt, *solver, solution, ckt.options);
         if (!nr.converged) {
             dt /= kNewtonFailureDtFactor;
             if (dt < dt_min) {

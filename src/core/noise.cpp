@@ -2,7 +2,7 @@
 #include "core/freq_utils.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
 #include <algorithm>
@@ -77,8 +77,8 @@ NoiseResult solve_noise(Circuit& ckt,
         }
     }
 
-    KLUSolver dc_solver;
-    dc_solver.symbolic(ckt.pattern());
+    auto dc_solver = create_solver(ckt.pattern().size());
+    dc_solver->symbolic(ckt.pattern());
 
     // Publish SimOptions for BSIM4v7Device (and any future state-storing
     // device) via the same integrator_ctx channel used for CKTmode/ag.
@@ -91,22 +91,22 @@ NoiseResult solve_noise(Circuit& ckt,
     constexpr int MODEINITFIX_BIT = 0x400;
 
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    auto result = newton_solve(ckt, dc_solver, dc_solution, ckt.options);
+    auto result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
     if (result.converged) {
         dc_solution = result.solution;
     } else {
         ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        result = gmin_stepping(ckt, dc_solver, dc_solution, ckt.options);
+        result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options);
         if (result.converged) {
             dc_solution = result.solution;
         } else {
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-            result = source_stepping(ckt, dc_solver, dc_solution, ckt.options);
+            result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
             if (result.converged) {
                 dc_solution = result.solution;
             } else {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-                result = pseudo_transient(ckt, dc_solver, dc_solution, ckt.options);
+                result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
                 if (result.converged) {
                     dc_solution = result.solution;
                 } else {
@@ -205,11 +205,11 @@ NoiseResult solve_noise(Circuit& ckt,
     NumericMatrix mat_2n_t(pattern_2n_t);
 
     // Symbolic factorization once for each
-    KLUSolver gain_solver;    // for Y * x = e_input
-    gain_solver.symbolic(pattern_2n);
+    auto gain_solver = create_solver(pattern_2n.size());    // for Y * x = e_input
+    gain_solver->symbolic(pattern_2n);
 
-    KLUSolver adj_solver;     // for Y^T * adj = e_out
-    adj_solver.symbolic(pattern_2n_t);
+    auto adj_solver = create_solver(pattern_2n_t.size());   // for Y^T * adj = e_out
+    adj_solver->symbolic(pattern_2n_t);
 
     // ---------------------------------------------------------------
     // 7. Prepare result
@@ -278,11 +278,11 @@ NoiseResult solve_noise(Circuit& ckt,
         rhs_adj[out_idx] = 1.0;  // unit real excitation at output node
 
         if (fi == 0) {
-            adj_solver.numeric(pattern_2n_t, mat_2n_t);
+            adj_solver->numeric(pattern_2n_t, mat_2n_t);
         } else {
-            adj_solver.refactorize(mat_2n_t);
+            adj_solver->refactorize(mat_2n_t);
         }
-        adj_solver.solve(rhs_adj);
+        adj_solver->solve(rhs_adj);
         // rhs_adj now contains adj: rhs_adj[i] = Re(adj[i]), rhs_adj[i+n] = Im(adj[i])
 
         // ---- Compute gain: Y * x = e_input ----
@@ -291,11 +291,11 @@ NoiseResult solve_noise(Circuit& ckt,
         rhs_gain[input_branch] = 1.0;  // unit real excitation at input source branch
 
         if (fi == 0) {
-            gain_solver.numeric(pattern_2n, mat_2n);
+            gain_solver->numeric(pattern_2n, mat_2n);
         } else {
-            gain_solver.refactorize(mat_2n);
+            gain_solver->refactorize(mat_2n);
         }
-        gain_solver.solve(rhs_gain);
+        gain_solver->solve(rhs_gain);
 
         // Gain from input source to output node
         double gain_re = rhs_gain[out_idx];

@@ -1,13 +1,13 @@
 #include "core/newton.hpp"
 #include "core/circuit.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 
 namespace neospice {
 
-NewtonResult newton_solve(Circuit& ckt, KLUSolver& solver,
+NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts) {
     const int32_t n = ckt.num_vars();

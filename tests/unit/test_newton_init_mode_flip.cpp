@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "core/circuit.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "core/newton.hpp"
 #include "core/types.hpp"
 #include "devices/device.hpp"
@@ -74,13 +74,13 @@ TEST(NewtonInitFlip, MODEINITJCTFlipsToFIXAfterIter0) {
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
 
     std::vector<double> solution(ckt.num_vars(), 0.0);
     SimOptions opts;
     opts.max_iter = 10;   // plenty — linear converges quickly
-    auto result = newton_solve(ckt, solver, solution, opts);
+    auto result = newton_solve(ckt, *solver, solution, opts);
 
     ASSERT_TRUE(result.converged);
 
@@ -125,12 +125,12 @@ TEST(NewtonInitFlip, NoFlipWhenJCTBitAbsent) {
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
     SimOptions opts;
     opts.max_iter = 10;
-    auto result = newton_solve(ckt, solver, solution, opts);
+    auto result = newton_solve(ckt, *solver, solution, opts);
 
     ASSERT_TRUE(result.converged);
 
@@ -153,12 +153,12 @@ TEST(NewtonInitFlip, MODEINITTRANFlipsToFLOAT) {
     ckt.integrator_ctx.mode = MODETRAN_BIT | MODEINITTRAN_BIT;
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
     SimOptions opts;
     opts.max_iter = 10;
-    auto result = newton_solve(ckt, solver, solution, opts);
+    auto result = newton_solve(ckt, *solver, solution, opts);
 
     ASSERT_TRUE(result.converged);
     ASSERT_GE(rec->modes().size(), 2u);
@@ -191,12 +191,12 @@ TEST(NewtonInitFlip, MODEINITPREDFlipsToFLOAT) {
     ckt.integrator_ctx.mode = MODETRAN_BIT | MODEINITPRED_BIT;
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
     SimOptions opts;
     opts.max_iter = 10;
-    auto result = newton_solve(ckt, solver, solution, opts);
+    auto result = newton_solve(ckt, *solver, solution, opts);
 
     ASSERT_TRUE(result.converged);
     ASSERT_GE(rec->modes().size(), 2u);

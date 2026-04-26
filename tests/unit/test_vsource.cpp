@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "devices/vsource.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 
 using namespace neospice;
 
@@ -40,10 +40,10 @@ TEST(VSource, SolveWithResistor) {
 
     std::vector<double> rhs = {0.0, 5.0};  // rhs[1] = V_source
 
-    KLUSolver solver;
-    solver.symbolic(pattern);
-    solver.numeric(pattern, mat);
-    solver.solve(rhs);
+    auto solver = create_solver(pattern.size());
+    solver->symbolic(pattern);
+    solver->numeric(pattern, mat);
+    solver->solve(rhs);
 
     EXPECT_NEAR(rhs[0],  5.0,    1e-12);   // V0 = 5 V
     EXPECT_NEAR(rhs[1], -0.005,  1e-12);   // Ibranch = -5 mA (current into positive terminal)

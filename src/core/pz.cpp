@@ -3,7 +3,7 @@
 #include "core/dc.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -41,8 +41,8 @@ PZResult solve_pz(Circuit& ckt,
         }
     }
 
-    KLUSolver dc_solver;
-    dc_solver.symbolic(ckt.pattern());
+    auto dc_solver = create_solver(ckt.pattern().size());
+    dc_solver->symbolic(ckt.pattern());
     ckt.integrator_ctx.options = &ckt.options;
 
     constexpr int MODEDCOP_BIT    = 0x10;
@@ -50,22 +50,22 @@ PZResult solve_pz(Circuit& ckt,
     constexpr int MODEINITFIX_BIT = 0x400;
 
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    auto dc_result = newton_solve(ckt, dc_solver, dc_solution, ckt.options);
+    auto dc_result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
     if (dc_result.converged) {
         dc_solution = dc_result.solution;
     } else {
         ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        dc_result = gmin_stepping(ckt, dc_solver, dc_solution, ckt.options);
+        dc_result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options);
         if (dc_result.converged) {
             dc_solution = dc_result.solution;
         } else {
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-            dc_result = source_stepping(ckt, dc_solver, dc_solution, ckt.options);
+            dc_result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
             if (dc_result.converged) {
                 dc_solution = dc_result.solution;
             } else {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-                dc_result = pseudo_transient(ckt, dc_solver, dc_solution, ckt.options);
+                dc_result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
                 if (dc_result.converged) {
                     dc_solution = dc_result.solution;
                 } else {

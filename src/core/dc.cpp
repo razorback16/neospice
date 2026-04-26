@@ -1,7 +1,7 @@
 #include "core/dc.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "devices/vsource.hpp"
 #include <algorithm>
 #include <chrono>
@@ -50,9 +50,9 @@ DCResult solve_dc(Circuit& ckt) {
         }
     }
 
-    // 2. Create KLU solver and perform symbolic analysis
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    // 2. Create solver and perform symbolic analysis
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
 
     // Publish SimOptions for BSIM4v7Device (and any future state-storing
     // device) via the same integrator_ctx channel used for CKTmode/ag.
@@ -72,14 +72,14 @@ DCResult solve_dc(Circuit& ckt) {
 
     // 3. Try newton_solve first (initial junction guess mode)
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    auto result = newton_solve(ckt, solver, solution, ckt.options);
+    auto result = newton_solve(ckt, *solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
         sim_status.iterations = result.iterations;
     } else {
         // 4. Try gmin stepping (fix/iterate mode)
         ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        result = gmin_stepping(ckt, solver, solution, ckt.options);
+        result = gmin_stepping(ckt, *solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
             sim_status.iterations = result.iterations;
@@ -88,7 +88,7 @@ DCResult solve_dc(Circuit& ckt) {
         } else {
             // 5. Try source stepping
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-            result = source_stepping(ckt, solver, solution, ckt.options);
+            result = source_stepping(ckt, *solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
                 sim_status.iterations = result.iterations;
@@ -97,7 +97,7 @@ DCResult solve_dc(Circuit& ckt) {
             } else {
                 // 6. Try pseudo-transient continuation
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-                result = pseudo_transient(ckt, solver, solution, ckt.options);
+                result = pseudo_transient(ckt, *solver, solution, ckt.options);
                 if (result.converged) {
                     solution = result.solution;
                     sim_status.iterations = result.iterations;
@@ -221,9 +221,9 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     // Collect node and branch-current names (from a trial DC)
     // We'll build them on the fly as we iterate
 
-    // KLU solver and initial solution vector
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    // Solver and initial solution vector
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
 
     ckt.integrator_ctx.options = &ckt.options;
 
@@ -280,26 +280,26 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     auto run_newton = [&]() {
         int init_bit = first_point ? MODEINITJCT_BIT : MODEINITFIX_BIT;
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | init_bit;
-        auto res = newton_solve(ckt, solver, solution, ckt.options);
+        auto res = newton_solve(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
             first_point = false;
             return;
         }
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITFIX_BIT;
-        res = gmin_stepping(ckt, solver, solution, ckt.options);
+        res = gmin_stepping(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
             first_point = false;
             return;
         }
-        res = source_stepping(ckt, solver, solution, ckt.options);
+        res = source_stepping(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
             first_point = false;
             return;
         }
-        res = pseudo_transient(ckt, solver, solution, ckt.options);
+        res = pseudo_transient(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
             first_point = false;

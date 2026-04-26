@@ -1,6 +1,6 @@
 #include "core/convergence.hpp"
 #include "core/circuit.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include <utility>
@@ -8,7 +8,7 @@
 
 namespace neospice {
 
-NewtonResult gmin_stepping(Circuit& ckt, KLUSolver& solver,
+NewtonResult gmin_stepping(Circuit& ckt, LinearSolver& solver,
                            std::vector<double>& solution,
                            const SimOptions& opts) {
     // Start with a large gmin and reduce by 10x each step
@@ -39,7 +39,7 @@ NewtonResult gmin_stepping(Circuit& ckt, KLUSolver& solver,
     return {false, 0, solution};
 }
 
-NewtonResult source_stepping(Circuit& ckt, KLUSolver& solver,
+NewtonResult source_stepping(Circuit& ckt, LinearSolver& solver,
                              std::vector<double>& solution,
                              const SimOptions& opts) {
     // Collect all independent sources and save their original DC values
@@ -118,7 +118,7 @@ NewtonResult source_stepping(Circuit& ckt, KLUSolver& solver,
     return result;
 }
 
-NewtonResult pseudo_transient(Circuit& ckt, KLUSolver& solver,
+NewtonResult pseudo_transient(Circuit& ckt, LinearSolver& solver,
                               std::vector<double>& solution,
                               const SimOptions& opts) {
     // Pseudo-transient continuation: add a fictitious conductance

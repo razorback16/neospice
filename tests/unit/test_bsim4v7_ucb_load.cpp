@@ -15,7 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "core/circuit.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "core/newton.hpp"
 #include "devices/bsim4v7/bsim4v7_def.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
@@ -81,8 +81,8 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
     // Finalise + symbolic factor.
     ckt.finalize();
 
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
 
     // Newton initial guess: zero + VDD pin.  (solve_dc would do this too
     // but we want to exercise newton_solve directly to keep the test
@@ -97,7 +97,7 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
     ckt.integrator_ctx.order = 1;
 
     std::vector<double> solution(ckt.num_vars(), 0.0);
-    auto result = newton_solve(ckt, solver, solution, ckt.options);
+    auto result = newton_solve(ckt, *solver, solution, ckt.options);
     ASSERT_TRUE(result.converged) << "Newton failed to converge";
     solution = result.solution;
 

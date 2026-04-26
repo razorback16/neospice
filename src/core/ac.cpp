@@ -2,7 +2,7 @@
 #include "core/freq_utils.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
@@ -49,8 +49,8 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
         }
     }
 
-    KLUSolver dc_solver;
-    dc_solver.symbolic(ckt.pattern());
+    auto dc_solver = create_solver(ckt.pattern().size());
+    dc_solver->symbolic(ckt.pattern());
 
     // Publish SimOptions for BSIM4v7Device (and any future state-storing
     // device) via the same integrator_ctx channel used for CKTmode/ag.
@@ -63,22 +63,22 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     constexpr int MODEINITFIX_BIT = 0x400;
 
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    auto result = newton_solve(ckt, dc_solver, dc_solution, ckt.options);
+    auto result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
     if (result.converged) {
         dc_solution = result.solution;
     } else {
         ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        result = gmin_stepping(ckt, dc_solver, dc_solution, ckt.options);
+        result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options);
         if (result.converged) {
             dc_solution = result.solution;
         } else {
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-            result = source_stepping(ckt, dc_solver, dc_solution, ckt.options);
+            result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
             if (result.converged) {
                 dc_solution = result.solution;
             } else {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-                result = pseudo_transient(ckt, dc_solver, dc_solution, ckt.options);
+                result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
                 if (result.converged) {
                     dc_solution = result.solution;
                 } else {
@@ -143,8 +143,8 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     }
 
     // 7. Symbolic factorization on n×n pattern (reuse DC pattern)
-    KLUSolver ac_solver;
-    ac_solver.symbolic(pattern);
+    auto ac_solver = create_solver(pattern.size());
+    ac_solver->symbolic(pattern);
 
     // 8. Pre-compute result extraction indices (outside frequency loop)
     struct VoltageSlot {
@@ -211,13 +211,13 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
         }
 
         if (fi == 0) {
-            ac_solver.numeric_complex(pattern, ax);
+            ac_solver->numeric_complex(pattern, ax);
         } else {
-            ac_solver.refactorize_complex(ax);
+            ac_solver->refactorize_complex(ax);
         }
 
         rhs_z = rhs_z_template;
-        ac_solver.solve_complex(rhs_z);
+        ac_solver->solve_complex(rhs_z);
 
         for (std::size_t k = 0; k < voltage_slots.size(); ++k) {
             int32_t i = voltage_slots[k].var_idx;

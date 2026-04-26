@@ -2,7 +2,7 @@
 #include "core/dc.hpp"
 #include "core/convergence.hpp"
 #include "core/circuit.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "api/neospice.hpp"
 #include "parser/netlist_parser.hpp"
 
@@ -167,12 +167,12 @@ D1 mid 0 DMOD
     const int32_t n = ckt.num_vars();
     std::vector<double> solution(n, 0.0);
 
-    KLUSolver solver;
-    solver.symbolic(ckt.pattern());
+    auto solver = create_solver(ckt.pattern().size());
+    solver->symbolic(ckt.pattern());
     ckt.integrator_ctx.options = &ckt.options;
     ckt.integrator_ctx.mode = 0x10 | 0x400;  // MODEDCOP | MODEINITFIX
 
-    auto result = pseudo_transient(ckt, solver, solution, ckt.options);
+    auto result = pseudo_transient(ckt, *solver, solution, ckt.options);
     EXPECT_TRUE(result.converged);
     // Verify the solution vector has the right size
     EXPECT_EQ(result.solution.size(), static_cast<size_t>(n));

@@ -3,7 +3,7 @@
 #include "devices/vccs_nonlinear.hpp"
 #include "devices/ccvs_nonlinear.hpp"
 #include "devices/cccs_nonlinear.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "api/neospice.hpp"
 #include <cmath>
 #include <complex>

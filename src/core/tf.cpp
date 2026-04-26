@@ -2,7 +2,7 @@
 #include "core/dc.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include <algorithm>
@@ -58,8 +58,8 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
         }
     }
 
-    KLUSolver solver;
-    solver.symbolic(pattern);
+    auto solver = create_solver(pattern.size());
+    solver->symbolic(pattern);
 
     ckt.integrator_ctx.options = &ckt.options;
 
@@ -69,22 +69,22 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
 
     // DC operating point — try newton, then gmin stepping, then source stepping
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    auto result = newton_solve(ckt, solver, solution, ckt.options);
+    auto result = newton_solve(ckt, *solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
     } else {
         ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        result = gmin_stepping(ckt, solver, solution, ckt.options);
+        result = gmin_stepping(ckt, *solver, solution, ckt.options);
         if (result.converged) {
             solution = result.solution;
         } else {
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-            result = source_stepping(ckt, solver, solution, ckt.options);
+            result = source_stepping(ckt, *solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
             } else {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-                result = pseudo_transient(ckt, solver, solution, ckt.options);
+                result = pseudo_transient(ckt, *solver, solution, ckt.options);
                 if (result.converged) {
                     solution = result.solution;
                 } else {
@@ -127,7 +127,7 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
     }
 
     // Factor the Jacobian
-    solver.numeric(pattern, mat);
+    solver->numeric(pattern, mat);
 
     // ---------------------------------------------------------------
     // 4. Find the input source
@@ -224,7 +224,7 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
         rhs1[insrc] += 1.0;
     }
 
-    solver.solve(rhs1);
+    solver->solve(rhs1);
 
     // Transfer function
     if (out_is_voltage) {
@@ -279,7 +279,7 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
         rhs2[out_branch] += 1.0;
     }
 
-    solver.solve(rhs2);
+    solver->solve(rhs2);
 
     // Output impedance
     if (out_is_voltage) {
