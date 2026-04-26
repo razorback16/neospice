@@ -1,0 +1,25 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "neospice"
+version = "0.1.0"
+description = "Fast SPICE circuit simulator with a Pythonic API"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+]
+
+[project.urls]
+Homepage = "https://github.com/Razorback16/neospice"
+
+[tool.scikit-build]
+cmake.args = ["-DNEOSPICE_BUILD_PYTHON=ON", "-DNEOSPICE_BUILD_TESTS=OFF"]
+wheel.packages = ["python/neospice"]

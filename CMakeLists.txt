@@ -33,3 +33,17 @@ endif()
 
 add_executable(neospice cli/main.cpp)
 target_link_libraries(neospice PRIVATE neospice_lib)
+
+# Python bindings (opt-in)
+option(NEOSPICE_BUILD_PYTHON "Build Python bindings" OFF)
+if(NEOSPICE_BUILD_PYTHON)
+    set_target_properties(neospice_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    foreach(dev bsim4v7 bsim3 bjt jfet jfet2 dio mos1 mos3 mos9
+                vbic asrc hfet1 hfet2 bsim3v32 hisim2 hisimhv bsimsoi)
+        set_target_properties(${dev}_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endforeach()
+
+    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+    find_package(nanobind CONFIG REQUIRED)
+    add_subdirectory(python)
+endif()
