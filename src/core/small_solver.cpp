@@ -15,8 +15,11 @@ void SmallSolver::symbolic(const SparsityPattern& pattern) {
     row_idx_ = std::move(csc.row_idx);
     lu_.resize(n_ * n_, 0.0);
     pivot_.resize(n_);
+    lu_z_.resize(2 * n_ * n_, 0.0);
+    pivot_z_.resize(n_);
     symbolized_ = true;
     factored_ = false;
+    factored_z_ = false;
 }
 
 void SmallSolver::scatter_to_dense(const double* csc_values) {
@@ -118,17 +121,137 @@ void SmallSolver::solve(std::vector<double>& rhs) {
     dense_solve(rhs.data());
 }
 
-void SmallSolver::numeric_complex(const SparsityPattern& /*pattern*/,
-                                  const std::vector<double>& /*ax*/) {
-    throw std::logic_error("SmallSolver::numeric_complex: not yet implemented");
+void SmallSolver::scatter_to_dense_complex(const double* ax) {
+    std::fill(lu_z_.begin(), lu_z_.end(), 0.0);
+    for (int32_t j = 0; j < n_; ++j) {
+        for (int32_t k = col_ptr_[j]; k < col_ptr_[j + 1]; ++k) {
+            int32_t i = row_idx_[k];
+            int32_t idx = 2 * (j * n_ + i);
+            lu_z_[idx]     = ax[2 * k];
+            lu_z_[idx + 1] = ax[2 * k + 1];
+        }
+    }
 }
 
-void SmallSolver::refactorize_complex(const std::vector<double>& /*ax*/) {
-    throw std::logic_error("SmallSolver::refactorize_complex: not yet implemented");
+void SmallSolver::dense_factor_complex() {
+    for (int32_t k = 0; k < n_; ++k) {
+        // Find pivot: row with max |z| in column k, rows [k, n_)
+        int32_t best = k;
+        double best_abs = std::hypot(lu_z_[2 * (k * n_ + k)], lu_z_[2 * (k * n_ + k) + 1]);
+        for (int32_t i = k + 1; i < n_; ++i) {
+            double v = std::hypot(lu_z_[2 * (k * n_ + i)], lu_z_[2 * (k * n_ + i) + 1]);
+            if (v > best_abs) { best = i; best_abs = v; }
+        }
+        pivot_z_[k] = best;
+
+        // Swap rows k and best across ALL columns
+        if (best != k) {
+            for (int32_t j = 0; j < n_; ++j) {
+                int32_t a = 2 * (j * n_ + k);
+                int32_t b = 2 * (j * n_ + best);
+                std::swap(lu_z_[a], lu_z_[b]);
+                std::swap(lu_z_[a + 1], lu_z_[b + 1]);
+            }
+        }
+
+        // Check for singular
+        double dr = lu_z_[2 * (k * n_ + k)];
+        double di = lu_z_[2 * (k * n_ + k) + 1];
+        double denom = dr * dr + di * di;
+        if (denom < 1e-60)
+            throw std::runtime_error("SmallSolver: singular complex matrix");
+
+        // Compute multipliers and eliminate
+        for (int32_t i = k + 1; i < n_; ++i) {
+            // L multiplier = lu_z[k,i] / lu_z[k,k]
+            double ar = lu_z_[2 * (k * n_ + i)];
+            double ai = lu_z_[2 * (k * n_ + i) + 1];
+            double mr = (ar * dr + ai * di) / denom;
+            double mi = (ai * dr - ar * di) / denom;
+            lu_z_[2 * (k * n_ + i)] = mr;
+            lu_z_[2 * (k * n_ + i) + 1] = mi;
+
+            // Eliminate: for j = k+1..n-1: lu_z[j,i] -= m * lu_z[j,k]
+            for (int32_t j = k + 1; j < n_; ++j) {
+                double er = lu_z_[2 * (j * n_ + k)];
+                double ei = lu_z_[2 * (j * n_ + k) + 1];
+                lu_z_[2 * (j * n_ + i)]     -= (mr * er - mi * ei);
+                lu_z_[2 * (j * n_ + i) + 1] -= (mr * ei + mi * er);
+            }
+        }
+    }
 }
 
-void SmallSolver::solve_complex(std::vector<double>& /*rhs*/) {
-    throw std::logic_error("SmallSolver::solve_complex: not yet implemented");
+void SmallSolver::dense_solve_complex(double* rhs) const {
+    // Apply pivot permutation
+    for (int32_t k = 0; k < n_; ++k) {
+        if (pivot_z_[k] != k) {
+            std::swap(rhs[2 * k], rhs[2 * pivot_z_[k]]);
+            std::swap(rhs[2 * k + 1], rhs[2 * pivot_z_[k] + 1]);
+        }
+    }
+
+    // Forward substitution (L is unit lower triangular)
+    for (int32_t k = 0; k < n_; ++k) {
+        for (int32_t i = k + 1; i < n_; ++i) {
+            double mr = lu_z_[2 * (k * n_ + i)];
+            double mi = lu_z_[2 * (k * n_ + i) + 1];
+            double xr = rhs[2 * k];
+            double xi = rhs[2 * k + 1];
+            rhs[2 * i]     -= (mr * xr - mi * xi);
+            rhs[2 * i + 1] -= (mr * xi + mi * xr);
+        }
+    }
+
+    // Backward substitution (U on+above diagonal)
+    for (int32_t k = n_ - 1; k >= 0; --k) {
+        double dr = lu_z_[2 * (k * n_ + k)];
+        double di = lu_z_[2 * (k * n_ + k) + 1];
+        double denom = dr * dr + di * di;
+        // rhs[k] /= diag
+        double xr = rhs[2 * k];
+        double xi = rhs[2 * k + 1];
+        rhs[2 * k]     = (xr * dr + xi * di) / denom;
+        rhs[2 * k + 1] = (xi * dr - xr * di) / denom;
+
+        for (int32_t i = 0; i < k; ++i) {
+            double ur = lu_z_[2 * (k * n_ + i)];
+            double ui = lu_z_[2 * (k * n_ + i) + 1];
+            rhs[2 * i]     -= (ur * rhs[2 * k] - ui * rhs[2 * k + 1]);
+            rhs[2 * i + 1] -= (ur * rhs[2 * k + 1] + ui * rhs[2 * k]);
+        }
+    }
+}
+
+void SmallSolver::numeric_complex(const SparsityPattern& pattern,
+                                  const std::vector<double>& ax) {
+    if (!symbolized_)
+        throw std::logic_error("SmallSolver::numeric_complex: symbolic() not called");
+    CSCData csc = pattern.to_csc();
+    col_ptr_ = std::move(csc.col_ptr);
+    row_idx_ = std::move(csc.row_idx);
+    scatter_to_dense_complex(ax.data());
+    dense_factor_complex();
+    factored_z_ = true;
+}
+
+void SmallSolver::refactorize_complex(const std::vector<double>& ax) {
+    if (!symbolized_)
+        throw std::logic_error("SmallSolver::refactorize_complex: symbolic() not called");
+    if (!factored_z_)
+        throw std::logic_error("SmallSolver::refactorize_complex: numeric_complex() not called");
+    scatter_to_dense_complex(ax.data());
+    dense_factor_complex();
+}
+
+void SmallSolver::solve_complex(std::vector<double>& rhs) {
+    if (!symbolized_)
+        throw std::logic_error("SmallSolver::solve_complex: symbolic() not called");
+    if (!factored_z_)
+        throw std::logic_error("SmallSolver::solve_complex: numeric_complex() not called");
+    if (static_cast<int32_t>(rhs.size()) != 2 * n_)
+        throw std::invalid_argument("SmallSolver::solve_complex: rhs size must be 2*n");
+    dense_solve_complex(rhs.data());
 }
 
 }  // namespace neospice

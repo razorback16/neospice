@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "core/small_solver.hpp"
 #include "core/klu_solver.hpp"
+#include "core/linear_solver.hpp"
 #include "core/matrix.hpp"
 
 using namespace neospice;
@@ -138,7 +139,7 @@ TEST(SmallSolver, SolveSizeMismatchThrows) {
     EXPECT_THROW(solver.solve(rhs), std::invalid_argument);
 }
 
-TEST(SmallSolver, ComplexMethodsThrow) {
+TEST(SmallSolver, ComplexBeforeSymbolicThrows) {
     SmallSolver solver;
     SparsityPattern pat = make_dense_pattern(2);
     std::vector<double> ax = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0};
@@ -147,6 +148,85 @@ TEST(SmallSolver, ComplexMethodsThrow) {
     EXPECT_THROW(solver.numeric_complex(pat, ax), std::logic_error);
     EXPECT_THROW(solver.refactorize_complex(ax), std::logic_error);
     EXPECT_THROW(solver.solve_complex(rhs), std::logic_error);
+}
+
+TEST(SmallSolver, ComplexSolve1x1) {
+    // (3+4i)x = (11+2i) -> x = (11+2i)(3-4i)/25 = (41-38i)/25 = (1.64, -1.52)
+    SparsityPattern pat = make_dense_pattern(1);
+    SmallSolver solver;
+    solver.symbolic(pat);
+
+    // ax: interleaved [real, imag] for each CSC entry
+    std::vector<double> ax = {3.0, 4.0};  // (3+4i)
+    solver.numeric_complex(pat, ax);
+
+    std::vector<double> rhs = {11.0, 2.0};  // (11+2i)
+    solver.solve_complex(rhs);
+    EXPECT_NEAR(rhs[0], 1.64, 1e-10);
+    EXPECT_NEAR(rhs[1], -1.52, 1e-10);
+}
+
+TEST(SmallSolver, ComplexSolve2x2) {
+    // [(2+1i) (1+0i)] [x0]   [(5+3i)]
+    // [(0+0i) (3+2i)] [x1] = [(6+4i)]
+    // x1 = (6+4i)/(3+2i) = (26/13, 0/13) = (2, 0)
+    // x0 = ((5+3i) - (1+0i)*(2+0i)) / (2+1i) = (3+3i)/(2+1i) = (9/5, 3/5) = (1.8, 0.6)
+    SparsityPattern pat = make_dense_pattern(2);
+    SmallSolver solver;
+    solver.symbolic(pat);
+
+    // CSC order: col 0: (0,0)=(2+1i), (1,0)=(0+0i); col 1: (0,1)=(1+0i), (1,1)=(3+2i)
+    std::vector<double> ax = {
+        2.0, 1.0,   // (0,0): 2+1i
+        0.0, 0.0,   // (1,0): 0+0i
+        1.0, 0.0,   // (0,1): 1+0i
+        3.0, 2.0    // (1,1): 3+2i
+    };
+    solver.numeric_complex(pat, ax);
+
+    std::vector<double> rhs = {5.0, 3.0, 6.0, 4.0};  // [(5+3i), (6+4i)]
+    solver.solve_complex(rhs);
+    EXPECT_NEAR(rhs[0], 1.8, 1e-10);
+    EXPECT_NEAR(rhs[1], 0.6, 1e-10);
+    EXPECT_NEAR(rhs[2], 2.0, 1e-10);
+    EXPECT_NEAR(rhs[3], 0.0, 1e-10);
+}
+
+TEST(SmallSolver, ComplexRefactorize) {
+    SparsityPattern pat = make_dense_pattern(2);
+    SmallSolver solver;
+    solver.symbolic(pat);
+
+    // First factorization
+    std::vector<double> ax1 = {2.0, 1.0, 0.0, 0.0, 1.0, 0.0, 3.0, 2.0};
+    solver.numeric_complex(pat, ax1);
+    std::vector<double> rhs1 = {5.0, 3.0, 6.0, 4.0};
+    solver.solve_complex(rhs1);
+
+    // Refactorize with new values: [(4+0i) (1+1i); (2+0i) (3+0i)]
+    std::vector<double> ax2 = {4.0, 0.0, 2.0, 0.0, 1.0, 1.0, 3.0, 0.0};
+    solver.refactorize_complex(ax2);
+
+    // Solve: [(4+0i)(1+1i)] [x0]   [(10+2i)]
+    //        [(2+0i)(3+0i)] [x1] = [(8+0i)]
+    // Verify against KLU
+    KLUSolver klu;
+    klu.symbolic(pat);
+    klu.numeric_complex(pat, ax2);
+    std::vector<double> rhs_klu = {10.0, 2.0, 8.0, 0.0};
+    klu.solve_complex(rhs_klu);
+
+    std::vector<double> rhs2 = {10.0, 2.0, 8.0, 0.0};
+    solver.solve_complex(rhs2);
+    for (int i = 0; i < 4; ++i)
+        EXPECT_NEAR(rhs2[i], rhs_klu[i], 1e-10);
+}
+
+TEST(SmallSolver, FactoryDispatch) {
+    auto small = create_solver(10);
+    EXPECT_NE(dynamic_cast<SmallSolver*>(small.get()), nullptr);
+    auto klu = create_solver(200);
+    EXPECT_NE(dynamic_cast<KLUSolver*>(klu.get()), nullptr);
 }
 
 TEST(SmallSolver, Solve24x24) {

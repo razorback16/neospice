@@ -31,9 +31,18 @@ private:
     std::vector<double> lu_;
     std::vector<int32_t> pivot_;  // partial pivot permutation
 
+    // Dense complex tier: interleaved real/imag in column-major n×n layout
+    std::vector<double> lu_z_;        // 2*n*n doubles (interleaved)
+    std::vector<int32_t> pivot_z_;    // pivot permutation for complex
+    bool factored_z_ = false;
+
     void scatter_to_dense(const double* csc_values);
     void dense_factor();
     void dense_solve(double* rhs) const;
+
+    void scatter_to_dense_complex(const double* ax);
+    void dense_factor_complex();
+    void dense_solve_complex(double* rhs) const;
 };
 
 }  // namespace neospice
