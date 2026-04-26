@@ -402,3 +402,31 @@ class TestConvenienceFunctions:
         path = os.path.join(CIRCUITS_DIR, "resistor_divider.cir")
         result = neospice.dc(path, reltol=1e-4)
         assert isinstance(result, neospice.DCResult)
+
+
+class TestEndToEnd:
+    def test_spec_example_circuit_builder_ac(self):
+        """End-to-end test matching spec Section 8 example."""
+        spec = neospice.SourceSpec()
+        spec.ac_mag = 1.0
+        ckt = (neospice.CircuitBuilder()
+            .title("Low-pass RC")
+            .vsource("V1", "in", "0", spec)
+            .resistor("R1", "in", "out", 1e3)
+            .capacitor("C1", "out", "0", 1e-9)
+            .raw_line(".ac dec 100 1 1e9")
+            .build())
+
+        sim = neospice.Simulator()
+        result = sim.run_ac(ckt, neospice.ACMode.DEC, 100, 1, 1e9)
+        assert isinstance(result.frequency, np.ndarray)
+        db = result.magnitude_db("out")
+        assert isinstance(db, np.ndarray)
+        # RC lowpass: -3dB at f = 1/(2*pi*R*C) ~ 159kHz
+        # At 1 Hz gain should be ~0 dB, at 1 GHz should be very negative
+        assert abs(db[0]) < 1.0   # near 0 dB at low freq
+        assert db[-1] < -40       # well below 0 dB at high freq
+
+    def test_version(self):
+        assert hasattr(neospice, "__version__")
+        assert neospice.__version__ == "0.1.0"
