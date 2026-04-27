@@ -99,7 +99,7 @@ int main() {
     const int BW = 3;       // half-bandwidth (total bandwidth = 2*BW+1 = 7)
     const int WARMUP = 100;
     const int RUNS = 2000;
-    const std::vector<int32_t> sizes = {5, 10, 25, 50, 87, 100, 150, 199};
+    const std::vector<int32_t> sizes = {5, 10, 25, 50, 87, 100, 150, 199, 300, 500};
 
     std::printf("=== SmallSolver vs BTF Benchmark ===\n");
     std::printf("Matrix: banded sparse (bandwidth=%d, diag-dominant)\n", 2 * BW + 1);
