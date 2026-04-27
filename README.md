@@ -11,7 +11,44 @@ A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a c
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
 - **910+ tests** validated against ngspice with tolerances as tight as 1e-6
 
-## Quick Start
+## Python
+
+```bash
+pip install neospice
+```
+
+```python
+import neospice as ns
+
+# One-liner convenience functions
+dc = ns.dc("amplifier.cir")
+print(dc.voltage("out"))
+
+ac = ns.ac("filter.cir", mode="dec", npoints=100, fstart=1, fstop=1e9)
+plt.semilogx(ac.frequency, ac.magnitude_db("out"))
+
+tran = ns.transient("osc.cir", tstep=1e-9, tstop=1e-6)
+plt.plot(tran.time, tran.voltage("out"))
+
+# Or use the full API
+sim = ns.Simulator()
+ckt = sim.load("amplifier.cir")
+result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
+
+# Build circuits programmatically
+spec = ns.SourceSpec()
+spec.ac_mag = 1.0
+ckt = (ns.CircuitBuilder()
+    .title("RC filter")
+    .vsource("V1", "in", "0", spec)
+    .resistor("R1", "in", "out", 1e3)
+    .capacitor("C1", "out", "0", 100e-12)
+    .build())
+```
+
+All result vectors are returned as NumPy arrays. Supports Python 3.10+ on Linux (x86_64, aarch64) and macOS (x86_64, arm64).
+
+## Quick Start (C++)
 
 ### Prerequisites
 
@@ -177,10 +214,14 @@ src/
   devices/    28 device model implementations
   parser/     Netlist parser and expression evaluator
   output/     Raw file writer
+python/
+  bindings.cpp  nanobind C++ → Python bridge
+  neospice/     Python package (convenience API, type stubs)
 tests/
   unit/       Unit tests for all components
   devices/    Per-device validation against ngspice
   circuits/   Integration test netlists
+  python/     Python binding tests (49 tests)
   bench/      Performance benchmarks
 docs/         Architecture, performance, and design documentation
 tools/        Device migration tooling (ngspice model auto-porter)
@@ -199,7 +240,7 @@ tools/        Device migration tooling (ngspice model auto-porter)
 
 | Phase | Feature | Status |
 |---|---|---|
-| 1 | Python bindings (pybind11, PyPI wheels) | Planned |
+| 1 | Python bindings (nanobind, PyPI wheels) | **Done** |
 | 2 | WebAssembly build for browser simulation | Planned |
 | 3 | Adjoint sensitivity / gradient computation | Planned |
 | 4 | Parallel parameter sweeps / Monte Carlo | Planned |

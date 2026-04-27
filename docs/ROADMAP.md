@@ -3,7 +3,8 @@
 ## Current State
 
 neospice is a modern C++ SPICE simulator with 28 device models and 8 analysis types,
-validated against ngspice across 852 tests with tolerances as tight as 1e-6.
+validated against ngspice across 910+ C++ tests with tolerances as tight as 1e-6,
+plus 49 Python binding tests.
 
 ### Analyses
 DC operating point, DC sweep (nested 2-parameter), transient (adaptive Trap/Gear-2/BE),
@@ -32,29 +33,52 @@ Fourier/THD, parameter sweep (.step), and .measure post-processing.
 - **Embeddable C++ API**: clean `Simulator`/`Circuit`/`Result` interface
 - **Auto-differentiation**: B-source expressions get exact Jacobians (no numerical perturbation)
 - **Modern codebase**: C++20, clean Device abstraction, auto-migration tooling for ngspice models
+- **Python bindings**: `pip install neospice` — full API with NumPy arrays, convenience functions, CircuitBuilder
 - **ngspice-compatible output**: raw file format matches ngspice for drop-in tool compatibility
 
 ---
 
-## Phase 1: Python Bindings
+## Phase 1: Python Bindings — Done
 
-**Priority: Highest**
+Exposes the full neospice API to Python via nanobind + scikit-build-core.
 
-Expose the neospice API to Python via pybind11. The analog/mixed-signal design
-community increasingly works in Python (Jupyter, optimization loops, ML-driven
-design). ngspice's Python story (`ngspice_shared` with C callbacks) is painful.
+### What shipped
+- **nanobind C++ bindings** (`python/bindings.cpp`): all enums, options structs, Circuit, Simulator, CircuitBuilder, and every result type (DC, transient, AC, noise, DC sweep, TF, sensitivity, PZ, SimulationResult, MeasureResult, StepResult)
+- **NumPy integration**: all vector results (time, frequency, voltage, current, noise density) returned as `numpy.ndarray`
+- **Convenience API** (`python/neospice/__init__.py`): `dc()`, `ac()`, `transient()`, `noise()`, `dc_sweep()`, `tf()`, `sens()`, `run()` — one-liner functions that accept a file path or netlist string
+- **CircuitBuilder** exposed with full fluent API for programmatic circuit construction
+- **Circuit introspection**: `node_names()`, `device_names()`, `device_info()`, `devices_at_node()`
+- **CI/CD** (`.github/workflows/wheels.yml`): cibuildwheel building for Python 3.10–3.13, Linux (x86_64 + aarch64 via QEMU), macOS (x86_64 + arm64), with automatic PyPI publishing on tag push via trusted publishing
+- **49 Python tests** (`tests/python/test_bindings.py`): enums, options, source specs, load/parse, CircuitBuilder, all result types, convenience functions, end-to-end integration
+- **py.typed** marker for PEP 561 type checker support
 
-### Goals
-- `pip install neospice` with wheels for Linux, macOS, Windows
-- `result = neospice.ac("circuit.cir")` returning NumPy arrays directly
-- Zero-copy where possible (frequency/time vectors, voltage/current matrices)
-- Circuit construction API: build netlists programmatically without string manipulation
+### Usage
+```python
+import neospice as ns
 
-### Deliverables
-- `python/` directory with pybind11 module
-- Typed stubs (`.pyi`) for IDE support
-- PyPI package with manylinux/macOS/Windows wheels
-- Jupyter notebook examples
+# Convenience: one-liner from file or inline netlist
+dc = ns.dc("amplifier.cir")
+ac = ns.ac("filter.cir", mode="dec", npoints=100, fstart=1, fstop=1e9)
+
+# Full API
+sim = ns.Simulator()
+ckt = sim.load("amplifier.cir")
+result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
+gain_db = result.magnitude_db("out")   # numpy.ndarray
+
+# Programmatic circuit building
+spec = ns.SourceSpec()
+spec.ac_mag = 1.0
+ckt = (ns.CircuitBuilder()
+    .title("RC filter")
+    .vsource("V1", "in", "0", spec)
+    .resistor("R1", "in", "out", 1e3)
+    .capacitor("C1", "out", "0", 100e-12)
+    .build())
+
+# Custom simulator options
+result = ns.dc("amp.cir", reltol=1e-4, gmin=1e-14)
+```
 
 ---
 
@@ -301,20 +325,31 @@ auto mc = sim.monte_carlo(ckt, {
 // mc.mean(), mc.sigma(), mc.yield(spec_min, spec_max)
 ```
 
-### Python Mirror
+### Python Mirror (implemented)
 
-Every C++ API maps 1:1 to idiomatic Python with NumPy arrays.
+The C++ API is exposed 1:1 to Python via nanobind, with NumPy arrays for all
+vector results. Convenience functions provide one-liner access to every analysis.
 
 ```python
 import neospice as ns
 
-ckt = ns.load("amp.cir")
-ac = ns.run_ac(ckt, "dec", 10, 1, 100e6)
+# Convenience one-liners (file path or inline netlist)
+dc = ns.dc("amplifier.cir")
+ac = ns.ac("filter.cir", mode="dec", npoints=100, fstart=1, fstop=1e9)
+tran = ns.transient("osc.cir", tstep=1e-9, tstop=1e-6)
 
-plt.semilogx(ac.frequency, ac.magnitude_db("out"))
+# Full API with Simulator + Circuit objects
+sim = ns.Simulator()
+ckt = sim.load("amp.cir")
+result = sim.run_ac(ckt, ns.ACMode.DEC, 10, 1, 100e6)
+plt.semilogx(result.frequency, result.magnitude_db("out"))
 
-results = ns.sweep(ckt, param="r1", values=np.linspace(100, 10e3, 50),
-                   analysis="ac dec 10 1 100e6", parallel=True)
+# Programmatic circuit building
+ckt = (ns.CircuitBuilder()
+    .title("RC filter")
+    .resistor("R1", "in", "out", 1e3)
+    .capacitor("C1", "out", "0", 100e-12)
+    .build())
 ```
 
 ### API Implementation Priority
@@ -338,7 +373,7 @@ results = ns.sweep(ckt, param="r1", values=np.linspace(100, 10e3, 50),
 | —     | CircuitBuilder fluent API  | Usability       | Medium   | Done |
 | —     | Circuit introspection      | Usability       | Medium   | Done |
 | —     | Generic set_param()        | Optimization    | Medium   | Done |
-| 1     | Python bindings            | Adoption        | Medium   | Planned |
+| 1     | Python bindings            | Adoption        | Medium   | Done |
 | 2     | WASM build                 | Accessibility   | Low      | Planned |
 | 3     | Sensitivity/gradients      | Optimization    | High     | Planned |
 | 4     | Parallel sweeps            | Performance     | Medium   | Planned |
