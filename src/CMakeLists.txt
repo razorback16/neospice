@@ -22,7 +22,6 @@ add_library(neospice_lib
     core/amd.cpp
     core/btf.cpp
     core/btf_solver.cpp
-    core/klu_solver.cpp
     core/linear_solver.cpp
     core/small_solver.cpp
     core/circuit.cpp

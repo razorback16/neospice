@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "core/small_solver.hpp"
-#include "core/klu_solver.hpp"
+#include "core/btf_solver.hpp"
 #include "core/linear_solver.hpp"
 #include "core/matrix.hpp"
 
@@ -209,24 +209,24 @@ TEST(SmallSolver, ComplexRefactorize) {
 
     // Solve: [(4+0i)(1+1i)] [x0]   [(10+2i)]
     //        [(2+0i)(3+0i)] [x1] = [(8+0i)]
-    // Verify against KLU
-    KLUSolver klu;
-    klu.symbolic(pat);
-    klu.numeric_complex(pat, ax2);
-    std::vector<double> rhs_klu = {10.0, 2.0, 8.0, 0.0};
-    klu.solve_complex(rhs_klu);
+    // Verify against BTF
+    BTFSolver btf;
+    btf.symbolic(pat);
+    btf.numeric_complex(pat, ax2);
+    std::vector<double> rhs_btf = {10.0, 2.0, 8.0, 0.0};
+    btf.solve_complex(rhs_btf);
 
     std::vector<double> rhs2 = {10.0, 2.0, 8.0, 0.0};
     solver.solve_complex(rhs2);
     for (int i = 0; i < 4; ++i)
-        EXPECT_NEAR(rhs2[i], rhs_klu[i], 1e-10);
+        EXPECT_NEAR(rhs2[i], rhs_btf[i], 1e-10);
 }
 
 TEST(SmallSolver, FactoryDispatch) {
     auto small = create_solver(10);
     EXPECT_NE(dynamic_cast<SmallSolver*>(small.get()), nullptr);
-    auto klu = create_solver(200);
-    EXPECT_NE(dynamic_cast<KLUSolver*>(klu.get()), nullptr);
+    auto btf = create_solver(200);
+    EXPECT_NE(dynamic_cast<BTFSolver*>(btf.get()), nullptr);
 }
 
 TEST(SmallSolver, Solve24x24) {
@@ -250,20 +250,20 @@ TEST(SmallSolver, Solve24x24) {
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
-    // Compare against KLU
-    KLUSolver klu;
-    klu.symbolic(pat);
-    klu.numeric(pat, mat);
+    // Compare against BTF
+    BTFSolver btf;
+    btf.symbolic(pat);
+    btf.numeric(pat, mat);
 
-    std::vector<double> rhs_small(n), rhs_klu(n);
+    std::vector<double> rhs_small(n), rhs_btf(n);
     for (int32_t i = 0; i < n; ++i)
-        rhs_small[i] = rhs_klu[i] = static_cast<double>(i + 1);
+        rhs_small[i] = rhs_btf[i] = static_cast<double>(i + 1);
 
     solver.solve(rhs_small);
-    klu.solve(rhs_klu);
+    btf.solve(rhs_btf);
 
     for (int32_t i = 0; i < n; ++i)
-        EXPECT_NEAR(rhs_small[i], rhs_klu[i], 1e-10);
+        EXPECT_NEAR(rhs_small[i], rhs_btf[i], 1e-10);
 }
 
 TEST(SmallSolver, SparseTier25x25) {
@@ -287,18 +287,18 @@ TEST(SmallSolver, SparseTier25x25) {
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
-    KLUSolver klu;
-    klu.symbolic(pat);
-    klu.numeric(pat, mat);
+    BTFSolver btf;
+    btf.symbolic(pat);
+    btf.numeric(pat, mat);
 
-    std::vector<double> rhs_s(n), rhs_k(n);
-    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_k[i] = static_cast<double>(i + 1);
+    std::vector<double> rhs_s(n), rhs_b(n);
+    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_b[i] = static_cast<double>(i + 1);
 
     solver.solve(rhs_s);
-    klu.solve(rhs_k);
+    btf.solve(rhs_b);
 
     for (int32_t i = 0; i < n; ++i)
-        EXPECT_NEAR(rhs_s[i], rhs_k[i], 1e-10);
+        EXPECT_NEAR(rhs_s[i], rhs_b[i], 1e-10);
 }
 
 TEST(SmallSolver, SparseTier100x100) {
@@ -327,18 +327,18 @@ TEST(SmallSolver, SparseTier100x100) {
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
-    KLUSolver klu;
-    klu.symbolic(pat);
-    klu.numeric(pat, mat);
+    BTFSolver btf;
+    btf.symbolic(pat);
+    btf.numeric(pat, mat);
 
-    std::vector<double> rhs_s(n), rhs_k(n);
-    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_k[i] = static_cast<double>(i % 7 + 1);
+    std::vector<double> rhs_s(n), rhs_b(n);
+    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_b[i] = static_cast<double>(i % 7 + 1);
 
     solver.solve(rhs_s);
-    klu.solve(rhs_k);
+    btf.solve(rhs_b);
 
     for (int32_t i = 0; i < n; ++i)
-        EXPECT_NEAR(rhs_s[i], rhs_k[i], 1e-9);
+        EXPECT_NEAR(rhs_s[i], rhs_b[i], 1e-9);
 }
 
 TEST(SmallSolver, SparseTierRefactorize) {
@@ -371,18 +371,18 @@ TEST(SmallSolver, SparseTierRefactorize) {
 
     solver.refactorize(mat);
 
-    KLUSolver klu;
-    klu.symbolic(pat);
-    klu.numeric(pat, mat);
+    BTFSolver btf;
+    btf.symbolic(pat);
+    btf.numeric(pat, mat);
 
-    std::vector<double> rhs_s(n), rhs_k(n);
-    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_k[i] = 1.0;
+    std::vector<double> rhs_s(n), rhs_b(n);
+    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_b[i] = 1.0;
 
     solver.solve(rhs_s);
-    klu.solve(rhs_k);
+    btf.solve(rhs_b);
 
     for (int32_t i = 0; i < n; ++i)
-        EXPECT_NEAR(rhs_s[i], rhs_k[i], 1e-10);
+        EXPECT_NEAR(rhs_s[i], rhs_b[i], 1e-10);
 }
 
 TEST(SmallSolver, SparseTierComplex50x50) {
@@ -409,19 +409,19 @@ TEST(SmallSolver, SparseTierComplex50x50) {
     solver.symbolic(pat);
     solver.numeric_complex(pat, ax);
 
-    KLUSolver klu;
-    klu.symbolic(pat);
-    klu.numeric_complex(pat, ax);
+    BTFSolver btf;
+    btf.symbolic(pat);
+    btf.numeric_complex(pat, ax);
 
-    std::vector<double> rhs_s(2*n), rhs_k(2*n);
+    std::vector<double> rhs_s(2*n), rhs_b(2*n);
     for (int32_t i = 0; i < n; ++i) {
-        rhs_s[2*i] = rhs_k[2*i] = static_cast<double>(i+1);
-        rhs_s[2*i+1] = rhs_k[2*i+1] = 0.5;
+        rhs_s[2*i] = rhs_b[2*i] = static_cast<double>(i+1);
+        rhs_s[2*i+1] = rhs_b[2*i+1] = 0.5;
     }
 
     solver.solve_complex(rhs_s);
-    klu.solve_complex(rhs_k);
+    btf.solve_complex(rhs_b);
 
     for (int32_t i = 0; i < 2*n; ++i)
-        EXPECT_NEAR(rhs_s[i], rhs_k[i], 1e-9);
+        EXPECT_NEAR(rhs_s[i], rhs_b[i], 1e-9);
 }

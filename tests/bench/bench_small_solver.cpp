@@ -1,8 +1,8 @@
-// Micro-benchmark: SmallSolver (dense LU + AMD) vs KLU per-point timing.
+// Micro-benchmark: SmallSolver (dense LU + AMD) vs BTF per-point timing.
 // Measures refactorize+solve at various matrix sizes to find the crossover.
 
 #include "core/small_solver.hpp"
-#include "core/klu_solver.hpp"
+#include "core/btf_solver.hpp"
 #include "core/matrix.hpp"
 
 #include <algorithm>
@@ -101,13 +101,13 @@ int main() {
     const int RUNS = 2000;
     const std::vector<int32_t> sizes = {5, 10, 25, 50, 87, 100, 150, 199};
 
-    std::printf("=== SmallSolver vs KLU Benchmark ===\n");
+    std::printf("=== SmallSolver vs BTF Benchmark ===\n");
     std::printf("Matrix: banded sparse (bandwidth=%d, diag-dominant)\n", 2 * BW + 1);
     std::printf("Timing: median of %d refactorize+solve cycles (%d warmup)\n\n", RUNS, WARMUP);
 
     // ---- Real refactorize + solve ----
     std::printf("Real refactorize + solve:\n");
-    std::printf("  %5s %6s  %15s  %10s  %8s\n", "n", "nnz", "SmallSolver(us)", "KLU(us)", "Speedup");
+    std::printf("  %5s %6s  %15s  %10s  %8s\n", "n", "nnz", "SmallSolver(us)", "BTF(us)", "Speedup");
     std::printf("  %5s %6s  %15s  %10s  %8s\n", "-----", "------", "---------------", "----------", "--------");
 
     for (int32_t n : sizes) {
@@ -124,11 +124,11 @@ int main() {
         small.numeric(pat, mat);
         auto ts = bench_refactorize_solve(small, mat, rhs, WARMUP, RUNS);
 
-        // KLU
-        KLUSolver klu;
-        klu.symbolic(pat);
-        klu.numeric(pat, mat);
-        auto tk = bench_refactorize_solve(klu, mat, rhs, WARMUP, RUNS);
+        // BTF
+        BTFSolver btf;
+        btf.symbolic(pat);
+        btf.numeric(pat, mat);
+        auto tk = bench_refactorize_solve(btf, mat, rhs, WARMUP, RUNS);
 
         double speedup = tk.median_us / ts.median_us;
         const char* marker = (speedup < 1.05 && speedup > 0.95) ? " ~" :
@@ -137,21 +137,21 @@ int main() {
                     n, pat.nnz(), ts.median_us, tk.median_us, speedup, marker);
 
         // Verify solutions match
-        auto rhs_s = rhs, rhs_k = rhs;
+        auto rhs_s = rhs, rhs_b = rhs;
         small.refactorize(mat);
         small.solve(rhs_s);
-        klu.refactorize(mat);
-        klu.solve(rhs_k);
+        btf.refactorize(mat);
+        btf.solve(rhs_b);
         double max_diff = 0;
         for (int32_t i = 0; i < n; ++i)
-            max_diff = std::max(max_diff, std::abs(rhs_s[i] - rhs_k[i]));
+            max_diff = std::max(max_diff, std::abs(rhs_s[i] - rhs_b[i]));
         if (max_diff > 1e-8)
             std::printf("    WARNING: max solution diff = %.2e\n", max_diff);
     }
 
     // ---- Complex refactorize + solve ----
     std::printf("\nComplex refactorize + solve:\n");
-    std::printf("  %5s %6s  %15s  %10s  %8s\n", "n", "nnz", "SmallSolver(us)", "KLU(us)", "Speedup");
+    std::printf("  %5s %6s  %15s  %10s  %8s\n", "n", "nnz", "SmallSolver(us)", "BTF(us)", "Speedup");
     std::printf("  %5s %6s  %15s  %10s  %8s\n", "-----", "------", "---------------", "----------", "--------");
 
     for (int32_t n : sizes) {
@@ -183,10 +183,10 @@ int main() {
         small.numeric_complex(pat, ax);
         auto ts = bench_refactorize_solve_complex(small, ax, rhs, WARMUP, RUNS);
 
-        KLUSolver klu;
-        klu.symbolic(pat);
-        klu.numeric_complex(pat, ax);
-        auto tk = bench_refactorize_solve_complex(klu, ax, rhs, WARMUP, RUNS);
+        BTFSolver btf;
+        btf.symbolic(pat);
+        btf.numeric_complex(pat, ax);
+        auto tk = bench_refactorize_solve_complex(btf, ax, rhs, WARMUP, RUNS);
 
         double speedup = tk.median_us / ts.median_us;
         const char* marker = (speedup < 1.05 && speedup > 0.95) ? " ~" :
@@ -195,15 +195,15 @@ int main() {
                     n, nnz, ts.median_us, tk.median_us, speedup, marker);
 
         // Verify solutions match
-        auto rhs_s = rhs, rhs_k = rhs;
+        auto rhs_s = rhs, rhs_b = rhs;
         small.refactorize_complex(ax);
         small.solve_complex(rhs_s);
-        klu.refactorize_complex(ax);
-        klu.solve_complex(rhs_k);
+        btf.refactorize_complex(ax);
+        btf.solve_complex(rhs_b);
         double max_diff = 0;
         for (int32_t i = 0; i < n; ++i) {
-            double dr = rhs_s[2 * i] - rhs_k[2 * i];
-            double di = rhs_s[2 * i + 1] - rhs_k[2 * i + 1];
+            double dr = rhs_s[2 * i] - rhs_b[2 * i];
+            double di = rhs_s[2 * i + 1] - rhs_b[2 * i + 1];
             max_diff = std::max(max_diff, std::hypot(dr, di));
         }
         if (max_diff > 1e-8)
