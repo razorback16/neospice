@@ -69,12 +69,12 @@ gain_db = result.magnitude_db("out")   # numpy.ndarray
 # Programmatic circuit building
 spec = ns.SourceSpec()
 spec.ac_mag = 1.0
-ckt = (ns.CircuitBuilder()
-    .title("RC filter")
-    .vsource("V1", "in", "0", spec)
-    .resistor("R1", "in", "out", 1e3)
-    .capacitor("C1", "out", "0", 100e-12)
-    .build())
+ckt = ns.CircuitBuilder() \
+    .title("RC filter") \
+    .vsource("V1", "in", "0", spec) \
+    .resistor("R1", "in", "out", 1e3) \
+    .capacitor("C1", "out", "0", 100e-12) \
+    .build()
 
 # Custom simulator options
 result = ns.dc("amp.cir", reltol=1e-4, gmin=1e-14)
@@ -345,11 +345,11 @@ result = sim.run_ac(ckt, ns.ACMode.DEC, 10, 1, 100e6)
 plt.semilogx(result.frequency, result.magnitude_db("out"))
 
 # Programmatic circuit building
-ckt = (ns.CircuitBuilder()
-    .title("RC filter")
-    .resistor("R1", "in", "out", 1e3)
-    .capacitor("C1", "out", "0", 100e-12)
-    .build())
+ckt = ns.CircuitBuilder() \
+    .title("RC filter") \
+    .resistor("R1", "in", "out", 1e3) \
+    .capacitor("C1", "out", "0", 100e-12) \
+    .build()
 ```
 
 ### API Implementation Priority

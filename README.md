@@ -38,12 +38,12 @@ result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
 # Build circuits programmatically
 spec = ns.SourceSpec()
 spec.ac_mag = 1.0
-ckt = (ns.CircuitBuilder()
-    .title("RC filter")
-    .vsource("V1", "in", "0", spec)
-    .resistor("R1", "in", "out", 1e3)
-    .capacitor("C1", "out", "0", 100e-12)
-    .build())
+ckt = ns.CircuitBuilder() \
+    .title("RC filter") \
+    .vsource("V1", "in", "0", spec) \
+    .resistor("R1", "in", "out", 1e3) \
+    .capacitor("C1", "out", "0", 100e-12) \
+    .build()
 ```
 
 All result vectors are returned as NumPy arrays. Supports Python 3.10+ on Linux (x86_64, aarch64) and macOS (x86_64, arm64).
