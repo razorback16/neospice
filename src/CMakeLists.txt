@@ -19,6 +19,7 @@ add_subdirectory(devices/bsimsoi)
 add_library(neospice_lib
     core/types.cpp
     core/matrix.cpp
+    core/amd.cpp
     core/klu_solver.cpp
     core/linear_solver.cpp
     core/small_solver.cpp
