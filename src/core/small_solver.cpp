@@ -1,5 +1,5 @@
 #include "core/small_solver.hpp"
-#include <suitesparse/amd.h>
+#include "core/amd.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -23,13 +23,8 @@ void SmallSolver::symbolic(const SparsityPattern& pattern) {
         lu_z_.resize(2 * n_ * n_, 0.0);
         pivot_z_.resize(n_);
     } else {
-        amd_perm_.resize(n_);
+        amd_perm_ = amd_ordering(n_, col_ptr_.data(), row_idx_.data());
         amd_inv_.resize(n_);
-        int status = amd_order(n_, col_ptr_.data(), row_idx_.data(),
-                               amd_perm_.data(), nullptr, nullptr);
-        if (status != AMD_OK && status != AMD_OK_BUT_JUMBLED) {
-            for (int32_t i = 0; i < n_; ++i) amd_perm_[i] = i;
-        }
         for (int32_t i = 0; i < n_; ++i) amd_inv_[amd_perm_[i]] = i;
 
         build_permuted_csc();
