@@ -20,7 +20,10 @@ public:
 
 private:
     static constexpr int32_t DENSE_LIMIT = 12;
-    static constexpr double PIVOT_THRESHOLD = 0.001;
+    // Diagonal pivot is accepted if |diag| >= threshold * max_col.
+    // KLU uses 0.001 but relies on SuiteSparse AMD's high-quality ordering.
+    // Our simpler AMD needs a stronger threshold for numerical stability.
+    static constexpr double PIVOT_THRESHOLD = 0.1;
 
     int32_t n_ = 0;
     bool symbolized_ = false;
