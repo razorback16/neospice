@@ -7,7 +7,7 @@ A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a c
 - **8 analysis types** -- DC OP, DC sweep, transient (adaptive Trap/Gear-2/BE), AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero, Fourier/THD, parameter sweep (`.step`), and `.measure` post-processing
 - **28 device models** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, HFETs, and MOSFETs through BSIM4v7
 - **Embeddable C++ API** -- `Simulator`/`Circuit`/`Result` types with typed accessors, fluent `CircuitBuilder`, and circuit introspection
-- **High performance** -- 3-tier linear solver (dense / sparse SmallSolver / SuiteSparse KLU), G/C matrix caching for AC, adjoint-method noise
+- **High performance** -- 3-tier linear solver (dense / sparse SmallSolver / BTF block solver), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
 - **910+ tests** validated against ngspice with tolerances as tight as 1e-6
 
@@ -59,13 +59,12 @@ All result vectors are returned as NumPy arrays. Supports Python 3.10+ on Linux 
 
 - C++20 compiler (GCC 12+ or Clang 15+)
 - CMake 3.20+
-- SuiteSparse (KLU)
 - OpenBLAS
 
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install cmake g++ libsuitesparse-dev libopenblas-dev
+sudo apt install cmake g++ libopenblas-dev
 ```
 
 ### Build

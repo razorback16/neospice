@@ -92,11 +92,6 @@ target_include_directories(neospice_lib PRIVATE
 )
 
 target_link_libraries(neospice_lib PUBLIC
-    SuiteSparse::KLU
-    SuiteSparse::AMD
-    SuiteSparse::COLAMD
-    SuiteSparse::BTF
-    SuiteSparse::SuiteSparseConfig
     PkgConfig::OPENBLAS
     ${SLEEF_LIBRARY}
 )

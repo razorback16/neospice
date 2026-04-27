@@ -32,7 +32,7 @@ test-command = "pytest {project}/tests/python -v"
 
 [tool.cibuildwheel.linux]
 before-all = [
-    "yum install -y suitesparse-devel openblas-devel cmake",
+    "yum install -y openblas-devel cmake",
     "git clone --depth 1 --branch 3.6 https://github.com/shibatch/sleef.git /tmp/sleef",
     "cmake -S /tmp/sleef -B /tmp/sleef/build -DCMAKE_INSTALL_PREFIX=/usr/local -DSLEEF_BUILD_TESTS=OFF -DSLEEF_BUILD_DFT=OFF",
     "cmake --build /tmp/sleef/build --target install",
@@ -41,4 +41,4 @@ manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
-before-all = "brew install suite-sparse openblas sleef"
+before-all = "brew install openblas sleef"
