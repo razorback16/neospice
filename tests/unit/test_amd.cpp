@@ -49,7 +49,7 @@ TEST(AMD, ArrowheadReducesFill) {
     EXPECT_GE(pos_of_zero, n - 2) << "High-degree node should be ordered last";
 }
 
-TEST(AMD, MatchesSuiteSparseOnBanded) {
+TEST(AMD, BandedPermutationIsValid) {
     int32_t n = 50;
     SparsityBuilder sb(n);
     for (int32_t i = 0; i < n; ++i) {

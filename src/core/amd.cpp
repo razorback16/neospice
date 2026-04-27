@@ -1,6 +1,5 @@
 #include "core/amd.hpp"
 #include <algorithm>
-#include <numeric>
 #include <vector>
 
 namespace neospice {
