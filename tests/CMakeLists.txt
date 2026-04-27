@@ -14,6 +14,7 @@ add_executable(neospice_tests
     unit/test_smoke.cpp
     unit/test_matrix.cpp
     unit/test_amd.cpp
+    unit/test_btf.cpp
     unit/test_klu_solver.cpp
     unit/test_klu_complex.cpp
     unit/test_small_solver.cpp
