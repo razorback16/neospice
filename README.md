@@ -30,9 +30,14 @@ plt.semilogx(ac.frequency, ac.magnitude_db("out"))
 tran = ns.transient("osc.cir", tstep=1e-9, tstop=1e-6)
 plt.plot(tran.time, tran.voltage("out"))
 
-# Or use the full API
+# Parse inline netlists directly
+dc = ns.dc("Divider\nV1 in 0 DC 10\nR1 in mid 1k\nR2 mid 0 1k\n.op\n.end\n")
+print(dc.voltage("mid"))  # 5.0
+
+# Or use the full Simulator API
 sim = ns.Simulator()
-ckt = sim.load("amplifier.cir")
+ckt = sim.load("amplifier.cir")          # from file
+ckt = sim.parse("...\n.op\n.end\n")      # or from string
 result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
 
 # Build circuits programmatically
