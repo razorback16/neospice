@@ -11,11 +11,11 @@ public:
 
     void symbolic(const SparsityPattern& pattern) override;
     void numeric(const SparsityPattern& pattern, const NumericMatrix& mat) override;
-    void refactorize(const NumericMatrix& mat) override;
+    bool refactorize(const NumericMatrix& mat) override;
     void solve(std::vector<double>& rhs) override;
     void numeric_complex(const SparsityPattern& pattern,
                          const std::vector<double>& ax) override;
-    void refactorize_complex(const std::vector<double>& ax) override;
+    bool refactorize_complex(const std::vector<double>& ax) override;
     void solve_complex(std::vector<double>& rhs) override;
 
 private:
@@ -40,10 +40,10 @@ private:
     bool factored_z_ = false;
 
     void scatter_to_dense(const double* csc_values);
-    void dense_factor();
+    bool dense_factor();
     void dense_solve(double* rhs) const;
     void scatter_to_dense_complex(const double* ax);
-    void dense_factor_complex();
+    bool dense_factor_complex();
     void dense_solve_complex(double* rhs) const;
 
     // ---------- Sparse tier (n >= DENSE_LIMIT) ----------
@@ -83,10 +83,10 @@ private:
 
     void build_permuted_csc();
     void sparse_factor(const double* orig_values);
-    void sparse_refactor(const double* orig_values);
+    bool sparse_refactor(const double* orig_values);
     void sparse_solve_real(double* b) const;
     void sparse_factor_complex(const double* orig_ax);
-    void sparse_refactor_complex(const double* orig_ax);
+    bool sparse_refactor_complex(const double* orig_ax);
     void sparse_solve_complex(double* b) const;
 };
 

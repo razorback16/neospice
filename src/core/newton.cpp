@@ -88,13 +88,18 @@ NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
 
         // Factorize: try refactorize first (reuses pivot order), fall back
         // to full numeric factorization if the pivot order is unstable.
+        // refactorize() returns true if any near-zero pivot was perturbed,
+        // meaning the factorization is approximate — force a full numeric()
+        // on the next iteration to re-establish an accurate pivot order.
         try {
             if (force_numeric) {
                 solver.numeric(pattern, mat);
                 force_numeric = false;
             } else {
                 try {
-                    solver.refactorize(mat);
+                    bool perturbed = solver.refactorize(mat);
+                    if (perturbed)
+                        force_numeric = true;
                 } catch (const std::exception&) {
                     solver.numeric(pattern, mat);
                 }

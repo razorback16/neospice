@@ -14,11 +14,11 @@ public:
 
     virtual void symbolic(const SparsityPattern& pattern) = 0;
     virtual void numeric(const SparsityPattern& pattern, const NumericMatrix& mat) = 0;
-    virtual void refactorize(const NumericMatrix& mat) = 0;
+    virtual bool refactorize(const NumericMatrix& mat) = 0;
     virtual void solve(std::vector<double>& rhs) = 0;
     virtual void numeric_complex(const SparsityPattern& pattern,
                                  const std::vector<double>& ax) = 0;
-    virtual void refactorize_complex(const std::vector<double>& ax) = 0;
+    virtual bool refactorize_complex(const std::vector<double>& ax) = 0;
     virtual void solve_complex(std::vector<double>& rhs) = 0;
 
 protected:

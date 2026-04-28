@@ -251,9 +251,10 @@ void NeoSolver::sparse_factor(const double* orig_values) {
 }
 
 // Refactorize: same pivot order and L/U structure, recompute values.
-void NeoSolver::sparse_refactor(const double* orig_values) {
+bool NeoSolver::sparse_refactor(const double* orig_values) {
     // x_work_ is zero-initialized from symbolic(); we maintain this invariant
     // by clearing only the positions we touch in each column.
+    bool perturbed = false;
     for (int32_t col = 0; col < n_; ++col) {
         // Scatter column of PAP^T (set only nonzero positions)
         for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p)
@@ -273,8 +274,10 @@ void NeoSolver::sparse_refactor(const double* orig_values) {
         }
 
         double diag = x_work_[piv_[col]];
-        if (std::abs(diag) < 1e-30)
-            throw std::runtime_error("NeoSolver: singular matrix in refactor");
+        if (std::abs(diag) < 1e-30) {
+            diag = (diag >= 0.0) ? 1e-12 : -1e-12;
+            perturbed = true;
+        }
         u_val_[u_end] = diag;
 
         for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p)
@@ -292,6 +295,7 @@ void NeoSolver::sparse_refactor(const double* orig_values) {
         for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p)
             x_work_[l_ri_[p]] = 0.0;
     }
+    return perturbed;
 }
 
 // Solve P^T(RAP)P · z = P^T R b via LU, then x[amd_perm_[k]] = z[k]
@@ -331,7 +335,8 @@ void NeoSolver::scatter_to_dense(const double* csc_values) {
             lu_[j * n_ + row_idx_[k]] = csc_values[k];
 }
 
-void NeoSolver::dense_factor() {
+bool NeoSolver::dense_factor() {
+    bool perturbed = false;
     for (int32_t k = 0; k < n_; ++k) {
         int32_t best = k;
         double best_val = std::abs(lu_[k * n_ + k]);
@@ -344,14 +349,18 @@ void NeoSolver::dense_factor() {
             for (int32_t j = 0; j < n_; ++j)
                 std::swap(lu_[j * n_ + k], lu_[j * n_ + best]);
         double diag = lu_[k * n_ + k];
-        if (std::abs(diag) < 1e-30)
-            throw std::runtime_error("NeoSolver: singular matrix");
+        if (std::abs(diag) < 1e-30) {
+            diag = (diag >= 0.0) ? 1e-12 : -1e-12;
+            lu_[k * n_ + k] = diag;
+            perturbed = true;
+        }
         for (int32_t i = k + 1; i < n_; ++i) {
             lu_[k * n_ + i] /= diag;
             for (int32_t j = k + 1; j < n_; ++j)
                 lu_[j * n_ + i] -= lu_[k * n_ + i] * lu_[j * n_ + k];
         }
     }
+    return perturbed;
 }
 
 void NeoSolver::dense_solve(double* rhs) const {
@@ -383,16 +392,16 @@ void NeoSolver::numeric(const SparsityPattern& pattern, const NumericMatrix& mat
     factored_ = true;
 }
 
-void NeoSolver::refactorize(const NumericMatrix& mat) {
+bool NeoSolver::refactorize(const NumericMatrix& mat) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::refactorize: symbolic() not called");
     if (!factored_)
         throw std::logic_error("NeoSolver::refactorize: numeric() not called");
     if (use_dense_) {
         scatter_to_dense(mat.data());
-        dense_factor();
+        return dense_factor();
     } else {
-        sparse_refactor(mat.data());
+        return sparse_refactor(mat.data());
     }
 }
 
@@ -421,7 +430,8 @@ void NeoSolver::scatter_to_dense_complex(const double* ax) {
         }
 }
 
-void NeoSolver::dense_factor_complex() {
+bool NeoSolver::dense_factor_complex() {
+    bool perturbed = false;
     for (int32_t k = 0; k < n_; ++k) {
         int32_t best = k;
         double best_abs = std::hypot(lu_z_[2*(k*n_+k)], lu_z_[2*(k*n_+k)+1]);
@@ -438,8 +448,14 @@ void NeoSolver::dense_factor_complex() {
             }
         double dr = lu_z_[2*(k*n_+k)], di = lu_z_[2*(k*n_+k)+1];
         double denom = dr*dr + di*di;
-        if (denom < 1e-60)
-            throw std::runtime_error("NeoSolver: singular complex matrix");
+        if (denom < 1e-60) {
+            dr = (dr >= 0.0) ? 1e-12 : -1e-12;
+            di = 0.0;
+            denom = 1e-24;
+            lu_z_[2*(k*n_+k)] = dr;
+            lu_z_[2*(k*n_+k)+1] = di;
+            perturbed = true;
+        }
         for (int32_t i = k + 1; i < n_; ++i) {
             double ar = lu_z_[2*(k*n_+i)], ai = lu_z_[2*(k*n_+i)+1];
             double mr = (ar*dr + ai*di) / denom;
@@ -453,6 +469,7 @@ void NeoSolver::dense_factor_complex() {
             }
         }
     }
+    return perturbed;
 }
 
 void NeoSolver::dense_solve_complex(double* rhs) const {
@@ -547,9 +564,10 @@ void NeoSolver::sparse_factor_complex(const double* orig_ax) {
     sparse_factored_z_ = true;
 }
 
-void NeoSolver::sparse_refactor_complex(const double* orig_ax) {
+bool NeoSolver::sparse_refactor_complex(const double* orig_ax) {
     // xr/xi are member-sized workspaces; maintained at zero between columns
     std::vector<double> xr(n_, 0.0), xi(n_, 0.0);
+    bool perturbed = false;
 
     for (int32_t col = 0; col < n_; ++col) {
         for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p) {
@@ -582,8 +600,14 @@ void NeoSolver::sparse_refactor_complex(const double* orig_ax) {
         int32_t pivot_row = piv_[col];
         double dr = xr[pivot_row], di = xi[pivot_row];
         double denom = dr*dr + di*di;
-        if (denom < 1e-60)
-            throw std::runtime_error("NeoSolver: singular complex in refactor");
+        if (denom < 1e-60) {
+            dr = (dr >= 0.0) ? 1e-12 : -1e-12;
+            di = 0.0;
+            denom = 1e-24;
+            xr[pivot_row] = dr;
+            xi[pivot_row] = di;
+            perturbed = true;
+        }
 
         u_val_z_[2*u_end]   = dr;
         u_val_z_[2*u_end+1] = di;
@@ -612,6 +636,7 @@ void NeoSolver::sparse_refactor_complex(const double* orig_ax) {
             xr[l_ri_[p]] = 0.0; xi[l_ri_[p]] = 0.0;
         }
     }
+    return perturbed;
 }
 
 void NeoSolver::sparse_solve_complex(double* b) const {
@@ -675,18 +700,18 @@ void NeoSolver::numeric_complex(const SparsityPattern& pattern,
     }
 }
 
-void NeoSolver::refactorize_complex(const std::vector<double>& ax) {
+bool NeoSolver::refactorize_complex(const std::vector<double>& ax) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::refactorize_complex: symbolic() not called");
     if (use_dense_) {
         if (!factored_z_)
             throw std::logic_error("NeoSolver::refactorize_complex: numeric_complex() not called");
         scatter_to_dense_complex(ax.data());
-        dense_factor_complex();
+        return dense_factor_complex();
     } else {
         if (!sparse_factored_z_)
             throw std::logic_error("NeoSolver::refactorize_complex: numeric_complex() not called");
-        sparse_refactor_complex(ax.data());
+        return sparse_refactor_complex(ax.data());
     }
 }
 
