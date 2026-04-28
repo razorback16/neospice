@@ -1,3 +1,8 @@
+option(NEOSPICE_DEBUG_COMPARE "Print margin diagnostics from compare functions" OFF)
+if(NEOSPICE_DEBUG_COMPARE)
+    add_compile_definitions(NEOSPICE_DEBUG_COMPARE)
+endif()
+
 include(FetchContent)
 
 FetchContent_Declare(

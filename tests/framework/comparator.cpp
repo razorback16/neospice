@@ -3,6 +3,27 @@
 #include <cmath>
 #include <limits>
 
+#ifdef NEOSPICE_DEBUG_COMPARE
+#include <cstdio>
+#define CMP_MARGIN(tag, result, tol_val) \
+    do { if ((result).worst_error > 0) \
+        std::fprintf(stderr, "MARGIN_%s|%s|%.3e|%.3e|%.1fx\n", \
+            (tag), (result).worst_signal.c_str(), \
+            (result).worst_error, (tol_val), \
+            (tol_val) / (result).worst_error); \
+    } while (0)
+#define CMP_MARGIN_EDGE(tag, result, tol_val) \
+    do { if ((result).worst_error > 0) \
+        std::fprintf(stderr, "MARGIN_%s|%s|%.3e|%.3e|%.1fx\n", \
+            (tag), (result).detail.c_str(), \
+            (result).worst_error, (tol_val), \
+            (tol_val) / (result).worst_error); \
+    } while (0)
+#else
+#define CMP_MARGIN(tag, result, tol_val) ((void)0)
+#define CMP_MARGIN_EDGE(tag, result, tol_val) ((void)0)
+#endif
+
 namespace neospice {
 
 namespace {
@@ -101,6 +122,7 @@ CompareResult compare_dc(const DCResult& expected, const DCResult& actual, Toler
         }
     }
 
+    CMP_MARGIN("DC", result, tol.relative);
     return result;
 }
 
@@ -177,6 +199,7 @@ CompareResult compare_transient(const TransientResult& expected, const Transient
         }
     }
 
+    CMP_MARGIN("TRAN", result, tol.relative);
     return result;
 }
 
@@ -365,6 +388,7 @@ CompareResult compare_transient_oscillator(const TransientResult& expected,
         }
     }
 
+    CMP_MARGIN("OSC", result, tol.period_relative);
     return result;
 }
 
@@ -429,6 +453,7 @@ CompareResult compare_ac(const ACResult& expected, const ACResult& actual, Toler
         }
     }
 
+    CMP_MARGIN("AC", result, tol.relative);
     return result;
 }
 
@@ -473,6 +498,7 @@ CompareResult compare_noise(const NgspiceNoiseResult& expected,
         }
     }
 
+    CMP_MARGIN("NOISE", result, tol.relative);
     return result;
 }
 
@@ -684,6 +710,7 @@ EdgeCompareResult compare_edges(
         }
     }
 
+    CMP_MARGIN_EDGE("EDGE", result, tol.crossing_relative);
     return result;
 }
 
