@@ -9,9 +9,9 @@ linkage — no subprocess spawning, no file I/O — ensuring a fair comparison
 of parser and numerical kernel performance.
 
 neospice is faster at parsing (2–5×), DC operating point (1.7–7.9×), AC
-analysis (1.1–7.9×), noise (1.6×), DC sweep (4.1×), and most transient
-workloads (1.8–2.9×). ngspice retains a transient advantage on oscillatory
-circuits (3.2×) due to timestep control differences.
+analysis (1.1–7.9×), noise (1.6×), DC sweep (4.1×), and all transient
+workloads (1.8–3.0×). ngspice retains a small transient advantage on
+oscillatory circuits (1.3×) due to timestep count differences.
 
 ---
 
@@ -68,33 +68,33 @@ storage and adaptive refactorize.
 | Benchmark | ngspice | neospice | Factor | Winner |
 |---|---:|---:|---:|---|
 | **Parse** | | | | |
-| THS4131 (77 nodes, 58 devices) | 433 µs | 196 µs | **2.2×** | neospice |
-| Resistor divider (3 devices) | 43 µs | 8 µs | **5.1×** | neospice |
+| THS4131 (77 nodes, 58 devices) | 431 µs | 199 µs | **2.2×** | neospice |
+| Resistor divider (3 devices) | 44 µs | 8 µs | **5.1×** | neospice |
 | **DC Operating Point** | | | | |
-| THS4131 (14 BJTs) | 621 µs | 362 µs | **1.7×** | neospice |
-| Resistor divider | 48 µs | 6 µs | **7.9×** | neospice |
+| THS4131 (14 BJTs) | 620 µs | 363 µs | **1.7×** | neospice |
+| Resistor divider | 49 µs | 6 µs | **7.8×** | neospice |
 | **AC Small-Signal** | | | | |
-| THS4131, DEC 10, 81 pts | 959 µs | 524 µs | **1.8×** | neospice |
-| THS4131, DEC 1000, 8 001 pts | 21.3 ms | 19.1 ms | **1.1×** | neospice |
+| THS4131, DEC 10, 81 pts | 964 µs | 523 µs | **1.8×** | neospice |
+| THS4131, DEC 1000, 8 001 pts | 21.6 ms | 19.3 ms | **1.1×** | neospice |
 | RC lowpass, DEC 10, 91 pts | 111 µs | 14 µs | **7.9×** | neospice |
 | **Transient** | | | | |
-| RC lowpass, 500 µs | 1.11 ms | 633 µs | **1.8×** | neospice |
-| RLC series, 100 µs | 1.56 ms | 5.01 ms | **3.2×** | ngspice |
-| Pulse source, 100 µs | 986 µs | 340 µs | **2.9×** | neospice |
+| RC lowpass, 500 µs | 1.11 ms | 607 µs | **1.8×** | neospice |
+| RLC series, 100 µs | 1.56 ms | 1.96 ms | **1.3×** | ngspice |
+| Pulse source, 100 µs | 992 µs | 334 µs | **3.0×** | neospice |
 | **Noise** | | | | |
-| Resistor divider, DEC 10, 91 pts | 88 µs | 55 µs | **1.6×** | neospice |
+| Resistor divider, DEC 10, 91 pts | 89 µs | 56 µs | **1.6×** | neospice |
 | **DC Sweep** | | | | |
-| V1 −5..+5 V, 1 001 pts | 808 µs | 199 µs | **4.1×** | neospice |
+| V1 −5..+5 V, 1 001 pts | 816 µs | 197 µs | **4.1×** | neospice |
 | **End-to-End** | | | | |
-| THS4131 (.op + .ac dec 10) | 734 µs | 528 µs | **1.4×** | neospice |
-| OPA1632 (.op + .ac dec 10) | 6.42 ms | 5.88 ms | **1.1×** | neospice |
+| THS4131 (.op + .ac dec 10) | 726 µs | 524 µs | **1.4×** | neospice |
+| OPA1632 (.op + .ac dec 10) | 6.42 ms | 5.90 ms | **1.1×** | neospice |
 | | | | | |
-| **Total (all individual benchmarks)** | **28.0 ms** | **26.4 ms** | **1.06×** | neospice |
+| **Total (all individual benchmarks)** | **28.3 ms** | **23.6 ms** | **1.20×** | neospice |
 
 The total sums the 12 individual benchmarks above, excluding End-to-End
 (which is a composite of parse + DC OP + AC, already counted individually).
 The aggregate is dominated by the dense AC sweep (DEC 1000), which accounts
-for ~75% of total time and shows only a 1.1× difference. Per-analysis
+for ~82% of total time and shows only a 1.1× difference. Per-analysis
 speedups range from 1.6–7.9× on most workloads.
 
 ### 2.2 End-to-end comparison (OPA1632)
@@ -105,7 +105,7 @@ NeoSolver's sparse tier at scale:
 
 | Benchmark | ngspice | neospice | Factor |
 |---|---:|---:|---:|
-| E2E: OPA1632 (.op + .ac dec 10) | 6.42 ms | 5.88 ms | **1.1×** neospice |
+| E2E: OPA1632 (.op + .ac dec 10) | 6.42 ms | 5.90 ms | **1.1×** neospice |
 
 neospice is faster than ngspice even on this large, complex opamp circuit.
 
@@ -133,18 +133,17 @@ densities.
 **DC sweep (4.1×).** NeoSolver's fast real refactorize (reusing structure
 and pivots) reduces per-point overhead well below Sparse 1.3.
 
-**Pulse transient (2.9×).** For circuits with sharp edges and frequent
+**Pulse transient (3.0×).** For circuits with sharp edges and frequent
 breakpoints, neospice's breakpoint classification and adaptive stepping
 produce an efficient timestep schedule.
 
 ### 3.2 Where ngspice wins
 
-**RLC transient (3.2×).** The RLC series circuit produces an underdamped
+**RLC transient (1.3×).** The RLC series circuit produces an underdamped
 oscillation where timestep control is critical. ngspice's transient engine
-achieves the same accuracy with fewer total timesteps on this workload,
-likely due to differences in truncation error estimation and step-size
-adaptation strategy. This is a timestep control difference, not a solver
-performance issue.
+achieves the same accuracy with slightly fewer total timesteps on this
+workload, due to differences in device-level truncation error estimation.
+This is a small timestep count difference, not a solver performance issue.
 
 ### 3.3 NeoSolver architecture
 
@@ -173,17 +172,17 @@ NeoSolver uses a left-looking column-LU algorithm with:
 | Small circuits (any analysis) | neospice | 5–8× | Minimal initialization overhead |
 | DC operating point | neospice | 1.7× | Lower per-iteration overhead |
 | AC analysis (all densities) | neospice | 1.1–7.9× | NeoSolver sparse complex LU |
-| Transient (passive/switched) | neospice | 1.8–2.9× | Efficient breakpoint handling |
-| Transient (oscillatory) | ngspice | 3.2× | Fewer timesteps to target accuracy |
+| Transient (passive/switched) | neospice | 1.8–3.0× | Efficient breakpoint handling |
+| Transient (oscillatory) | ngspice | 1.3× | Slightly fewer timesteps |
 | Noise | neospice | 1.6× | Same sparse complex path as AC |
 | DC sweep | neospice | 4.1× | Fast structure-reusing refactorize |
 | End-to-end (typical mixed) | neospice | 1.1–1.4× | Parsing + solver advantages |
 
-neospice is faster in all scenarios except oscillatory transient circuits.
+neospice is faster in all scenarios except oscillatory transient circuits,
+where ngspice retains a small 1.3× advantage due to slightly fewer timesteps.
 NeoSolver handles all matrix sizes with no external dependencies (no
 SuiteSparse), while remaining faster than ngspice's Sparse 1.3 across all
-AC sweep densities. The remaining transient gap is a timestep control
-difference, not a solver performance issue.
+AC sweep densities.
 
 ---
 

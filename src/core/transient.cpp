@@ -430,21 +430,7 @@ static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
                          double& device_dt_out) {
     bool accepted = true;
 
-    // Global LTE check — skip first 2 steps (need 3 history points)
-    // and skip steps after a source breakpoint so the second-difference
-    // history is fully populated from uniform post-edge steps.
-    if (step_count >= kLteMinStepCount && steps_after_bp >= kBreakpointSettleSteps) {
-        ctrl.set_dt(dt);
-        accepted = ctrl.evaluate_step(solution, sol_prev, sol_prev2,
-                                      num_nodes, ckt.options);
-        if (!accepted && dt <= dt_min * 1.01) {
-            accepted = true;
-        }
-    }
-
-    // Device-specific LTE — compute minimum suggested dt from charge
-    // truncation error across all devices.
-    // ngspice CKTtrunc (ckttrunc.c): device_dt = MIN(2*dt, timetemp).
+    // Device-specific LTE for step rejection (matches ngspice CKTtrunc).
     device_dt_out = 1e30;
     if (step_count >= kLteMinStepCount) {
         for (const auto& dev : ckt.devices()) {
@@ -452,10 +438,25 @@ static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
                 dev->compute_trunc(ckt.integrator_ctx, ckt.options));
         }
         device_dt_out = std::min(kMaxDtGrowthFactor * dt, device_dt_out);
-        if (accepted && device_dt_out < dt * kDeviceLteRejectRatio && dt > dt_min * 1.01) {
+        if (device_dt_out < dt * kDeviceLteRejectRatio && dt > dt_min * 1.01) {
             accepted = false;
             ctrl.record_rejection();
             ctrl.set_dt(dt);
+        }
+    }
+
+    // Global node-voltage LTE — used for step-size proposal only (never
+    // rejects).  When devices provide LTE, the global check constrains
+    // growth; when no device provides LTE, it also rejects.
+    bool has_device_lte = (device_dt_out < 1e29);
+    if (step_count >= kLteMinStepCount && steps_after_bp >= kBreakpointSettleSteps) {
+        ctrl.set_dt(dt);
+        bool global_ok = ctrl.evaluate_step(solution, sol_prev, sol_prev2,
+                                            num_nodes, ckt.options);
+        if (!global_ok && !has_device_lte && accepted) {
+            if (dt > dt_min * 1.01) {
+                accepted = false;
+            }
         }
     }
 
