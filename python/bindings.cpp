@@ -84,13 +84,21 @@ NB_MODULE(_core, m) {
         .def_ro("elapsed_seconds", &SimStatus::elapsed_seconds);
 
     // --- Options structs ---
-    nb::class_<SimulatorOptions>(m, "SimulatorOptions")
+    nb::class_<SimOptions>(m, "SimulatorOptions")
         .def(nb::init<>())
-        .def_rw("abstol", &SimulatorOptions::abstol)
-        .def_rw("reltol", &SimulatorOptions::reltol)
-        .def_rw("vntol", &SimulatorOptions::vntol)
-        .def_rw("trtol", &SimulatorOptions::trtol)
-        .def_rw("gmin", &SimulatorOptions::gmin);
+        .def_rw("abstol", &SimOptions::abstol)
+        .def_rw("reltol", &SimOptions::reltol)
+        .def_rw("vntol", &SimOptions::vntol)
+        .def_rw("trtol", &SimOptions::trtol)
+        .def_rw("chgtol", &SimOptions::chgtol)
+        .def_rw("gmin", &SimOptions::gmin)
+        .def_rw("temp", &SimOptions::temp)
+        .def_rw("tnom", &SimOptions::tnom)
+        .def_rw("max_iter", &SimOptions::max_iter)
+        .def_rw("itl1", &SimOptions::itl1)
+        .def_rw("itl4", &SimOptions::itl4)
+        .def_rw("method", &SimOptions::method)
+        .def_rw("verbose", &SimOptions::verbose);
 
     nb::class_<SourceSpec>(m, "SourceSpec")
         .def(nb::init<>())
@@ -134,6 +142,7 @@ NB_MODULE(_core, m) {
     // --- Circuit (move-only) ---
     nb::class_<Circuit>(m, "Circuit")
         .def_ro("title", &Circuit::title)
+        .def_rw("options", &Circuit::options)
         .def("node_names", &Circuit::node_names)
         .def("device_names", &Circuit::device_names)
         .def("device_info", &Circuit::device_info)
@@ -148,7 +157,6 @@ NB_MODULE(_core, m) {
     // --- Simulator ---
     nb::class_<Simulator>(m, "Simulator")
         .def(nb::init<>())
-        .def(nb::init<SimulatorOptions>())
         .def("load", &Simulator::load)
         .def("parse", &Simulator::parse)
         .def("run_dc", &Simulator::run_dc)
@@ -368,6 +376,25 @@ NB_MODULE(_core, m) {
         .def_ro("output_var", &SensResult::output_var)
         .def_ro("output_value", &SensResult::output_value)
         .def_ro("entries", &SensResult::entries)
+        .def("find", [](SensResult& self, const std::string& element) {
+            try { return self.find(element); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(element.c_str());
+            }
+        })
+        .def("sensitivity", [](SensResult& self, const std::string& element) {
+            try { return self.sensitivity(element); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(element.c_str());
+            }
+        })
+        .def("normalized_sensitivity", [](SensResult& self, const std::string& element) {
+            try { return self.normalized_sensitivity(element); }
+            catch (const std::out_of_range&) {
+                throw nb::key_error(element.c_str());
+            }
+        })
+        .def("signal_names", &SensResult::signal_names)
         .def_ro("status", &SensResult::status);
 
     // --- PZResult ---

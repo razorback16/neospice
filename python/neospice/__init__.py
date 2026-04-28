@@ -23,10 +23,10 @@ from neospice._core import (  # noqa: F401
     PZType,
     SensEntry,
     SensResult,
+    SimulatorOptions,
     SimStatus,
     SimulationResult,
     Simulator,
-    SimulatorOptions,
     SinSpec,
     SourceSpec,
     StepResult,
@@ -46,36 +46,40 @@ def _resolve_mode(mode: str | ACMode) -> ACMode:
     return _MODE_MAP[mode.lower()]
 
 
-_VALID_OPTS = frozenset({"abstol", "reltol", "vntol", "trtol", "gmin"})
+_VALID_OPTS = frozenset({
+    "abstol", "reltol", "vntol", "trtol", "chgtol", "gmin",
+    "temp", "tnom", "max_iter", "itl1", "itl4", "method", "verbose",
+})
 
 
-def _make_sim(**opts: Any) -> Simulator:
-    if opts:
-        bad = opts.keys() - _VALID_OPTS
-        if bad:
-            raise TypeError(f"Unknown simulator option(s): {', '.join(sorted(bad))}")
-        so = SimulatorOptions()
-        for k, v in opts.items():
-            setattr(so, k, v)
-        return Simulator(so)
-    return Simulator()
-
-
-def _load_or_parse(sim: Simulator, netlist: str) -> Circuit:
+def _load_or_parse(netlist: str) -> Circuit:
+    sim = Simulator()
     if os.path.exists(netlist):
         return sim.load(netlist)
     return sim.parse(netlist)
 
 
+def _apply_opts(ckt: Circuit, opts: dict[str, Any]) -> None:
+    if not opts:
+        return
+    bad = opts.keys() - _VALID_OPTS
+    if bad:
+        raise TypeError(f"Unknown option(s): {', '.join(sorted(bad))}")
+    for k, v in opts.items():
+        setattr(ckt.options, k, v)
+
+
 def dc(netlist: str, **opts: Any) -> DCResult:
-    sim = _make_sim(**opts)
-    ckt = _load_or_parse(sim, netlist)
+    sim = Simulator()
+    ckt = _load_or_parse(netlist)
+    _apply_opts(ckt, opts)
     return sim.run_dc(ckt)
 
 
 def transient(netlist: str, *, tstep: float, tstop: float, **opts: Any) -> TransientResult:
-    sim = _make_sim(**opts)
-    ckt = _load_or_parse(sim, netlist)
+    sim = Simulator()
+    ckt = _load_or_parse(netlist)
+    _apply_opts(ckt, opts)
     return sim.run_transient(ckt, tstep, tstop)
 
 
@@ -88,8 +92,9 @@ def ac(
     fstop: float = 1e9,
     **opts: Any,
 ) -> ACResult:
-    sim = _make_sim(**opts)
-    ckt = _load_or_parse(sim, netlist)
+    sim = Simulator()
+    ckt = _load_or_parse(netlist)
+    _apply_opts(ckt, opts)
     return sim.run_ac(ckt, _resolve_mode(mode), npoints, fstart, fstop)
 
 
@@ -104,30 +109,35 @@ def noise(
     fstop: float = 1e9,
     **opts: Any,
 ) -> NoiseResult:
-    sim = _make_sim(**opts)
-    ckt = _load_or_parse(sim, netlist)
+    sim = Simulator()
+    ckt = _load_or_parse(netlist)
+    _apply_opts(ckt, opts)
     return sim.run_noise(ckt, output, input_src, _resolve_mode(mode), npoints, fstart, fstop)
 
 
 def dc_sweep(netlist: str, params: list[DCSweepParam], **opts: Any) -> DCSweepResult:
-    sim = _make_sim(**opts)
-    ckt = _load_or_parse(sim, netlist)
+    sim = Simulator()
+    ckt = _load_or_parse(netlist)
+    _apply_opts(ckt, opts)
     return sim.run_dc_sweep(ckt, params)
 
 
 def tf(netlist: str, *, output: str, input_src: str, **opts: Any) -> TFResult:
-    sim = _make_sim(**opts)
-    ckt = _load_or_parse(sim, netlist)
+    sim = Simulator()
+    ckt = _load_or_parse(netlist)
+    _apply_opts(ckt, opts)
     return sim.run_tf(ckt, output, input_src)
 
 
 def sens(netlist: str, *, output: str, **opts: Any) -> SensResult:
-    sim = _make_sim(**opts)
-    ckt = _load_or_parse(sim, netlist)
+    sim = Simulator()
+    ckt = _load_or_parse(netlist)
+    _apply_opts(ckt, opts)
     return sim.run_sens(ckt, output)
 
 
 def run(netlist: str, **opts: Any) -> SimulationResult:
-    sim = _make_sim(**opts)
-    ckt = _load_or_parse(sim, netlist)
+    sim = Simulator()
+    ckt = _load_or_parse(netlist)
+    _apply_opts(ckt, opts)
     return sim.run(ckt)

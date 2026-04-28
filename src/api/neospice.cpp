@@ -46,8 +46,6 @@ static void apply_save_filter(Result& r, const std::vector<std::string>& sigs) {
 
 // ---------------------------------------------------------------------------
 
-Simulator::Simulator(Options opts) : opts_(opts) {}
-
 Circuit Simulator::load(const std::string& filepath) {
     NetlistParser parser;
     return parser.parse_file(filepath);

@@ -39,19 +39,9 @@ struct StepResult {
     std::vector<SimulationResult> results;
 };
 
-struct SimulatorOptions {
-    double abstol = 1e-12;
-    double reltol = 1e-3;
-    double vntol  = 1e-6;
-    double trtol  = 7.0;
-    double gmin   = 1e-12;
-};
-
 class Simulator {
 public:
-    using Options = SimulatorOptions;
-
-    explicit Simulator(Options opts = Options{});
+    Simulator() = default;
 
     Circuit load(const std::string& filepath);
     Circuit parse(const std::string& netlist_text);
@@ -76,9 +66,6 @@ public:
 
     SimulationResult run(Circuit& ckt);
     SimulationResult run_step_sweep(Circuit& ckt);
-
-private:
-    Options opts_;
 };
 
 } // namespace neospice

@@ -28,11 +28,21 @@ class TestSimulatorOptions:
         assert opts.vntol == 1e-6
         assert opts.trtol == 7.0
         assert opts.gmin == 1e-12
+        assert opts.max_iter == 100
+        assert opts.itl4 == 50
+        assert opts.method == "trap"
 
     def test_custom_values(self):
         opts = neospice.SimulatorOptions()
         opts.reltol = 1e-4
         assert opts.reltol == 1e-4
+
+    def test_circuit_options_accessible(self):
+        sim = neospice.Simulator()
+        ckt = sim.parse("Test\nV1 a 0 DC 1\nR1 a 0 1k\n.op\n.end\n")
+        assert ckt.options.reltol == 1e-3
+        ckt.options.reltol = 1e-4
+        assert ckt.options.reltol == 1e-4
 
 
 class TestSourceSpecs:
@@ -297,6 +307,31 @@ class TestSensResult:
         assert hasattr(e, "element")
         assert hasattr(e, "sensitivity")
         assert hasattr(e, "normalized")
+
+    def test_accessor_methods(self):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, "sens_divider.cir"))
+        result = sim.run_sens(ckt, "v(out)")
+        names = result.signal_names()
+        assert isinstance(names, list)
+        assert len(names) > 0
+        elem = names[0]
+        s = result.sensitivity(elem)
+        assert isinstance(s, float)
+        ns = result.normalized_sensitivity(elem)
+        assert isinstance(ns, float)
+        entry = result.find(elem)
+        assert entry.element == elem
+
+    def test_missing_element_raises_key_error(self):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, "sens_divider.cir"))
+        result = sim.run_sens(ckt, "v(out)")
+        try:
+            result.sensitivity("nonexistent")
+            assert False, "Should have raised"
+        except KeyError:
+            pass
 
 
 class TestSimulationResult:
