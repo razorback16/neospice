@@ -499,7 +499,7 @@ std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card) {
 // ---------------------------------------------------------------------------
 int detect_mosfet_level(const ModelCard& card) {
     auto it = card.params.find("level");
-    if (it == card.params.end()) return 14;  // default BSIM4v7
+    if (it == card.params.end()) return 1;  // default MOS1 (matches ngspice)
     return static_cast<int>(it->second);
 }
 

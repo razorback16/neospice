@@ -225,6 +225,29 @@ std::unordered_set<std::string> collect_internal_nodes(
             }
         } else {
             int ncount = node_count_for_element(elem_type);
+
+            // E/G POLY: only 2 output nodes, then POLY(N) + 2*N control nodes
+            if ((elem_type == 'e' || elem_type == 'g') &&
+                line.tokens.size() > 3 &&
+                to_lower(line.tokens[3]).substr(0, 4) == "poly") {
+                ncount = 2;  // output nodes only
+                std::string pt = to_lower(line.tokens[3]);
+                int pdim = 1;
+                size_t paren = pt.find('(');
+                if (paren != std::string::npos) {
+                    size_t close = pt.find(')');
+                    if (close != std::string::npos && close > paren)
+                        pdim = std::stoi(pt.substr(paren + 1, close - paren - 1));
+                }
+                // Skip POLY token (position 3), then 2*N control nodes
+                size_t ctrl_start = 4;
+                if (ctrl_start < line.tokens.size() && line.tokens[ctrl_start].front() == '(')
+                    ctrl_start++;  // skip split "(N)" token
+                for (int k = 0; k < 2 * pdim; ++k) {
+                    node_positions.push_back(ctrl_start + k);
+                }
+            }
+
             for (int i = 0; i < ncount; ++i) {
                 node_positions.push_back(static_cast<size_t>(1 + i));
             }
@@ -468,6 +491,25 @@ std::vector<TokenizedLine> expand_instance(
                 }
             }
 
+            // E/G POLY form: E name np nn POLY(N) vc1+ vc1- ... coeffs
+            // In POLY form, only tokens 1-2 are output nodes; token[3] is
+            // POLY(N) and the control node pairs follow it.
+            bool eg_poly = false;
+            int eg_poly_dim = 0;
+            if ((elem_type == 'e' || elem_type == 'g') &&
+                line.tokens.size() > 3 &&
+                to_lower(line.tokens[3]).substr(0, 4) == "poly") {
+                eg_poly = true;
+                ncount = 2;  // only np, nn are output nodes
+                std::string pt = to_lower(line.tokens[3]);
+                size_t paren = pt.find('(');
+                if (paren != std::string::npos) {
+                    size_t close = pt.find(')');
+                    if (close != std::string::npos && close > paren)
+                        eg_poly_dim = std::stoi(pt.substr(paren + 1, close - paren - 1));
+                }
+            }
+
             TokenizedLine new_line;
             new_line.line_number = line.line_number;
 
@@ -483,16 +525,65 @@ std::vector<TokenizedLine> expand_instance(
                 new_line.tokens.push_back(subst_node(line.tokens[i]));
             }
 
-            // Special handling for H (CCVS) and F (CCCS) elements:
-            // token[3] (first token after the 2 nodes) is a Vsense device name
-            // that must be prefixed with the instance hierarchy, not evaluated
-            // as a parameter expression.
+            // E/G POLY form: pass POLY(N) token through, substitute
+            // 2*N control node pairs, then let remaining coefficients
+            // fall through to the normal value-evaluation path below.
             size_t value_start = static_cast<size_t>(1 + ncount);
+            if (eg_poly && value_start < line.tokens.size()) {
+                // Pass POLY(N) token through as-is
+                new_line.tokens.push_back(line.tokens[value_start]);
+                value_start++;
+                // Handle split "(N)" token
+                if (value_start < line.tokens.size() &&
+                    line.tokens[value_start].front() == '(') {
+                    new_line.tokens.push_back(line.tokens[value_start]);
+                    value_start++;
+                }
+                // Substitute 2*N control node names
+                int ctrl_nodes = 2 * eg_poly_dim;
+                for (int k = 0; k < ctrl_nodes && value_start < line.tokens.size(); ++k) {
+                    new_line.tokens.push_back(subst_node(line.tokens[value_start]));
+                    value_start++;
+                }
+            }
+
+            // Special handling for H (CCVS) and F (CCCS) elements:
+            // In simple form, token[3] is a Vsense device name that must be
+            // prefixed with the instance hierarchy.
+            // In POLY(N) form, token[3] is "POLY(N)" followed by N Vsense
+            // names that each need prefixing, then polynomial coefficients.
             if ((elem_type == 'h' || elem_type == 'f') &&
                 value_start < line.tokens.size()) {
-                std::string vsense = to_lower(line.tokens[value_start]);
-                new_line.tokens.push_back(instance_prefix + "." + vsense);
-                value_start++;
+                std::string tok3 = to_lower(line.tokens[value_start]);
+                if (tok3.substr(0, 4) == "poly") {
+                    // POLY(N) form: pass POLY token through, then prefix N
+                    // Vsense names
+                    new_line.tokens.push_back(line.tokens[value_start]);
+                    value_start++;
+                    // Handle split "(N)" token
+                    if (value_start < line.tokens.size() &&
+                        line.tokens[value_start].front() == '(') {
+                        new_line.tokens.push_back(line.tokens[value_start]);
+                        value_start++;
+                    }
+                    int poly_dim = 1;
+                    size_t paren = tok3.find('(');
+                    if (paren != std::string::npos) {
+                        size_t close = tok3.find(')');
+                        if (close != std::string::npos && close > paren)
+                            poly_dim = std::stoi(tok3.substr(paren + 1,
+                                                             close - paren - 1));
+                    }
+                    for (int k = 0; k < poly_dim && value_start < line.tokens.size(); ++k) {
+                        std::string vs = to_lower(line.tokens[value_start]);
+                        new_line.tokens.push_back(instance_prefix + "." + vs);
+                        value_start++;
+                    }
+                } else {
+                    // Simple form: single Vsense name
+                    new_line.tokens.push_back(instance_prefix + "." + tok3);
+                    value_start++;
+                }
             }
 
             // Special handling for K (coupled inductor) elements:
