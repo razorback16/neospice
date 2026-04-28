@@ -638,7 +638,7 @@ Shim::IfParm HSM2mPTable[] = { /* model parameters */
 
 };
 
-char *HSM2names[] = {
+const char *HSM2names[] = {
     "Drain",
     "Gate",
     "Source",

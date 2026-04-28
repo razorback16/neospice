@@ -1155,13 +1155,10 @@ int HSMHVsetup(
       if ( here->HSMHV_cosubnode == 0 && here->HSMHVsubNode >= 0 ) {
         if ( here->HSMHVtempNode >= 0 ) {
       /* FATAL Error when 6th node is defined and COSUBNODE=0 */
-          const char * namarr[2];
-          namarr[0] = here->HSMHVname;
-          namarr[1] = model->HSMHVmodName;
-          Shim::report_error( 
-             Shim::ERR_FATAL, 
-             "HiSIM_HV: MOSFET(%s) MODEL(%s): 6th node is defined and COSUBNODE=0", 
-             namarr 
+          Shim::report_error(
+             Shim::ERR_FATAL,
+             "HiSIM_HV: MOSFET(%s) MODEL(%s): 6th node is defined and COSUBNODE=0",
+             here->HSMHVname, model->HSMHVmodName
              );
           return Shim::E_BADPARM;
         } else {

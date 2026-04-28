@@ -71,7 +71,7 @@ Shim::IfParm JFET2mPTable[] = { /* model parameters */
 };
 
 
-char *JFET2names[] = {
+const char *JFET2names[] = {
     "Drain",
     "Gate",
     "Source"

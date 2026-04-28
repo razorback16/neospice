@@ -925,7 +925,7 @@ Shim::IfParm HSMHVmPTable[] = { /* model parameters */
 
 };
 
-char *HSMHVnames[] = {
+const char *HSMHVnames[] = {
     "Drain",
     "Gate",
     "Source",

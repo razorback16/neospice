@@ -120,7 +120,7 @@ Shim::IfParm HFETAmPTable[] = { /* model parameters */
  IOP( "phfet",   HFETA_MOD_PHFET,  IF_FLAG,"P HFET device"),
 };
 
-char *HFETAnames[] = {
+const char *HFETAnames[] = {
     "Drain",
     "Gate",
     "Source"

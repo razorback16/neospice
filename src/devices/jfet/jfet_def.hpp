@@ -88,27 +88,48 @@ struct JFETInstance {
 
 #ifndef CONFIG
 
+#undef	cdr_x
 #define	cdr_x		JFETdCoeffs[0]
+#undef	cdr_y
 #define	cdr_y		JFETdCoeffs[1]
+#undef	cdr_x2
 #define	cdr_x2		JFETdCoeffs[2]
+#undef	cdr_y2
 #define	cdr_y2		JFETdCoeffs[3]
+#undef	cdr_xy
 #define	cdr_xy		JFETdCoeffs[4]
+#undef	cdr_x3
 #define	cdr_x3		JFETdCoeffs[5]
+#undef	cdr_y3
 #define	cdr_y3		JFETdCoeffs[6]
+#undef	cdr_x2y
 #define	cdr_x2y		JFETdCoeffs[7]
+#undef	cdr_xy2
 #define	cdr_xy2		JFETdCoeffs[8]
 
+#undef	ggs1
 #define	ggs1		JFETdCoeffs[9]
+#undef	ggd1
 #define	ggd1		JFETdCoeffs[10]
+#undef	ggs2
 #define	ggs2		JFETdCoeffs[11]
+#undef	ggd2
 #define	ggd2		JFETdCoeffs[12]
+#undef	ggs3
 #define	ggs3		JFETdCoeffs[13]
+#undef	ggd3
 #define	ggd3		JFETdCoeffs[14]
+#undef	capgs1
 #define	capgs1		JFETdCoeffs[15]
+#undef	capgd1
 #define	capgd1		JFETdCoeffs[16]
+#undef	capgs2
 #define	capgs2		JFETdCoeffs[17]
+#undef	capgd2
 #define	capgd2		JFETdCoeffs[18]
+#undef	capgs3
 #define	capgs3		JFETdCoeffs[19]
+#undef	capgd3
 #define	capgd3		JFETdCoeffs[20]
 
 #endif

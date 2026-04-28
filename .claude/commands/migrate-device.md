@@ -119,7 +119,18 @@ etc.) are provided by `src/devices/ucb_compat.hpp`. The migration tool emits
 Other macros the tool handles: `NIintegrate`, physical constants (`CONSTKoverQ`,
 `CONSTe`, `CONSTboltz`, `REFTEMP`, `OFF`), `IF_COMPLEX`, `CKTtroubleElt`, `CKTsenInfo` stubs.
 
-### 3.4 Build and iterate
+### 3.4 Warning-free output
+
+The auto-migration tool handles these common C-to-C++ warning sources:
+
+- **`register` keyword** — stripped automatically (deprecated in C++17)
+- **`char *names[]`** — converted to `const char *names[]` (`-Wwrite-strings`)
+- **Distortion-coefficient macros** — `#undef` added before each `#define` in def headers (`-Wmacro-redefined`)
+- **`report_error` with `const char**` arrays** — rewritten to pass arguments directly (`-Wformat`)
+
+If any warnings remain after auto-migration, fix them before proceeding.
+
+### 3.5 Build and iterate
 
 ```bash
 cmake --build build 2>&1 | head -50
@@ -294,7 +305,7 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 
 ## Phase 12: Integration Checklist
 
-- [ ] `cmake --build build` compiles cleanly
+- [ ] `cmake --build build` compiles cleanly **with zero warnings**
 - [ ] All new tests pass
 - [ ] DC operating point matches ngspice (< 1% error for well-behaved circuits)
 - [ ] AC response matches ngspice (< 25% for gain, < 10 degrees for phase)
@@ -322,6 +333,7 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 | Adapter skeleton (uses ucb_device_init.hpp) | Yes | - |
 | Convergence wiring (last_noncon_) | Yes | - |
 | Sensitivity stripping | Yes | Verify output |
+| Warning prevention (register, char*, macros) | Yes | - |
 | Setup / Load / Temp / Param / Mpar | Yes | Build fixes |
 | CMakeLists.txt | Yes | - |
 | Model card (uses model_card_utils.hpp) | Yes (when `model_types` defined) | - |

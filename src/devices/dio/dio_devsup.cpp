@@ -120,7 +120,7 @@ Shim::IfParm DIOmPTable[] = { /* model parameters */
  IP( "d",    DIO_MOD_D,   IF_FLAG, "Diode model")
 };
 
-char *DIOnames[] = {
+const char *DIOnames[] = {
     "D+",
     "D-"
 };

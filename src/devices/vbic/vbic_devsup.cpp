@@ -197,7 +197,7 @@ Shim::IfParm VBICmPTable[] = { /* model parameters */
  IOP("vce_max", VBIC_MOD_VCE_MAX, IF_REAL, "maximum voltage C-E branch")
 };
 
-char *VBICnames[] = {
+const char *VBICnames[] = {
     "collector",
     "base",
     "emitter",

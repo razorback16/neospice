@@ -1121,7 +1121,7 @@ IP( "nmos", B4SOI_MOD_NMOS,  IF_FLAG, "Flag to indicate NMOS"),
 IP( "pmos", B4SOI_MOD_PMOS,  IF_FLAG, "Flag to indicate PMOS"),
 };
 
-char *B4SOInames[] = {
+const char *B4SOInames[] = {
    "Drain",
    "Gate",
    "Source",

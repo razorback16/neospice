@@ -108,10 +108,10 @@ B4SOIload(
     Shim::Ckt *ckt)
 {
 auto &mat = *ckt->mat;
-    register B4SOIModel *model = inModel;
-    register B4SOIInstance *here;
+    B4SOIModel *model = inModel;
+    B4SOIInstance *here;
 
-    register int selfheat;
+    int selfheat;
 
     double Gmin;
   double dVgstNVt_dT, dVgstNVt2_dT;  /* LFW_FD */

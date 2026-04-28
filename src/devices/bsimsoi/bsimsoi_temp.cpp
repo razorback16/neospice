@@ -58,8 +58,8 @@ B4SOItemp(
     B4SOIModel *inModel,
     Shim::Ckt *ckt)
 {
-    register B4SOIModel *model = inModel;
-    register B4SOIInstance *here;
+    B4SOIModel *model = inModel;
+    B4SOIInstance *here;
     struct b4soiSizeDependParam *pSizeDependParamKnot, *pLastKnot, *pParam=NULL;
     double tmp, tmp1, tmp2, Eg, Eg0, ni, T0, T1, T2, T3, T4, T5, T6;
     double Ldrn=0.0, Wdrn;

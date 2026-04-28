@@ -226,7 +226,7 @@ Shim::IfParm BJTmPTable[] = { /* model parameters */
  IOP("vce_max", BJT_MOD_VCE_MAX, IF_REAL, "maximum voltage C-E branch")
 };
 
-char *BJTnames[] = {
+const char *BJTnames[] = {
     "collector",
     "base",
     "emitter",

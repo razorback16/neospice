@@ -166,7 +166,7 @@ Shim::IfParm MOS3mPTable[] = { /* model parameters */
  IOP("af",     MOS3_MOD_AF,    IF_REAL ,"Flicker noise exponent")
 };
 
-char *MOS3names[] = {
+const char *MOS3names[] = {
     "Drain",
     "Gate",
     "Source",

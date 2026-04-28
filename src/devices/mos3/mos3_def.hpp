@@ -221,35 +221,65 @@ struct MOS3Instance {
 
 #ifndef CONFIG
 
+#undef	capbs2
 #define	capbs2		MOS3dCoeffs[0]
+#undef	capbs3
 #define	capbs3		MOS3dCoeffs[1]
+#undef	capbd2
 #define	capbd2		MOS3dCoeffs[2]
+#undef	capbd3
 #define	capbd3		MOS3dCoeffs[3]
+#undef	gbs2
 #define	gbs2		MOS3dCoeffs[4]
+#undef	gbs3
 #define	gbs3		MOS3dCoeffs[5]
+#undef	gbd2
 #define	gbd2		MOS3dCoeffs[6]
+#undef	gbd3
 #define	gbd3		MOS3dCoeffs[7]
+#undef	capgb2
 #define	capgb2		MOS3dCoeffs[8]
+#undef	capgb3
 #define	capgb3		MOS3dCoeffs[9]
+#undef	cdr_x2
 #define	cdr_x2		MOS3dCoeffs[10]
+#undef	cdr_y2
 #define	cdr_y2		MOS3dCoeffs[11]
+#undef	cdr_z2
 #define	cdr_z2		MOS3dCoeffs[12]
+#undef	cdr_xy
 #define	cdr_xy		MOS3dCoeffs[13]
+#undef	cdr_yz
 #define	cdr_yz		MOS3dCoeffs[14]
+#undef	cdr_xz
 #define	cdr_xz		MOS3dCoeffs[15]
+#undef	cdr_x3
 #define	cdr_x3		MOS3dCoeffs[16]
+#undef	cdr_y3
 #define	cdr_y3		MOS3dCoeffs[17]
+#undef	cdr_z3
 #define	cdr_z3		MOS3dCoeffs[18]
+#undef	cdr_x2z
 #define	cdr_x2z		MOS3dCoeffs[19]
+#undef	cdr_x2y
 #define	cdr_x2y		MOS3dCoeffs[20]
+#undef	cdr_y2z
 #define	cdr_y2z		MOS3dCoeffs[21]
+#undef	cdr_xy2
 #define	cdr_xy2		MOS3dCoeffs[22]
+#undef	cdr_xz2
 #define	cdr_xz2		MOS3dCoeffs[23]
+#undef	cdr_yz2
 #define	cdr_yz2		MOS3dCoeffs[24]
+#undef	cdr_xyz
 #define	cdr_xyz		MOS3dCoeffs[25]
+#undef	capgs2
 #define	capgs2		MOS3dCoeffs[26]
+#undef	capgs3
 #define	capgs3		MOS3dCoeffs[27]
+#undef	capgd2
 #define	capgd2		MOS3dCoeffs[28]
+#undef	capgd3
 #define	capgd3		MOS3dCoeffs[29]
 
 #endif

@@ -250,13 +250,10 @@ int HSMHVtemp(
     
       Leff = Lgate - ( dL + dLLD ) ;
       if ( Leff <= 0.0 ) {   
-        const char * namarr[2];
-        namarr[0] = here->HSMHVname;
-        namarr[1] = model->HSMHVmodName;
-        Shim::report_error( 
-           Shim::ERR_FATAL, 
-           "HiSIM_HV: MOSFET(%s) MODEL(%s): effective channel length is negative or 0", 
-           namarr 
+        Shim::report_error(
+           Shim::ERR_FATAL,
+           "HiSIM_HV: MOSFET(%s) MODEL(%s): effective channel length is negative or 0",
+           here->HSMHVname, model->HSMHVmodName
            );
         return Shim::E_BADPARM;
       }
@@ -274,14 +271,11 @@ int HSMHVtemp(
       here->HSMHV_weff = Weff = Wgate - 2.0e0 * dW ;
       here->HSMHV_weff_ld     = Wgate - 2.0e0 * dWLD ;
       here->HSMHV_weff_cv     = Wgate - 2.0e0 * dWCV ;
-      if ( Weff <= 0.0 ) {   
-        const char * namarr[2];
-        namarr[0] = here->HSMHVname;
-        namarr[1] = model->HSMHVmodName;
-        Shim::report_error( 
-           Shim::ERR_FATAL, 
-           "HiSIM_HV: MOSFET(%s) MODEL(%s): effective channel width is negative or 0", 
-           namarr 
+      if ( Weff <= 0.0 ) {
+        Shim::report_error(
+           Shim::ERR_FATAL,
+           "HiSIM_HV: MOSFET(%s) MODEL(%s): effective channel width is negative or 0",
+           here->HSMHVname, model->HSMHVmodName
            );
         return Shim::E_BADPARM;
       }

@@ -187,6 +187,27 @@ def generate_def_hpp(src: str, desc: ModelDescriptor) -> str:
     )
 
     # -----------------------------------------------------------------
+    # 6b. Add #undef before distortion-coefficient #defines
+    # -----------------------------------------------------------------
+    # ngspice device headers define short macro names (cdr_x, capgs2, ggs1,
+    # etc.) that map to device-specific arrays.  When multiple device headers
+    # coexist in one TU the macros collide.  Prefixing each #define with
+    # #undef silences -Wmacro-redefined.
+    def _add_undef(m: re.Match) -> str:
+        indent = m.group(1)
+        name = m.group(2)
+        tabs = m.group(3)
+        rest = m.group(4)
+        return f"{indent}#undef\t{name}\n{indent}#define\t{name}{tabs}{rest}"
+
+    text = re.sub(
+        r'^([ \t]*)#define\t(\w+)(\t+)(\w+dCoeffs\[.+)$',
+        _add_undef,
+        text,
+        flags=re.MULTILINE,
+    )
+
+    # -----------------------------------------------------------------
     # 7. Replace IFuid with const char *
     # -----------------------------------------------------------------
     # Consume trailing whitespace so ``IFuid DIOname`` becomes

@@ -22,7 +22,7 @@ using namespace Shim;
 int
 MOS9mParam(int param, Shim::IfValue *value, MOS9Model *inModel)
 {
-    register MOS9Model *model = inModel;
+    MOS9Model *model = inModel;
     switch(param) {
         case MOS9_MOD_VTO:
             model->MOS9vt0 = value->rValue;

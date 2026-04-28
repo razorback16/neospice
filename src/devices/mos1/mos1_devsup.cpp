@@ -158,7 +158,7 @@ Shim::IfParm MOS1mPTable[] = { /* model parameters */
  IOP("af",     MOS1_MOD_AF,    IF_REAL   ,"Flicker noise exponent")
 };
 
-char *MOS1names[] = {
+const char *MOS1names[] = {
     "Drain",
     "Gate",
     "Source",

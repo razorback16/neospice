@@ -48,8 +48,8 @@ B4SOIModel *inModel,
 Shim::Ckt *ckt,
 int *states)
 {
-register B4SOIModel *model = inModel;
-register B4SOIInstance *here;
+B4SOIModel *model = inModel;
+B4SOIInstance *here;
 int error;
 Shim::CKTnode *tmp;
 

@@ -517,7 +517,7 @@ IP( "nmos", BSIM3v32_MOD_NMOS,  IF_FLAG, "Flag to indicate NMOS"),
 IP( "pmos", BSIM3v32_MOD_PMOS,  IF_FLAG, "Flag to indicate PMOS"),
 };
 
-char *BSIM3v32names[] = {
+const char *BSIM3v32names[] = {
    "Drain",
    "Gate",
    "Source",

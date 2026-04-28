@@ -27,8 +27,8 @@ MOS9setup(Shim::Matrix *matrix, MOS9Model *inModel, Shim::Ckt *ckt, int *states)
          */
 
 {
-    register MOS9Model *model = inModel;
-    register MOS9Instance *here;
+    MOS9Model *model = inModel;
+    MOS9Instance *here;
     int error;
     Shim::CKTnode *tmp;
 

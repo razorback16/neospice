@@ -753,6 +753,66 @@ class Transformer:
         )
 
     @staticmethod
+    def _strip_register(src: str) -> str:
+        """Remove the C ``register`` storage class specifier (deprecated in C++17)."""
+        return re.sub(
+            r'\bregister\s+',
+            '',
+            src,
+        )
+
+    @staticmethod
+    def _const_name_arrays(src: str) -> str:
+        """Convert ``char *PREFIXnames[]`` to ``const char *PREFIXnames[]``."""
+        return re.sub(
+            r'^([ \t]*)char\s+\*(\s*\w+names\s*\[\s*\])',
+            r'\1const char *\2',
+            src,
+            flags=re.MULTILINE,
+        )
+
+    @staticmethod
+    def _fix_report_error_arrays(src: str) -> str:
+        """Rewrite ``report_error(code, fmt, namarr)`` to pass array elements
+        as individual variadic arguments instead of a ``const char**`` pointer.
+
+        Matches the ngspice/HiSIM pattern::
+
+            const char * namarr[N];
+            namarr[0] = here->XXXname;
+            namarr[1] = model->XXXmodName;
+            Shim::report_error(ERR_FATAL, "...%s...%s...", namarr);
+
+        Rewrites to::
+
+            Shim::report_error(ERR_FATAL, "...%s...%s...",
+                               here->XXXname, model->XXXmodName);
+        """
+        # Find blocks: array decl, assignments, then report_error call using the array.
+        pattern = re.compile(
+            r'(?P<indent>[ \t]*)'
+            r'const\s+char\s*\*\s*(?P<arr>\w+)\s*\[\s*\d+\s*\]\s*;\s*\n'
+            r'(?P<assigns>(?:[ \t]*\w+\[\d+\]\s*=\s*[^;]+;\s*\n)+)'
+            r'(?P<pre>[ \t]*)'
+            r'(?P<call>Shim::report_error\s*\([^;]*?),\s*\n?'
+            r'[ \t]*(?P=arr)\s*'
+            r'(?P<post>\)\s*;)',
+            re.MULTILINE,
+        )
+
+        def _rewrite(m: re.Match) -> str:
+            assigns_text = m.group('assigns')
+            values = re.findall(r'\[\d+\]\s*=\s*([^;]+)', assigns_text)
+            values = [v.strip() for v in values]
+            pre = m.group('pre')
+            call = m.group('call')
+            post = m.group('post')
+            args = ', '.join(values)
+            return f"{pre}{call},\n{pre}           {args}{post}"
+
+        return pattern.sub(_rewrite, src)
+
+    @staticmethod
     def _annotate_tstalloc(src: str) -> str:
         """Add a TODO comment above the first TSTALLOC call."""
         m = re.search(r"(^|\n)([ \t]*)TSTALLOC\s*\(", src)
@@ -855,8 +915,14 @@ class Transformer:
                 flags=re.MULTILINE,
             )
 
-        # 8b. Insert mat reference for functions with matrix stamps.
+        # 8b. Strip C++ warnings: register keyword, char* name arrays,
+        #     report_error with const char** arrays.
+        body = self._strip_register(body)
+        body = self._const_name_arrays(body)
+        body = self._fix_report_error_arrays(body)
+
+        # 8c. Insert mat reference for functions with matrix stamps.
         body = self._insert_mat_ref(body)
 
-        # 8c. Wrap.
+        # 8d. Wrap.
         return self.wrap(body, banner)
