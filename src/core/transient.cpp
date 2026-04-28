@@ -692,7 +692,9 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         fill_integrator_context(ckt, dt, step_count, ctrl);
 
         // Newton-Raphson solve
-        auto nr = newton_solve(ckt, *solver, solution, ckt.options);
+        SimOptions tran_opts = ckt.options;
+        tran_opts.max_iter = ckt.options.itl4;
+        auto nr = newton_solve(ckt, *solver, solution, tran_opts);
         if (!nr.converged) {
             dt /= kNewtonFailureDtFactor;
             if (dt < dt_min) {
