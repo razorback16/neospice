@@ -1,0 +1,60 @@
+model:
+  ngspice_prefix: "MES"
+  neospice_name: "mes"
+  neospice_namespace: "mes"
+  instance_struct: "MESinstance"
+  model_struct: "MESmodel"
+  instance_tag: "sMESinstance"
+  model_tag: "sMESmodel"
+  cpp_instance: "MESInstance"
+  cpp_model: "MESModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "drain", field: "MESdrainNode" }
+    - { name: "gate", field: "MESgateNode" }
+    - { name: "source", field: "MESsourceNode" }
+  state_count: 13
+  state_base_field: "MESstate"
+  charge_states: [9, 11]
+  next_instance_field: "MESnextInstance"
+  instances_field: "MESinstances"
+  next_model_field: "MESnextModel"
+  model_ptr_field: "MESmodPtr"
+  name_field: "MESname"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "messetup.c"
+    load: "mesload.c"
+    temp: "mestemp.c"
+    param: "mesparam.c"
+    mpar: "mesmpar.c"
+    devsup: "mes.c"
+  skip_files:
+    - "mesacl.c"
+    - "mesask.c"
+    - "mesdel.c"
+    - "mesdest.c"
+    - "mesdisto.c"
+    - "mesdset.c"
+    - "mesgetic.c"
+    - "mesinit.c"
+    - "mesnoise.c"
+    - "mespzld.c"
+    - "mestrunc.c"
+    - "mesmdel.c"
+    - "mesmask.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "MESsetup"
+  temp_function: "MEStemp"
+  load_function: "MESload"
+  ac_load_file: "mesacl.c"
+  noise_file: "mesnoise.c"
+  geometry:
+    - { name: "area", field: "MESarea", given: "MESareaGiven", default: "1.0" }
+    - { name: "m", field: "MESm", given: "MESmGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "nmf", flag_field: "MEStype", flag_value: 1, has_type_given: false }
+    - { spice_name: "pmf", flag_field: "MEStype", flag_value: -1, has_type_given: false }
+  spice_prefix: "Z"

@@ -1,0 +1,8 @@
+MES DC Operating Point - NMF common-source
+* GaAs MESFET DC bias
+VDD drain 0 3.0
+VGS gate  0 -0.5
+Z1 drain gate 0 MESMOD
+.model MESMOD NMF VTO=-2.0 BETA=2.5e-3 ALPHA=2.0 LAMBDA=0.04 RD=10 RS=10
+.op
+.end

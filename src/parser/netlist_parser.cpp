@@ -37,6 +37,8 @@
 #include "devices/hfet1/hfet1_device.hpp"
 #include "devices/hfet1/hfet1_model_card.hpp"
 #include "devices/hfet2/hfet2_device.hpp"
+#include "devices/mes/mes_device.hpp"
+#include "devices/mes/mes_model_card.hpp"
 #include "devices/jfet2/jfet2_device.hpp"
 #include "devices/jfet2/jfet2_model_card.hpp"
 #include "devices/vbic/vbic_device.hpp"
@@ -725,8 +727,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         std::string name;
         std::string nd, ng, ns;  // drain, gate, source node names
         std::string model_name;
-        double length = 1e-6, width = 20e-6, m = 1.0;
-        bool length_given = false, width_given = false, m_given = false;
+        double length = 1e-6, width = 20e-6, m = 1.0, area = 1.0;
+        bool length_given = false, width_given = false, m_given = false, area_given = false;
         int line_number = 0;
         double ic_vds = 0, ic_vgs = 0;
         bool ic_vds_given = false, ic_vgs_given = false;
@@ -2215,6 +2217,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         z.width = parse_spice_number(valstr); z.width_given = true;
                     } else if (key == "m") {
                         z.m = parse_spice_number(valstr); z.m_given = true;
+                    } else if (key == "area") {
+                        z.area = parse_spice_number(valstr); z.area_given = true;
                     } else if (key == "ic") {
                         std::vector<double> icvals;
                         size_t start = 0;
@@ -2231,6 +2235,12 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 } else {
                     std::string lower = to_lower(tokens[i]);
                     if (lower == "off") continue;
+                    if (!z.area_given) {
+                        try {
+                            z.area = parse_spice_number(tokens[i]);
+                            z.area_given = true;
+                        } catch (...) {}
+                    }
                 }
             }
             deferred_hfets.push_back(std::move(z));
@@ -3173,6 +3183,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 
     // Resolve deferred HFETs (Z elements with nhfet/phfet)
     // LEVEL=5 or default → HFET1, LEVEL=6 → HFET2
+    std::unordered_map<std::string, std::unique_ptr<MESModelCard>> mes_cards;
     std::unordered_map<std::string, std::unique_ptr<HFETAModelCard>> hfet1_cards;
     std::unordered_map<std::string, std::unique_ptr<HFET2ModelCard>> hfet2_cards;
     for (const auto& z : deferred_hfets) {
@@ -3186,9 +3197,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             it = it2;
         }
         std::string model_type = to_lower(it->second.type);
-        if (model_type != "nhfet" && model_type != "phfet") {
+        if (model_type != "nhfet" && model_type != "phfet" &&
+            model_type != "nmf" && model_type != "pmf") {
             throw ParseError("Line " + std::to_string(z.line_number) +
-                             ": Z card references non-HFET model '" + z.model_name + "'");
+                             ": Z card references unknown model type '" + it->second.type + "'");
         }
         int level = 5; // default: HFET1
         auto lvl_it = it->second.params.find("level");
@@ -3199,7 +3211,27 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         int32_t ng = ckt.node(z.ng);
         int32_t ns = ckt.node(z.ns);
 
-        if (level == 6) {
+        if (model_type == "nmf" || model_type == "pmf") {
+            auto card_it = mes_cards.find(z.model_name);
+            if (card_it == mes_cards.end()) {
+                try {
+                    card_it = mes_cards.emplace(z.model_name,
+                                                to_mes_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(z.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            MESDevice::Geom geom;
+            geom.area = z.area_given ? z.area : 1.0;
+            geom.m = z.m_given ? z.m : 1.0;
+            auto dev = MESDevice::make(z.name, nd, ng, ns,
+                                       geom, *card_it->second);
+            if (z.ic_vds_given || z.ic_vgs_given) {
+                dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else if (level == 6) {
             auto card_it = hfet2_cards.find(z.model_name);
             if (card_it == hfet2_cards.end()) {
                 try {
@@ -3242,6 +3274,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             ckt.add_device(std::move(dev));
         }
+    }
+    for (auto& [name, card] : mes_cards) {
+        ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : hfet1_cards) {
         ckt.add_model_card(std::move(card));
