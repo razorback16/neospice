@@ -2,7 +2,7 @@
 #include "core/freq_utils.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
 #include <algorithm>
@@ -77,7 +77,7 @@ NoiseResult solve_noise(Circuit& ckt,
         }
     }
 
-    auto dc_solver = create_solver(ckt.pattern().size());
+    auto dc_solver = std::make_unique<NeoSolver>();
     dc_solver->symbolic(ckt.pattern());
 
     // Publish SimOptions for BSIM4v7Device (and any future state-storing
@@ -205,10 +205,10 @@ NoiseResult solve_noise(Circuit& ckt,
     NumericMatrix mat_2n_t(pattern_2n_t);
 
     // Symbolic factorization once for each
-    auto gain_solver = create_solver(pattern_2n.size());    // for Y * x = e_input
+    auto gain_solver = std::make_unique<NeoSolver>();    // for Y * x = e_input
     gain_solver->symbolic(pattern_2n);
 
-    auto adj_solver = create_solver(pattern_2n_t.size());   // for Y^T * adj = e_out
+    auto adj_solver = std::make_unique<NeoSolver>();   // for Y^T * adj = e_out
     adj_solver->symbolic(pattern_2n_t);
 
     // ---------------------------------------------------------------

@@ -2,7 +2,7 @@
 #include "core/freq_utils.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
@@ -61,7 +61,7 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
             }
         }
 
-        auto dc_solver = create_solver(ckt.pattern().size());
+        auto dc_solver = std::make_unique<NeoSolver>();
         dc_solver->symbolic(ckt.pattern());
 
         // Publish SimOptions for BSIM4v7Device (and any future state-storing
@@ -159,7 +159,7 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     }
 
     // 7. Symbolic factorization on n×n pattern (reuse DC pattern)
-    auto ac_solver = create_solver(pattern.size());
+    auto ac_solver = std::make_unique<NeoSolver>();
     ac_solver->symbolic(pattern);
 
     // 8. Pre-compute result extraction indices (outside frequency loop)

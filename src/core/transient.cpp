@@ -1,7 +1,7 @@
 #include "core/transient.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "core/timestep.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
@@ -124,7 +124,7 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
 // ===================================================================
 // Tries Newton, then gmin stepping, source stepping, pseudo-transient.
 // Returns the converged solution; throws ConvergenceError on failure.
-static void compute_dc_operating_point(Circuit& ckt, LinearSolver& solver,
+static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
                                        std::vector<double>& solution,
                                        int& total_newton_iters) {
     // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
@@ -292,7 +292,7 @@ static void initialize_device_dc_state(Circuit& ckt, std::vector<double>& soluti
 // ===================================================================
 // Helper: Re-solve at t=0 when transmission lines have IC values
 // ===================================================================
-static void resolve_tl_initial_conditions(Circuit& ckt, LinearSolver& solver,
+static void resolve_tl_initial_conditions(Circuit& ckt, NeoSolver& solver,
                                           std::vector<double>& solution,
                                           double tstep) {
     bool tl_has_ic = false;
@@ -581,7 +581,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // 1. DC operating point
     // ---------------------------------------------------------------
     std::vector<double> solution(n, 0.0);
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
 

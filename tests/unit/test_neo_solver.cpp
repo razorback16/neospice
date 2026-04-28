@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include "core/neo_solver.hpp"
-#include "core/linear_solver.hpp"
 #include "core/matrix.hpp"
 
 using namespace neospice;
@@ -225,13 +224,6 @@ TEST(NeoSolver, ComplexRefactorize) {
     EXPECT_NEAR(b0i, 2.0, 1e-10);
     EXPECT_NEAR(b1r, 8.0, 1e-10);
     EXPECT_NEAR(b1i, 0.0, 1e-10);
-}
-
-TEST(NeoSolver, FactoryDispatch) {
-    auto small = create_solver(10);
-    EXPECT_NE(dynamic_cast<NeoSolver*>(small.get()), nullptr);
-    auto large = create_solver(200);
-    EXPECT_NE(dynamic_cast<NeoSolver*>(large.get()), nullptr);
 }
 
 TEST(NeoSolver, Solve24x24) {

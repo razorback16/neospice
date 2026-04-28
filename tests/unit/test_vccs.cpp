@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "devices/vccs.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "api/neospice.hpp"
 #include <complex>
 #include <cmath>

@@ -1,6 +1,6 @@
 #include "core/convergence.hpp"
 #include "core/circuit.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include <algorithm>
@@ -47,7 +47,7 @@ void clear_state(Circuit& ckt) {
 
 } // namespace
 
-NewtonResult gmin_stepping(Circuit& ckt, LinearSolver& solver,
+NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
                            std::vector<double>& solution,
                            const SimOptions& opts) {
     const std::vector<double> entry_solution = solution;
@@ -135,7 +135,7 @@ NewtonResult gmin_stepping(Circuit& ckt, LinearSolver& solver,
     return {false, total_iterations, solution};
 }
 
-NewtonResult source_stepping(Circuit& ckt, LinearSolver& solver,
+NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
                              std::vector<double>& solution,
                              const SimOptions& opts) {
     // Collect all independent sources and save their original DC values
@@ -239,7 +239,7 @@ NewtonResult source_stepping(Circuit& ckt, LinearSolver& solver,
     return result;
 }
 
-NewtonResult pseudo_transient(Circuit& ckt, LinearSolver& solver,
+NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
                               std::vector<double>& solution,
                               const SimOptions& opts) {
     // Pseudo-transient continuation: add a fictitious conductance

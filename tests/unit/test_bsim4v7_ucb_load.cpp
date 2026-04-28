@@ -15,7 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "core/circuit.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "core/newton.hpp"
 #include "devices/bsim4v7/bsim4v7_def.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
@@ -81,7 +81,7 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
     // Finalise + symbolic factor.
     ckt.finalize();
 
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
 
     // Newton initial guess: zero + VDD pin.  (solve_dc would do this too

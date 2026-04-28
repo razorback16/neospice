@@ -1,7 +1,7 @@
 #include "core/dc.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "devices/vsource.hpp"
 #include <algorithm>
 #include <chrono>
@@ -58,7 +58,7 @@ DCResult solve_dc(Circuit& ckt) {
     }
 
     // 2. Create solver and perform symbolic analysis
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
 
     // Publish SimOptions for BSIM4v7Device (and any future state-storing
@@ -236,7 +236,7 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     // We'll build them on the fly as we iterate
 
     // Solver and initial solution vector
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
 
     ckt.integrator_ctx.options = &ckt.options;

@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 
 #include "core/circuit.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "core/newton.hpp"
 #include "core/types.hpp"
 #include "devices/device.hpp"
@@ -58,7 +58,7 @@ TEST(SimOptionsPlumbing, NonDefaultTempReachesDeviceViaIntegratorCtx) {
     ckt.options.temp = 77.0;
     ckt.integrator_ctx.options = &ckt.options;
 
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
     auto result = newton_solve(ckt, *solver, solution, ckt.options);
@@ -79,7 +79,7 @@ TEST(SimOptionsPlumbing, DefaultTempIsTNominal) {
 
     ckt.integrator_ctx.options = &ckt.options;
 
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
     auto result = newton_solve(ckt, *solver, solution, ckt.options);

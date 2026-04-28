@@ -3,7 +3,7 @@
 #include "core/dc.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -41,7 +41,7 @@ PZResult solve_pz(Circuit& ckt,
         }
     }
 
-    auto dc_solver = create_solver(ckt.pattern().size());
+    auto dc_solver = std::make_unique<NeoSolver>();
     dc_solver->symbolic(ckt.pattern());
     ckt.integrator_ctx.options = &ckt.options;
 

@@ -2,7 +2,7 @@
 #include "core/dc.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include <algorithm>
@@ -58,7 +58,7 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
         }
     }
 
-    auto solver = create_solver(pattern.size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(pattern);
 
     ckt.integrator_ctx.options = &ckt.options;

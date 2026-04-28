@@ -5,7 +5,7 @@
 namespace neospice {
 
 class Circuit;
-class LinearSolver;
+class NeoSolver;
 
 struct NewtonResult {
     bool converged = false;
@@ -13,7 +13,7 @@ struct NewtonResult {
     std::vector<double> solution;
 };
 
-NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
+NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts);
 

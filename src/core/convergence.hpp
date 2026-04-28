@@ -5,17 +5,17 @@
 namespace neospice {
 
 class Circuit;
-class LinearSolver;
+class NeoSolver;
 
-NewtonResult gmin_stepping(Circuit& ckt, LinearSolver& solver,
+NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
                            std::vector<double>& solution,
                            const SimOptions& opts);
 
-NewtonResult source_stepping(Circuit& ckt, LinearSolver& solver,
+NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
                              std::vector<double>& solution,
                              const SimOptions& opts);
 
-NewtonResult pseudo_transient(Circuit& ckt, LinearSolver& solver,
+NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
                               std::vector<double>& solution,
                               const SimOptions& opts);
 

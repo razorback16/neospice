@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "core/circuit.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "core/newton.hpp"
 #include "core/types.hpp"
 #include "devices/device.hpp"
@@ -74,7 +74,7 @@ TEST(NewtonInitFlip, MODEINITJCTFlipsToFIXAfterIter0) {
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
 
     std::vector<double> solution(ckt.num_vars(), 0.0);
@@ -125,7 +125,7 @@ TEST(NewtonInitFlip, NoFlipWhenJCTBitAbsent) {
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
     SimOptions opts;
@@ -153,7 +153,7 @@ TEST(NewtonInitFlip, MODEINITTRANFlipsToFLOAT) {
     ckt.integrator_ctx.mode = MODETRAN_BIT | MODEINITTRAN_BIT;
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
     SimOptions opts;
@@ -191,7 +191,7 @@ TEST(NewtonInitFlip, MODEINITPREDFlipsToFLOAT) {
     ckt.integrator_ctx.mode = MODETRAN_BIT | MODEINITPRED_BIT;
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    auto solver = create_solver(ckt.pattern().size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
     SimOptions opts;

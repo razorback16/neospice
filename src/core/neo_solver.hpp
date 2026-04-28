@@ -1,22 +1,25 @@
 #pragma once
-#include "core/linear_solver.hpp"
+#include "core/matrix.hpp"
 #include <vector>
 
 namespace neospice {
 
-class NeoSolver : public LinearSolver {
+class NeoSolver {
 public:
     NeoSolver();
-    ~NeoSolver() override = default;
+    ~NeoSolver() = default;
 
-    void symbolic(const SparsityPattern& pattern) override;
-    void numeric(const SparsityPattern& pattern, const NumericMatrix& mat) override;
-    bool refactorize(const NumericMatrix& mat) override;
-    void solve(std::vector<double>& rhs) override;
+    NeoSolver(const NeoSolver&) = delete;
+    NeoSolver& operator=(const NeoSolver&) = delete;
+
+    void symbolic(const SparsityPattern& pattern);
+    void numeric(const SparsityPattern& pattern, const NumericMatrix& mat);
+    bool refactorize(const NumericMatrix& mat);
+    void solve(std::vector<double>& rhs);
     void numeric_complex(const SparsityPattern& pattern,
-                         const std::vector<double>& ax) override;
-    bool refactorize_complex(const std::vector<double>& ax) override;
-    void solve_complex(std::vector<double>& rhs) override;
+                         const std::vector<double>& ax);
+    bool refactorize_complex(const std::vector<double>& ax);
+    void solve_complex(std::vector<double>& rhs);
 
 private:
     static constexpr int32_t DENSE_LIMIT = 12;

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "devices/vsource.hpp"
-#include "core/linear_solver.hpp"
+#include "core/neo_solver.hpp"
 
 using namespace neospice;
 
@@ -40,7 +40,7 @@ TEST(VSource, SolveWithResistor) {
 
     std::vector<double> rhs = {0.0, 5.0};  // rhs[1] = V_source
 
-    auto solver = create_solver(pattern.size());
+    auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(pattern);
     solver->numeric(pattern, mat);
     solver->solve(rhs);

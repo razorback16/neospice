@@ -23,7 +23,6 @@ add_library(neospice_lib
     core/amd.cpp
     core/btf.cpp
     core/matching.cpp
-    core/linear_solver.cpp
     core/neo_solver.cpp
     core/circuit.cpp
     core/newton.cpp
