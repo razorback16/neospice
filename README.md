@@ -5,11 +5,11 @@ A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a c
 ## Features
 
 - **8 analysis types** -- DC OP, DC sweep, transient (adaptive Trap/Gear-2/BE), AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero, Fourier/THD, parameter sweep (`.step`), and `.measure` post-processing
-- **28 device models** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, HFETs, and MOSFETs through BSIM4v7
+- **29 device models** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, MESFETs, HFETs, and MOSFETs through BSIM4v7
 - **Embeddable C++ API** -- `Simulator`/`Circuit`/`Result` types with typed accessors, fluent `CircuitBuilder`, and circuit introspection
-- **High performance** -- 3-tier linear solver (dense / sparse SmallSolver / BTF block solver), G/C matrix caching for AC, adjoint-method noise
+- **High performance** -- NeoSolver (dense + sparse column-LU with AMD ordering), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
-- **910+ tests** validated against ngspice with tolerances as tight as 1e-6
+- **926+ tests** validated against ngspice with tolerances as tight as 1e-6
 
 ## Python
 
@@ -123,6 +123,7 @@ cd build && ctest -j$(nproc)
 | Diode | Standard diode (level 1) |
 | BJT | Gummel-Poon, VBIC (levels 4/9/12/13) |
 | JFET | JFET (Shichman-Hodges), JFET2 (Parker-Skellern) |
+| MESFET | MES (GaAs MESFET -- NMF/PMF) |
 | HFET | HFET1 (Curtice Cubic), HFET2 (Chalmers) |
 | MOSFET | MOS1, MOS3, MOS9, BSIM3v32, BSIM3, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV |
 
@@ -182,19 +183,19 @@ Benchmarked in-process against ngspice-42 on Intel Core Ultra 9 285K, GCC 14, `-
 
 | Benchmark | ngspice | neospice | Speedup |
 |---|---:|---:|---:|
-| **Parse** THS4131 (77 nodes) | 436 us | 196 us | 2.2x |
-| **Parse** resistor divider | 44 us | 8 us | 5.3x |
-| **DC OP** THS4131 (14 BJTs) | 624 us | 337 us | 1.8x |
-| **DC OP** resistor divider | 50 us | 6 us | 7.8x |
-| **AC** THS4131, 81 points | 979 us | 544 us | 1.8x |
-| **AC** THS4131, 8001 points | 21.7 ms | 18.5 ms | 1.2x |
-| **AC** RC lowpass, 91 points | 114 us | 15 us | 7.7x |
-| **Transient** RC lowpass, 500 us | 1.12 ms | 642 us | 1.7x |
-| **Transient** RLC series, 100 us | 1.57 ms | 5.19 ms | 3.3x ngspice |
-| **Transient** pulse source, 100 us | 995 us | 342 us | 2.9x |
+| **Parse** THS4131 (77 nodes) | 433 us | 196 us | 2.2x |
+| **Parse** resistor divider | 43 us | 8 us | 5.1x |
+| **DC OP** THS4131 (14 BJTs) | 621 us | 362 us | 1.7x |
+| **DC OP** resistor divider | 48 us | 6 us | 7.9x |
+| **AC** THS4131, 81 points | 959 us | 524 us | 1.8x |
+| **AC** THS4131, 8001 points | 21.3 ms | 19.1 ms | 1.1x |
+| **AC** RC lowpass, 91 points | 111 us | 14 us | 7.9x |
+| **Transient** RC lowpass, 500 us | 1.11 ms | 633 us | 1.8x |
+| **Transient** RLC series, 100 us | 1.56 ms | 5.01 ms | 3.2x ngspice |
+| **Transient** pulse source, 100 us | 986 us | 340 us | 2.9x |
 | **Noise** resistor divider, 91 pts | 88 us | 55 us | 1.6x |
-| **DC sweep** V1, 1001 pts | 819 us | 209 us | 3.9x |
-| **Total** | **28.6 ms** | **26.0 ms** | **1.10x** |
+| **DC sweep** V1, 1001 pts | 808 us | 199 us | 4.1x |
+| **Total** | **28.0 ms** | **26.4 ms** | **1.06x** |
 
 See [docs/performance-comparison-with-ngspice.md](docs/performance-comparison-with-ngspice.md) for the full methodology and results.
 
@@ -215,7 +216,7 @@ cli/          Command-line interface
 src/
   api/        C++ API (Simulator, CircuitBuilder, Result types)
   core/       Analysis engines and linear solvers
-  devices/    28 device model implementations
+  devices/    29 device model implementations
   parser/     Netlist parser and expression evaluator
   output/     Raw file writer
 python/

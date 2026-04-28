@@ -2,8 +2,8 @@
 
 ## Current State
 
-neospice is a modern C++ SPICE simulator with 28 device models and 8 analysis types,
-validated against ngspice across 910+ C++ tests with tolerances as tight as 1e-6,
+neospice is a modern C++ SPICE simulator with 29 device models and 8 analysis types,
+validated against ngspice across 926+ C++ tests with tolerances as tight as 1e-6,
 plus 49 Python binding tests.
 
 ### Analyses
@@ -21,7 +21,7 @@ Fourier/THD, parameter sweep (.step), and .measure post-processing.
 | Switches | S (voltage), W (current) — hysteresis |
 | T-Line | T (lossless Branin), O (LTRA lossy) |
 | Diode/BJT | Diode, BJT (Gummel-Poon), VBIC (level 4/9/12/13) |
-| JFET/HFET | JFET, JFET2, HFET1, HFET2 |
+| JFET/MESFET/HFET | JFET, JFET2, MES, HFET1, HFET2 |
 | MOSFET | MOS1, MOS3, MOS9, BSIM3v32, BSIM3, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV |
 
 ### Netlist Features
@@ -145,7 +145,7 @@ single extra solve. Essential for optimization and currently absent from ngspice
 
 **Priority: Medium**
 
-When a component value changes, avoid full re-solve. The KLU refactorize path
+When a component value changes, avoid full re-solve. The NeoSolver refactorize path
 already supports partial matrix updates — exploit this for interactive workflows.
 
 ### Goals
@@ -190,7 +190,7 @@ matrix operations to GPU.
 
 ### Devices — Completed
 MOS1, MOS3, MOS9, BSIM3v32, BSIM3, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV, BJT,
-VBIC, JFET, JFET2, HFET1, HFET2, Diode, LTRA, ASRC, and all passives/sources/switches.
+VBIC, JFET, JFET2, MES, HFET1, HFET2, Diode, LTRA, ASRC, and all passives/sources/switches.
 
 ### Analyses — Remaining Gaps
 - Distortion analysis (`.disto`)
@@ -248,7 +248,7 @@ auto ckt = neospice::CircuitBuilder()
 
 ### Live Parameter Mutation
 
-Change component values without re-parsing. Triggers KLU refactorize, not full
+Change component values without re-parsing. Triggers NeoSolver refactorize, not full
 symbolic re-analysis.
 
 ```cpp
