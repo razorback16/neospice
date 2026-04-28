@@ -27,7 +27,7 @@ TEST_F(NgspiceCompareTest, ResistorDividerDC) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-8, 1e-12});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -45,7 +45,7 @@ TEST_F(NgspiceCompareTest, TlineDC) {
         else
             ++it;
     }
-    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-5, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -60,7 +60,7 @@ TEST_F(NgspiceCompareTest, RCACAnalysis) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis));
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-3, 1e-9});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -71,7 +71,7 @@ TEST_F(NgspiceCompareTest, IsrcACAnalysis) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis));
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-3, 1e-9});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -90,7 +90,7 @@ TEST_F(NgspiceCompareTest, RCLowpassTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-5, 1e-4});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {3e-5, 3e-5});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -112,7 +112,7 @@ TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-5, 1e-4});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-5, 1e-5});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -205,7 +205,7 @@ TEST_F(NgspiceCompareTest, ResistorDividerNoise) {
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<NoiseResult>(cs_result.analysis));
     ASSERT_EQ(ng_result.frequency.size(), std::get<NoiseResult>(cs_result.analysis).frequency.size());
-    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-3, 1e-15});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-5, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -218,7 +218,7 @@ TEST_F(NgspiceCompareTest, RCLowpassNoise) {
     ASSERT_TRUE(std::holds_alternative<NoiseResult>(cs_result.analysis));
     ASSERT_EQ(ng_result.frequency.size(), std::get<NoiseResult>(cs_result.analysis).frequency.size());
     // RC lowpass rolls off noise — input-referred stays flat, output follows |H(f)|
-    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-2, 1e-15});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-5, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -253,7 +253,7 @@ TEST_F(NgspiceCompareTest, TlineAC) {
         else
             ++it;
     }
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-3, 1e-9});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -264,7 +264,7 @@ TEST_F(NgspiceCompareTest, PulseDefaultsTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-5, 1e-5});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-7, 1e-7});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -275,7 +275,7 @@ TEST_F(NgspiceCompareTest, PwlSourceTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-6, 1e-6});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-7, 1e-7});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -304,7 +304,7 @@ TEST_F(NgspiceCompareTest, SffmSourceTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-3, 1e-3});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2e-3, 5e-4});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -315,7 +315,7 @@ TEST_F(NgspiceCompareTest, AmSourceTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-4, 1e-3});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-4, 1e-4});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -329,7 +329,7 @@ TEST_F(NgspiceCompareTest, ResistorTempCoeff) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-7, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -343,7 +343,7 @@ TEST_F(NgspiceCompareTest, ResistorMultiplier) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-7, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -357,7 +357,7 @@ TEST_F(NgspiceCompareTest, AsrcTemper) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-8, 1e-12});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -371,7 +371,7 @@ TEST_F(NgspiceCompareTest, AsrcPwl) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-8, 1e-12});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -385,7 +385,7 @@ TEST_F(NgspiceCompareTest, AsrcHertz) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-8, 1e-12});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -400,7 +400,7 @@ TEST_F(NgspiceCompareTest, AsrcDdtTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-5, 1e-5});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-7, 1e-7});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -439,7 +439,7 @@ TEST_F(NgspiceCompareTest, ResistorModelCard) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-7, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -456,7 +456,7 @@ TEST_F(NgspiceCompareTest, InductorModelCard) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis));
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-3, 1e-9});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -494,7 +494,7 @@ TEST_F(NgspiceCompareTest, CccsPolyDC) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-8, 1e-12});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -504,7 +504,7 @@ TEST_F(NgspiceCompareTest, CccsPoly2DC) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-8, 1e-12});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -532,7 +532,7 @@ TEST_F(NgspiceCompareTest, CcvsPolyDC) {
         else
             ++it;
     }
-    auto cmp = compare_dc(ng_result, cs_result, {1e-6, 1e-12});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-8, 1e-12});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -547,7 +547,7 @@ TEST_F(NgspiceCompareTest, BSIM4v7_Noise_TnoiMod2) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<NoiseResult>(cs_result.analysis));
-    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {0.05, 1e-30});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-5, 1e-30});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

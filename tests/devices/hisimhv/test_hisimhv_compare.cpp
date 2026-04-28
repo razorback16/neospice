@@ -164,7 +164,7 @@ TEST_F(HiSIMHVValidation, NmosAcResponse) {
 
     // Compare AC results. HiSIM_HV AC should be close since both use the same
     // linearized model. Use 5% relative tolerance, 1e-9 absolute.
-    auto cmp = compare_ac(ng_result, cs_result, {5e-2, 1e-9});
+    auto cmp = compare_ac(ng_result, cs_result, {1e-6, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -218,7 +218,7 @@ TEST_F(HiSIMHVValidation, NmosNoise) {
 
     // Compare noise results. Use 10% relative tolerance since noise models
     // can have small implementation differences (induced gate noise, etc.).
-    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-1, 1e-30});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-5, 1e-30});
     EXPECT_TRUE(cmp.passed)
         << "Noise comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

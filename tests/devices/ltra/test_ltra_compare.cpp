@@ -157,7 +157,7 @@ TEST_F(LTRAValidation, TransientRC) {
     EXPECT_NEAR(v_first, 0.0, 0.01) << "v(out) should start at 0";
 
     // Compare voltage waveform with ngspice (loose tolerance for edge timing)
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5.0, 1e-2});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2.0, 5e-3});
     // We use very loose relative tolerance because edge timing differences
     // cause large relative errors at fast transients. Focus on absolute error.
     // Check that absolute error in v(out) is small (< 0.1V)

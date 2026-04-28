@@ -27,7 +27,7 @@ TEST_F(NgspiceCompareTest, DiodeDC) {
     auto ng_result = ngspice_->run_dc(path);
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run_dc(ckt);
-    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-12});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-4, 1e-12});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -61,7 +61,7 @@ TEST_F(NgspiceCompareTest, DiodeNoise) {
     // Diode shot noise + resistor thermal noise; both white (flat)
     // Tolerance wider than resistor-only because ngspice includes Rs thermal
     // noise and flicker noise that our simplified model omits.
-    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {5e-2, 1e-15});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {5e-4, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

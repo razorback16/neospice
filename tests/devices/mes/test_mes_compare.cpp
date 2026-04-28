@@ -76,7 +76,7 @@ TEST_F(MesValidation, AcNmfCommonSource) {
 
     ASSERT_FALSE(cs_result.frequency.empty());
 
-    auto cmp = compare_ac(ng_result, cs_result, {0.25, 10.0});
+    auto cmp = compare_ac(ng_result, cs_result, {1e-6, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

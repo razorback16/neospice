@@ -89,7 +89,7 @@ TEST_F(HFET1Validation, NhfetAcResponse) {
             ++it;
     }
 
-    auto cmp = compare_ac(ng_result, cs_result, {5e-2, 1e-9});
+    auto cmp = compare_ac(ng_result, cs_result, {1e-3, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

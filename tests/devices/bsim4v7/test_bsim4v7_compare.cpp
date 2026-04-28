@@ -150,7 +150,7 @@ TEST_F(NgspiceCompareTest, NMOS_DC_RGATEMOD) {
     // RGATEMOD=1 model matches ngspice to floating-point precision.
     // Gate current i(v2) at noise floor is worst signal.
     // Measured worst: i(v2) error=0.002 (abstol-limited).
-    auto cmp = compare_dc(ng_result, std::get<DCResult>(cs_result.analysis), {1e-2, 1e-9});
+    auto cmp = compare_dc(ng_result, std::get<DCResult>(cs_result.analysis), {5e-3, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

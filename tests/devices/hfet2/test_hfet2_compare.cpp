@@ -159,7 +159,7 @@ TEST_F(HFET2Validation, NhfetTransientPulse) {
     ASSERT_FALSE(cs_result.time.empty());
 
     // Compare transient results with 5% relative, 10mV absolute tolerance
-    auto cmp = compare_transient(ng_result, cs_result, {5e-2, 10e-3});
+    auto cmp = compare_transient(ng_result, cs_result, {3e-2, 5e-3});
     EXPECT_TRUE(cmp.passed)
         << "Transient comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -193,7 +193,7 @@ TEST_F(HFET2Validation, NhfetAcSmallSignal) {
     ASSERT_FALSE(cs_result.frequency.empty());
 
     // Compare AC magnitude and phase with 5% relative, 1e-6 absolute tolerance
-    auto cmp = compare_ac(ng_result, cs_result, {5e-2, 1e-6});
+    auto cmp = compare_ac(ng_result, cs_result, {1e-4, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

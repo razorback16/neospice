@@ -260,7 +260,7 @@ TEST_F(HiSIM2Validation, NmosAcResponse) {
 
     // Compare AC results. HiSIM2 AC should be close since both use the same
     // linearized model. Use 5% relative tolerance, 1e-9 absolute.
-    auto cmp = compare_ac(ng_result, cs_result, {5e-2, 1e-9});
+    auto cmp = compare_ac(ng_result, cs_result, {1e-6, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

@@ -99,7 +99,7 @@ TEST_F(BSIM3v32Validation, NMOS_CS_Amplifier_AC) {
     // the same model and linearize at the same DC operating point.
     // Use 25% relative tolerance to account for sensitivity to DC bias
     // differences at high frequency.
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {0.25, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-6, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

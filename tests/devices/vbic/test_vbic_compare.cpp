@@ -166,7 +166,7 @@ TEST_F(VBICValidation, AcSmallSignal) {
             ++it;
     }
 
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-2, 1e-9});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-5, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

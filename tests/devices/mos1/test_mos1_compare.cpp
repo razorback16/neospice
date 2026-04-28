@@ -309,7 +309,7 @@ TEST_F(MOS1Validation, NmosAcResponse) {
 
     // Compare AC results. MOS1 AC should be close since both use the same
     // linearized model. Use 5% relative tolerance, 1e-9 absolute.
-    auto cmp = compare_ac(ng_result, cs_result, {5e-2, 1e-9});
+    auto cmp = compare_ac(ng_result, cs_result, {1e-10, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -382,7 +382,7 @@ TEST_F(MOS1Validation, NmosTransientPulse) {
     // Compare at ngspice's time grid with interpolation of neospice.
     // Tolerance: 55% relative, 50mV absolute — MOS1 Meyer capacitance model
     // is sensitive to timestep control differences near switching edges.
-    auto cmp = compare_transient(ng_filtered, cs_result, {5.5e-1, 5e-2});
+    auto cmp = compare_transient(ng_filtered, cs_result, {2e-1, 2e-2});
     EXPECT_TRUE(cmp.passed)
         << "Transient comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
