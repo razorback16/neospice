@@ -51,6 +51,9 @@ public:
     /// Deduplicate, sort by (col, row), and return a SparsityPattern.
     SparsityPattern build() const;
 
+    /// Check whether a diagonal entry (i,i) has been registered.
+    bool has_diagonal(int32_t i) const;
+
 private:
     int32_t n_;
     std::vector<std::pair<int32_t, int32_t>> entries_;

@@ -19,7 +19,12 @@ NewtonResult gmin_stepping(Circuit& ckt, LinearSolver& solver,
 
     while (gmin >= target_gmin) {
         step_opts.gmin = gmin;
-        auto result = newton_solve(ckt, solver, solution, step_opts);
+        NewtonResult result;
+        try {
+            result = newton_solve(ckt, solver, solution, step_opts);
+        } catch (const std::runtime_error&) {
+            return {false, 0, solution};
+        }
         if (!result.converged) {
             return {false, 0, solution};
         }
@@ -32,7 +37,12 @@ NewtonResult gmin_stepping(Circuit& ckt, LinearSolver& solver,
 
     // Final solve with the target gmin
     step_opts.gmin = target_gmin;
-    auto result = newton_solve(ckt, solver, solution, step_opts);
+    NewtonResult result;
+    try {
+        result = newton_solve(ckt, solver, solution, step_opts);
+    } catch (const std::runtime_error&) {
+        return {false, 0, solution};
+    }
     if (result.converged) {
         return result;
     }
@@ -84,7 +94,12 @@ NewtonResult source_stepping(Circuit& ckt, LinearSolver& solver,
 
     // Start with all sources at zero and solve
     scale_sources(0.0);
-    auto result = newton_solve(ckt, solver, solution, opts);
+    NewtonResult result;
+    try {
+        result = newton_solve(ckt, solver, solution, opts);
+    } catch (const std::runtime_error&) {
+        return {false, 0, solution};
+    }
     if (!result.converged) {
         return {false, 0, solution};
     }
@@ -95,19 +110,21 @@ NewtonResult source_stepping(Circuit& ckt, LinearSolver& solver,
         if (next_frac > 1.0) next_frac = 1.0;
 
         scale_sources(next_frac);
-        result = newton_solve(ckt, solver, solution, opts);
+        try {
+            result = newton_solve(ckt, solver, solution, opts);
+        } catch (const std::runtime_error&) {
+            result.converged = false;
+        }
 
         if (result.converged) {
             solution = result.solution;
             fraction = next_frac;
-            // If we had reduced the step, try growing it back (up to 0.1)
             if (step < 0.1) step *= 2.0;
             if (step > 0.1) step = 0.1;
         } else {
             // Halve step and retry from last successful fraction
             step *= 0.5;
             if (step < min_step) {
-                // Cannot refine further — source stepping failed
                 return {false, 0, solution};
             }
         }
@@ -138,7 +155,12 @@ NewtonResult pseudo_transient(Circuit& ckt, LinearSolver& solver,
         double G_pseudo = C_pseudo / dt_pseudo;
         step_opts.gmin = target_gmin + G_pseudo;
 
-        auto result = newton_solve(ckt, solver, solution, step_opts);
+        NewtonResult result;
+        try {
+            result = newton_solve(ckt, solver, solution, step_opts);
+        } catch (const std::runtime_error&) {
+            result.converged = false;
+        }
 
         if (result.converged) {
             solution = result.solution;
@@ -160,9 +182,14 @@ NewtonResult pseudo_transient(Circuit& ckt, LinearSolver& solver,
 
     // Final solve with the true gmin (no pseudo-capacitor contribution)
     step_opts.gmin = target_gmin;
-    auto result = newton_solve(ckt, solver, solution, step_opts);
-    if (result.converged) {
-        return result;
+    NewtonResult final_result;
+    try {
+        final_result = newton_solve(ckt, solver, solution, step_opts);
+    } catch (const std::runtime_error&) {
+        return {false, 0, solution};
+    }
+    if (final_result.converged) {
+        return final_result;
     }
     return {false, 0, solution};
 }

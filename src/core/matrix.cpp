@@ -71,6 +71,12 @@ void SparsityBuilder::add(int32_t row, int32_t col) {
     entries_.emplace_back(row, col);
 }
 
+bool SparsityBuilder::has_diagonal(int32_t i) const {
+    for (const auto& [r, c] : entries_)
+        if (r == i && c == i) return true;
+    return false;
+}
+
 SparsityPattern SparsityBuilder::build() const {
     auto sorted = entries_;
     // Sort by (col, row) for CSC layout

@@ -52,6 +52,12 @@ bool Circuit::is_internal_node(int32_t idx) const {
     return internal_nodes_[idx];
 }
 
+bool Circuit::has_organic_diagonal(int32_t idx) const {
+    if (idx < 0 || idx >= static_cast<int32_t>(organic_diagonal_.size()))
+        return false;
+    return organic_diagonal_[idx];
+}
+
 int32_t Circuit::node_index(const std::string& name) const {
     if (name == "0" || name == "gnd" || name == "GND") {
         return GROUND_INTERNAL;
@@ -93,6 +99,17 @@ void Circuit::finalize() {
     SparsityBuilder builder(num_vars_);
     for (auto& dev : devices_) {
         dev->stamp_pattern(builder);
+    }
+
+    // Record which node diagonals are "organic" (stamped by devices) before
+    // adding blanket structural diagonals.  newton_solve uses this to inject
+    // gmin only where devices contribute — V-source-driven nodes stay at
+    // zero, avoiding spurious gmin current artifacts.
+    organic_diagonal_.assign(next_node_, false);
+    for (int32_t i = 0; i < next_node_; ++i) {
+        organic_diagonal_[i] = builder.has_diagonal(i);
+        if (!organic_diagonal_[i])
+            builder.add(i, i);
     }
     pattern_ = std::make_unique<SparsityPattern>(builder.build());
 

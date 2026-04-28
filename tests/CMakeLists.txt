@@ -15,8 +15,7 @@ add_executable(neospice_tests
     unit/test_matrix.cpp
     unit/test_amd.cpp
     unit/test_btf.cpp
-    unit/test_btf_solver.cpp
-    unit/test_small_solver.cpp
+    unit/test_neo_solver.cpp
     unit/test_resistor.cpp
     unit/test_vsource.cpp
     unit/test_isource.cpp
@@ -93,6 +92,9 @@ add_executable(neospice_tests
     unit/test_ringing.cpp
     unit/test_circuit_builder.cpp
     unit/test_introspection.cpp
+    unit/test_kicad_lm358_ns.cpp
+    unit/test_kicad_bc547a.cpp
+    unit/test_kicad_opa1632.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
@@ -155,9 +157,9 @@ target_compile_definitions(bench_comprehensive PRIVATE
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )
 
-add_executable(bench_small_solver
-    bench/bench_small_solver.cpp
+add_executable(bench_neo_solver
+    bench/bench_neo_solver.cpp
 )
-target_link_libraries(bench_small_solver PRIVATE neospice_lib)
-target_include_directories(bench_small_solver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(bench_neo_solver PRIVATE neospice_lib)
+target_include_directories(bench_neo_solver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

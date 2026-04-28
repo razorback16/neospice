@@ -68,21 +68,30 @@ NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
             dev->evaluate(solution, mat, rhs);
         }
 
-        // Add gmin to diagonal of node equations
+        // Add gmin only to diagonals that devices actually stamp into.
+        // Non-organic diagonals (e.g. VCVS-only nodes) stay at zero so
+        // the solver picks better off-diagonal pivots and V-source nodes
+        // don't get a spurious gmin current artifact.
         for (int32_t i = 0; i < num_nodes; ++i) {
-            try {
-                MatrixOffset off = pattern.offset(i, i);
-                mat.add(off, opts.gmin);
-            } catch (const std::out_of_range&) {
-                // Diagonal entry doesn't exist in pattern, skip
-            }
+            if (!ckt.has_organic_diagonal(i)) continue;
+            MatrixOffset off = pattern.offset(i, i);
+            mat.add(off, opts.gmin);
         }
 
-        // Factorize
-        if (iter == 0) {
-            solver.numeric(pattern, mat);
-        } else {
-            solver.refactorize(mat);
+        // Factorize: try refactorize first (reuses pivot order), fall back
+        // to full numeric factorization if the pivot order is unstable.
+        try {
+            if (iter == 0) {
+                solver.numeric(pattern, mat);
+            } else {
+                try {
+                    solver.refactorize(mat);
+                } catch (const std::runtime_error&) {
+                    solver.numeric(pattern, mat);
+                }
+            }
+        } catch (const std::runtime_error&) {
+            return {false, iter, solution};
         }
 
         // Solve: rhs is overwritten with the delta or new solution

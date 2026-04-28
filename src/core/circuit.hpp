@@ -189,6 +189,7 @@ public:
 
     void mark_internal_node(int32_t idx);
     bool is_internal_node(int32_t idx) const;
+    bool has_organic_diagonal(int32_t idx) const;
 
     std::vector<std::string> node_names() const;
     std::vector<std::string> device_names() const;
@@ -243,6 +244,7 @@ private:
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     std::vector<bool>                        internal_nodes_;
+    std::vector<bool>                        organic_diagonal_;
     int32_t next_node_ = 0;
     int32_t num_vars_  = 0;
     int32_t num_states_ = 0;

@@ -72,7 +72,12 @@ DCResult solve_dc(Circuit& ckt) {
 
     // 3. Try newton_solve first (initial junction guess mode)
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    auto result = newton_solve(ckt, *solver, solution, ckt.options);
+    NewtonResult result;
+    try {
+        result = newton_solve(ckt, *solver, solution, ckt.options);
+    } catch (const std::runtime_error&) {
+        result.converged = false;
+    }
     if (result.converged) {
         solution = result.solution;
         sim_status.iterations = result.iterations;

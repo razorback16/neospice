@@ -4,10 +4,10 @@
 
 namespace neospice {
 
-class SmallSolver : public LinearSolver {
+class NeoSolver : public LinearSolver {
 public:
-    SmallSolver();
-    ~SmallSolver() override = default;
+    NeoSolver();
+    ~NeoSolver() override = default;
 
     void symbolic(const SparsityPattern& pattern) override;
     void numeric(const SparsityPattern& pattern, const NumericMatrix& mat) override;
@@ -21,8 +21,6 @@ public:
 private:
     static constexpr int32_t DENSE_LIMIT = 12;
     // Diagonal pivot is accepted if |diag| >= threshold * max_col.
-    // KLU uses 0.001 but relies on SuiteSparse AMD's high-quality ordering.
-    // Our simpler AMD needs a stronger threshold for numerical stability.
     static constexpr double PIVOT_THRESHOLD = 0.1;
 
     int32_t n_ = 0;
@@ -49,6 +47,9 @@ private:
     void dense_solve_complex(double* rhs) const;
 
     // ---------- Sparse tier (n >= DENSE_LIMIT) ----------
+    // Maximum transversal row permutation (match_perm_[col] = row)
+    std::vector<int32_t> match_perm_;
+
     // AMD ordering
     std::vector<int32_t> amd_perm_;    // P[new] = old_col
     std::vector<int32_t> amd_inv_;     // Q[old] = new_col

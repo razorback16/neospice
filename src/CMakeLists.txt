@@ -21,9 +21,9 @@ add_library(neospice_lib
     core/matrix.cpp
     core/amd.cpp
     core/btf.cpp
-    core/btf_solver.cpp
+    core/matching.cpp
     core/linear_solver.cpp
-    core/small_solver.cpp
+    core/neo_solver.cpp
     core/circuit.cpp
     core/newton.cpp
     core/convergence.cpp

@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
-#include "core/small_solver.hpp"
-#include "core/btf_solver.hpp"
+#include "core/neo_solver.hpp"
 #include "core/linear_solver.hpp"
 #include "core/matrix.hpp"
 
@@ -14,12 +13,12 @@ static SparsityPattern make_dense_pattern(int32_t n) {
     return sb.build();
 }
 
-TEST(SmallSolver, Solve1x1) {
+TEST(NeoSolver, Solve1x1) {
     SparsityPattern pat = make_dense_pattern(1);
     NumericMatrix mat(pat);
     mat.add(pat.offset(0, 0), 3.0);
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
@@ -28,7 +27,7 @@ TEST(SmallSolver, Solve1x1) {
     EXPECT_NEAR(rhs[0], 3.0, 1e-12);
 }
 
-TEST(SmallSolver, Solve2x2) {
+TEST(NeoSolver, Solve2x2) {
     // [2 1; 1 3]x = [5; 7] -> x = [1.6; 1.8]
     SparsityPattern pat = make_dense_pattern(2);
     NumericMatrix mat(pat);
@@ -37,7 +36,7 @@ TEST(SmallSolver, Solve2x2) {
     mat.add(pat.offset(0, 1), 1.0);
     mat.add(pat.offset(1, 1), 3.0);
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
@@ -47,7 +46,7 @@ TEST(SmallSolver, Solve2x2) {
     EXPECT_NEAR(rhs[1], 1.8, 1e-10);
 }
 
-TEST(SmallSolver, Solve5x5) {
+TEST(NeoSolver, Solve5x5) {
     // Diagonally dominant 5x5
     int32_t n = 5;
     SparsityPattern pat = make_dense_pattern(n);
@@ -57,7 +56,7 @@ TEST(SmallSolver, Solve5x5) {
         for (int32_t j = 0; j < n; ++j)
             mat.add(pat.offset(i, j), (i == j) ? 10.0 : 1.0);
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
@@ -73,7 +72,7 @@ TEST(SmallSolver, Solve5x5) {
         EXPECT_NEAR(rhs[i], x_true[i], 1e-10);
 }
 
-TEST(SmallSolver, Refactorize) {
+TEST(NeoSolver, Refactorize) {
     SparsityPattern pat = make_dense_pattern(2);
     NumericMatrix mat(pat);
     mat.add(pat.offset(0, 0), 2.0);
@@ -81,7 +80,7 @@ TEST(SmallSolver, Refactorize) {
     mat.add(pat.offset(0, 1), 1.0);
     mat.add(pat.offset(1, 1), 3.0);
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
@@ -100,14 +99,14 @@ TEST(SmallSolver, Refactorize) {
     EXPECT_NEAR(rhs[1], 3.0, 1e-10);
 }
 
-TEST(SmallSolver, SolveBeforeSymbolicThrows) {
-    SmallSolver solver;
+TEST(NeoSolver, SolveBeforeSymbolicThrows) {
+    NeoSolver solver;
     std::vector<double> rhs = {1.0};
     EXPECT_THROW(solver.solve(rhs), std::logic_error);
 }
 
-TEST(SmallSolver, NumericBeforeSymbolicThrows) {
-    SmallSolver solver;
+TEST(NeoSolver, NumericBeforeSymbolicThrows) {
+    NeoSolver solver;
     SparsityPattern pat = make_dense_pattern(2);
     NumericMatrix mat(pat);
     mat.add(pat.offset(0, 0), 1.0);
@@ -115,8 +114,8 @@ TEST(SmallSolver, NumericBeforeSymbolicThrows) {
     EXPECT_THROW(solver.numeric(pat, mat), std::logic_error);
 }
 
-TEST(SmallSolver, RefactorizeBeforeNumericThrows) {
-    SmallSolver solver;
+TEST(NeoSolver, RefactorizeBeforeNumericThrows) {
+    NeoSolver solver;
     SparsityPattern pat = make_dense_pattern(2);
     NumericMatrix mat(pat);
     mat.add(pat.offset(0, 0), 1.0);
@@ -125,13 +124,13 @@ TEST(SmallSolver, RefactorizeBeforeNumericThrows) {
     EXPECT_THROW(solver.refactorize(mat), std::logic_error);
 }
 
-TEST(SmallSolver, SolveSizeMismatchThrows) {
+TEST(NeoSolver, SolveSizeMismatchThrows) {
     SparsityPattern pat = make_dense_pattern(2);
     NumericMatrix mat(pat);
     mat.add(pat.offset(0, 0), 1.0);
     mat.add(pat.offset(1, 1), 1.0);
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
@@ -139,8 +138,8 @@ TEST(SmallSolver, SolveSizeMismatchThrows) {
     EXPECT_THROW(solver.solve(rhs), std::invalid_argument);
 }
 
-TEST(SmallSolver, ComplexBeforeSymbolicThrows) {
-    SmallSolver solver;
+TEST(NeoSolver, ComplexBeforeSymbolicThrows) {
+    NeoSolver solver;
     SparsityPattern pat = make_dense_pattern(2);
     std::vector<double> ax = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0};
     std::vector<double> rhs = {1.0, 0.0, 0.0, 0.0};
@@ -150,10 +149,10 @@ TEST(SmallSolver, ComplexBeforeSymbolicThrows) {
     EXPECT_THROW(solver.solve_complex(rhs), std::logic_error);
 }
 
-TEST(SmallSolver, ComplexSolve1x1) {
+TEST(NeoSolver, ComplexSolve1x1) {
     // (3+4i)x = (11+2i) -> x = (11+2i)(3-4i)/25 = (41-38i)/25 = (1.64, -1.52)
     SparsityPattern pat = make_dense_pattern(1);
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
 
     // ax: interleaved [real, imag] for each CSC entry
@@ -166,13 +165,13 @@ TEST(SmallSolver, ComplexSolve1x1) {
     EXPECT_NEAR(rhs[1], -1.52, 1e-10);
 }
 
-TEST(SmallSolver, ComplexSolve2x2) {
+TEST(NeoSolver, ComplexSolve2x2) {
     // [(2+1i) (1+0i)] [x0]   [(5+3i)]
     // [(0+0i) (3+2i)] [x1] = [(6+4i)]
     // x1 = (6+4i)/(3+2i) = (26/13, 0/13) = (2, 0)
     // x0 = ((5+3i) - (1+0i)*(2+0i)) / (2+1i) = (3+3i)/(2+1i) = (9/5, 3/5) = (1.8, 0.6)
     SparsityPattern pat = make_dense_pattern(2);
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
 
     // CSC order: col 0: (0,0)=(2+1i), (1,0)=(0+0i); col 1: (0,1)=(1+0i), (1,1)=(3+2i)
@@ -192,9 +191,9 @@ TEST(SmallSolver, ComplexSolve2x2) {
     EXPECT_NEAR(rhs[3], 0.0, 1e-10);
 }
 
-TEST(SmallSolver, ComplexRefactorize) {
+TEST(NeoSolver, ComplexRefactorize) {
     SparsityPattern pat = make_dense_pattern(2);
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
 
     // First factorization
@@ -207,29 +206,35 @@ TEST(SmallSolver, ComplexRefactorize) {
     std::vector<double> ax2 = {4.0, 0.0, 2.0, 0.0, 1.0, 1.0, 3.0, 0.0};
     solver.refactorize_complex(ax2);
 
-    // Solve: [(4+0i)(1+1i)] [x0]   [(10+2i)]
-    //        [(2+0i)(3+0i)] [x1] = [(8+0i)]
-    // Verify against BTF
-    BTFSolver btf;
-    btf.symbolic(pat);
-    btf.numeric_complex(pat, ax2);
-    std::vector<double> rhs_btf = {10.0, 2.0, 8.0, 0.0};
-    btf.solve_complex(rhs_btf);
-
+    // Solve and verify via A*x = b
+    // A = [(4+0i)(1+1i); (2+0i)(3+0i)]
+    // rhs = [(10+2i); (8+0i)]
     std::vector<double> rhs2 = {10.0, 2.0, 8.0, 0.0};
     solver.solve_complex(rhs2);
-    for (int i = 0; i < 4; ++i)
-        EXPECT_NEAR(rhs2[i], rhs_btf[i], 1e-10);
+
+    // Verify by computing A*x and checking it equals b
+    // x0 = rhs2[0] + i*rhs2[1], x1 = rhs2[2] + i*rhs2[3]
+    double x0r = rhs2[0], x0i = rhs2[1], x1r = rhs2[2], x1i = rhs2[3];
+    // row 0: (4+0i)*x0 + (1+1i)*x1
+    double b0r = 4.0*x0r + (x1r - x1i);
+    double b0i = 4.0*x0i + (x1i + x1r);
+    // row 1: (2+0i)*x0 + (3+0i)*x1
+    double b1r = 2.0*x0r + 3.0*x1r;
+    double b1i = 2.0*x0i + 3.0*x1i;
+    EXPECT_NEAR(b0r, 10.0, 1e-10);
+    EXPECT_NEAR(b0i, 2.0, 1e-10);
+    EXPECT_NEAR(b1r, 8.0, 1e-10);
+    EXPECT_NEAR(b1i, 0.0, 1e-10);
 }
 
-TEST(SmallSolver, FactoryDispatch) {
+TEST(NeoSolver, FactoryDispatch) {
     auto small = create_solver(10);
-    EXPECT_NE(dynamic_cast<SmallSolver*>(small.get()), nullptr);
-    auto btf = create_solver(200);
-    EXPECT_NE(dynamic_cast<BTFSolver*>(btf.get()), nullptr);
+    EXPECT_NE(dynamic_cast<NeoSolver*>(small.get()), nullptr);
+    auto large = create_solver(200);
+    EXPECT_NE(dynamic_cast<NeoSolver*>(large.get()), nullptr);
 }
 
-TEST(SmallSolver, Solve24x24) {
+TEST(NeoSolver, Solve24x24) {
     // Boundary of dense tier: tridiagonal 24x24
     int32_t n = 24;
     SparsityBuilder sb(n);
@@ -246,27 +251,25 @@ TEST(SmallSolver, Solve24x24) {
         if (i < n - 1) mat.add(pat.offset(i, i + 1), -1.0);
     }
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
-    // Compare against BTF
-    BTFSolver btf;
-    btf.symbolic(pat);
-    btf.numeric(pat, mat);
-
-    std::vector<double> rhs_small(n), rhs_btf(n);
+    // Compute rhs = A * x_true, then verify solve recovers x_true
+    std::vector<double> x_true(n);
     for (int32_t i = 0; i < n; ++i)
-        rhs_small[i] = rhs_btf[i] = static_cast<double>(i + 1);
+        x_true[i] = static_cast<double>(i + 1);
 
-    solver.solve(rhs_small);
-    btf.solve(rhs_btf);
+    std::vector<double> rhs(n, 0.0);
+    for (auto& [r, c] : pat.entries())
+        rhs[r] += mat.value(pat.offset(r, c)) * x_true[c];
 
+    solver.solve(rhs);
     for (int32_t i = 0; i < n; ++i)
-        EXPECT_NEAR(rhs_small[i], rhs_btf[i], 1e-10);
+        EXPECT_NEAR(rhs[i], x_true[i], 1e-10);
 }
 
-TEST(SmallSolver, SparseTier25x25) {
+TEST(NeoSolver, SparseTier25x25) {
     // 25x25 tridiagonal -- crosses dense/sparse boundary
     int32_t n = 25;
     SparsityBuilder sb(n);
@@ -283,25 +286,25 @@ TEST(SmallSolver, SparseTier25x25) {
         if (i < n-1) mat.add(pat.offset(i, i+1), -1.0);
     }
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
-    BTFSolver btf;
-    btf.symbolic(pat);
-    btf.numeric(pat, mat);
-
-    std::vector<double> rhs_s(n), rhs_b(n);
-    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_b[i] = static_cast<double>(i + 1);
-
-    solver.solve(rhs_s);
-    btf.solve(rhs_b);
-
+    // Compute rhs = A * x_true, then verify solve recovers x_true
+    std::vector<double> x_true(n);
     for (int32_t i = 0; i < n; ++i)
-        EXPECT_NEAR(rhs_s[i], rhs_b[i], 1e-10);
+        x_true[i] = static_cast<double>(i + 1);
+
+    std::vector<double> rhs(n, 0.0);
+    for (auto& [r, c] : pat.entries())
+        rhs[r] += mat.value(pat.offset(r, c)) * x_true[c];
+
+    solver.solve(rhs);
+    for (int32_t i = 0; i < n; ++i)
+        EXPECT_NEAR(rhs[i], x_true[i], 1e-10);
 }
 
-TEST(SmallSolver, SparseTier100x100) {
+TEST(NeoSolver, SparseTier100x100) {
     // 100x100 banded sparse (diagonal + 3 sub/super-diagonals)
     int32_t n = 100;
     SparsityBuilder sb(n);
@@ -323,25 +326,25 @@ TEST(SmallSolver, SparseTier100x100) {
         mat.add(pat.offset(r, c), (r == c) ? 20.0 : 1.0);
     }
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
-    BTFSolver btf;
-    btf.symbolic(pat);
-    btf.numeric(pat, mat);
-
-    std::vector<double> rhs_s(n), rhs_b(n);
-    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_b[i] = static_cast<double>(i % 7 + 1);
-
-    solver.solve(rhs_s);
-    btf.solve(rhs_b);
-
+    // Compute rhs = A * x_true, then verify solve recovers x_true
+    std::vector<double> x_true(n);
     for (int32_t i = 0; i < n; ++i)
-        EXPECT_NEAR(rhs_s[i], rhs_b[i], 1e-9);
+        x_true[i] = static_cast<double>(i % 7 + 1);
+
+    std::vector<double> rhs(n, 0.0);
+    for (auto& [r, c] : pat.entries())
+        rhs[r] += mat.value(pat.offset(r, c)) * x_true[c];
+
+    solver.solve(rhs);
+    for (int32_t i = 0; i < n; ++i)
+        EXPECT_NEAR(rhs[i], x_true[i], 1e-9);
 }
 
-TEST(SmallSolver, SparseTierRefactorize) {
+TEST(NeoSolver, SparseTierRefactorize) {
     int32_t n = 50;
     SparsityBuilder sb(n);
     for (int32_t i = 0; i < n; ++i) {
@@ -357,7 +360,7 @@ TEST(SmallSolver, SparseTierRefactorize) {
         if (i < n-1) mat.add(pat.offset(i, i+1), -1.0);
     }
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric(pat, mat);
 
@@ -371,21 +374,18 @@ TEST(SmallSolver, SparseTierRefactorize) {
 
     solver.refactorize(mat);
 
-    BTFSolver btf;
-    btf.symbolic(pat);
-    btf.numeric(pat, mat);
+    // Compute rhs = A * x_true with refactored values, verify solve recovers x_true
+    std::vector<double> x_true(n, 1.0);
+    std::vector<double> rhs(n, 0.0);
+    for (auto& [r, c] : pat.entries())
+        rhs[r] += mat.value(pat.offset(r, c)) * x_true[c];
 
-    std::vector<double> rhs_s(n), rhs_b(n);
-    for (int32_t i = 0; i < n; ++i) rhs_s[i] = rhs_b[i] = 1.0;
-
-    solver.solve(rhs_s);
-    btf.solve(rhs_b);
-
+    solver.solve(rhs);
     for (int32_t i = 0; i < n; ++i)
-        EXPECT_NEAR(rhs_s[i], rhs_b[i], 1e-10);
+        EXPECT_NEAR(rhs[i], x_true[i], 1e-10);
 }
 
-TEST(SmallSolver, SparseTierComplex50x50) {
+TEST(NeoSolver, SparseTierComplex50x50) {
     int32_t n = 50;
     SparsityBuilder sb(n);
     for (int32_t i = 0; i < n; ++i) {
@@ -405,23 +405,29 @@ TEST(SmallSolver, SparseTierComplex50x50) {
         ++idx;
     }
 
-    SmallSolver solver;
+    NeoSolver solver;
     solver.symbolic(pat);
     solver.numeric_complex(pat, ax);
 
-    BTFSolver btf;
-    btf.symbolic(pat);
-    btf.numeric_complex(pat, ax);
-
-    std::vector<double> rhs_s(2*n), rhs_b(2*n);
+    // Build known rhs from x_true, verify solve recovers x_true
+    std::vector<double> x_true(2*n);
     for (int32_t i = 0; i < n; ++i) {
-        rhs_s[2*i] = rhs_b[2*i] = static_cast<double>(i+1);
-        rhs_s[2*i+1] = rhs_b[2*i+1] = 0.5;
+        x_true[2*i] = static_cast<double>(i+1);
+        x_true[2*i+1] = 0.5;
     }
 
-    solver.solve_complex(rhs_s);
-    btf.solve_complex(rhs_b);
+    // Compute rhs = A * x_true (complex matrix-vector multiply)
+    std::vector<double> rhs(2*n, 0.0);
+    idx = 0;
+    for (auto& [r, c] : pat.entries()) {
+        double ar = ax[2*idx], ai = ax[2*idx+1];
+        double xr = x_true[2*c], xi = x_true[2*c+1];
+        rhs[2*r]   += ar*xr - ai*xi;
+        rhs[2*r+1] += ar*xi + ai*xr;
+        ++idx;
+    }
 
+    solver.solve_complex(rhs);
     for (int32_t i = 0; i < 2*n; ++i)
-        EXPECT_NEAR(rhs_s[i], rhs_b[i], 1e-9);
+        EXPECT_NEAR(rhs[i], x_true[i], 1e-9);
 }
