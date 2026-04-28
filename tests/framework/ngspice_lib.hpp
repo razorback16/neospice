@@ -65,6 +65,8 @@ public:
         return ngGet_Vec_Info(const_cast<char*>(name.c_str()));
     }
 
+    char** all_plots() { return ngSpice_AllPlots(); }
+
     void reset() {
         command("destroy all");
         command("reset");

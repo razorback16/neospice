@@ -2,6 +2,7 @@
 #include "core/dc.hpp"
 #include "core/transient.hpp"
 #include "core/ac.hpp"
+#include "framework/ngspice_lib.hpp"
 #include <complex>
 #include <string>
 #include <vector>
@@ -16,7 +17,7 @@ struct NgspiceNoiseResult {
 
 class NgspiceRunner {
 public:
-    explicit NgspiceRunner(const std::string& binary_path);
+    NgspiceRunner();
     DCResult run_dc(const std::string& cir_path);
     DCSweepResult run_dc_sweep(const std::string& cir_path);
     TransientResult run_transient(const std::string& cir_path);
@@ -24,19 +25,10 @@ public:
     NgspiceNoiseResult run_noise(const std::string& cir_path);
 
 private:
-    std::string binary_;
-    std::string run_batch(const std::string& cir_path);
-
-    struct RawData {
-        std::string plot_type;
-        int num_vars = 0;
-        int num_points = 0;
-        std::vector<std::string> var_names;
-        std::vector<std::vector<double>> real_data;
-        std::vector<std::vector<std::complex<double>>> complex_data;
-        bool is_complex = false;
-    };
-    RawData parse_raw(const std::string& raw_path, const std::string& plot_filter = "");
+    NgspiceLib ng_;
+    std::string find_plot(const std::string& prefix);
+    std::vector<std::string> vec_names(const std::string& plot);
+    static std::string normalize_name(const std::string& name);
 };
 
 } // namespace neospice

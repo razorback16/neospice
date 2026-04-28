@@ -15,6 +15,9 @@ FetchContent_MakeAvailable(googletest)
 
 include(GoogleTest)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(NGSPICE REQUIRED ngspice)
+
 add_executable(neospice_tests
     unit/test_smoke.cpp
     unit/test_matrix.cpp
@@ -107,12 +110,15 @@ add_executable(neospice_tests
 target_link_libraries(neospice_tests PRIVATE
     gtest_main
     neospice_lib
+    ${NGSPICE_LIBRARIES}
 )
 
-target_include_directories(neospice_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(neospice_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${NGSPICE_INCLUDE_DIRS}
+)
 
 target_compile_definitions(neospice_tests PRIVATE
-    NGSPICE_BINARY="/usr/bin/ngspice"
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )
 
@@ -139,9 +145,6 @@ add_subdirectory(devices/hisimhv)
 add_subdirectory(devices/bsimsoi)
 
 # Performance benchmarks (requires: apt install libngspice0-dev)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(NGSPICE REQUIRED ngspice)
-
 add_executable(bench_ths4131
     bench/bench_ths4131.cpp
 )

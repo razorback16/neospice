@@ -1,279 +1,269 @@
 #include "framework/ngspice_runner.hpp"
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <iostream>
-#include <sstream>
 #include <stdexcept>
-#include <filesystem>
+#include <string>
 
 namespace neospice {
 
-NgspiceRunner::NgspiceRunner(const std::string& binary_path)
-    : binary_(binary_path) {}
+NgspiceRunner::NgspiceRunner() = default;
 
-std::string NgspiceRunner::run_batch(const std::string& cir_path) {
-    // Create a temporary directory for output
-    auto tmp_dir = std::filesystem::temp_directory_path() / "neospice_ngspice_XXXXXX";
-    std::string tmp_dir_str = tmp_dir.string();
-    char* dir = mkdtemp(tmp_dir_str.data());
-    if (!dir) {
-        throw std::runtime_error("Failed to create temp directory");
+std::string NgspiceRunner::find_plot(const std::string& prefix) {
+    char** plots = ng_.all_plots();
+    if (!plots) throw std::runtime_error("ngSpice_AllPlots returned null");
+
+    std::string best;
+    for (int i = 0; plots[i]; ++i) {
+        std::string p = plots[i];
+        std::string lower = p;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if (lower.find(prefix) == 0) {
+            if (best.empty() || p > best)
+                best = p;
+        }
     }
-    std::string raw_path = std::string(dir) + "/output.raw";
-
-    // Run ngspice in batch mode
-    std::string cmd = binary_ + " -b " + cir_path + " -r " + raw_path + " 2>&1";
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) {
-        throw std::runtime_error("Failed to run ngspice");
-    }
-
-    // Read all output (for debugging)
-    char buffer[256];
-    std::string output;
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        output += buffer;
-    }
-
-    (void)pclose(pipe);
-    if (!std::filesystem::exists(raw_path)) {
-        throw std::runtime_error("ngspice did not produce output .raw file. Output:\n" + output);
-    }
-
-    return raw_path;
+    if (best.empty())
+        throw std::runtime_error("No plot found with prefix '" + prefix + "'");
+    return best;
 }
 
-NgspiceRunner::RawData NgspiceRunner::parse_raw(const std::string& raw_path,
-                                                const std::string& plot_filter) {
-    RawData data;
-    std::ifstream file(raw_path, std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("Cannot open raw file: " + raw_path);
+std::vector<std::string> NgspiceRunner::vec_names(const std::string& plot) {
+    std::vector<std::string> names;
+    char** vecs = ng_.all_vecs(plot);
+    if (!vecs) return names;
+    for (int i = 0; vecs[i]; ++i)
+        names.emplace_back(vecs[i]);
+    return names;
+}
+
+std::string NgspiceRunner::normalize_name(const std::string& name) {
+    std::string n = name;
+    std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+
+    // The shared library API returns bare internal names while the .raw file
+    // format wraps them: node "mid" -> "v(mid)", "v1#branch" -> "i(v1)".
+    // Convert to .raw-compatible names so the comparator sees matching keys.
+
+    // Branch current: "v1#branch" -> "i(v1)"
+    auto hash_pos = n.find("#branch");
+    if (hash_pos != std::string::npos) {
+        std::string dev = n.substr(0, hash_pos);
+        n = "i(" + dev + ")";
     }
 
-    auto parse_one_plot = [&]() -> bool {
-        std::string line;
-        bool in_variables = false;
-        RawData plot;
-
-        while (std::getline(file, line)) {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-
-            if (line.find("Plotname:") == 0) {
-                plot.plot_type = line.substr(10);
-            } else if (line.find("Flags:") == 0) {
-                std::string flags = line.substr(7);
-                std::transform(flags.begin(), flags.end(), flags.begin(), ::tolower);
-                plot.is_complex = (flags.find("complex") != std::string::npos);
-            } else if (line.find("No. Variables:") == 0) {
-                plot.num_vars = std::stoi(line.substr(15));
-            } else if (line.find("No. Points:") == 0) {
-                plot.num_points = std::stoi(line.substr(12));
-            } else if (line.find("Variables:") == 0) {
-                in_variables = true;
-                continue;
-            } else if (line.find("Binary:") == 0) {
-                break;
-            }
-
-            if (in_variables && !line.empty() && (line[0] == '\t' || line[0] == ' ')) {
-                std::istringstream iss(line);
-                int idx;
-                std::string name, type;
-                iss >> idx >> name >> type;
-                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-                // ngspice wraps POLY sources in XSPICE "a$poly$" devices.
-                // Normalize: i(a$poly$e.x1.eos) → i(e.x1.eos) so names
-                // match the original netlist element names.
-                if (name.size() > 2 && name.front() == 'i' && name[1] == '(') {
-                    const std::string prefix = "a$poly$";
-                    size_t pos = name.find(prefix, 2);
-                    if (pos != std::string::npos) {
-                        name = "i(" + name.substr(pos + prefix.size());
-                    }
-                }
-                plot.var_names.push_back(name);
-            }
+    // Strip XSPICE POLY wrapper: i(a$poly$e.x1.eos) -> i(e.x1.eos)
+    if (n.size() > 2 && n[0] == 'i' && n[1] == '(') {
+        const std::string poly_prefix = "a$poly$";
+        size_t pos = n.find(poly_prefix, 2);
+        if (pos != std::string::npos) {
+            n = "i(" + n.substr(pos + poly_prefix.size());
         }
-
-        if (plot.num_vars == 0) return false;
-
-        if (plot.is_complex) {
-            plot.complex_data.resize(plot.num_vars);
-            for (auto& v : plot.complex_data) v.resize(plot.num_points);
-            for (int p = 0; p < plot.num_points; ++p) {
-                for (int v = 0; v < plot.num_vars; ++v) {
-                    double re, im;
-                    file.read(reinterpret_cast<char*>(&re), sizeof(double));
-                    file.read(reinterpret_cast<char*>(&im), sizeof(double));
-                    plot.complex_data[v][p] = std::complex<double>(re, im);
-                }
-            }
-        } else {
-            plot.real_data.resize(plot.num_vars);
-            for (auto& v : plot.real_data) v.resize(plot.num_points);
-            for (int p = 0; p < plot.num_points; ++p) {
-                for (int v = 0; v < plot.num_vars; ++v) {
-                    double val;
-                    file.read(reinterpret_cast<char*>(&val), sizeof(double));
-                    plot.real_data[v][p] = val;
-                }
-            }
-        }
-
-        std::string pt_lower = plot.plot_type;
-        std::transform(pt_lower.begin(), pt_lower.end(), pt_lower.begin(), ::tolower);
-        if (plot_filter.empty()) {
-            // No filter: return the first plot (backward compatible)
-            data = std::move(plot);
-            return false;  // stop parsing
-        }
-        if (pt_lower.find(plot_filter) != std::string::npos) {
-            data = std::move(plot);
-        }
-        return true;
-    };
-
-    while (parse_one_plot()) {}
-
-    return data;
+    }
+    // Scale/sweep vectors and special names — keep bare
+    else if (n == "time" || n == "frequency" || n == "v-sweep" ||
+             n == "onoise_spectrum" || n == "inoise_spectrum") {
+        // no wrapping
+    }
+    // Bare node name — wrap as voltage: "mid" -> "v(mid)"
+    else {
+        n = "v(" + n + ")";
+    }
+    return n;
 }
 
 DCResult NgspiceRunner::run_dc(const std::string& cir_path) {
-    std::string raw_path = run_batch(cir_path);
-    RawData raw = parse_raw(raw_path, "operating point");
-    std::filesystem::remove(raw_path);
-    std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
+    ng_.reset();
+    ng_.load_circuit(cir_path);
+    ng_.command("run");
+
+    std::string plot = find_plot("op");
+    auto names = vec_names(plot);
 
     DCResult result;
-    for (int v = 0; v < raw.num_vars; ++v) {
-        const auto& name = raw.var_names[v];
-        // Last point is the DC operating point
-        int last = raw.num_points - 1;
-        double value = raw.is_complex ? raw.complex_data[v][last].real()
-                                      : raw.real_data[v][last];
+    for (const auto& raw_name : names) {
+        std::string qname = plot + "." + raw_name;
+        pvector_info vi = ng_.get_vec_info(qname);
+        if (!vi || vi->v_length == 0) continue;
+
+        std::string name = normalize_name(raw_name);
+        int last = vi->v_length - 1;
+        double value = vi->v_compdata
+            ? vi->v_compdata[last].cx_real
+            : vi->v_realdata[last];
 
         if (name.find("v(") == 0 || name == "v-sweep") {
             result.node_voltages[name] = value;
         } else if (name.find("i(") == 0 || name.find("#branch") != std::string::npos) {
             result.branch_currents[name] = value;
         } else {
-            // Store voltages for node names too
             result.node_voltages[name] = value;
         }
     }
-
     return result;
 }
 
 DCSweepResult NgspiceRunner::run_dc_sweep(const std::string& cir_path) {
-    std::string raw_path = run_batch(cir_path);
-    RawData raw = parse_raw(raw_path);
-    std::filesystem::remove(raw_path);
-    std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
+    ng_.reset();
+    ng_.load_circuit(cir_path);
+    ng_.command("run");
+
+    std::string plot = find_plot("dc");
+    auto names = vec_names(plot);
 
     DCSweepResult result;
+    for (const auto& raw_name : names) {
+        std::string qname = plot + "." + raw_name;
+        pvector_info vi = ng_.get_vec_info(qname);
+        if (!vi || vi->v_length == 0) continue;
 
-    for (int v = 0; v < raw.num_vars; ++v) {
-        const auto& name = raw.var_names[v];
-        // ngspice names the sweep variable "v(v-sweep)" for voltage source sweeps
+        std::string name = normalize_name(raw_name);
+        std::vector<double> data(vi->v_length);
+        for (int i = 0; i < vi->v_length; ++i)
+            data[i] = vi->v_realdata[i];
+
         if (name.find("v-sweep") != std::string::npos) {
             result.sweep_var = name;
-            result.sweep_values = raw.real_data[v];
+            result.sweep_values = std::move(data);
         } else if (name.find("v(") == 0) {
-            result.voltages[name] = raw.real_data[v];
+            result.voltages[name] = std::move(data);
         } else if (name.find("i(") == 0 || name.find("#branch") != std::string::npos) {
-            result.currents[name] = raw.real_data[v];
+            result.currents[name] = std::move(data);
         } else {
-            result.voltages[name] = raw.real_data[v];
+            result.voltages[name] = std::move(data);
         }
     }
-
     return result;
 }
 
 TransientResult NgspiceRunner::run_transient(const std::string& cir_path) {
-    std::string raw_path = run_batch(cir_path);
-    RawData raw = parse_raw(raw_path);
-    std::filesystem::remove(raw_path);
-    std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
+    ng_.reset();
+    ng_.load_circuit(cir_path);
+    ng_.command("run");
+
+    std::string plot = find_plot("tran");
+    auto names = vec_names(plot);
 
     TransientResult result;
+    for (const auto& raw_name : names) {
+        std::string qname = plot + "." + raw_name;
+        pvector_info vi = ng_.get_vec_info(qname);
+        if (!vi || vi->v_length == 0) continue;
 
-    for (int v = 0; v < raw.num_vars; ++v) {
-        const auto& name = raw.var_names[v];
+        std::string name = normalize_name(raw_name);
+        std::vector<double> data(vi->v_length);
+        for (int i = 0; i < vi->v_length; ++i)
+            data[i] = vi->v_realdata[i];
+
         if (name == "time") {
-            result.time = raw.real_data[v];
+            result.time = std::move(data);
         } else if (name.find("v(") == 0) {
-            result.voltages[name] = raw.real_data[v];
+            result.voltages[name] = std::move(data);
         } else if (name.find("i(") == 0 || name.find("#branch") != std::string::npos) {
-            result.currents[name] = raw.real_data[v];
+            result.currents[name] = std::move(data);
         } else {
-            result.voltages[name] = raw.real_data[v];
+            result.voltages[name] = std::move(data);
         }
     }
-
     return result;
 }
 
 ACResult NgspiceRunner::run_ac(const std::string& cir_path) {
-    std::string raw_path = run_batch(cir_path);
-    RawData raw = parse_raw(raw_path, "ac analysis");
-    std::filesystem::remove(raw_path);
-    std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
+    ng_.reset();
+    ng_.load_circuit(cir_path);
+    ng_.command("run");
+
+    std::string plot = find_plot("ac");
+    auto names = vec_names(plot);
 
     ACResult result;
+    for (const auto& raw_name : names) {
+        std::string qname = plot + "." + raw_name;
+        pvector_info vi = ng_.get_vec_info(qname);
+        if (!vi || vi->v_length == 0) continue;
 
-    for (int v = 0; v < raw.num_vars; ++v) {
-        const auto& name = raw.var_names[v];
+        std::string name = normalize_name(raw_name);
+
         if (name == "frequency") {
-            // Frequency is stored as complex; extract real part
-            result.frequency.resize(raw.num_points);
-            for (int p = 0; p < raw.num_points; ++p) {
-                result.frequency[p] = raw.complex_data[v][p].real();
-            }
-        } else if (name.find("v(") == 0) {
-            result.voltages[name] = raw.complex_data[v];
-        } else if (name.find("i(") == 0 || name.find("#branch") != std::string::npos) {
-            result.currents[name] = raw.complex_data[v];
+            result.frequency.resize(vi->v_length);
+            for (int i = 0; i < vi->v_length; ++i)
+                result.frequency[i] = vi->v_compdata
+                    ? vi->v_compdata[i].cx_real
+                    : vi->v_realdata[i];
         } else {
-            result.voltages[name] = raw.complex_data[v];
+            std::vector<std::complex<double>> cdata(vi->v_length);
+            if (vi->v_compdata) {
+                for (int i = 0; i < vi->v_length; ++i)
+                    cdata[i] = {vi->v_compdata[i].cx_real, vi->v_compdata[i].cx_imag};
+            } else {
+                for (int i = 0; i < vi->v_length; ++i)
+                    cdata[i] = {vi->v_realdata[i], 0.0};
+            }
+            if (name.find("v(") == 0) {
+                result.voltages[name] = std::move(cdata);
+            } else if (name.find("i(") == 0 || name.find("#branch") != std::string::npos) {
+                result.currents[name] = std::move(cdata);
+            } else {
+                result.voltages[name] = std::move(cdata);
+            }
         }
     }
-
     return result;
 }
 
 NgspiceNoiseResult NgspiceRunner::run_noise(const std::string& cir_path) {
-    std::string raw_path = run_batch(cir_path);
+    ng_.reset();
+    ng_.load_circuit(cir_path);
+    ng_.command("run");
 
-    // Noise RAW files contain two plots:
-    //   Plot 0: "Noise Spectral Density Curves" — frequency, onoise_spectrum, inoise_spectrum
-    //   Plot 1: "Integrated Noise" — single-point integrated values
-    // We only need Plot 0.
-    RawData raw = parse_raw(raw_path);
-    std::filesystem::remove(raw_path);
-    std::filesystem::remove(std::filesystem::path(raw_path).parent_path());
+    // Noise produces two plots: spectral density (many points) and integrated
+    // noise (single point). Find the spectral density plot.
+    char** plots = ng_.all_plots();
+    if (!plots) throw std::runtime_error("ngSpice_AllPlots returned null");
 
+    std::string spectral_plot;
+    for (int i = 0; plots[i]; ++i) {
+        std::string p = plots[i];
+        std::string lower = p;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if (lower.find("noise") != 0) continue;
+
+        auto vnames = vec_names(p);
+        for (const auto& vn : vnames) {
+            std::string qname = p + "." + vn;
+            pvector_info vi = ng_.get_vec_info(qname);
+            if (vi && vi->v_length > 1) {
+                spectral_plot = p;
+                break;
+            }
+        }
+        if (!spectral_plot.empty()) break;
+    }
+    if (spectral_plot.empty())
+        throw std::runtime_error("No noise spectral density plot found");
+
+    auto names = vec_names(spectral_plot);
     NgspiceNoiseResult result;
 
-    int freq_idx = -1, onoise_idx = -1, inoise_idx = -1;
-    for (int v = 0; v < raw.num_vars; ++v) {
-        if (raw.var_names[v] == "frequency") freq_idx = v;
-        else if (raw.var_names[v] == "onoise_spectrum") onoise_idx = v;
-        else if (raw.var_names[v] == "inoise_spectrum") inoise_idx = v;
+    for (const auto& raw_name : names) {
+        std::string qname = spectral_plot + "." + raw_name;
+        pvector_info vi = ng_.get_vec_info(qname);
+        if (!vi || vi->v_length == 0) continue;
+
+        std::string name = normalize_name(raw_name);
+        std::vector<double> data(vi->v_length);
+        for (int i = 0; i < vi->v_length; ++i)
+            data[i] = vi->v_realdata[i];
+
+        if (name == "frequency")
+            result.frequency = std::move(data);
+        else if (name == "onoise_spectrum")
+            result.onoise_spectrum = std::move(data);
+        else if (name == "inoise_spectrum")
+            result.inoise_spectrum = std::move(data);
     }
 
-    if (freq_idx < 0 || onoise_idx < 0 || inoise_idx < 0) {
-        throw std::runtime_error("Noise RAW file missing expected variables");
-    }
-
-    result.frequency = raw.real_data[freq_idx];
-    result.onoise_spectrum = raw.real_data[onoise_idx];
-    result.inoise_spectrum = raw.real_data[inoise_idx];
+    if (result.frequency.empty() || result.onoise_spectrum.empty() || result.inoise_spectrum.empty())
+        throw std::runtime_error("Noise spectral plot missing expected variables");
 
     return result;
 }

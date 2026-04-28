@@ -353,7 +353,7 @@ D1 anode 0 DMOD
 // Uses tests/circuits/diode_flicker_noise.cir
 // ---------------------------------------------------------------------------
 TEST(FlickerNoise, NgspiceCompareDiodeFlicker) {
-    NgspiceRunner ngspice(NGSPICE_BINARY);
+    NgspiceRunner ngspice;
     std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/diode_flicker_noise.cir";
 
     NgspiceNoiseResult ng_result;

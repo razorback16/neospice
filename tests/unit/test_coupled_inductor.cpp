@@ -582,7 +582,7 @@ TEST(CoupledInductorTransient, ZeroCouplingNoStamp) {
 class CoupledInductorNgspiceTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        ngspice_ = std::make_unique<NgspiceRunner>(NGSPICE_BINARY);
+        ngspice_ = std::make_unique<NgspiceRunner>();
     }
     std::unique_ptr<NgspiceRunner> ngspice_;
     Simulator sim_;

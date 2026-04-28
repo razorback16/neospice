@@ -204,7 +204,7 @@ static bool parse_ngspice_tf_output(const std::string& output,
 TEST(TF, NgspiceComparison) {
     // Run ngspice on the test circuit
     std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/tf_resistive_divider.cir";
-    std::string cmd = std::string(NGSPICE_BINARY) + " -b " + cir_path + " 2>&1";
+    std::string cmd = std::string("/usr/bin/ngspice") + " -b " + cir_path + " 2>&1";
     FILE* pipe = popen(cmd.c_str(), "r");
     ASSERT_NE(pipe, nullptr) << "Failed to run ngspice";
 
@@ -283,7 +283,7 @@ R2 out 0 2k
     }
 
     // Run ngspice
-    std::string cmd = std::string(NGSPICE_BINARY) + " -b " + tmp_path + " 2>&1";
+    std::string cmd = std::string("/usr/bin/ngspice") + " -b " + tmp_path + " 2>&1";
     FILE* pipe = popen(cmd.c_str(), "r");
     ASSERT_NE(pipe, nullptr);
     char buffer[256];

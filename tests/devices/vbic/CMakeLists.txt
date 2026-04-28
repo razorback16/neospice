@@ -4,10 +4,11 @@ add_executable(test_vbic_compare
     ${CMAKE_SOURCE_DIR}/tests/framework/comparator.cpp
 )
 
-target_link_libraries(test_vbic_compare PRIVATE gtest_main neospice_lib)
-target_include_directories(test_vbic_compare PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_link_libraries(test_vbic_compare PRIVATE gtest_main neospice_lib ${NGSPICE_LIBRARIES})
+target_include_directories(test_vbic_compare PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests
+    ${NGSPICE_INCLUDE_DIRS})
 target_compile_definitions(test_vbic_compare PRIVATE
-    NGSPICE_BINARY="/usr/bin/ngspice"
     TEST_CIRCUITS_DIR="${CMAKE_SOURCE_DIR}/tests/circuits"
 )
 

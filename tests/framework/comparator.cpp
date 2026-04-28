@@ -43,6 +43,12 @@ double interpolate(const std::vector<double>& xs, const std::vector<double>& ys,
     if (it == xs.begin()) return ys.front();
     size_t idx = static_cast<size_t>(std::distance(xs.begin(), it));
 
+    // Avoid inventing error at source breakpoints when the two simulators
+    // hit the same nominal time but differ by a few floating-point ulps.
+    constexpr double kTimeSnapAbs = 1e-18;
+    if (std::abs(x - xs[idx]) <= kTimeSnapAbs) return ys[idx];
+    if (std::abs(x - xs[idx - 1]) <= kTimeSnapAbs) return ys[idx - 1];
+
     size_t ia = idx - 1, ib = idx;
     double ya = ys[ia], yb = ys[ib];
     double t = (x - xs[ia]) / (xs[ib] - xs[ia]);
@@ -640,6 +646,7 @@ EdgeCompareResult compare_edges(
     EdgeTolerance tol) {
 
     EdgeCompareResult result{true, "", 0.0, 0};
+    double worst_tol = tol.crossing_relative;
 
     if (expected.size() != actual.size()) {
         result.passed = false;
@@ -662,6 +669,7 @@ EdgeCompareResult compare_edges(
             result.num_edges_compared++;
             if (err > result.worst_error) {
                 result.worst_error = err;
+                worst_tol = tol.crossing_relative;
                 result.detail = prefix + " crossing: " +
                     std::to_string(e.cross_time) + " vs " + std::to_string(a.cross_time) +
                     " (" + std::to_string(err * 100) + "%)";
@@ -670,12 +678,13 @@ EdgeCompareResult compare_edges(
         }
 
         // Rise/fall time
-        if (e.rise_time > 0 && a.rise_time > 0) {
+        if (e.rise_time != -1.0 && a.rise_time != -1.0) {
             double ref = std::max(std::abs(e.rise_time), 1e-18);
-            double err = std::abs(e.rise_time - a.rise_time) / ref;
+            double err = std::abs(std::abs(e.rise_time) - std::abs(a.rise_time)) / ref;
             result.num_edges_compared++;
             if (err > result.worst_error) {
                 result.worst_error = err;
+                worst_tol = tol.rise_fall_relative;
                 result.detail = prefix + (e.rise_time > 0 ? " rise_time: " : " fall_time: ") +
                     std::to_string(std::abs(e.rise_time)) + " vs " + std::to_string(std::abs(a.rise_time)) +
                     " (" + std::to_string(err * 100) + "%)";
@@ -689,6 +698,7 @@ EdgeCompareResult compare_edges(
             result.num_edges_compared++;
             if (err > result.worst_error) {
                 result.worst_error = err;
+                worst_tol = tol.settled_absolute;
                 result.detail = prefix + " settled: " +
                     std::to_string(e.settled_value) + " vs " + std::to_string(a.settled_value) +
                     " (delta=" + std::to_string(err) + "V)";
@@ -702,6 +712,7 @@ EdgeCompareResult compare_edges(
             result.num_edges_compared++;
             if (err > result.worst_error) {
                 result.worst_error = err;
+                worst_tol = tol.overshoot_absolute;
                 result.detail = prefix + " overshoot: " +
                     std::to_string(e.overshoot) + " vs " + std::to_string(a.overshoot) +
                     " (delta=" + std::to_string(err) + "V)";
@@ -710,7 +721,7 @@ EdgeCompareResult compare_edges(
         }
     }
 
-    CMP_MARGIN_EDGE("EDGE", result, tol.crossing_relative);
+    CMP_MARGIN_EDGE("EDGE", result, worst_tol);
     return result;
 }
 

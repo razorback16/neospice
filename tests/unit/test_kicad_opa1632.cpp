@@ -17,7 +17,7 @@ class KiCad_OPA1632_Test : public ::testing::Test {
 protected:
     void SetUp() override {
         cir_path_ = std::string(TEST_CIRCUITS_DIR) + "/opa1632_test.cir";
-        ngspice_ = std::make_unique<NgspiceRunner>(NGSPICE_BINARY);
+        ngspice_ = std::make_unique<NgspiceRunner>();
     }
     std::string cir_path_;
     std::unique_ptr<NgspiceRunner> ngspice_;
