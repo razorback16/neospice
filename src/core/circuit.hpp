@@ -184,6 +184,11 @@ public:
     /// Reset all state buffers and device state for a fresh simulation pass.
     void reset_state();
 
+    /// Cache the latest full DC operating-point vector for same-circuit reuse.
+    void set_operating_point(const std::vector<double>& solution);
+    const std::vector<double>* operating_point() const;
+    void clear_operating_point();
+
     std::string node_name(int32_t idx) const;
     int32_t     node_index(const std::string& name) const;
 
@@ -249,6 +254,7 @@ private:
     int32_t num_vars_  = 0;
     int32_t num_states_ = 0;
     std::vector<double> state0_, state1_, state2_;
+    std::vector<double> operating_point_;
     std::unique_ptr<SparsityPattern> pattern_;
 };
 

@@ -152,9 +152,22 @@ void Circuit::reset_state() {
     std::fill(state0_.begin(), state0_.end(), 0.0);
     std::fill(state1_.begin(), state1_.end(), 0.0);
     std::fill(state2_.begin(), state2_.end(), 0.0);
+    clear_operating_point();
     for (auto& dev : devices_) {
         dev->reset();
     }
+}
+
+void Circuit::set_operating_point(const std::vector<double>& solution) {
+    operating_point_ = solution;
+}
+
+const std::vector<double>* Circuit::operating_point() const {
+    return operating_point_.empty() ? nullptr : &operating_point_;
+}
+
+void Circuit::clear_operating_point() {
+    operating_point_.clear();
 }
 
 void Circuit::rotate_state() {
@@ -253,7 +266,9 @@ std::vector<std::string> Circuit::devices_at_node(const std::string& node) const
 bool Circuit::set_param(const std::string& device_name, double value) {
     Device* dev = find_device(device_name);
     if (!dev) return false;
-    return dev->set_value(value);
+    bool changed = dev->set_value(value);
+    if (changed) clear_operating_point();
+    return changed;
 }
 
 } // namespace neospice

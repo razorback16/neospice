@@ -24,69 +24,85 @@ static std::string make_branch_key(const std::string& dname) {
     return "i(" + lower + ")";
 }
 
+static SimOptions direct_attempt_options(const SimOptions& opts) {
+    SimOptions direct_opts = opts;
+    direct_opts.max_iter = std::min(opts.max_iter, 25);
+    return direct_opts;
+}
+
 ACResult solve_ac(Circuit& ckt, ACMode mode,
                   int npoints, double fstart, double fstop) {
     auto t_start = std::chrono::steady_clock::now();
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
-    // 1. DC operating point
-    // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
-    // .nodeset wins when both are set.  .ic doubles as a Newton seed hint here
-    // so circuits that ship .ic start DC from a feasible point instead of
-    // all-zero (where subthreshold gm/gds vanish).
-    std::vector<double> dc_solution(n, 0.0);
-    std::vector<char> pinned(n, 0);
-    for (auto& [node_idx, value] : ckt.nodeset) {
-        if (node_idx >= 0 && node_idx < n) {
-            dc_solution[node_idx] = value;
-            pinned[node_idx] = 1;
-        }
-    }
-    for (auto& [node_idx, value] : ckt.ic) {
-        if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
-            dc_solution[node_idx] = value;
-        }
-    }
-
-    auto dc_solver = create_solver(ckt.pattern().size());
-    dc_solver->symbolic(ckt.pattern());
-
-    // Publish SimOptions for BSIM4v7Device (and any future state-storing
-    // device) via the same integrator_ctx channel used for CKTmode/ag.
-    ckt.integrator_ctx.options = &ckt.options;
-
-    // AC analysis runs a plain DC operating point first — use MODEDCOP (0x10),
-    // same as solve_dc().  newton_solve() reads integrator_ctx.mode.
-    constexpr int MODEDCOP_BIT    = 0x10;
-    constexpr int MODEINITJCT_BIT = 0x200;
-    constexpr int MODEINITFIX_BIT = 0x400;
-
-    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    auto result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
-    if (result.converged) {
-        dc_solution = result.solution;
+    // 1. DC operating point.  If a same-circuit .op just ran, reuse its full
+    // MNA vector and only do the small-signal initialization below.
+    std::vector<double> dc_solution;
+    if (const auto* cached_op = ckt.operating_point();
+        cached_op && static_cast<int32_t>(cached_op->size()) == n) {
+        dc_solution = *cached_op;
     } else {
-        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options);
+        // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
+        // .nodeset wins when both are set.  .ic doubles as a Newton seed hint here
+        // so circuits that ship .ic start DC from a feasible point instead of
+        // all-zero (where subthreshold gm/gds vanish).
+        dc_solution.assign(n, 0.0);
+        std::vector<char> pinned(n, 0);
+        for (auto& [node_idx, value] : ckt.nodeset) {
+            if (node_idx >= 0 && node_idx < n) {
+                dc_solution[node_idx] = value;
+                pinned[node_idx] = 1;
+            }
+        }
+        for (auto& [node_idx, value] : ckt.ic) {
+            if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
+                dc_solution[node_idx] = value;
+            }
+        }
+
+        auto dc_solver = create_solver(ckt.pattern().size());
+        dc_solver->symbolic(ckt.pattern());
+
+        // Publish SimOptions for BSIM4v7Device (and any future state-storing
+        // device) via the same integrator_ctx channel used for CKTmode/ag.
+        ckt.integrator_ctx.options = &ckt.options;
+
+        // AC analysis runs a plain DC operating point first — use MODEDCOP (0x10),
+        // same as solve_dc().  newton_solve() reads integrator_ctx.mode.
+        constexpr int MODEDCOP_BIT    = 0x10;
+        constexpr int MODEINITJCT_BIT = 0x200;
+        constexpr int MODEINITFIX_BIT = 0x400;
+
+        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+        auto result = newton_solve(ckt, *dc_solver, dc_solution,
+                                   direct_attempt_options(ckt.options));
         if (result.converged) {
             dc_solution = result.solution;
         } else {
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-            result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
+            result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options);
             if (result.converged) {
                 dc_solution = result.solution;
             } else {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-                result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
+                result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
                 if (result.converged) {
                     dc_solution = result.solution;
                 } else {
-                    throw ConvergenceError("AC analysis: DC operating point failed to converge");
+                    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                    result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
+                    if (result.converged) {
+                        dc_solution = result.solution;
+                    } else {
+                        throw ConvergenceError("AC analysis: DC operating point failed to converge");
+                    }
                 }
             }
         }
+        ckt.set_operating_point(dc_solution);
     }
+    ckt.integrator_ctx.options = &ckt.options;
 
     // 2. MODEINITSMSIG pass — compute small-signal parameters (capacitances,
     //    transconductances) at the DC operating point.  ngspice runs this

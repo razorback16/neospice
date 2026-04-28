@@ -46,6 +46,7 @@ NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
 
     // Save the caller's mode so we can restore it on exit.
     const int saved_mode = ckt.integrator_ctx.mode;
+    bool force_numeric = false;
 
     for (int iter = 0; iter < opts.max_iter; ++iter) {
         // Save old solution for convergence check
@@ -81,8 +82,9 @@ NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
         // Factorize: try refactorize first (reuses pivot order), fall back
         // to full numeric factorization if the pivot order is unstable.
         try {
-            if (iter == 0) {
+            if (iter == 0 || force_numeric) {
                 solver.numeric(pattern, mat);
+                force_numeric = false;
             } else {
                 try {
                     solver.refactorize(mat);
@@ -186,6 +188,7 @@ NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
         } else if (m & MODEINITJCT_BIT) {
             // Junction-init -> fix mode (try reading CKTrhsOld next iter)
             ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFIX_BIT;
+            force_numeric = true;
         } else if (m & MODEINITFIX_BIT) {
             // Fix mode -> float once converged under FIX
             if (converged)

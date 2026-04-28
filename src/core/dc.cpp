@@ -27,8 +27,15 @@ static std::string make_branch_key(const std::string& dname) {
     return "i(" + lower + ")";
 }
 
+static SimOptions direct_attempt_options(const SimOptions& opts) {
+    SimOptions direct_opts = opts;
+    direct_opts.max_iter = std::min(opts.max_iter, 25);
+    return direct_opts;
+}
+
 DCResult solve_dc(Circuit& ckt) {
     auto t_start = std::chrono::steady_clock::now();
+    ckt.clear_operating_point();
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
@@ -74,7 +81,7 @@ DCResult solve_dc(Circuit& ckt) {
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     NewtonResult result;
     try {
-        result = newton_solve(ckt, *solver, solution, ckt.options);
+        result = newton_solve(ckt, *solver, solution, direct_attempt_options(ckt.options));
     } catch (const std::runtime_error&) {
         result.converged = false;
     }
@@ -115,6 +122,8 @@ DCResult solve_dc(Circuit& ckt) {
             }
         }
     }
+
+    ckt.set_operating_point(solution);
 
     // 7. Build DCResult
     DCResult dc_result;
