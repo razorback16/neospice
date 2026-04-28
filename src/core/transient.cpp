@@ -28,8 +28,7 @@ namespace neospice {
 /// Initial dt = min(tstop, tstep) / kInitialStepDivisor (ngspice dctran.c ~112,569)
 constexpr double kInitialStepDivisor = 100.0;
 
-/// Maximum dt = tstep * kMaxTimeStepRatio
-constexpr double kMaxTimeStepRatio = 100.0;
+/// Maximum dt = min(tstep, tstop/50) (ngspice traninit.c ~27-31, dctran.c ~530)
 
 /// Minimum dt = tstep * kMinTimeStepRatio
 constexpr double kMinTimeStepRatio = 1e-6;
@@ -641,7 +640,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     }
 
     const double dt_min = tstep * kMinTimeStepRatio;
-    const double dt_max = tstep * kMaxTimeStepRatio;
+    const double dt_max = std::min(tstep, tstop / 50.0);
 
     // History for LTE
     std::vector<double> sol_prev = solution;
