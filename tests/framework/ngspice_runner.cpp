@@ -85,6 +85,16 @@ NgspiceRunner::RawData NgspiceRunner::parse_raw(const std::string& raw_path,
                 std::string name, type;
                 iss >> idx >> name >> type;
                 std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                // ngspice wraps POLY sources in XSPICE "a$poly$" devices.
+                // Normalize: i(a$poly$e.x1.eos) → i(e.x1.eos) so names
+                // match the original netlist element names.
+                if (name.size() > 2 && name.front() == 'i' && name[1] == '(') {
+                    const std::string prefix = "a$poly$";
+                    size_t pos = name.find(prefix, 2);
+                    if (pos != std::string::npos) {
+                        name = "i(" + name.substr(pos + prefix.size());
+                    }
+                }
                 plot.var_names.push_back(name);
             }
         }

@@ -88,7 +88,7 @@ int main() {
     std::printf("=== Comprehensive neospice vs ngspice Benchmark ===\n");
     std::printf("Both simulators in-process. Warmup=%d, Runs=%d\n", W, R);
     std::printf("ngspice: system libngspice (Sparse 1.3 solver)\n");
-    std::printf("neospice: KLU solver\n\n");
+    std::printf("neospice: NeoSolver (sparse column-LU + AMD)\n\n");
 
     NgspiceLib ng;
     Simulator sim;
@@ -287,6 +287,18 @@ int main() {
             ng.command("run");
         }, W, R);
         print_comparison("E2E: THS4131 (.op + .ac dec 10)", neo, ngs);
+    }
+    {
+        std::string cir = circuits + "/opa1632_test.cir";
+        auto neo = bench_neo([&]{
+            auto ckt = sim.load(cir);
+            sim.run(ckt);
+        }, W, R);
+        auto ngs = bench_ng(ng, [&]{
+            ng.load_circuit(cir);
+            ng.command("run");
+        }, W, R);
+        print_comparison("E2E: OPA1632 (.op + .ac dec 10)", neo, ngs);
     }
 
     std::printf("\n  Legend: 'neo' = neospice faster, 'ng' = ngspice faster\n");

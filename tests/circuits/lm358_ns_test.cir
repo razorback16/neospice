@@ -1,0 +1,23 @@
+LM358/NS Inverting Amplifier Test
+* Supply: +/-15V, Input: 50mV DC + AC 1V
+* Gain = -Rf/Rg = -100k/10k = -10
+*
+.include lm358_ns.lib
+*
+VCC vcc 0 DC 15
+VEE vee 0 DC -15
+*
+Vin in 0 DC 0.05 AC 1
+*
+Rg in inv 10k
+Rf out inv 100k
+*
+R_bias 0 ninv 100
+*
+X1 ninv inv vcc vee out LM358/NS
+*
+Rload out 0 10k
+*
+.op
+.ac dec 10 1 10e6
+.end

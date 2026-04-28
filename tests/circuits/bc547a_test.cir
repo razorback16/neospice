@@ -1,0 +1,24 @@
+BC547A Common-Emitter Amplifier Test
+*
+.include bc547a.lib
+*
+VCC vcc 0 DC 12
+*
+Vin in 0 DC 0 AC 1
+Cin in base 1u
+*
+R1 vcc base 56k
+R2 base 0 12k
+*
+RC vcc col 3.3k
+RE emit 0 1k
+CE emit 0 100u
+*
+Q1 col base emit BC547A
+*
+Cout col out 1u
+Rload out 0 10k
+*
+.op
+.ac dec 10 10 10e6
+.end

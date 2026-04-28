@@ -1,0 +1,29 @@
+OPA164x Inverting Amplifier - Gain of -10
+* Supply: +/-15V, Input: 100mV DC, AC 1V
+* Gain = -Rf/Rg = -10k/1k = -10
+*
+.include OPA164x_std.lib
+*
+* Power supplies
+VCC vcc 0 DC 15
+VEE vee 0 DC -15
+*
+* Input signal
+Vin in 0 DC 0.1 AC 1
+*
+* Inverting amplifier configuration
+Rg in inv 1k
+Rf out inv 10k
+*
+* Non-inverting input to ground
+R_bias 0 ninv 100
+*
+* Op-amp instance
+X1 ninv inv vcc vee out OPA164x
+*
+* Load
+Rload out 0 10k
+*
+.op
+.ac dec 10 10m 100e6
+.end
