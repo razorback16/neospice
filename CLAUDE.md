@@ -1,5 +1,12 @@
 # neospice
 
+## Branching
+
+Work directly on `main` unless the user explicitly asks for a feature branch.
+
+## Documentation
+
+Update relevant documentation (README, roadmap, etc.) before pushing to remote.
 
 ## Reference simulator
 
