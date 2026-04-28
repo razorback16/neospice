@@ -46,7 +46,14 @@ NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
 
     // Save the caller's mode so we can restore it on exit.
     const int saved_mode = ckt.integrator_ctx.mode;
-    bool force_numeric = false;
+
+    // Warm-start: during transient analysis (MODEINITTRAN/MODEINITPRED)
+    // the matrix from the previous timestep is structurally similar, so
+    // iter 0 can try refactorize() instead of full numeric().  For DC
+    // and convergence helpers the matrix changes drastically (different
+    // gmin, source scaling), so always start with numeric().
+    constexpr int MODETRAN_BIT = 0x1;
+    bool force_numeric = !(saved_mode & MODETRAN_BIT);
 
     for (int iter = 0; iter < opts.max_iter; ++iter) {
         // Save old solution for convergence check
@@ -82,13 +89,13 @@ NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
         // Factorize: try refactorize first (reuses pivot order), fall back
         // to full numeric factorization if the pivot order is unstable.
         try {
-            if (iter == 0 || force_numeric) {
+            if (force_numeric) {
                 solver.numeric(pattern, mat);
                 force_numeric = false;
             } else {
                 try {
                     solver.refactorize(mat);
-                } catch (const std::runtime_error&) {
+                } catch (const std::exception&) {
                     solver.numeric(pattern, mat);
                 }
             }
@@ -101,6 +108,22 @@ NewtonResult newton_solve(Circuit& ckt, LinearSolver& solver,
 
         // rhs now contains the new proposed solution
         solution = rhs;
+
+        // Global node damping: clamp voltage updates that exceed a threshold.
+        // Only apply during corrector (MODEINITFLOAT) iterations where the
+        // solution is refining around the operating point.  During junction
+        // init (INITJCT/INITFIX) large voltage jumps are expected as the
+        // solver bootstraps from zero toward supply rails.
+        if (ckt.integrator_ctx.mode & MODEINITFLOAT_BIT) {
+            constexpr double VDAMP_THRESHOLD = 3.5;  // ~10 * Vt at 300K
+            for (int32_t i = 0; i < num_nodes; ++i) {
+                double delta = solution[i] - old_solution[i];
+                if (std::abs(delta) > VDAMP_THRESHOLD) {
+                    solution[i] = old_solution[i] +
+                        VDAMP_THRESHOLD * ((delta > 0) ? 1.0 : -1.0);
+                }
+            }
+        }
 
         // Apply per-device voltage limiting between old and proposed solutions
         // to tame large Newton swings at nonlinear junctions.
