@@ -7,11 +7,12 @@
 - C++20 compiler (GCC 12+ or Clang 15+)
 - CMake 3.20+
 - OpenBLAS
+- libngspice (shared library, required for test suite)
 
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install cmake g++ libopenblas-dev
+sudo apt install cmake g++ libopenblas-dev libngspice0-dev
 ```
 
 ### Build
@@ -27,21 +28,16 @@ cmake --build build -j$(nproc)
 cd build && ctest -j$(nproc) --output-on-failure
 ```
 
-#### ngspice Comparison Tests
+#### ngspice Source (for migration tool tests)
 
-Some tests compare neospice output against ngspice. These require ngspice to be installed:
-
-```bash
-sudo apt install ngspice
-```
-
-The migration tool roundtrip tests additionally require an ngspice source checkout. Set the `NGSPICE_DIR` environment variable to point to the ngspice source root:
+The migration tool roundtrip tests require an ngspice source checkout. Clone the ngspice repository and set the `NGSPICE_DIR` environment variable:
 
 ```bash
+git clone https://github.com/imr/ngspice.git /path/to/ngspice
 export NGSPICE_DIR=/path/to/ngspice
 ```
 
-These tests are automatically skipped when ngspice or the source directory is not available.
+Add the export to your `~/.bashrc` or `~/.zshrc` to persist it across sessions. These tests are automatically skipped when `NGSPICE_DIR` is not set or the directory does not exist.
 
 ## Python Development
 
