@@ -1,6 +1,6 @@
 # neospice
 
-A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a clean embeddable API, 1.5--6x faster in-process performance, and auto-differentiation in behavioral sources.
+A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a clean embeddable API, 1.7--8x faster per-analysis in-process performance, and auto-differentiation in behavioral sources.
 
 ## Features
 
@@ -10,48 +10,6 @@ A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a c
 - **High performance** -- NeoSolver (dense + sparse column-LU with AMD ordering), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
 - **926+ tests** validated against ngspice with tolerances as tight as 1e-6
-
-## Python
-
-```bash
-pip install neospice
-```
-
-```python
-import neospice as ns
-
-# One-liner convenience functions
-dc = ns.dc("amplifier.cir")
-print(dc.voltage("out"))
-
-ac = ns.ac("filter.cir", mode="dec", npoints=100, fstart=1, fstop=1e9)
-plt.semilogx(ac.frequency, ac.magnitude_db("out"))
-
-tran = ns.transient("osc.cir", tstep=1e-9, tstop=1e-6)
-plt.plot(tran.time, tran.voltage("out"))
-
-# Parse inline netlists directly
-dc = ns.dc("Divider\nV1 in 0 DC 10\nR1 in mid 1k\nR2 mid 0 1k\n.op\n.end\n")
-print(dc.voltage("mid"))  # 5.0
-
-# Or use the full Simulator API
-sim = ns.Simulator()
-ckt = sim.load("amplifier.cir")          # from file
-ckt = sim.parse("...\n.op\n.end\n")      # or from string
-result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
-
-# Build circuits programmatically
-spec = ns.SourceSpec()
-spec.ac_mag = 1.0
-ckt = ns.CircuitBuilder() \
-    .title("RC filter") \
-    .vsource("V1", "in", "0", spec) \
-    .resistor("R1", "in", "out", 1e3) \
-    .capacitor("C1", "out", "0", 100e-12) \
-    .build()
-```
-
-All result vectors are returned as NumPy arrays. Supports Python 3.10+ on Linux (x86_64, aarch64) and macOS (x86_64, arm64).
 
 ## Quick Start (C++)
 
@@ -177,25 +135,69 @@ auto info = ckt.device_info("R1");        // type, nodes, value
 auto conn = ckt.devices_at_node("out");   // {"R1", "C1"}
 ```
 
+## Python
+
+```bash
+pip install neospice
+```
+
+```python
+import neospice as ns
+
+# One-liner convenience functions
+dc = ns.dc("amplifier.cir")
+print(dc.voltage("out"))
+
+ac = ns.ac("filter.cir", mode="dec", npoints=100, fstart=1, fstop=1e9)
+plt.semilogx(ac.frequency, ac.magnitude_db("out"))
+
+tran = ns.transient("osc.cir", tstep=1e-9, tstop=1e-6)
+plt.plot(tran.time, tran.voltage("out"))
+
+# Parse inline netlists directly
+dc = ns.dc("Divider\nV1 in 0 DC 10\nR1 in mid 1k\nR2 mid 0 1k\n.op\n.end\n")
+print(dc.voltage("mid"))  # 5.0
+
+# Or use the full Simulator API
+sim = ns.Simulator()
+ckt = sim.load("amplifier.cir")          # from file
+ckt = sim.parse("...\n.op\n.end\n")      # or from string
+result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
+
+# Build circuits programmatically
+spec = ns.SourceSpec()
+spec.ac_mag = 1.0
+ckt = ns.CircuitBuilder() \
+    .title("RC filter") \
+    .vsource("V1", "in", "0", spec) \
+    .resistor("R1", "in", "out", 1e3) \
+    .capacitor("C1", "out", "0", 100e-12) \
+    .build()
+```
+
+All result vectors are returned as NumPy arrays. Supports Python 3.10+ on Linux (x86_64, aarch64) and macOS (x86_64, arm64).
+
 ## Performance
 
 Benchmarked in-process against ngspice-42 on Intel Core Ultra 9 285K, GCC 14, `-O3`. Both simulators linked as libraries -- no subprocess overhead, no file I/O in timed sections. Median of 10-30 runs.
 
 | Benchmark | ngspice | neospice | Speedup |
 |---|---:|---:|---:|
-| **Parse** THS4131 (77 nodes) | 433 us | 196 us | 2.2x |
-| **Parse** resistor divider | 43 us | 8 us | 5.1x |
-| **DC OP** THS4131 (14 BJTs) | 621 us | 362 us | 1.7x |
-| **DC OP** resistor divider | 48 us | 6 us | 7.9x |
-| **AC** THS4131, 81 points | 959 us | 524 us | 1.8x |
-| **AC** THS4131, 8001 points | 21.3 ms | 19.1 ms | 1.1x |
+| **Parse** THS4131 (77 nodes) | 431 us | 199 us | 2.2x |
+| **Parse** resistor divider | 44 us | 8 us | 5.1x |
+| **DC OP** THS4131 (14 BJTs) | 620 us | 363 us | 1.7x |
+| **DC OP** resistor divider | 49 us | 6 us | 7.8x |
+| **AC** THS4131, 81 points | 964 us | 523 us | 1.8x |
+| **AC** THS4131, 8001 points | 21.6 ms | 19.3 ms | 1.1x |
 | **AC** RC lowpass, 91 points | 111 us | 14 us | 7.9x |
-| **Transient** RC lowpass, 500 us | 1.11 ms | 633 us | 1.8x |
-| **Transient** RLC series, 100 us | 1.56 ms | 5.01 ms | 3.2x ngspice |
-| **Transient** pulse source, 100 us | 986 us | 340 us | 2.9x |
-| **Noise** resistor divider, 91 pts | 88 us | 55 us | 1.6x |
-| **DC sweep** V1, 1001 pts | 808 us | 199 us | 4.1x |
-| **Total** | **28.0 ms** | **26.4 ms** | **1.06x** |
+| **Transient** RC lowpass, 500 us | 1.11 ms | 607 us | 1.8x |
+| **Transient** RLC series, 100 us | 1.56 ms | 1.96 ms | 1.3x ngspice |
+| **Transient** pulse source, 100 us | 992 us | 334 us | 3.0x |
+| **Noise** resistor divider, 91 pts | 89 us | 56 us | 1.6x |
+| **DC sweep** V1, 1001 pts | 816 us | 197 us | 4.1x |
+| **E2E** THS4131 (.op + .ac) | 726 us | 524 us | 1.4x |
+| **E2E** OPA1632 (.op + .ac) | 6.42 ms | 5.90 ms | 1.1x |
+| **Total** | **28.3 ms** | **23.6 ms** | **1.20x** |
 
 See [docs/performance-comparison-with-ngspice.md](docs/performance-comparison-with-ngspice.md) for the full methodology and results.
 
