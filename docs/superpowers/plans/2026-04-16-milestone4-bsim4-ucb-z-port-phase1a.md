@@ -110,7 +110,7 @@ ls third_party/bsim4_4.7.0/code | wc -l
 - [ ] **Step 2: Copy the UCB license**
 
 ```bash
-cp /home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4v7/B4TERMS_OF_USE third_party/bsim4_4.7.0/B4TERMS_OF_USE
+cp $NGSPICE_DIR/src/spicelib/devices/bsim4v7/B4TERMS_OF_USE third_party/bsim4_4.7.0/B4TERMS_OF_USE
 head -5 third_party/bsim4_4.7.0/B4TERMS_OF_USE
 # Expected: first non-blank line is "The terms under which the software is provided are as the following."
 ```

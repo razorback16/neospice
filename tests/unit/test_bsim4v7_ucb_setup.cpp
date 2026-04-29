@@ -76,8 +76,7 @@ struct ModelFixture {
     }
 };
 
-// Goldens extracted from a patched ngspice (source tree at
-// /home/subhagato/Codes/ngspice, BSIM4.8.0 kernel, b4temp.c patched to
+// Goldens extracted from a patched ngspice (BSIM4.8.0 kernel, b4temp.c patched to
 // emit pParam->BSIM4* and here->BSIM4* fields as T12_GOLDEN stderr lines
 // after BSIM4v7temp completes). See tests/goldens/bsim4v7_nmos_setup.json.
 //

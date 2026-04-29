@@ -38,7 +38,7 @@ This is a prerequisite for cross-platform builds. The current CMake hardcodes x8
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp/build && cmake --build . -j$(nproc) && ctest -j$(nproc) --output-on-failure 2>&1 | tail -5
+cd ./build && cmake --build . -j$(nproc) && ctest -j$(nproc) --output-on-failure 2>&1 | tail -5
 ```
 Expected: all tests pass.
 
@@ -71,7 +71,7 @@ find_library(SLEEF_LIBRARY NAMES sleef REQUIRED)
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp/build && cmake .. && cmake --build . -j$(nproc) && ctest -j$(nproc) --output-on-failure 2>&1 | tail -5
+cd ./build && cmake .. && cmake --build . -j$(nproc) && ctest -j$(nproc) --output-on-failure 2>&1 | tail -5
 ```
 Expected: all tests pass (SLEEF still found via system search paths on this machine).
 
@@ -188,7 +188,7 @@ Create an empty file at `python/neospice/py.typed`.
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install -v --no-build-isolation -e .
+cd . && pip install -v --no-build-isolation -e .
 ```
 Then:
 ```bash
@@ -200,7 +200,7 @@ Expected: prints `0.1.0`.
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp/build && cmake .. -DNEOSPICE_BUILD_PYTHON=OFF && cmake --build . -j$(nproc) && ctest -j$(nproc) --output-on-failure 2>&1 | tail -5
+cd ./build && cmake .. -DNEOSPICE_BUILD_PYTHON=OFF && cmake --build . -j$(nproc) && ctest -j$(nproc) --output-on-failure 2>&1 | tail -5
 ```
 Expected: all tests pass.
 
@@ -289,7 +289,7 @@ class TestDCSweepParam:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tests/python/test_bindings.py -v 2>&1 | tail -20
+cd . && python -m pytest tests/python/test_bindings.py -v 2>&1 | tail -20
 ```
 Expected: FAIL — `ACMode` not defined in `neospice`.
 
@@ -388,7 +388,7 @@ NB_MODULE(_core, m) {
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
+cd . && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
 ```
 Expected: all tests pass.
 
@@ -456,7 +456,7 @@ class TestCircuitBuilder:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tests/python/test_bindings.py::TestSimulatorLoadParse -v 2>&1 | tail -10
+cd . && python -m pytest tests/python/test_bindings.py::TestSimulatorLoadParse -v 2>&1 | tail -10
 ```
 Expected: FAIL — `Simulator` not defined.
 
@@ -534,7 +534,7 @@ Then, inside the `NB_MODULE` block, after the `DCSweepParam` binding and before 
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
+cd . && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
 ```
 Expected: all tests pass.
 
@@ -647,7 +647,7 @@ class TestTransientResult:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tests/python/test_bindings.py::TestDCResult -v 2>&1 | tail -10
+cd . && python -m pytest tests/python/test_bindings.py::TestDCResult -v 2>&1 | tail -10
 ```
 Expected: FAIL — `DCResult` not defined.
 
@@ -735,7 +735,7 @@ Add inside the `NB_MODULE` block, after the Simulator binding:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py::TestDCResult tests/python/test_bindings.py::TestTransientResult -v
+cd . && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py::TestDCResult tests/python/test_bindings.py::TestTransientResult -v
 ```
 Expected: all pass.
 
@@ -887,7 +887,7 @@ Add inside the `NB_MODULE` block, after the TransientResult binding:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
+cd . && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
 ```
 Expected: all pass.
 
@@ -1091,7 +1091,7 @@ Add inside the `NB_MODULE` block, after the ACResult binding:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
+cd . && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
 ```
 Expected: all pass.
 
@@ -1151,7 +1151,7 @@ class TestSimulationResult:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tests/python/test_bindings.py::TestSimulationResult -v 2>&1 | tail -10
+cd . && python -m pytest tests/python/test_bindings.py::TestSimulationResult -v 2>&1 | tail -10
 ```
 Expected: FAIL — `SimulationResult` not defined.
 
@@ -1236,7 +1236,7 @@ Add inside the `NB_MODULE` block, after the PZResult binding:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
+cd . && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
 ```
 Expected: all pass.
 
@@ -1337,7 +1337,7 @@ class TestConvenienceFunctions:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tests/python/test_bindings.py::TestConvenienceFunctions::test_dc_from_file -v 2>&1 | tail -10
+cd . && python -m pytest tests/python/test_bindings.py::TestConvenienceFunctions::test_dc_from_file -v 2>&1 | tail -10
 ```
 Expected: FAIL — `neospice.dc` not defined.
 
@@ -1477,7 +1477,7 @@ def run(netlist: str, **opts: Any) -> SimulationResult:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
+cd . && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
 ```
 Expected: all pass.
 
@@ -1646,7 +1646,7 @@ class TestEndToEnd:
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
+cd . && pip install --no-build-isolation -e . && python -m pytest tests/python/test_bindings.py -v
 ```
 Expected: all pass.
 
@@ -1654,7 +1654,7 @@ Expected: all pass.
 
 Run:
 ```bash
-cd /home/subhagato/Codes/spice-cpp/build && cmake .. -DNEOSPICE_BUILD_PYTHON=OFF && cmake --build . -j$(nproc) && ctest -j$(nproc) --output-on-failure 2>&1 | tail -5
+cd ./build && cmake .. -DNEOSPICE_BUILD_PYTHON=OFF && cmake --build . -j$(nproc) && ctest -j$(nproc) --output-on-failure 2>&1 | tail -5
 ```
 Expected: all C++ tests pass.
 
@@ -1669,7 +1669,7 @@ git commit -m "test(python): add end-to-end integration tests"
 
 Run:
 ```bash
-cd /tmp && python -m venv test_neospice && source test_neospice/bin/activate && pip install /home/subhagato/Codes/spice-cpp && python -c "
+cd /tmp && python -m venv test_neospice && source test_neospice/bin/activate && pip install . && python -c "
 import neospice
 print('Version:', neospice.__version__)
 r = neospice.dc('Div\nV1 a 0 DC 10\nR1 a b 1k\nR2 b 0 1k\n.op\n.end\n')

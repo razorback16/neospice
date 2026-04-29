@@ -12,7 +12,7 @@
 
 (3) **Diagnostic hook.** Make the env-gated Newton diagnostic from M3 permanent behind `SimOptions.verbose`. Future convergence debugging should not require patching the solver.
 
-**Tech Stack:** Same as M3 — C++17, KLU, ngspice reference at `/home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4v7/`.
+**Tech Stack:** Same as M3 — C++17, KLU, ngspice reference at `$NGSPICE_DIR/src/spicelib/devices/bsim4v7/`.
 
 ---
 
@@ -312,7 +312,7 @@ EOF
 
 - [ ] **Step 1: Read ngspice reference**
 
-Read `/home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4v7/b4v7ld.c` lines 1957 through 2040. Copy the VACLM and VADIBL formulas into the task notes here (or inline into the implementation comments). Specifically:
+Read `$NGSPICE_DIR/src/spicelib/devices/bsim4v7/b4v7ld.c` lines 1957 through 2040. Copy the VACLM and VADIBL formulas into the task notes here (or inline into the implementation comments). Specifically:
 
 ```c
 // VACLM (b4v7ld.c:1957-1989):

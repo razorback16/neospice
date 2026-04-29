@@ -182,7 +182,7 @@ struct BSIM4v7Params {
 
 - [ ] **Step 2: Verify compilation**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc)`
+Run: `cd . && cmake --build build -j$(nproc)`
 Expected: Builds (header-only, no source file yet).
 
 - [ ] **Step 3: Commit**
@@ -395,7 +395,7 @@ Add `devices/bsim4v7/bsim4v7_eval.cpp` to `src/CMakeLists.txt`.
 
 - [ ] **Step 4: Build and verify compilation**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc)`
+Run: `cd . && cmake --build build -j$(nproc)`
 Expected: Builds successfully.
 
 - [ ] **Step 5: Commit**
@@ -715,7 +715,7 @@ Add `devices/bsim4v7/bsim4v7.cpp` to `src/CMakeLists.txt`. Add `unit/test_bsim4v
 
 - [ ] **Step 4: Build and run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure -R BSIM`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure -R BSIM`
 Expected: All BSIM4v7 unit tests pass.
 
 - [ ] **Step 5: Commit**
@@ -870,7 +870,7 @@ Also remove `'m'` from the unsupported element check (the existing check has `el
 
 - [ ] **Step 4: Build and run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure`
 Expected: All tests pass (parser can now handle M elements).
 
 - [ ] **Step 5: Commit**
@@ -989,7 +989,7 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
 
 - [ ] **Step 2: Build and run**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure -R Ngspice`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure -R Ngspice`
 Expected: NMOS DC and CMOS inverter tests pass within tolerance.
 
 - [ ] **Step 3: Debug and iterate**
@@ -1096,7 +1096,7 @@ Then add BSIM4v7 handling alongside Capacitor/Inductor in the transient setup, i
 
 - [ ] **Step 4: Build and run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure`
 Expected: All tests pass including CMOS inverter transient.
 
 - [ ] **Step 5: Commit**
@@ -1133,7 +1133,7 @@ TEST_F(NgspiceCompareTest, RingOscillator5Stage) {
 
 - [ ] **Step 2: Build and run**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure -R Ngspice`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure -R Ngspice`
 Expected: Ring oscillator test passes (with relaxed tolerance for simplified BSIM4v7).
 
 - [ ] **Step 3: Run full test suite**

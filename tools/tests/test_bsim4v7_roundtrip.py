@@ -6,6 +6,7 @@ validates the output against the existing hand-ported files.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 
@@ -19,9 +20,10 @@ from ngspice_migrate.transformer import Transformer
 # Paths
 # ---------------------------------------------------------------------------
 
-REPO_ROOT = Path(__file__).parent.parent.parent  # /home/subhagato/Codes/spice-cpp
+REPO_ROOT = Path(__file__).parent.parent.parent
 DESCRIPTOR = REPO_ROOT / "tools" / "descriptors" / "bsim4v7.yaml"
-NGSPICE_DIR = Path("/home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4v7")
+_ngspice_root = os.environ.get("NGSPICE_DIR", "")
+NGSPICE_DIR = Path(_ngspice_root) / "src" / "spicelib" / "devices" / "bsim4v7" if _ngspice_root else Path("")
 EXISTING_DIR = REPO_ROOT / "src" / "devices" / "bsim4v7"
 
 

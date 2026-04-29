@@ -176,7 +176,7 @@ model:
 - [ ] **Step 2: Run auto-migration tool**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 python -m ngspice_migrate tools/descriptors/hfet2.yaml ~/Codes/ngspice/src/spicelib/devices/hfet2/
 ```
 

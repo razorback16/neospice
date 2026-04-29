@@ -10,7 +10,7 @@
 
 These two changes are independent. If (1) alone fixes both tests, (2) becomes optional polish; if not, (2) lets user intent (explicit IC hints) rescue edge cases (1) misses.
 
-**Tech Stack:** C++17, KLU sparse solver, ngspice BSIM4v7 reference (`/home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4v7/b4v7ld.c`), GoogleTest, Google Benchmark.
+**Tech Stack:** C++17, KLU sparse solver, ngspice BSIM4v7 reference (`$NGSPICE_DIR/src/spicelib/devices/bsim4v7/b4v7ld.c`), GoogleTest, Google Benchmark.
 
 ---
 

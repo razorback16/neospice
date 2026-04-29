@@ -155,7 +155,7 @@ In `tests/CMakeLists.txt`, add `unit/test_expression_random.cpp` to the test sou
 
 - [ ] **Step 4: Build and run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp/build-release && cmake --build . -j$(nproc) && ./tests/neospice_tests --gtest_filter="ExpressionRandom*"`
+Run: `cd ./build-release && cmake --build . -j$(nproc) && ./tests/neospice_tests --gtest_filter="ExpressionRandom*"`
 
 Expected: All 5 tests pass.
 
@@ -297,7 +297,7 @@ V1 1 0 1
 
 - [ ] **Step 4: Build and run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp/build-release && cmake --build . -j$(nproc) && ./tests/neospice_tests --gtest_filter="Parser.Step*"`
+Run: `cd ./build-release && cmake --build . -j$(nproc) && ./tests/neospice_tests --gtest_filter="Parser.Step*"`
 
 Expected: All 3 tests pass.
 
@@ -535,7 +535,7 @@ V1 in 0 1
 
 In `tests/CMakeLists.txt`, add `unit/test_step.cpp`.
 
-Run: `cd /home/subhagato/Codes/spice-cpp/build-release && cmake --build . -j$(nproc) && ./tests/neospice_tests --gtest_filter="StepSweep*"`
+Run: `cd ./build-release && cmake --build . -j$(nproc) && ./tests/neospice_tests --gtest_filter="StepSweep*"`
 
 Expected: Both tests pass.
 
@@ -934,7 +934,7 @@ R1 in out 1k
 
 - [ ] **Step 7: Build and run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp/build-release && cmake --build . -j$(nproc) && ./tests/neospice_tests --gtest_filter="PoleZero*"`
+Run: `cd ./build-release && cmake --build . -j$(nproc) && ./tests/neospice_tests --gtest_filter="PoleZero*"`
 
 Expected: Both tests pass.
 

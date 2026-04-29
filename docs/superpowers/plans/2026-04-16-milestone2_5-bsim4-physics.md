@@ -6,7 +6,7 @@
 
 **Architecture:** Incrementally port three dominant missing BSIM4 effects (Abulk bulk-charge correction, RDSW source/drain series resistance, and beta/gche current reformulation) from `../ngspice/src/spicelib/devices/bsim4v7/b4v7ld.c` into `src/devices/bsim4v7/bsim4v7_eval.cpp`. Parameters, parser mappings, and defaults are ported in lockstep. Integration tests (`NMOS_DC_IV`, `DISABLED_CMOSInverterTransient`, `DISABLED_RingOscillator5Stage`) track progress — worst_error should drop monotonically after each effect lands.
 
-**Tech Stack:** C++17, GoogleTest, ngspice reference at `/home/subhagato/Codes/ngspice`.
+**Tech Stack:** C++17, GoogleTest, ngspice reference at `$NGSPICE_DIR`.
 
 **Reference files (ngspice, read-only):**
 - `../ngspice/src/spicelib/devices/bsim4v7/b4v7ld.c` — device evaluation (load) function. Abulk ≈ lines 1376–1430, RDSW ≈ 1351–1374, beta/gche/Idl ≈ 1772–1812.
@@ -66,7 +66,7 @@ If `RDSW` is already present, update its default from whatever it was to `200.0`
 
 - [ ] **Step 3: Build**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -20`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -20`
 Expected: clean compile. Adding unused struct fields cannot break anything.
 
 - [ ] **Step 4: Run full test suite — confirm no regression**
@@ -150,7 +150,7 @@ Still in `bsim4v7_evaluate`, find the Vdsat line (currently `double Vdsat = (Esa
 
 - [ ] **Step 3: Build and run NMOS_DC_IV**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ./build/tests/test_ngspice_compare --gtest_filter=*NMOS_DC_IV*`
+Run: `cd . && cmake --build build -j$(nproc) && ./build/tests/test_ngspice_compare --gtest_filter=*NMOS_DC_IV*`
 Expected: Test may still fail (tolerance is `{10.0, 1e-6}`) but the reported `worst_error` should be smaller than before. Record the before/after worst_error to confirm Abulk helped.
 
 Acceptable outcomes at this point:
@@ -202,7 +202,7 @@ Immediately after the Abulk block from Task 2 (still before the `// --- Saturati
 
 - [ ] **Step 2: Build — RDSW not yet applied**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -10`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -10`
 Expected: clean compile; `Rds` is declared but unused (warning acceptable). Task 4 consumes it.
 
 - [ ] **Step 3: Commit the Rds computation**
@@ -333,7 +333,7 @@ Verify by compile: `cmake --build build -j$(nproc)`. Resolve any residual refere
 
 - [ ] **Step 4: Build and run NMOS_DC_IV**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ./build/tests/test_ngspice_compare --gtest_filter=*NMOS_DC_IV*`
+Run: `cd . && cmake --build build -j$(nproc) && ./build/tests/test_ngspice_compare --gtest_filter=*NMOS_DC_IV*`
 Expected: `worst_error` drops sharply — target < 1.0 (meaning within ~100% rel. tolerance; better than 8× original). If the test passes at `{10.0, 1e-6}` (which it does trivially) check the `worst_error` print-out to confirm quantitative improvement. If `worst_error` is > 3.0, investigate: the port may have a sign or formula error.
 
 - [ ] **Step 5: Run full suite**
@@ -383,7 +383,7 @@ Use whatever helper function (or inline lookup) is already used in this file —
 
 - [ ] **Step 3: Build**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -10`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -10`
 Expected: clean compile.
 
 - [ ] **Step 4: Run full suite**
@@ -413,7 +413,7 @@ Locate `TEST_F(NgspiceCompareTest, DISABLED_CMOSInverterTransient)` in `tests/un
 
 - [ ] **Step 2: Build and run**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ./build/tests/test_ngspice_compare --gtest_filter=*CMOSInverterTransient*`
+Run: `cd . && cmake --build build -j$(nproc) && ./build/tests/test_ngspice_compare --gtest_filter=*CMOSInverterTransient*`
 Expected:
 - DC op-point converges (no `ConvergenceError` thrown).
 - Transient runs to completion.
@@ -457,7 +457,7 @@ Locate `TEST_F(NgspiceCompareTest, DISABLED_RingOscillator5Stage)`. Rename to `R
 
 - [ ] **Step 2: Build and run**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ./build/tests/test_ngspice_compare --gtest_filter=*RingOscillator5Stage*`
+Run: `cd . && cmake --build build -j$(nproc) && ./build/tests/test_ngspice_compare --gtest_filter=*RingOscillator5Stage*`
 Expected: DC op-point converges, transient runs, test may pass or fail.
 
 - [ ] **Step 3: Widen if needed**
@@ -497,7 +497,7 @@ The DC IV test shipped with `{10.0, 1e-6}` because the simplified model was 8× 
 
 - [ ] **Step 1: Run and record**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && ./build/tests/test_ngspice_compare --gtest_filter=*NMOS_DC_IV* 2>&1 | tail -5`
+Run: `cd . && ./build/tests/test_ngspice_compare --gtest_filter=*NMOS_DC_IV* 2>&1 | tail -5`
 Record the `worst_error` value.
 
 - [ ] **Step 2: Tighten tolerance**

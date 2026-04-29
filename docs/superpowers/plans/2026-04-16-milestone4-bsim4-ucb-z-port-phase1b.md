@@ -204,7 +204,7 @@ struct Ckt {
 };
 ```
 
-Below the struct, add the mode flag constants (bit values copied from `/home/subhagato/Codes/ngspice/src/include/ngspice/cktdefs.h` lines 164-184):
+Below the struct, add the mode flag constants (bit values copied from `$NGSPICE_DIR/src/include/ngspice/cktdefs.h` lines 164-184):
 
 ```cpp
 namespace Shim {
@@ -227,7 +227,7 @@ namespace Shim {
 } // namespace Shim
 ```
 
-These must match ngspice's bit layout exactly — the test's `EXPECT_EQ(0x1, Shim::MODETRAN)` etc. assert this. If any value disagrees with `/home/subhagato/Codes/ngspice/src/include/ngspice/cktdefs.h`, update both the constant and the test.
+These must match ngspice's bit layout exactly — the test's `EXPECT_EQ(0x1, Shim::MODETRAN)` etc. assert this. If any value disagrees with `$NGSPICE_DIR/src/include/ngspice/cktdefs.h`, update both the constant and the test.
 
 - [ ] **Step 4: Run to verify the test passes**
 
@@ -1047,7 +1047,7 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
 - [ ] **Step 2: Capture the golden Id**
 
 ```bash
-ngspice -b /home/subhagato/Codes/spice-cpp/tests/goldens/probe.cir 2>&1 \
+ngspice -b ./tests/goldens/probe.cir 2>&1 \
     | grep -E 'id|@m1'
 ```
 
@@ -1566,7 +1566,7 @@ Expected: all previously-passing tests still pass; previously-skipped `NMOS_DC_I
 ```bash
 wc -l src/devices/bsim4v7/bsim4v7_load.cpp
 wc -l third_party/bsim4_4.7.0/code/b4ld.c 2>/dev/null \
-  || wc -l /home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4/b4ld.c
+  || wc -l $NGSPICE_DIR/src/spicelib/devices/bsim4/b4ld.c
 ```
 
 Expected: within ±100 lines (banner + namespace open/close + USE_OMP branch deletion account for the delta).

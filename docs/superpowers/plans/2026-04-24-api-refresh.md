@@ -139,7 +139,7 @@ Replace the summary table (lines 310–318):
 
 - [x] **Step 5: Build and verify no regressions**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -5`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -5`
 Expected: build succeeds (docs-only change)
 
 - [x] **Step 6: Commit**
@@ -195,7 +195,7 @@ R2 b 0 1k
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — `diff` and `signal_names` not found on TransientResult.
 
 - [x] **Step 3: Implement diff() and signal_names()**
@@ -223,7 +223,7 @@ In `src/core/transient.hpp`, add inside `struct TransientResult` after `current(
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimulatorAPI -V 2>&1 | tail -10`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R SimulatorAPI -V 2>&1 | tail -10`
 Expected: PASS
 
 - [x] **Step 5: Commit**
@@ -294,7 +294,7 @@ R4 b 0 1k
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — `signal_names` and `diff` not found.
 
 - [x] **Step 3: Implement helpers on DCResult and DCSweepResult**
@@ -334,7 +334,7 @@ In `src/core/dc.hpp`, add inside `struct DCSweepResult` after `current()`:
 
 - [x] **Step 4: Run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R "DCResultAPI|DCSweepResultAPI" -V 2>&1 | tail -10`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R "DCResultAPI|DCSweepResultAPI" -V 2>&1 | tail -10`
 Expected: PASS
 
 - [x] **Step 5: Commit**
@@ -392,7 +392,7 @@ R1 in 0 1k
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — `current_magnitude_db`, `current_phase_deg`, `signal_names` not found.
 
 - [x] **Step 3: Implement current helpers and signal_names on ACResult**
@@ -435,7 +435,7 @@ In `src/core/ac.hpp`, add inside `struct ACResult` after `diff_magnitude_db()`:
 
 - [x] **Step 4: Run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R ACResultAPI -V 2>&1 | tail -10`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R ACResultAPI -V 2>&1 | tail -10`
 Expected: PASS
 
 - [x] **Step 5: Commit**
@@ -502,7 +502,7 @@ R2 out 0 1k
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — methods not found on NoiseResult.
 
 - [x] **Step 3: Implement NoiseResult helpers**
@@ -566,7 +566,7 @@ In `src/core/noise.hpp`, add `#include <cmath>` and `#include <algorithm>` to th
 
 - [x] **Step 4: Run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R NoiseResultAPI -V 2>&1 | tail -10`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R NoiseResultAPI -V 2>&1 | tail -10`
 Expected: PASS
 
 - [x] **Step 5: Commit**
@@ -622,7 +622,7 @@ TEST(SimStatus, MethodToString) {
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — header not found.
 
 - [x] **Step 3: Create sim_status.hpp**
@@ -670,7 +670,7 @@ Find the CMake target that builds `test_api.cpp` and add `test_sim_status.cpp` t
 
 - [x] **Step 5: Run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatus -V 2>&1 | tail -10`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatus -V 2>&1 | tail -10`
 Expected: PASS
 
 - [x] **Step 6: Commit**
@@ -755,7 +755,7 @@ C1 out 0 1n
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) 2>&1 | tail -3`
+Run: `cd . && cmake --build build -j$(nproc) 2>&1 | tail -3`
 Expected: FAIL — no `status` member.
 
 - [x] **Step 3: Add SimStatus field to all result types**
@@ -778,7 +778,7 @@ In `src/core/pz.hpp`, add include at top, and inside `struct PZResult` add `SimS
 
 - [x] **Step 4: Build and run full test suite**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all existing tests pass (SimStatus has sane defaults, so nothing breaks). The new tests will fail on `iterations > 0` since solve functions don't populate status yet — that's Task 8. Mark these tests as `DISABLED_` for now:
 
 Rename the new tests:
@@ -817,7 +817,7 @@ In `tests/unit/test_api.cpp`, rename back:
 
 - [x] **Step 2: Run tests to confirm they fail**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
 Expected: FAIL on `iterations > 0`.
 
 - [x] **Step 3: Populate SimStatus in solve_dc()**
@@ -909,12 +909,12 @@ The AC solve first does a DC operating point. Capture its status:
 
 - [x] **Step 6: Run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
 Expected: all 3 PASS.
 
 - [x] **Step 7: Run full test suite for regressions**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
+Run: `cd . && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all tests pass.
 
 - [x] **Step 8: Commit**
@@ -995,7 +995,7 @@ R2 out 0 1k
 
 - [x] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R "SimStatusIntegration.*Noise|SimStatusIntegration.*TF|SimStatusIntegration.*Sens" -V 2>&1 | tail -15`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R "SimStatusIntegration.*Noise|SimStatusIntegration.*TF|SimStatusIntegration.*Sens" -V 2>&1 | tail -15`
 Expected: FAIL on `elapsed_seconds > 0.0`.
 
 - [x] **Step 3: Add timing to noise, TF, sens, and PZ solvers**
@@ -1015,7 +1015,7 @@ For `solve_tf()` and `solve_sens()`, also capture the DC iterations from the int
 
 - [x] **Step 4: Run tests**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -R SimStatusIntegration -V 2>&1 | tail -15`
 Expected: all PASS.
 
 - [x] **Step 5: Run full test suite**
@@ -1042,7 +1042,7 @@ The `apply_save_filter` function is copy-pasted 4 times with identical logic (DC
 
 - [x] **Step 1: Run full test suite to establish baseline**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
+Run: `cd . && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all pass.
 
 - [x] **Step 2: Replace 4 overloads with one template**
@@ -1074,7 +1074,7 @@ static void apply_save_filter(Result& r, const std::vector<std::string>& sigs) {
 
 - [x] **Step 3: Build and run full test suite**
 
-Run: `cd /home/subhagato/Codes/spice-cpp && cmake --build build -j$(nproc) && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
+Run: `cd . && cmake --build build -j$(nproc) && ctest --test-dir build -j$(nproc) 2>&1 | tail -5`
 Expected: all pass, zero regressions.
 
 - [x] **Step 4: Commit**

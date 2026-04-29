@@ -3,7 +3,7 @@
   "W": 1e-6,
   "L": 1e-7,
   "temp_K": 300.15,
-  "source": "ngspice 45-dev-ish built from /home/subhagato/Codes/ngspice (BSIM4.8.0 tree) patched in src/spicelib/devices/bsim4/b4temp.c to fprintf(stderr, ...) pParam->BSIM4* and here->BSIM4* after BSIM4temp returns. Patch is NOT committed anywhere. ngspice-42 (system /usr/bin/ngspice) uses the same BSIM4 4.8.0 kernel internals, so values carry over. Our C++ port is 4.7.0 but these preprocessing fields (leff/weff, vth0, u0temp, vfb, vsattemp, k1ox, cdep0, phi) have identical formulas in 4.7.0 and 4.8.0 for the parameters exercised here (default mobMod=0, default stress/NUD/NF=1).",
+  "source": "ngspice 45-dev-ish (BSIM4.8.0 tree) patched in src/spicelib/devices/bsim4/b4temp.c to fprintf(stderr, ...) pParam->BSIM4* and here->BSIM4* after BSIM4temp returns. Patch is NOT committed anywhere. ngspice-42 uses the same BSIM4 4.8.0 kernel internals, so values carry over. Our C++ port is 4.7.0 but these preprocessing fields (leff/weff, vth0, u0temp, vfb, vsattemp, k1ox, cdep0, phi) have identical formulas in 4.7.0 and 4.8.0 for the parameters exercised here (default mobMod=0, default stress/NUD/NF=1).",
   "tolerance_rel": 1e-10,
   "notes": [
     "In BSIM4 4.7.0/4.8.0 the size-dependent per-instance precomputed values live on bsim4SizeDependParam (accessed via here->pParam), NOT on the instance directly. leff/weff/cdep0/k1ox/phi are pParam-only.",

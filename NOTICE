@@ -1,0 +1,147 @@
+NOTICE — Third-Party Copyrights and Licenses
+=============================================
+
+neospice is licensed under the MIT License (see LICENSE). However, portions of
+the device model code in src/devices/ are derived from or translated from
+third-party sources that retain their own copyright notices and license terms.
+These are documented below.
+
+
+1. University of California, Berkeley — SPICE3 / BSIM
+------------------------------------------------------
+
+The following device models contain code derived from UC Berkeley's SPICE3
+simulator and BSIM compact model implementations. Original copyright notices
+are preserved in each source file.
+
+  Copyright 1990-2010 Regents of the University of California.
+  All rights reserved.
+
+  Devices: bjt, dio, jfet, ltra, mes, mos1, mos3, mos9, vbic,
+           bsim3 (v3.3.0), bsim3v32 (v3.2.4), bsim4v7 (v4.7.0), bsimsoi
+
+  Authors include: Thomas L. Quarles, Min-Chie Jeng, Weidong Liu,
+  Xuemei Xi, Mansun Chan, Mohan Dunga, Ali Niknejad, Chenming Hu,
+  Wenwei Yang, Darsen Lu, Samuel Fung, Dennis Sinitsky, Stephen Tang,
+  Pin Su, Hui Wan, Wei Jin, Chung-Hsun Lin, Tanvir Morshed,
+  Jaijeet S. Roychowdhury.
+
+  The BSIM4 model is subject to additional terms of use from the
+  UC Berkeley BSIM Research Group (see below).
+
+BSIM4 Terms of Use (UC Berkeley BSIM Research Group):
+
+  Software is distributed as is, completely without warranty or service
+  support. The University of California and its employees are not liable
+  for the condition or performance of the software.
+
+  The University of California grants the users the right to modify, copy,
+  and redistribute the software and documentation, subject to the following
+  restrictions:
+
+  1. The users agree not to charge for the University of California code
+     itself but may charge for additions, extensions, or support.
+
+  2. In any product based on the software, the users agree to acknowledge
+     the UC Berkeley BSIM Research Group that developed the software. This
+     acknowledgment shall appear in the product documentation.
+
+  3. The users agree to obey all U.S. Government restrictions governing
+     redistribution or export of the software.
+
+  4. The users agree to reproduce any copyright notice which appears on
+     the software on any copy or modification of such made available
+     to others.
+
+
+2. Sydney University — JFET Modifications
+------------------------------------------
+
+  Copyright (c) 1989 Anthony E. Parker, David J. Skellern
+  Laboratory for Communication Science Engineering
+  Sydney University Department of Electrical Engineering, Australia
+
+  Device: jfet (modifications to the UC Berkeley JFET model)
+
+
+3. Macquarie University — Parker-Skellern JFET2 Model
+------------------------------------------------------
+
+  Copyright 1994 Macquarie University, Sydney Australia.
+  Author: Anthony E. Parker
+
+  Device: jfet2 (PS model additions to the UC Berkeley JFET model)
+
+
+4. Hiroshima University & STARC — HiSIM2
+-----------------------------------------
+
+  HiSIM (Hiroshima University STARC IGFET Model)
+  Copyright (C) 2012 Hiroshima University &
+  Semiconductor Technology Academic Research Center (STARC)
+
+  MODEL NAME: HiSIM (VERSION 2, SUBVERSION 7, REVISION 0)
+  Device: hisim2
+
+  Software is distributed as is, completely without warranty or service
+  support. Hiroshima University and STARC own the copyright and grant users
+  a perpetual, irrevocable, worldwide, non-exclusive, royalty-free license
+  with respect to the software, subject to the following restrictions:
+
+  1. The users agree not to charge for Hiroshima University and STARC code
+     itself but may charge for additions, extensions, or support.
+
+  2. In any product based on the software, the users agree to acknowledge
+     Hiroshima University and STARC that developed the software. This
+     acknowledgment shall appear in the product documentation.
+
+  3. The users agree to reproduce any copyright notice which appears on the
+     software on any copy or modification of such made available to others.
+
+
+5. Hiroshima University & STARC — HiSIM_HV
+-------------------------------------------
+
+  HiSIM (Hiroshima University STARC IGFET Model)
+  Copyright (C) 2014 Hiroshima University &
+  Semiconductor Technology Academic Research Center (STARC)
+
+  MODEL NAME: HiSIM_HV (VERSION 2, SUBVERSION 2, REVISION 0)
+  Device: hisimhv
+
+  The source code and all copyrights, trade secrets or other intellectual
+  property rights are owned by Hiroshima University and STARC. License terms
+  are identical to HiSIM2 above.
+
+  Signed: Toshimasa Asahara, Mitiko Miura-Mattausch (Hiroshima University),
+  Katsuhiro Shimohigashi (STARC) — June 2008, revised October 2011.
+
+
+6. MacSpice3f4 — HFET Models
+-----------------------------
+
+  Imported from MacSpice3f4 — Antony Wilson
+  Modified: Paolo Nenzi
+
+  Devices: hfet1 (Curtice Cubic), hfet2 (Chalmers)
+
+
+7. VBIC Model — Additional Credits
+-----------------------------------
+
+  Model Author: 1995 Colin McAndrew, Motorola
+  Spice3 Implementation: 2003 Dietmar Warning, DAnalyse GmbH
+
+  Device: vbic (within the UC Berkeley copyright framework)
+
+
+8. ngspice Community Contributors
+----------------------------------
+
+  Several device models include modifications by:
+  - Paolo Nenzi (2002-2003)
+  - Dietmar Warning (2003-2012)
+  - Alan Gillespie ("AlansFixes", 2000)
+
+  These modifications were made within the UC Berkeley SPICE3 license
+  framework.

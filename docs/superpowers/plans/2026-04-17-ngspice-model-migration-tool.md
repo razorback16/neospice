@@ -194,7 +194,7 @@ def test_type_rename_instance():
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_transformer.py::test_type_rename_instance -v
+cd . && python -m pytest tools/tests/test_transformer.py::test_type_rename_instance -v
 ```
 Expected: FAIL with `ModuleNotFoundError: No module named 'ngspice_migrate'`
 
@@ -397,7 +397,7 @@ Implementation note: the pass implementations (strip_omp_blocks, protect_literal
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_transformer.py -v
+cd . && python -m pytest tools/tests/test_transformer.py -v
 ```
 Expected: PASS
 
@@ -494,14 +494,14 @@ int DIOload(GENmodel *inModel, CKTcircuit *ckt)
 - [ ] **Step 6: Run tests**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_transformer.py -v
+cd . && python -m pytest tools/tests/test_transformer.py -v
 ```
 Expected: All PASS
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/ngspice_migrate/__init__.py tools/ngspice_migrate/transformer.py tools/tests/test_transformer.py
 git commit -m "feat(tools): generic 8-pass C→C++ transformer for ngspice models"
 ```
@@ -557,7 +557,7 @@ def test_missing_required_field():
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_descriptor.py -v
+cd . && python -m pytest tools/tests/test_descriptor.py -v
 ```
 Expected: FAIL
 
@@ -690,14 +690,14 @@ Write `tools/descriptors/bsim4v7.yaml` using the format shown in the Descriptor 
 - [ ] **Step 5: Run tests**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_descriptor.py -v
+cd . && python -m pytest tools/tests/test_descriptor.py -v
 ```
 Expected: All PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/ngspice_migrate/descriptor.py tools/tests/test_descriptor.py tools/descriptors/bsim4v7.yaml
 git commit -m "feat(tools): model descriptor loader with BSIM4v7 YAML"
 ```
@@ -772,7 +772,7 @@ def test_model_struct_rename():
 - [ ] **Step 2: Run test, verify fail**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_gen_def.py -v
+cd . && python -m pytest tools/tests/test_gen_def.py -v
 ```
 
 - [ ] **Step 3: Implement gen_def.py**
@@ -855,14 +855,14 @@ def generate_def_hpp(src: str, desc: ModelDescriptor) -> str:
 - [ ] **Step 4: Run tests**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_gen_def.py -v
+cd . && python -m pytest tools/tests/test_gen_def.py -v
 ```
 Expected: All PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/ngspice_migrate/gen_def.py tools/tests/test_gen_def.py
 git commit -m "feat(tools): def.h to def.hpp generator"
 ```
@@ -930,7 +930,7 @@ def test_shim_hpp_has_internal_nodes():
 - [ ] **Step 2: Run test, verify fail**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_gen_shim.py -v
+cd . && python -m pytest tools/tests/test_gen_shim.py -v
 ```
 
 - [ ] **Step 3: Implement gen_shim.py**
@@ -1221,14 +1221,14 @@ _REPORT_ERROR_IMPL = """void report_error(int /*level*/, const char *fmt, ...) {
 - [ ] **Step 4: Run tests**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_gen_shim.py -v
+cd . && python -m pytest tools/tests/test_gen_shim.py -v
 ```
 Expected: All PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/ngspice_migrate/gen_shim.py tools/tests/test_gen_shim.py
 git commit -m "feat(tools): shim layer generator for migrated models"
 ```
@@ -1304,7 +1304,7 @@ def test_adapter_cpp_has_splicing():
 - [ ] **Step 2: Run test, verify fail**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_gen_adapter.py -v
+cd . && python -m pytest tools/tests/test_gen_adapter.py -v
 ```
 
 - [ ] **Step 3: Implement gen_adapter.py**
@@ -1593,14 +1593,14 @@ void {dev_class}::evaluate(const std::vector<double>& voltages,
 - [ ] **Step 4: Run tests**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_gen_adapter.py -v
+cd . && python -m pytest tools/tests/test_gen_adapter.py -v
 ```
 Expected: All PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/ngspice_migrate/gen_adapter.py tools/tests/test_gen_adapter.py
 git commit -m "feat(tools): device adapter generator for migrated models"
 ```
@@ -1738,14 +1738,14 @@ def validate_migration(setup_src: str, load_src: str, prefix: str) -> list[str]:
 - [ ] **Step 4: Run tests**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && python -m pytest tools/tests/test_gen_cmake.py tools/tests/test_validation.py -v
+cd . && python -m pytest tools/tests/test_gen_cmake.py tools/tests/test_validation.py -v
 ```
 Expected: All PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/ngspice_migrate/gen_cmake.py tools/ngspice_migrate/validation.py \
         tools/tests/test_gen_cmake.py tools/tests/test_validation.py
 git commit -m "feat(tools): CMake generator and post-migration validation"
@@ -1875,10 +1875,10 @@ if __name__ == "__main__":
 - [ ] **Step 2: Test manually with BSIM4v7 (dry run)**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 python -m tools.ngspice_migrate \
     tools/descriptors/bsim4v7.yaml \
-    /home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4v7 \
+    $NGSPICE_DIR/src/spicelib/devices/bsim4v7 \
     /tmp/bsim4v7_test \
     --dry-run
 ```
@@ -1887,10 +1887,10 @@ Expected: Lists files that would be generated, no errors
 - [ ] **Step 3: Test full generation to temp directory**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 python -m tools.ngspice_migrate \
     tools/descriptors/bsim4v7.yaml \
-    /home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4v7 \
+    $NGSPICE_DIR/src/spicelib/devices/bsim4v7 \
     /tmp/bsim4v7_test
 ```
 Expected: All files generated, validation reports TSTALLOC/stamp counts
@@ -1898,7 +1898,7 @@ Expected: All files generated, validation reports TSTALLOC/stamp counts
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/ngspice_migrate/__main__.py
 git commit -m "feat(tools): CLI orchestrator for ngspice model migration"
 ```
@@ -1938,7 +1938,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 DESCRIPTOR = REPO_ROOT / "tools" / "descriptors" / "bsim4v7.yaml"
-NGSPICE_DIR = Path("/home/subhagato/Codes/ngspice/src/spicelib/devices/bsim4v7")
+NGSPICE_DIR = Path("$NGSPICE_DIR/src/spicelib/devices/bsim4v7")
 EXISTING_DIR = REPO_ROOT / "src" / "devices" / "bsim4v7"
 
 
@@ -2011,14 +2011,14 @@ class TestBSIM4v7Roundtrip:
 - [ ] **Step 2: Run roundtrip test**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp && PYTHONPATH=tools python -m pytest tools/tests/test_bsim4v7_roundtrip.py -v
+cd . && PYTHONPATH=tools python -m pytest tools/tests/test_bsim4v7_roundtrip.py -v
 ```
 Expected: All PASS
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/tests/test_bsim4v7_roundtrip.py
 git commit -m "test(tools): BSIM4v7 roundtrip validation for migration tool"
 ```
@@ -2099,10 +2099,10 @@ model:
 - [ ] **Step 2: Run migration tool on diode model**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 python -m tools.ngspice_migrate \
     tools/descriptors/dio.yaml \
-    /home/subhagato/Codes/ngspice/src/spicelib/devices/dio \
+    $NGSPICE_DIR/src/spicelib/devices/dio \
     /tmp/dio_test
 ```
 Expected: All files generated successfully, validation shows TSTALLOC and stamp counts
@@ -2127,7 +2127,7 @@ grep "MatrixOffset" /tmp/dio_test/dio_def.hpp
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/subhagato/Codes/spice-cpp
+cd .
 git add tools/descriptors/dio.yaml
 git commit -m "feat(tools): diode model descriptor for migration tool"
 ```
