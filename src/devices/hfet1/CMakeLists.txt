@@ -9,4 +9,4 @@ add_library(hfet1_obj OBJECT
     hfet1_device.cpp
     hfet1_model_card.cpp
 )
-target_include_directories(hfet1_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(hfet1_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

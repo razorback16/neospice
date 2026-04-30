@@ -8,4 +8,4 @@ add_library(vbic_obj OBJECT
     vbic_shim.cpp
     vbic_device.cpp
 )
-target_include_directories(vbic_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(vbic_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

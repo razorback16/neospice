@@ -1,6 +1,7 @@
 #pragma once
 #include "core/types.hpp"
 #include "core/matrix.hpp"
+#include "neospice/types.hpp"
 #include <cctype>
 #include <complex>
 #include <optional>
@@ -11,7 +12,7 @@ namespace neospice {
 
 class Circuit;  // forward decl for declare_internal_nodes
 
-constexpr int32_t GROUND_INTERNAL = -1;  // internal index for ground node
+constexpr int32_t GROUND_INTERNAL = static_cast<int32_t>(GND);  // internal index for ground node
 
 class Device {
 public:

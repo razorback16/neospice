@@ -8,4 +8,4 @@ add_library(jfet_obj OBJECT
     jfet_shim.cpp
     jfet_device.cpp
 )
-target_include_directories(jfet_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(jfet_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

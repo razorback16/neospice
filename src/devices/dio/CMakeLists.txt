@@ -8,4 +8,4 @@ add_library(dio_obj OBJECT
     dio_shim.cpp
     dio_device.cpp
 )
-target_include_directories(dio_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(dio_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

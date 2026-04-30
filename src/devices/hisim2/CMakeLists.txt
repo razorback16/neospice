@@ -10,4 +10,4 @@ add_library(hisim2_obj OBJECT
     hisim2_device.cpp
     hisim2_model_card.cpp
 )
-target_include_directories(hisim2_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(hisim2_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

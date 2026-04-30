@@ -10,4 +10,4 @@ add_library(bsimsoi_obj OBJECT
     bsimsoi_device.cpp
     bsimsoi_model_card.cpp
 )
-target_include_directories(bsimsoi_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(bsimsoi_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

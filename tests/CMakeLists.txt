@@ -100,6 +100,7 @@ add_executable(neospice_tests
     unit/test_ringing.cpp
     unit/test_circuit_builder.cpp
     unit/test_introspection.cpp
+    unit/test_handles.cpp
     unit/test_kicad_lm358_ns.cpp
     unit/test_kicad_bc547a.cpp
     unit/test_kicad_opa1632.cpp

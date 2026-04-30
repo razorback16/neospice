@@ -86,6 +86,7 @@ add_library(neospice_lib
 
 target_include_directories(neospice_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/include
 )
 
 target_include_directories(neospice_lib PRIVATE

@@ -12,4 +12,4 @@ add_library(hisimhv_obj OBJECT
     hisimhv_device.cpp
     hisimhv_model_card.cpp
 )
-target_include_directories(hisimhv_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(hisimhv_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

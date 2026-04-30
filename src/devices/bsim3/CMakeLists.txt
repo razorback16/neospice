@@ -9,4 +9,4 @@ add_library(bsim3_obj OBJECT
     bsim3_shim.cpp
     bsim3_device.cpp
 )
-target_include_directories(bsim3_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(bsim3_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

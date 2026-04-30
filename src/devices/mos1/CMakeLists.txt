@@ -8,4 +8,4 @@ add_library(mos1_obj OBJECT
     mos1_shim.cpp
     mos1_device.cpp
 )
-target_include_directories(mos1_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(mos1_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

@@ -8,4 +8,4 @@ add_library(bjt_obj OBJECT
     bjt_shim.cpp
     bjt_device.cpp
 )
-target_include_directories(bjt_obj PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(bjt_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
