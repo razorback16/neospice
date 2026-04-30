@@ -79,6 +79,10 @@ NB_MODULE(_core, m) {
         .def_ro("converged", &SimStatus::converged)
         .def_ro("iterations", &SimStatus::iterations)
         .def_ro("convergence_method", &SimStatus::convergence_method)
+        .def_ro("residual", &SimStatus::residual)
+        .def_ro("worst_node_idx", &SimStatus::worst_node_idx)
+        .def_ro("gmin_steps", &SimStatus::gmin_steps)
+        .def_ro("source_steps", &SimStatus::source_steps)
         .def_ro("warnings", &SimStatus::warnings)
         .def_ro("elapsed_seconds", &SimStatus::elapsed_seconds);
 
@@ -144,8 +148,46 @@ NB_MODULE(_core, m) {
         .def_rw("options", &Circuit::options)
         .def("node_names", &Circuit::node_names)
         .def("device_names", &Circuit::device_names)
-        .def("device_info", &Circuit::device_info)
-        .def("set_param", &Circuit::set_param);
+        .def("device_info", [](Circuit& c, const std::string& name) {
+            return c.device_info(name);
+        })
+        .def("set_param", &Circuit::set_param)
+        .def("R", [](Circuit& c, const std::string& name,
+                     const std::string& n1, const std::string& n2, double val) -> int {
+            return static_cast<int32_t>(c.R(name, c.node(n1), c.node(n2), val));
+        })
+        .def("C", [](Circuit& c, const std::string& name,
+                     const std::string& n1, const std::string& n2, double val) -> int {
+            return static_cast<int32_t>(c.C(name, c.node(n1), c.node(n2), val));
+        })
+        .def("L", [](Circuit& c, const std::string& name,
+                     const std::string& n1, const std::string& n2, double val) -> int {
+            return static_cast<int32_t>(c.L(name, c.node(n1), c.node(n2), val));
+        })
+        .def("V", [](Circuit& c, const std::string& name,
+                     const std::string& np, const std::string& nn,
+                     double dc, double ac, double phase) -> int {
+            return static_cast<int32_t>(c.V(name, c.node(np), c.node(nn), dc, ac, phase));
+        }, nb::arg("name"), nb::arg("np"), nb::arg("nn"),
+           nb::arg("dc") = 0.0, nb::arg("ac") = 0.0, nb::arg("phase") = 0.0)
+        .def("I", [](Circuit& c, const std::string& name,
+                     const std::string& np, const std::string& nn,
+                     double dc, double ac, double phase) -> int {
+            return static_cast<int32_t>(c.I(name, c.node(np), c.node(nn), dc, ac, phase));
+        }, nb::arg("name"), nb::arg("np"), nb::arg("nn"),
+           nb::arg("dc") = 0.0, nb::arg("ac") = 0.0, nb::arg("phase") = 0.0)
+        .def("E", [](Circuit& c, const std::string& name,
+                     const std::string& op, const std::string& on,
+                     const std::string& cp, const std::string& cn, double gain) -> int {
+            return static_cast<int32_t>(c.E(name, c.node(op), c.node(on), c.node(cp), c.node(cn), gain));
+        })
+        .def("G", [](Circuit& c, const std::string& name,
+                     const std::string& op, const std::string& on,
+                     const std::string& cp, const std::string& cn, double gm) -> int {
+            return static_cast<int32_t>(c.G(name, c.node(op), c.node(on), c.node(cp), c.node(cn), gm));
+        })
+        .def("is_finalized", &Circuit::is_finalized)
+        .def("finalize", &Circuit::finalize_if_needed);
 
     nb::class_<DeviceInfo>(m, "DeviceInfo")
         .def_ro("name", &DeviceInfo::name)
