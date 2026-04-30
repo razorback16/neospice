@@ -1,6 +1,11 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <map>
+#include <span>
 #include "api/neospice.hpp"
+#include "neospice/types.hpp"
+#include "devices/vsource.hpp"
+#include "devices/resistor.hpp"
 
 using namespace neospice;
 
@@ -177,4 +182,102 @@ L1 out 0 1m
     EXPECT_TRUE(ckt.set_param("L1", 10e-3));
     auto info = ckt.device_info("L1");
     EXPECT_NEAR(info.value.value(), 10e-3, 1e-9);
+}
+
+// ---------------------------------------------------------------------------
+// Handle-based introspection tests (Task 13)
+// ---------------------------------------------------------------------------
+
+TEST(HandleIntrospection, FindNode) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    auto out = ckt.node("out");
+    EXPECT_EQ(ckt.find_node("in"), NodeId{in});
+    EXPECT_EQ(ckt.find_node("out"), NodeId{out});
+    EXPECT_EQ(ckt.find_node("0"), GND);
+    EXPECT_EQ(ckt.find_node("gnd"), GND);
+}
+
+TEST(HandleIntrospection, FindNodeNotFound) {
+    Circuit ckt;
+    ckt.node("in");
+    EXPECT_THROW(ckt.find_node("nonexistent"), std::out_of_range);
+}
+
+TEST(HandleIntrospection, FindDeviceByHandle) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    DevId v = ckt.V("V1", in, GROUND_INTERNAL, 5.0);
+    DevId r = ckt.R("R1", in, GROUND_INTERNAL, 1e3);
+    EXPECT_EQ(ckt.find_device(std::string_view("v1")), v);
+    EXPECT_EQ(ckt.find_device(std::string_view("V1")), v);
+    EXPECT_EQ(ckt.find_device(std::string_view("r1")), r);
+}
+
+TEST(HandleIntrospection, FindDeviceNotFoundByHandle) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    ckt.V("V1", in, GROUND_INTERNAL, 5.0);
+    EXPECT_THROW(ckt.find_device(std::string_view("v99")), std::out_of_range);
+}
+
+TEST(HandleIntrospection, NodeName) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    EXPECT_EQ(ckt.name(NodeId{in}), "in");
+}
+
+TEST(HandleIntrospection, DeviceName) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    DevId v = ckt.V("V1", in, GROUND_INTERNAL, 5.0);
+    EXPECT_EQ(ckt.name(v), "V1");
+}
+
+TEST(HandleIntrospection, DeviceInfoByDevId) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    auto out = ckt.node("out");
+    ckt.V("V1", in, GROUND_INTERNAL, 5.0);
+    DevId r = ckt.R("R1", in, out, 1e3);
+    ckt.finalize();
+    auto info = ckt.device_info(r);
+    EXPECT_EQ(info.name, "R1");
+    EXPECT_EQ(info.type, "R");
+}
+
+// Test ModelMatcher registry (Task 11)
+TEST(SimulatorRegistry, RegisterCustomDevice) {
+    Simulator sim;
+    bool factory_called = false;
+    sim.register_device("U", {},
+        [&](std::string_view, std::span<const int32_t>,
+            const std::map<std::string, double>&) -> std::unique_ptr<Device> {
+            factory_called = true;
+            return nullptr;
+        });
+    EXPECT_FALSE(factory_called);  // Just registered, not called
+}
+
+// Test .save view layer (Task 12)
+TEST(SaveFilter, HandleAccessWorksEvenWithSave) {
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Save test
+V1 in 0 10
+R1 in mid 1k
+R2 mid out 1k
+R3 out 0 1k
+.save v(out)
+.op
+.end
+)");
+    auto result = sim.run(ckt);
+    auto& dc = std::get<DCResult>(result.analysis);
+    auto names = dc.signal_names();
+    EXPECT_EQ(names.size(), 1u);
+    EXPECT_EQ(names[0], "v(out)");
+    // Handle access works for ALL nodes regardless of .save
+    auto mid_idx = ckt.node_index("mid");
+    EXPECT_NEAR(dc.voltage(NodeId{mid_idx}), 10.0 * 2.0 / 3.0, 0.01);
 }

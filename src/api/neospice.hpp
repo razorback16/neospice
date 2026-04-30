@@ -8,11 +8,14 @@
 #include "core/sens.hpp"
 #include "core/pz.hpp"
 #include "core/measure.hpp"
-#include <string>
+#include <functional>
+#include <map>
+#include <memory>
 #include <optional>
+#include <span>
+#include <string>
 #include <variant>
 #include <vector>
-#include <memory>
 
 namespace neospice {
 
@@ -39,8 +42,18 @@ struct StepResult {
     std::vector<SimulationResult> results;
 };
 
+struct ModelMatcher {
+    std::optional<std::string> model_type;
+    std::optional<int> level;
+};
+
 class Simulator {
 public:
+    using DeviceFactory = std::function<
+        std::unique_ptr<Device>(std::string_view name,
+                                std::span<const int32_t> nodes,
+                                const std::map<std::string, double>& params)>;
+
     Simulator() = default;
 
     Circuit load(const std::string& filepath);
@@ -66,6 +79,17 @@ public:
 
     SimulationResult run(Circuit& ckt);
     SimulationResult run_step_sweep(Circuit& ckt);
+
+    void register_device(std::string_view prefix, ModelMatcher matcher,
+                         DeviceFactory factory);
+
+private:
+    struct RegistryEntry {
+        std::string prefix;
+        ModelMatcher matcher;
+        DeviceFactory factory;
+    };
+    std::vector<RegistryEntry> registry_;
 };
 
 } // namespace neospice

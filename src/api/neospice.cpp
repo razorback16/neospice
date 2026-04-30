@@ -247,4 +247,9 @@ SimulationResult Simulator::run_step_sweep(Circuit& ckt) {
     return outer;
 }
 
+void Simulator::register_device(std::string_view prefix, ModelMatcher matcher,
+                                DeviceFactory factory) {
+    registry_.push_back({std::string(prefix), std::move(matcher), std::move(factory)});
+}
+
 } // namespace neospice

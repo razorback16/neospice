@@ -283,4 +283,48 @@ bool Circuit::set_param(const std::string& device_name, double value) {
     return changed;
 }
 
+NodeId Circuit::find_node(std::string_view name) const {
+    std::string sname(name);
+    if (sname == "0" || sname == "gnd" || sname == "GND")
+        return GND;
+    auto it = node_map_.find(sname);
+    if (it == node_map_.end())
+        throw std::out_of_range("Node not found: " + sname);
+    return NodeId{it->second};
+}
+
+DevId Circuit::find_device(std::string_view name) const {
+    std::string lower(name);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    for (std::size_t i = 0; i < devices_.size(); ++i) {
+        std::string dev_lower = devices_[i]->name();
+        std::transform(dev_lower.begin(), dev_lower.end(), dev_lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (dev_lower == lower) return DevId{static_cast<int32_t>(i)};
+    }
+    throw std::out_of_range("Device not found: " + std::string(name));
+}
+
+std::string_view Circuit::name(NodeId node) const {
+    auto idx = static_cast<int32_t>(node);
+    if (idx < 0 || idx >= static_cast<int32_t>(node_names_.size()))
+        throw std::out_of_range("Invalid NodeId");
+    return node_names_[idx];
+}
+
+std::string_view Circuit::name(DevId dev) const {
+    auto idx = static_cast<int32_t>(dev);
+    if (idx < 0 || idx >= static_cast<int32_t>(devices_.size()))
+        throw std::out_of_range("Invalid DevId");
+    return devices_[idx]->name();
+}
+
+DeviceInfo Circuit::device_info(DevId dev) const {
+    auto idx = static_cast<int32_t>(dev);
+    if (idx < 0 || idx >= static_cast<int32_t>(devices_.size()))
+        throw std::out_of_range("Invalid DevId");
+    return device_info(devices_[idx]->name());
+}
+
 } // namespace neospice

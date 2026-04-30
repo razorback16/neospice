@@ -240,6 +240,13 @@ public:
     const Device* find_device(const std::string& name) const;
     bool set_param(const std::string& device_name, double value);
 
+    // Handle-based introspection
+    NodeId find_node(std::string_view name) const;
+    DevId find_device(std::string_view name) const;
+    std::string_view name(NodeId node) const;
+    std::string_view name(DevId dev) const;
+    DeviceInfo device_info(DevId dev) const;
+
     std::string                         title;
     SimOptions                          options;
     std::vector<AnalysisCommand>        analyses;
