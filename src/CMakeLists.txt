@@ -62,6 +62,7 @@ add_library(neospice_lib
     parser/netlist_parser.cpp
     api/neospice.cpp
     api/circuit_builder.cpp
+    api/circuit_typed.cpp
     output/raw_writer.cpp
     output/output.cpp
     $<TARGET_OBJECTS:bsim4v7_obj>

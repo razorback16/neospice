@@ -3,9 +3,11 @@
 #include "core/matrix.hpp"
 #include "core/pz.hpp"
 #include "devices/device.hpp"
+#include "neospice/types.hpp"
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -155,6 +157,34 @@ public:
     int32_t num_nodes() const { return next_node_; }
     int32_t num_vars() const  { return num_vars_; }
     int32_t num_states() const { return num_states_; }
+
+    // --- Typed device construction methods ---
+    // Passives
+    DevId R(std::string_view name, int32_t a, int32_t b, double ohms);
+    DevId C(std::string_view name, int32_t a, int32_t b, double farads);
+    DevId L(std::string_view name, int32_t a, int32_t b, double henries);
+    DevId K(std::string_view name, DevId L1, DevId L2, double coupling);
+
+    // Independent sources
+    DevId V(std::string_view name, int32_t p, int32_t n, double dc);
+    DevId V(std::string_view name, int32_t p, int32_t n,
+            double dc, double ac_mag, double ac_phase = 0.0);
+    DevId I(std::string_view name, int32_t p, int32_t n, double dc);
+    DevId I(std::string_view name, int32_t p, int32_t n,
+            double dc, double ac_mag, double ac_phase = 0.0);
+
+    // Dependent sources
+    DevId E(std::string_view name, int32_t op, int32_t on,
+            int32_t cp, int32_t cn, double gain);
+    DevId G(std::string_view name, int32_t op, int32_t on,
+            int32_t cp, int32_t cn, double gm);
+    DevId F(std::string_view name, int32_t op, int32_t on,
+            DevId vsense, double gain);
+    DevId H(std::string_view name, int32_t op, int32_t on,
+            DevId vsense, double transresistance);
+
+    // Custom device injection (returns DevId)
+    DevId add_dev(std::unique_ptr<Device> dev);
 
     void add_device(std::unique_ptr<Device> dev);
 
