@@ -2,7 +2,9 @@
 #include "core/circuit.hpp"
 #include "core/dc.hpp"
 #include "core/sim_status.hpp"
+#include "neospice/types.hpp"
 #include <complex>
+#include <span>
 #include <vector>
 #include <string>
 #include <map>
@@ -107,6 +109,66 @@ struct ACResult {
         for (const auto& [k, v] : voltages) names.push_back(k);
         for (const auto& [k, v] : currents) names.push_back(k);
         return names;
+    }
+
+    // Dense storage indexed by node/device ordinal
+    std::vector<std::vector<std::complex<double>>> voltages_dense;
+    std::vector<std::vector<std::complex<double>>> currents_dense;
+
+    std::span<const std::complex<double>> voltage(NodeId node) const {
+        auto idx = static_cast<int32_t>(node);
+        if (idx < 0 || idx >= static_cast<int32_t>(voltages_dense.size()))
+            throw std::out_of_range("Invalid NodeId for voltage access");
+        return voltages_dense[idx];
+    }
+
+    std::span<const std::complex<double>> current(DevId dev) const {
+        auto idx = static_cast<int32_t>(dev);
+        if (idx < 0 || idx >= static_cast<int32_t>(currents_dense.size()))
+            throw std::out_of_range("Invalid DevId for current access");
+        return currents_dense[idx];
+    }
+
+    // Derived quantities — return vector (computed on access)
+    std::vector<double> magnitude_db(NodeId node) const {
+        auto v = voltage(node);
+        std::vector<double> result(v.size());
+        for (std::size_t i = 0; i < v.size(); ++i)
+            result[i] = 20.0 * std::log10(std::max(std::abs(v[i]), 1e-30));
+        return result;
+    }
+
+    std::vector<double> phase_deg(NodeId node) const {
+        auto v = voltage(node);
+        std::vector<double> result(v.size());
+        for (std::size_t i = 0; i < v.size(); ++i)
+            result[i] = std::atan2(v[i].imag(), v[i].real()) * (180.0 / M_PI);
+        return result;
+    }
+
+    std::vector<double> magnitude(NodeId node) const {
+        auto v = voltage(node);
+        std::vector<double> result(v.size());
+        for (std::size_t i = 0; i < v.size(); ++i)
+            result[i] = std::abs(v[i]);
+        return result;
+    }
+
+    std::vector<std::complex<double>> diff(NodeId p, NodeId n) const {
+        auto vp = voltage(p);
+        auto vn = voltage(n);
+        std::vector<std::complex<double>> result(vp.size());
+        for (std::size_t i = 0; i < vp.size(); ++i)
+            result[i] = vp[i] - vn[i];
+        return result;
+    }
+
+    std::vector<double> diff_magnitude_db(NodeId p, NodeId n) const {
+        auto d = diff(p, n);
+        std::vector<double> result(d.size());
+        for (std::size_t i = 0; i < d.size(); ++i)
+            result[i] = 20.0 * std::log10(std::max(std::abs(d[i]), 1e-30));
+        return result;
     }
 
     SimStatus status;

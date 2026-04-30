@@ -3,6 +3,8 @@
 #include "core/dc.hpp"
 #include "core/sim_status.hpp"
 #include "core/timestep.hpp"
+#include "neospice/types.hpp"
+#include <span>
 #include <vector>
 #include <string>
 #include <map>
@@ -51,6 +53,37 @@ struct TransientResult {
         for (const auto& [k, v] : voltages) names.push_back(k);
         for (const auto& [k, v] : currents) names.push_back(k);
         return names;
+    }
+
+    // Dense storage indexed by node/device ordinal
+    std::vector<std::vector<double>> voltages_dense;   // [node_idx][timepoint]
+    std::vector<std::vector<double>> currents_dense;    // [dev_idx][timepoint]
+
+    std::span<const double> voltage(NodeId node) const {
+        auto idx = static_cast<int32_t>(node);
+        if (idx < 0 || idx >= static_cast<int32_t>(voltages_dense.size()))
+            throw std::out_of_range("Invalid NodeId for voltage access");
+        return voltages_dense[idx];
+    }
+
+    std::span<const double> current(DevId dev) const {
+        auto idx = static_cast<int32_t>(dev);
+        if (idx < 0 || idx >= static_cast<int32_t>(currents_dense.size()))
+            throw std::out_of_range("Invalid DevId for current access");
+        return currents_dense[idx];
+    }
+
+    std::span<const double> time_span() const {
+        return std::span<const double>(time);
+    }
+
+    std::vector<double> diff(NodeId p, NodeId n) const {
+        auto vp = voltage(p);
+        auto vn = voltage(n);
+        std::vector<double> result(vp.size());
+        for (std::size_t i = 0; i < vp.size(); ++i)
+            result[i] = vp[i] - vn[i];
+        return result;
     }
 
     SimStatus status;

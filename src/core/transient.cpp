@@ -603,12 +603,28 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     for (auto& s : slots.c_slots)
         c_ptrs.push_back(&tran_result.currents[s.key]);
 
+    // Initialize dense arrays for handle-based access
+    tran_result.voltages_dense.resize(num_nodes);
+    tran_result.currents_dense.resize(ckt.devices().size());
+
     auto store_point = [&](double t, const std::vector<double>& sol) {
         tran_result.time.push_back(t);
         for (std::size_t k = 0; k < slots.v_slots.size(); ++k)
             v_ptrs[k]->push_back(sol[slots.v_slots[k].idx]);
         for (std::size_t k = 0; k < slots.c_slots.size(); ++k)
             c_ptrs[k]->push_back(sol[slots.c_slots[k].idx]);
+
+        // Dense node voltage array (ALL nodes, including internal)
+        for (int32_t i = 0; i < num_nodes; ++i)
+            tran_result.voltages_dense[i].push_back(sol[i]);
+        // Dense branch current array (indexed by device ordinal)
+        for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
+            int32_t br = ckt.devices()[d]->branch_index();
+            if (br >= 0 && br < n)
+                tran_result.currents_dense[d].push_back(sol[br]);
+            else
+                tran_result.currents_dense[d].push_back(0.0);
+        }
     };
 
     // ---------------------------------------------------------------

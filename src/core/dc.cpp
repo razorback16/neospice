@@ -154,6 +154,20 @@ DCResult solve_dc(Circuit& ckt) {
         add_dc_current(dev->branch_index(), dev->name());
     }
 
+    // Dense node voltage array (ALL nodes, including internal)
+    dc_result.node_voltages_dense.assign(num_nodes, 0.0);
+    for (int32_t i = 0; i < num_nodes; ++i) {
+        dc_result.node_voltages_dense[i] = solution[i];
+    }
+
+    // Dense branch current array (indexed by device ordinal)
+    dc_result.branch_currents_dense.resize(ckt.devices().size(), 0.0);
+    for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
+        int32_t br = ckt.devices()[d]->branch_index();
+        if (br >= 0 && br < n)
+            dc_result.branch_currents_dense[d] = solution[br];
+    }
+
     auto t_end = std::chrono::steady_clock::now();
     sim_status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
     dc_result.status = sim_status;
@@ -289,12 +303,28 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     for (auto& s : sc_slots)
         sc_ptrs.push_back(&sweep_result.currents[s.key]);
 
+    // Initialize dense arrays for handle-based access
+    sweep_result.voltages_dense.resize(num_nodes);
+    sweep_result.currents_dense.resize(ckt.devices().size());
+
     auto collect_point = [&](double sweep_x) {
         sweep_result.sweep_values.push_back(sweep_x);
         for (std::size_t k = 0; k < sv_slots.size(); ++k)
             sv_ptrs[k]->push_back(solution[sv_slots[k].idx]);
         for (std::size_t k = 0; k < sc_slots.size(); ++k)
             sc_ptrs[k]->push_back(solution[sc_slots[k].idx]);
+
+        // Dense node voltage array (ALL nodes, including internal)
+        for (int32_t i = 0; i < num_nodes; ++i)
+            sweep_result.voltages_dense[i].push_back(solution[i]);
+        // Dense branch current array (indexed by device ordinal)
+        for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
+            int32_t br = ckt.devices()[d]->branch_index();
+            if (br >= 0 && br < n)
+                sweep_result.currents_dense[d].push_back(solution[br]);
+            else
+                sweep_result.currents_dense[d].push_back(0.0);
+        }
     };
 
     // Helper: run Newton at current source settings, using previous solution

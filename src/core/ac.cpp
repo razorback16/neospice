@@ -200,6 +200,10 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     for (auto& cs : current_slots)
         c_ptrs.push_back(ac_result.currents[cs.key].data());
 
+    // Initialize dense arrays for handle-based access
+    ac_result.voltages_dense.resize(num_nodes, std::vector<std::complex<double>>(freqs.size()));
+    ac_result.currents_dense.resize(ckt.devices().size(), std::vector<std::complex<double>>(freqs.size()));
+
     // 9. Complex RHS template (allocated once, copied per frequency)
     std::vector<double> rhs_z(2 * n, 0.0);
     for (int32_t i = 0; i < n; ++i) {
@@ -242,6 +246,16 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
         for (std::size_t k = 0; k < current_slots.size(); ++k) {
             int32_t br = current_slots[k].branch_idx;
             c_ptrs[k][fi] = {rhs_z[2*br], rhs_z[2*br+1]};
+        }
+
+        // Dense node voltage array (ALL nodes, including internal)
+        for (int32_t i = 0; i < num_nodes; ++i)
+            ac_result.voltages_dense[i][fi] = {rhs_z[2*i], rhs_z[2*i+1]};
+        // Dense branch current array (indexed by device ordinal)
+        for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
+            int32_t br = ckt.devices()[d]->branch_index();
+            if (br >= 0 && br < n)
+                ac_result.currents_dense[d][fi] = {rhs_z[2*br], rhs_z[2*br+1]};
         }
     }
 

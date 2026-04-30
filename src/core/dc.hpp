@@ -1,6 +1,8 @@
 #pragma once
 #include "core/circuit.hpp"
 #include "core/sim_status.hpp"
+#include "neospice/types.hpp"
+#include <span>
 #include <string>
 #include <map>
 #include <vector>
@@ -40,6 +42,29 @@ struct DCResult {
         for (const auto& [k, v] : node_voltages) names.push_back(k);
         for (const auto& [k, v] : branch_currents) names.push_back(k);
         return names;
+    }
+
+    // Dense storage indexed by node/device ordinal
+    std::vector<double> node_voltages_dense;
+    std::vector<double> branch_currents_dense;
+
+    // Handle-based O(1) access
+    double voltage(NodeId node) const {
+        auto idx = static_cast<int32_t>(node);
+        if (idx < 0 || idx >= static_cast<int32_t>(node_voltages_dense.size()))
+            throw std::out_of_range("Invalid NodeId for voltage access");
+        return node_voltages_dense[idx];
+    }
+
+    double current(DevId dev) const {
+        auto idx = static_cast<int32_t>(dev);
+        if (idx < 0 || idx >= static_cast<int32_t>(branch_currents_dense.size()))
+            throw std::out_of_range("Invalid DevId for current access");
+        return branch_currents_dense[idx];
+    }
+
+    double diff(NodeId p, NodeId n) const {
+        return voltage(p) - voltage(n);
     }
 
     SimStatus status;
@@ -84,6 +109,33 @@ struct DCSweepResult {
         for (const auto& [k, v] : voltages) names.push_back(k);
         for (const auto& [k, v] : currents) names.push_back(k);
         return names;
+    }
+
+    // Dense storage indexed by node/device ordinal
+    std::vector<std::vector<double>> voltages_dense;   // [node_idx][sweep_point]
+    std::vector<std::vector<double>> currents_dense;    // [dev_idx][sweep_point]
+
+    std::span<const double> voltage(NodeId node) const {
+        auto idx = static_cast<int32_t>(node);
+        if (idx < 0 || idx >= static_cast<int32_t>(voltages_dense.size()))
+            throw std::out_of_range("Invalid NodeId for sweep voltage");
+        return voltages_dense[idx];
+    }
+
+    std::span<const double> current(DevId dev) const {
+        auto idx = static_cast<int32_t>(dev);
+        if (idx < 0 || idx >= static_cast<int32_t>(currents_dense.size()))
+            throw std::out_of_range("Invalid DevId for sweep current");
+        return currents_dense[idx];
+    }
+
+    std::vector<double> diff(NodeId p, NodeId n) const {
+        auto vp = voltage(p);
+        auto vn = voltage(n);
+        std::vector<double> result(vp.size());
+        for (std::size_t i = 0; i < vp.size(); ++i)
+            result[i] = vp[i] - vn[i];
+        return result;
     }
 
     SimStatus status;
