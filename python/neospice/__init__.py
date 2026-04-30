@@ -8,7 +8,6 @@ from neospice._core import (  # noqa: F401
     ACOptions,
     ACResult,
     Circuit,
-    CircuitBuilder,
     ConvergenceMethod,
     DCResult,
     DCSweepParam,

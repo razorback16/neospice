@@ -176,7 +176,7 @@ std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
 }
 
 // Parse a source line (VSource or ISource) for DC, AC, PULSE, SIN keywords
-struct SourceSpec {
+struct ParsedSourceSpec {
     double dc_val = 0.0;
     double ac_mag = 0.0;
     double ac_phase = 0.0;
@@ -189,8 +189,8 @@ struct SourceSpec {
     AmParams am;
 };
 
-SourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t start_idx) {
-    SourceSpec spec;
+ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t start_idx) {
+    ParsedSourceSpec spec;
     size_t i = start_idx;
 
     while (i < tokens.size()) {
@@ -1497,7 +1497,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t np = ckt.node(tokens[1]);
             int32_t nn = ckt.node(tokens[2]);
 
-            SourceSpec spec = parse_source_spec(tokens, 3);
+            ParsedSourceSpec spec = parse_source_spec(tokens, 3);
             auto vs = std::make_unique<VSource>(name, np, nn, spec.dc_val);
             if (spec.ac_mag != 0.0 || spec.ac_phase != 0.0) {
                 vs->set_ac(spec.ac_mag, spec.ac_phase);
@@ -1519,7 +1519,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             int32_t np = ckt.node(tokens[1]);
             int32_t nn = ckt.node(tokens[2]);
 
-            SourceSpec spec = parse_source_spec(tokens, 3);
+            ParsedSourceSpec spec = parse_source_spec(tokens, 3);
             auto is = std::make_unique<ISource>(name, np, nn, spec.dc_val);
             if (spec.ac_mag != 0.0 || spec.ac_phase != 0.0) {
                 is->set_ac(spec.ac_mag, spec.ac_phase);

@@ -8,7 +8,6 @@
 #include <nanobind/stl/unique_ptr.h>
 #include <nanobind/stl/unordered_map.h>
 #include "api/neospice.hpp"
-#include "api/circuit_builder.hpp"
 #include <cstring>
 
 namespace nb = nanobind;
@@ -177,24 +176,6 @@ NB_MODULE(_core, m) {
         .def("run_sens", &Simulator::run_sens)
         .def("run", &Simulator::run)
         .def("run_step_sweep", &Simulator::run_step_sweep);
-
-    // --- CircuitBuilder (fluent API) ---
-    auto cb = nb::class_<CircuitBuilder>(m, "CircuitBuilder");
-    cb.def(nb::init<>());
-    cb.def("title", &CircuitBuilder::title, nb::rv_policy::reference);
-    cb.def("resistor", &CircuitBuilder::resistor, nb::rv_policy::reference);
-    cb.def("capacitor", &CircuitBuilder::capacitor, nb::rv_policy::reference);
-    cb.def("inductor", &CircuitBuilder::inductor, nb::rv_policy::reference);
-    cb.def("vsource", &CircuitBuilder::vsource, nb::rv_policy::reference);
-    cb.def("vsource_pulse", &CircuitBuilder::vsource_pulse, nb::rv_policy::reference);
-    cb.def("vsource_sin", &CircuitBuilder::vsource_sin, nb::rv_policy::reference);
-    cb.def("isource", &CircuitBuilder::isource, nb::rv_policy::reference);
-    cb.def("diode", &CircuitBuilder::diode, nb::rv_policy::reference);
-    cb.def("subcircuit", &CircuitBuilder::subcircuit, nb::rv_policy::reference);
-    cb.def("model", &CircuitBuilder::model, nb::rv_policy::reference);
-    cb.def("include", &CircuitBuilder::include, nb::rv_policy::reference);
-    cb.def("raw_line", &CircuitBuilder::raw_line, nb::rv_policy::reference);
-    cb.def("build", &CircuitBuilder::build);
 
     // --- DCResult ---
     nb::class_<DCResult>(m, "DCResult")

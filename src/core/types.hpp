@@ -67,6 +67,21 @@ struct IntegratorCtx {
     const SimOptions* options = nullptr;
 };
 
+// Source specification structs (used by Python bindings and programmatic API)
+struct SourceSpec {
+    double dc = 0.0;
+    double ac_mag = 0.0;
+    double ac_phase = 0.0;
+};
+
+struct PulseSpec {
+    double v1 = 0, v2 = 0, td = 0, tr = 0, tf = 0, pw = 0, per = 0;
+};
+
+struct SinSpec {
+    double vo = 0, va = 0, freq = 0, td = 0, theta = 0, phase = 0;
+};
+
 class ParseError : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };

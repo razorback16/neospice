@@ -97,14 +97,16 @@ class TestSimulatorLoadParse:
         assert len(devs) == 3  # V1, R1, R2
 
 
-class TestCircuitBuilder:
-    def test_build_and_run_dc(self):
-        ckt = neospice.CircuitBuilder() \
-            .title("Divider") \
-            .vsource("V1", "in", "0", neospice.SourceSpec()) \
-            .resistor("R1", "in", "out", 1e3) \
-            .resistor("R2", "out", "0", 1e3) \
-            .build()
+class TestParseCircuit:
+    def test_parse_and_inspect(self):
+        sim = neospice.Simulator()
+        ckt = sim.parse("""Divider
+V1 in 0 DC 0
+R1 in out 1k
+R2 out 0 1k
+.op
+.end
+""")
         assert isinstance(ckt, neospice.Circuit)
         assert ckt.title == "divider"
 
@@ -440,19 +442,17 @@ class TestConvenienceFunctions:
 
 
 class TestEndToEnd:
-    def test_spec_example_circuit_builder_ac(self):
+    def test_spec_example_parse_ac(self):
         """End-to-end test matching spec Section 8 example."""
-        spec = neospice.SourceSpec()
-        spec.ac_mag = 1.0
-        ckt = neospice.CircuitBuilder() \
-            .title("Low-pass RC") \
-            .vsource("V1", "in", "0", spec) \
-            .resistor("R1", "in", "out", 1e3) \
-            .capacitor("C1", "out", "0", 1e-9) \
-            .raw_line(".ac dec 100 1 1e9") \
-            .build()
-
         sim = neospice.Simulator()
+        ckt = sim.parse("""Low-pass RC
+V1 in 0 DC 0 AC 1
+R1 in out 1k
+C1 out 0 1n
+.ac dec 100 1 1e9
+.end
+""")
+
         result = sim.run_ac(ckt, neospice.ACMode.DEC, 100, 1, 1e9)
         assert isinstance(result.frequency, np.ndarray)
         db = result.magnitude_db("out")
