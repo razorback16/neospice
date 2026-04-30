@@ -3,17 +3,6 @@
 #include "devices/resistor_model.hpp"
 #include "devices/capacitor_model.hpp"
 #include "devices/inductor_model.hpp"
-#include "devices/bsim4v7/bsim4v7_device.hpp"   // BSIM4v7ModelCard
-#include "devices/mos1/mos1_device.hpp"          // MOS1ModelCard
-#include "devices/mos3/mos3_device.hpp"          // MOS3ModelCard
-#include "devices/mos9/mos9_device.hpp"          // MOS9ModelCard
-#include "devices/bsim3/bsim3_device.hpp"       // BSIM3ModelCard
-#include "devices/bsim3v32/bsim3v32_device.hpp" // BSIM3v32ModelCard
-#include "devices/bjt/bjt_device.hpp"            // BJTModelCard
-#include "devices/jfet/jfet_device.hpp"          // JFETModelCard
-#include "devices/dio/dio_device.hpp"            // DIOModelCard
-#include "devices/vbic/vbic_device.hpp"          // VBICModelCard
-#include "devices/hfet2/hfet2_device.hpp"        // HFET2ModelCard
 #include "parser/tokenizer.hpp"
 #include <memory>
 #include <string>
@@ -30,60 +19,11 @@ struct ModelCard {
 };
 
 ModelCard parse_model_card(const std::vector<std::string>& tokens);
-/// Translate a parsed .model card (LEVEL=14 NMOS/PMOS) into a
-/// BSIM4v7ModelCard using the UCB BSIM4mParam dispatcher.  The returned
-/// card is heap-allocated so the parser can hand ownership to the Circuit
-/// (the BSIM4v7Device holds a non-owning pointer back).
-///
-/// Throws ParseError for:
-///   * non-NMOS/PMOS type
-///   * LEVEL != 14
-///   * unknown BSIM4 parameter keys are WARNED on stderr, not thrown.
-std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card);
-
-/// Translate a parsed .model card (LEVEL=1 NMOS/PMOS) into a
-/// MOS1ModelCard using the UCB MOS1mParam dispatcher.
-std::unique_ptr<MOS1ModelCard> to_mos1_card(const ModelCard& card);
-
-/// Translate a parsed .model card (LEVEL=3 NMOS/PMOS) into a
-/// MOS3ModelCard using the UCB MOS3mParam dispatcher.
-std::unique_ptr<MOS3ModelCard> to_mos3_card(const ModelCard& card);
-
-/// Translate a parsed .model card (LEVEL=9 NMOS/PMOS) into a
-/// MOS9ModelCard (Modified Level 3) using the UCB MOS9mParam dispatcher.
-std::unique_ptr<MOS9ModelCard> to_mos9_card(const ModelCard& card);
-
-/// Translate a parsed .model card (LEVEL=8 or LEVEL=49 NMOS/PMOS) into a
-/// BSIM3ModelCard using the UCB BSIM3mParam dispatcher.  Same ownership
-/// semantics as to_bsim4_card.
-std::unique_ptr<BSIM3ModelCard> to_bsim3_card(const ModelCard& card);
-
-/// Translate a parsed .model card (NPN/PNP) into a BJTModelCard using
-/// the UCB BJTmParam dispatcher.  Ownership semantics are the same as
-/// for BSIM4v7 — the Circuit owns the card and BJTDevice holds a
-/// non-owning pointer.
-std::unique_ptr<BJTModelCard> to_bjt_card(const ModelCard& card);
-
-/// Translate a parsed .model card (NJF/PJF) into a JFETModelCard using
-/// the UCB JFETmParam dispatcher.
-std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card);
-
-/// Translate a parsed .model card (D) into a DIOModelCard using
-/// the UCB DIOmParam dispatcher.
-std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card);
-
-/// Translate a parsed .model card (NHFET/PHFET level=6) into an
-/// HFET2ModelCard using the UCB HFET2mParam dispatcher.
-std::unique_ptr<HFET2ModelCard> to_hfet2_card(const ModelCard& card);
 
 /// Detect the MOSFET level from a parsed .model card.
 /// Returns 1 for MOS1, 14 (default) for BSIM4v7.
 /// Only valid for NMOS/PMOS type cards.
 int detect_mosfet_level(const ModelCard& card);
-
-/// Translate a parsed .model card (NPN/PNP) into a VBICModelCard using
-/// the UCB VBICmParam dispatcher.  Used for VBIC model levels (4, 9, 12, 13).
-std::unique_ptr<VBICModelCard> to_vbic_card(const ModelCard& card);
 
 /// Translate a parsed .model card (SW or CSW) into a SwitchModel.
 /// card.type must be "sw" (voltage-controlled) or "csw" (current-controlled).
@@ -98,5 +38,35 @@ CapacitorModel to_capacitor_model(const ModelCard& card);
 
 /// Translate a parsed .model card (L) into an InductorModel.
 InductorModel to_inductor_model(const ModelCard& card);
+
+// ---------------------------------------------------------------------------
+// Backward-compatible forward declarations for per-device to_xxx_card()
+// functions.  The implementations now live in each device's *_model_card.cpp
+// file; callers that only need the declaration can include this header
+// without pulling in the full device headers.
+// ---------------------------------------------------------------------------
+struct BSIM4v7ModelCard;
+struct MOS1ModelCard;
+struct MOS3ModelCard;
+struct MOS9ModelCard;
+struct BSIM3ModelCard;
+struct BSIM3v32ModelCard;
+struct BJTModelCard;
+struct JFETModelCard;
+struct DIOModelCard;
+struct VBICModelCard;
+struct HFET2ModelCard;
+
+std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card);
+std::unique_ptr<MOS1ModelCard> to_mos1_card(const ModelCard& card);
+std::unique_ptr<MOS3ModelCard> to_mos3_card(const ModelCard& card);
+std::unique_ptr<MOS9ModelCard> to_mos9_card(const ModelCard& card);
+std::unique_ptr<BSIM3ModelCard> to_bsim3_card(const ModelCard& card);
+std::unique_ptr<BSIM3v32ModelCard> to_bsim3v32_card(const ModelCard& card);
+std::unique_ptr<BJTModelCard> to_bjt_card(const ModelCard& card);
+std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card);
+std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card);
+std::unique_ptr<VBICModelCard> to_vbic_card(const ModelCard& card);
+std::unique_ptr<HFET2ModelCard> to_hfet2_card(const ModelCard& card);
 
 } // namespace neospice

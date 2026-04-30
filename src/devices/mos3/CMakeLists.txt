@@ -8,5 +8,6 @@ add_library(mos3_obj OBJECT
     mos3_shim.cpp
     mos3_device.cpp
     mos3_model_card.cpp
+    mos3_factory.cpp
 )
 target_include_directories(mos3_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

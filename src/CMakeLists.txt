@@ -54,6 +54,11 @@ add_library(neospice_lib
     devices/coupled_inductor.cpp
     devices/tline.cpp
     devices/ltra.cpp
+    devices/device_registry.cpp
+    devices/mosfet_common.cpp
+    devices/bjt_common.cpp
+    devices/jfet_common.cpp
+    devices/hfet_common.cpp
 
     parser/tokenizer.cpp
     parser/expression.cpp

@@ -10,25 +10,7 @@
 #include "devices/vccs.hpp"
 #include "devices/cccs.hpp"
 #include "devices/ccvs.hpp"
-#include "devices/dio/dio_device.hpp"
-#include "devices/bjt/bjt_device.hpp"
-#include "devices/vbic/vbic_device.hpp"
-#include "devices/jfet/jfet_device.hpp"
-#include "devices/jfet2/jfet2_device.hpp"
-#include "devices/jfet2/jfet2_model_card.hpp"
-#include "devices/mos1/mos1_device.hpp"
-#include "devices/mos3/mos3_device.hpp"
-#include "devices/mos9/mos9_device.hpp"
-#include "devices/bsim3/bsim3_device.hpp"
-#include "devices/bsim3v32/bsim3v32_device.hpp"
-#include "devices/bsim3v32/bsim3v32_model_card.hpp"
-#include "devices/bsim4v7/bsim4v7_device.hpp"
-#include "devices/bsimsoi/bsimsoi_device.hpp"
-#include "devices/bsimsoi/bsimsoi_model_card.hpp"
-#include "devices/hisim2/hisim2_device.hpp"
-#include "devices/hisim2/hisim2_model_card.hpp"
-#include "devices/hisimhv/hisimhv_device.hpp"
-#include "devices/hisimhv/hisimhv_model_card.hpp"
+#include "devices/device_registry.hpp"
 #include "parser/model_cards.hpp"
 #include "parser/tokenizer.hpp"
 #include <algorithm>
@@ -82,46 +64,21 @@ ModelId Circuit::model(std::string_view model_text) {
     auto card = parse_model_card(tokens);
     auto type = lower_copy(card.type);
 
-    if (type == "d") {
-        return add_model_card(to_dio_card(card), card.name, type);
-    }
-    if (type == "npn" || type == "pnp") {
-        int level = model_level(card, 1);
-        if (level == 4 || level == 9 || level == 12 || level == 13)
-            return add_model_card(to_vbic_card(card), card.name, type);
-        return add_model_card(to_bjt_card(card), card.name, type);
-    }
-    if (type == "njf" || type == "pjf") {
-        int level = model_level(card, 1);
-        if (level == 2)
-            return add_model_card(to_jfet2_card(card), card.name, type);
-        return add_model_card(to_jfet_card(card), card.name, type);
-    }
+    // Determine level for semiconductor types
+    auto& reg = DeviceRegistry::get_default();
+    int level = 0;
     if (type == "nmos" || type == "pmos") {
-        int level = detect_mosfet_level(card);
-        if (level == 1)
-            return add_model_card(to_mos1_card(card), card.name, type);
-        if (level == 3)
-            return add_model_card(to_mos3_card(card), card.name, type);
-        if (level == 8 || level == 49) {
-            auto ver_it = card.params.find("version");
-            if (ver_it != card.params.end() && ver_it->second < 3.3)
-                return add_model_card(to_bsim3v32_card(card), card.name, type);
-            return add_model_card(to_bsim3_card(card), card.name, type);
-        }
-        if (level == 9)
-            return add_model_card(to_mos9_card(card), card.name, type);
-        if (level == 14)
-            return add_model_card(to_bsim4_card(card), card.name, type);
-        if (level == 61 || level == 68)
-            return add_model_card(to_hisim2_card(card), card.name, type);
-        if (level == 73)
-            return add_model_card(to_hisimhv_card(card), card.name, type);
-        if (level == 10 || level == 58)
-            return add_model_card(to_bsimsoi_card(card), card.name, type);
-        throw std::invalid_argument("Circuit::model: unsupported MOSFET LEVEL=" +
-                                    std::to_string(level));
+        level = detect_mosfet_level(card);
+    } else if (type == "npn" || type == "pnp") {
+        level = model_level(card, 1);
+    } else if (type == "njf" || type == "pjf") {
+        level = model_level(card, 1);
     }
+    // d, nhfet, phfet, nmf, pmf use level=0
+
+    auto holder = reg.create_model_card(type, level, card);
+    if (holder)
+        return add_model_card_raw(std::move(holder), card.name, type);
 
     throw std::invalid_argument("Circuit::model: unsupported model type '" +
                                 card.type + "'");
@@ -270,14 +227,14 @@ DevId Circuit::H(std::string_view name, NodeId op, NodeId on,
 
 DevId Circuit::D(std::string_view name, NodeId anode, NodeId cathode,
                  std::string_view model_name) {
-    auto* card = find_model<DIOModelCard>(model_name);
-    if (!card) throw missing_model("D", model_name);
+    auto* holder = find_model_holder(model_name);
+    if (!holder) throw missing_model("D", model_name);
 
-    DevId id{static_cast<int32_t>(devices_.size())};
-    DIODevice::Geom geom;
-    add_device(DIODevice::make(std::string(name), raw(anode), raw(cathode),
-                               geom, *card));
-    return id;
+    int32_t nodes[] = {raw(anode), raw(cathode)};
+    std::unordered_map<std::string, double> params;
+    auto dev = DeviceRegistry::get_default().build_device('d', name, nodes, params, *holder);
+    if (!dev) throw missing_model("D", model_name);
+    return add_dev(std::move(dev));
 }
 
 DevId Circuit::Q(std::string_view name, NodeId c, NodeId b, NodeId e,
@@ -287,38 +244,26 @@ DevId Circuit::Q(std::string_view name, NodeId c, NodeId b, NodeId e,
 
 DevId Circuit::Q(std::string_view name, NodeId c, NodeId b, NodeId e, NodeId s,
                  std::string_view model_name) {
-    DevId id{static_cast<int32_t>(devices_.size())};
-    if (auto* card = find_model<BJTModelCard>(model_name)) {
-        BJTDevice::Geom geom;
-        add_device(BJTDevice::make(std::string(name), raw(c), raw(b), raw(e), raw(s),
-                                   geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<VBICModelCard>(model_name)) {
-        VBICDevice::Geom geom;
-        add_device(VBICDevice::make(std::string(name), raw(c), raw(b), raw(e), raw(s),
-                                    geom, *card));
-        return id;
-    }
-    throw missing_model("Q", model_name);
+    auto* holder = find_model_holder(model_name);
+    if (!holder) throw missing_model("Q", model_name);
+
+    int32_t nodes[] = {raw(c), raw(b), raw(e), raw(s)};
+    std::unordered_map<std::string, double> params;
+    auto dev = DeviceRegistry::get_default().build_device('q', name, nodes, params, *holder);
+    if (!dev) throw missing_model("Q", model_name);
+    return add_dev(std::move(dev));
 }
 
 DevId Circuit::J(std::string_view name, NodeId d, NodeId g, NodeId s,
                  std::string_view model_name) {
-    DevId id{static_cast<int32_t>(devices_.size())};
-    if (auto* card = find_model<JFETModelCard>(model_name)) {
-        JFETDevice::Geom geom;
-        add_device(JFETDevice::make(std::string(name), raw(d), raw(g), raw(s),
-                                    geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<JFET2ModelCard>(model_name)) {
-        JFET2Device::Geom geom;
-        add_device(JFET2Device::make(std::string(name), raw(d), raw(g), raw(s),
-                                     geom, *card));
-        return id;
-    }
-    throw missing_model("J", model_name);
+    auto* holder = find_model_holder(model_name);
+    if (!holder) throw missing_model("J", model_name);
+
+    int32_t nodes[] = {raw(d), raw(g), raw(s)};
+    std::unordered_map<std::string, double> params;
+    auto dev = DeviceRegistry::get_default().build_device('j', name, nodes, params, *holder);
+    if (!dev) throw missing_model("J", model_name);
+    return add_dev(std::move(dev));
 }
 
 DevId Circuit::M(std::string_view name, NodeId d, NodeId g, NodeId s, NodeId b,
@@ -328,79 +273,14 @@ DevId Circuit::M(std::string_view name, NodeId d, NodeId g, NodeId s, NodeId b,
 
 DevId Circuit::M(std::string_view name, NodeId d, NodeId g, NodeId s, NodeId b,
                  std::string_view model_name, double w, double l) {
-    DevId id{static_cast<int32_t>(devices_.size())};
-    const int32_t nd = raw(d);
-    const int32_t ng = raw(g);
-    const int32_t ns = raw(s);
-    const int32_t nb = raw(b);
+    auto* holder = find_model_holder(model_name);
+    if (!holder) throw missing_model("M", model_name);
 
-    if (auto* card = find_model<MOS1ModelCard>(model_name)) {
-        MOS1Device::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(MOS1Device::make(std::string(name), nd, ng, ns, nb, geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<MOS3ModelCard>(model_name)) {
-        MOS3Device::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(MOS3Device::make(std::string(name), nd, ng, ns, nb, geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<MOS9ModelCard>(model_name)) {
-        MOS9Device::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(MOS9Device::make(std::string(name), nd, ng, ns, nb, geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<BSIM3ModelCard>(model_name)) {
-        BSIM3Device::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(BSIM3Device::make(std::string(name), nd, ng, ns, nb, geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<BSIM3v32ModelCard>(model_name)) {
-        BSIM3v32Device::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(BSIM3v32Device::make(std::string(name), nd, ng, ns, nb, geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<BSIM4v7ModelCard>(model_name)) {
-        BSIM4v7Device::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(BSIM4v7Device::make(std::string(name), nd, ng, ns, nb, geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<B4SOIModelCard>(model_name)) {
-        B4SOIDevice::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(B4SOIDevice::make(std::string(name), nd, ng, ns,
-                                     nb, GROUND_INTERNAL, GROUND_INTERNAL,
-                                     geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<HSM2ModelCard>(model_name)) {
-        HSM2Device::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(HSM2Device::make(std::string(name), nd, ng, ns, nb, geom, *card));
-        return id;
-    }
-    if (auto* card = find_model<HSMHVModelCard>(model_name)) {
-        HSMHVDevice::Geom geom;
-        geom.W = w;
-        geom.L = l;
-        add_device(HSMHVDevice::make(std::string(name), nd, ng, ns, nb,
-                                     GROUND_INTERNAL - 1, geom, *card));
-        return id;
-    }
-    throw missing_model("M", model_name);
+    int32_t nodes[] = {raw(d), raw(g), raw(s), raw(b)};
+    std::unordered_map<std::string, double> params{{"w", w}, {"l", l}};
+    auto dev = DeviceRegistry::get_default().build_device('m', name, nodes, params, *holder);
+    if (!dev) throw missing_model("M", model_name);
+    return add_dev(std::move(dev));
 }
 
 // --- Custom device injection ---

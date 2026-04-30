@@ -328,6 +328,13 @@ public:
         }
     };
 
+    /// Look up a model card holder by name (type-erased).
+    ModelCardHolder* find_model_holder(std::string_view name) const;
+
+    /// Add a pre-constructed model card holder directly.
+    ModelId add_model_card_raw(std::unique_ptr<ModelCardHolder> holder,
+                               std::string name, std::string model_type);
+
 private:
     void rebind_device_states();  // re-invoke set_state_ptrs on every device
     static std::string model_key(std::string_view name);

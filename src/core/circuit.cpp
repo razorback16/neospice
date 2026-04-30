@@ -19,6 +19,30 @@ Circuit::~Circuit() = default;
 Circuit::Circuit(Circuit&&) noexcept = default;
 Circuit& Circuit::operator=(Circuit&&) noexcept = default;
 
+Circuit::ModelCardHolder* Circuit::find_model_holder(std::string_view name) const {
+    auto it = model_card_index_.find(model_key(name));
+    if (it == model_card_index_.end()) return nullptr;
+    auto idx = it->second;
+    if (idx < 0 || idx >= static_cast<int32_t>(model_cards_.size()))
+        return nullptr;
+    return model_cards_[idx].get();
+}
+
+ModelId Circuit::add_model_card_raw(std::unique_ptr<ModelCardHolder> holder,
+                                     std::string name, std::string model_type) {
+    ModelId id{static_cast<int32_t>(model_cards_.size())};
+    if (!name.empty()) {
+        auto key = model_key(name);
+        if (model_card_index_.find(key) != model_card_index_.end())
+            throw std::invalid_argument("Model already exists: " + name);
+        model_card_index_[std::move(key)] = static_cast<int32_t>(model_cards_.size());
+    }
+    holder->name = std::move(name);
+    holder->model_type = std::move(model_type);
+    model_cards_.push_back(std::move(holder));
+    return id;
+}
+
 // Definition of the thread-local integrator-context pointer declared in
 // circuit.hpp.  newton_solve sets this before the per-device stamping
 // loop and clears it (via RAII) on the way out.

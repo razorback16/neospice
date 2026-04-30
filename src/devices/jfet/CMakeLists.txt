@@ -7,5 +7,7 @@ add_library(jfet_obj OBJECT
     jfet_devsup.cpp
     jfet_shim.cpp
     jfet_device.cpp
+    jfet_model_card.cpp
+    jfet_factory.cpp
 )
 target_include_directories(jfet_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

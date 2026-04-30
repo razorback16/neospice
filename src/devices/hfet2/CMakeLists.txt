@@ -8,5 +8,6 @@ add_library(hfet2_obj OBJECT
     hfet2_shim.cpp
     hfet2_device.cpp
     hfet2_model_card.cpp
+    hfet2_factory.cpp
 )
 target_include_directories(hfet2_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

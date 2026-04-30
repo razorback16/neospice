@@ -7,5 +7,7 @@ add_library(vbic_obj OBJECT
     vbic_devsup.cpp
     vbic_shim.cpp
     vbic_device.cpp
+    vbic_model_card.cpp
+    vbic_factory.cpp
 )
 target_include_directories(vbic_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)

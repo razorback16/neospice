@@ -248,24 +248,120 @@ field mappings from the ngspice `*ask.c` switch table.
 
 ---
 
-## Phase 9: Parser Integration
+## Phase 9: Factory Registration
 
-**Status**: Model card + parser helper auto-generated when `model_types` defined. Element parsing is manual.
+**Status**: Model card + parser helper auto-generated when `model_types` defined. Factory registration is manual.
 
 The tool generates `<ns>_model_card.hpp/cpp` and `<ns>_parser.hpp`. The model card
 conversion uses `convert_model_card_params<>()` from `src/devices/model_card_utils.hpp` —
 each device only provides a traits struct (param table pointer, size, mParam function,
 type info) and the template handles the lookup + dispatch.
 
-### Manual wiring needed
+### DeviceRegistry factory file
 
-1. **Model dispatch**: Add the include and `to_<ns>_card()` call in the main parser's
-   model type dispatch (see `netlist_parser.cpp:2762` for BSIM3v32 example)
-2. **Element parsing**: Add parsing for the device's element card prefix in `netlist_parser.cpp`
-   (parse terminal nodes, look up model card, parse geometry + `ic=`, create device,
-   call `ckt.add_device(std::move(dev))`)
-3. **Model card ownership**: Call `ckt.add_model_card(std::move(card))` — the generic
-   template method handles any model card type
+Create `src/devices/<ns>/<ns>_factory.cpp` with a `register_<ns>(DeviceRegistry&)` function
+that registers the model card factory and device builder. No changes to `circuit_typed.cpp`
+or `netlist_parser.cpp` are needed.
+
+```cpp
+// src/devices/<ns>/<ns>_factory.cpp
+#include "<ns>_device.hpp"
+#include "<ns>_model_card.hpp"
+#include "devices/device_registry.hpp"
+
+namespace neospice {
+
+void register_<ns>(DeviceRegistry& reg) {
+    // Model card factory: maps (type_group, level) -> card constructor
+    reg.add_model_factory({
+        "<type_group>",  // "mos", "bjt", "jfet", "d", "hfet", "mes"
+        <level>,         // SPICE LEVEL number (0 for default/any)
+        0,               // priority (higher = matched first for same type+level)
+        [](const ModelCard& card) -> std::unique_ptr<Circuit::ModelCardHolder> {
+            return std::make_unique<Circuit::TypedModelCardHolder<<NS>ModelCard>>(
+                to_<ns>_card(card), card.name, card.type);
+        }
+    });
+
+    // Device builder: used by Circuit::M/D/Q/J() via registry dispatch
+    reg.add_device_builder({
+        '<prefix>',  // 'm', 'd', 'q', 'j', 'z'
+        0,           // priority
+        [](std::string_view name,
+           std::span<const int32_t> nodes,
+           const std::unordered_map<std::string, double>& params,
+           Circuit::ModelCardHolder& holder) -> std::unique_ptr<Device> {
+            auto* h = dynamic_cast<Circuit::TypedModelCardHolder<<NS>ModelCard>*>(&holder);
+            if (!h) return nullptr;  // not our model card type
+            <NS>Device::Geom geom;
+            // Extract geometry from params if present
+            if (auto it = params.find("w"); it != params.end()) geom.W = it->second;
+            if (auto it = params.find("l"); it != params.end()) geom.L = it->second;
+            return <NS>Device::make(std::string(name), nodes[0], nodes[1],
+                                     nodes[2], nodes[3], geom, *h->card);
+        }
+    });
+}
+
+} // namespace neospice
+```
+
+**References**: `bsim4v7/bsim4v7_factory.cpp`, `dio/dio_factory.cpp`, `bjt/bjt_factory.cpp`
+
+### Registration wiring
+
+Add one forward declaration and one call in `src/devices/device_registry.cpp`:
+
+```cpp
+void register_<ns>(DeviceRegistry& reg);   // forward declaration at top
+
+void DeviceRegistry::register_all() {
+    // ... existing registrations ...
+    register_<ns>(*this);                  // add this line
+}
+```
+
+### Parser support
+
+If the device uses an **existing prefix** (m, q, j, d, z), the shared parser already
+handles element line parsing and resolution. The registry dispatches to the new model card
+factory and device builder automatically. **No parser changes needed.**
+
+If the device introduces a **new prefix**, create a parser file and register it:
+
+```cpp
+// In the factory file or a separate <ns>_parser.cpp:
+reg.add_element_parser({
+    '<new_prefix>',
+    parse_<ns>_element,    // parse element line into ParsedElement
+    resolve_<ns>_elements  // resolve deferred elements into devices
+});
+```
+
+See `src/devices/dio/dio_parser.cpp` for a single-family parser example, or
+`src/devices/mosfet_common.cpp` for a shared multi-model parser.
+
+### CMakeLists.txt updates
+
+In `src/devices/<ns>/CMakeLists.txt`, add the factory file:
+
+```cmake
+add_library(<ns>_obj OBJECT
+    # ... existing sources ...
+    <ns>_factory.cpp
+)
+```
+
+In `src/CMakeLists.txt`, add the subdirectory and link the object library:
+
+```cmake
+add_subdirectory(devices/<ns>)
+# ...
+add_library(neospice_lib
+    # ...
+    $<TARGET_OBJECTS:<ns>_obj>
+)
+```
 
 ### Include paths in generated files
 
@@ -273,10 +369,6 @@ The auto-migrated device object library (generated `CMakeLists.txt`) exposes bot
 `${CMAKE_SOURCE_DIR}/src` and `${CMAKE_SOURCE_DIR}/include` as PUBLIC include paths.
 Internal device headers use the `src/` path (e.g., `#include "devices/device.hpp"`);
 the public API types (`neospice/types.hpp`) come from the `include/` path.
-
-The parser headers in `src/parser/` include the internal path `api/neospice.hpp`, which
-resolves via the `src/` include root. Do **not** change these to `neospice/neospice.hpp`
-unless migrating to the public API in a higher-level consumer.
 
 ### SPICE element prefixes
 
@@ -331,6 +423,10 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 - [ ] `noise_sources()` returns correct noise types for the device
 - [ ] Noise analysis matches ngspice within 20% tolerance
 - [ ] No shadowing of base class `sim_temp_` (use `sim_temp()` accessor)
+- [ ] Factory file created (`<ns>_factory.cpp`) with model card factory + device builder
+- [ ] `register_<ns>` forward-declared and called in `device_registry.cpp::register_all()`
+- [ ] Factory file added to device's `CMakeLists.txt`
+- [ ] No changes to `circuit_typed.cpp` or `netlist_parser.cpp`
 
 ### Dual-path include verification
 

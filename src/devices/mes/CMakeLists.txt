@@ -8,5 +8,6 @@ add_library(mes_obj OBJECT
     mes_shim.cpp
     mes_device.cpp
     mes_model_card.cpp
+    mes_factory.cpp
 )
 target_include_directories(mes_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
