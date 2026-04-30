@@ -28,7 +28,7 @@ enum class NodeId  : int32_t {};
 enum class DevId   : int32_t {};
 enum class ModelId : int32_t {};
 
-inline constexpr NodeId GND{0};
+inline constexpr NodeId GND{-1};
 
 }
 ```
@@ -36,6 +36,23 @@ inline constexpr NodeId GND{0};
 - Lightweight, copyable, comparable, hashable
 - `GND` is the ground node constant (replaces string `"0"` / `"gnd"`)
 - Handles are valid only within the `Circuit` that created them
+
+#### 1.1 Ground Node Mapping
+
+The internal solver uses `GROUND_INTERNAL = -1` (defined in `src/devices/device.hpp:14`). Devices store ground as -1 and stamp any node >= 0 into the MNA matrix. Public `NodeId` preserves this: **`GND` is `NodeId{-1}`**.
+
+`Circuit` typed methods (e.g., `Circuit::R(...)`) pass `NodeId` values directly to device constructors. Since `GND{-1}` matches `GROUND_INTERNAL`, no translation layer is needed — the public handle IS the internal index for ground.
+
+For non-ground nodes, `NodeId` values are the same 0-based indices used internally by the solver. The `Circuit::node()` method allocates and returns these indices as `NodeId`. No public-to-internal mapping is required.
+
+```cpp
+// Public API
+auto in = ckt.node("in");   // returns NodeId{0}
+auto out = ckt.node("out"); // returns NodeId{1}
+ckt.R("R1", in, GND, 1e3); // GND is NodeId{-1}, same as GROUND_INTERNAL
+
+// Internal: device sees int32_t{0} and int32_t{-1}, exactly as today
+```
 
 ### 2. Circuit — Builder and Simulation Target
 
@@ -85,12 +102,13 @@ ModelId subckt(std::string_view name,
                std::span<const std::string_view> ports,
                std::function<void(Circuit& sub)> define);
 
-ModelId include(std::string_view filepath);
+void include(std::string_view filepath);
+void include(std::string_view filepath, std::string_view section);
 ```
 
 - `model()` creates a `.model` card (D, NPN, NMOS, etc.) from parameter key-value pairs
 - `subckt()` defines a subcircuit via a lambda that builds the internal circuit
-- `include()` parses a `.lib`/`.include` file and registers all models found
+- `include()` is **void** — it parses a `.lib`/`.include` file and registers all models and subcircuits found. A single `.lib` file can contain multiple `.model` cards, `.subckt` definitions, and nested `.lib` sections. The second overload selects a specific `.lib` section. After calling `include()`, all registered models are available by name via `find_model()` or by reference in device methods.
 
 #### 2.3 Device Methods
 
@@ -163,23 +181,51 @@ void raw(std::string_view line);
 ```
 
 Where:
-- `Param` is `std::pair<std::string_view, double>` (used in `model()`)
+- `Param` is `std::pair<std::string_view, double>` — all `string_view` names are **copied into owned storage** at the API boundary (the `Circuit` owns all name strings)
 - `DeviceParams` is `std::initializer_list<Param>` (used in device methods)
 - `SourceSpec`, `PulseSpec`, `SinSpec`, `TLineParams` are plain structs with designated initializer support
 - `SweepSpec` is `struct { DevId src; double start, stop, step; }` (used in 2D DC sweep)
 
-#### 2.4 Mutation
+#### 2.4 Circuit State Machine
+
+The `Circuit` has three states with explicit transitions:
+
+```
+   Building ──→ Finalized ──→ Simulated
+      │              │             │
+      │ add devices  │ value-only  │ value-only
+      │ add nodes    │ mutation    │ mutation
+      │ add models   │             │ + reset_state()
+      └──────────────┴─────────────┘
+```
+
+**Building** — the initial state. Structural changes allowed: adding nodes, devices, models, subcircuits. Calling any `Simulator::run_*()` method on a Building circuit triggers an implicit `finalize_if_needed()` call, transitioning to Finalized.
+
+**Finalized** — topology is frozen. `finalize_if_needed()` performs the same steps as current `Circuit::finalize()`: declares internal nodes, assigns branch indices, builds sparsity pattern, allocates MNA matrix. No structural changes allowed (adding devices/nodes throws `std::logic_error`). Value-only mutation via `set_value()`/`set_param()` is allowed — it clears cached operating point but preserves the sparsity pattern.
+
+**Simulated** — after at least one `run_*()` call completes. Same rules as Finalized, plus `reset_state()` clears all simulation history for a fresh solve (used by `.step` sweeps and resimulation).
+
+```cpp
+bool is_finalized() const;
+void finalize_if_needed();  // no-op if already finalized
+```
+
+The netlist parser calls `finalize_if_needed()` before returning the `Circuit`, matching current behavior (`netlist_parser.cpp:3480`). Programmatic users never call it explicitly — the first `run_*()` does it. But it's public for advanced use (pre-allocating the matrix before simulation).
+
+**Cache invalidation:** `set_value()`/`set_param()` clears the solution cache (operating point, state vectors) but preserves the sparsity pattern and symbolic factorization. The next `run_*()` call re-solves from scratch with the new values but skips pattern recomputation. This is the fast path for parameter sweeps.
+
+#### 2.5 Mutation
 
 ```cpp
 void set_value(DevId dev, double value);
 void set_param(DevId dev, std::string_view param, double value);
 ```
 
-- Changes device values after construction
-- No structural mutation (add/remove devices) after first simulation
-- Topology is frozen lazily at first `Simulator::run_*()` call, not at a separate `finalize()` step
+- Allowed in Finalized and Simulated states
+- Throws `std::logic_error` if called on a Building circuit (device doesn't have offsets yet)
+- Clears solution cache but preserves topology
 
-#### 2.5 Introspection
+#### 2.6 Introspection
 
 ```cpp
 std::string_view name(NodeId) const;
@@ -233,20 +279,60 @@ public:
                                 std::span<const NodeId> nodes,
                                 ModelId model,
                                 const DeviceParams& params)>;
-    void register_device(std::string_view prefix, DeviceFactory factory);
+    void register_device(std::string_view prefix, ModelMatcher matcher,
+                         DeviceFactory factory);
 };
 ```
 
 - Default-constructed `Simulator` has all 29 built-in devices registered
-- `register_device()` adds custom device types by SPICE prefix
 - Non-static methods — instance carries registry and future Monte Carlo / resimulation state
 - Thread-safe: multiple threads can use independent `Circuit` objects with the same `Simulator`
 
+#### 3.1 Device Factory Registration
+
+Current device dispatch depends on more than the SPICE prefix letter. MOSFETs are all prefix `M`, but LEVEL=1 → MOS1, LEVEL=14 → BSIM4v7, etc. BJTs share prefix `Q` but route by model type. A prefix-only registry would override all M or Q handling.
+
+Registration uses a **(prefix, matcher)** pair:
+
+```cpp
+struct ModelMatcher {
+    std::optional<std::string> model_type;  // "nmos", "pmos", "npn", etc.
+    std::optional<int> level;               // LEVEL parameter value
+};
+
+void register_device(std::string_view prefix, ModelMatcher matcher,
+                     DeviceFactory factory);
+```
+
+Dispatch priority: most-specific match wins. `{prefix="M", model_type="nmos", level=14}` beats `{prefix="M", model_type="nmos"}` beats `{prefix="M"}`. The built-in 29 devices are registered with their specific (prefix, type, level) tuples. A custom factory registered with `{prefix="U"}` (no type/level) catches all U-prefix elements — the typical path for circuit-cpp behavioral models.
+
 ### 4. Result Types
 
-Dual access: handle-based (O(1) array index) and string-based (O(log n) name lookup). Array data returned as `std::span` views into internal storage — zero-copy.
+Dual access: handle-based (O(1) array index) and string-based (O(log n) name lookup).
 
-#### 4.1 DCResult
+#### 4.1 Span vs Vector Policy
+
+Return types depend on whether the data is stored raw or computed on the fly:
+
+- **`std::span`** for data stored directly in the result object: `frequency()`, `time()`, `voltage(node)` (raw complex), `current(dev)` (raw complex), `output_noise_density()`, `sweep_values()`
+- **`std::vector`** (returned by value) for derived quantities computed on access: `magnitude_db()`, `phase_deg()`, `magnitude()`, `diff()`, `diff_magnitude_db()`
+
+This avoids the dangling span problem. Currently `magnitude_db()` and `phase_deg()` compute and return vectors — that's correct and stays. Only truly stored arrays become spans.
+
+#### 4.2 .save Semantics and Handle Indexing
+
+Current `.save` works by erasing unsaved entries from string-keyed maps after solving (`src/api/neospice.cpp:27`). With handle-indexed arrays, direct deletion breaks O(1) indexing.
+
+**Policy:** Results internally store a dense array indexed by node ordinal (covering all nodes in the circuit). `.save` filtering is applied as a **view layer** on top:
+
+- `signal_names()` returns only saved signals
+- `voltage(NodeId)` / `current(DevId)` always works for any valid handle — `.save` does not affect handle-based access. This is the correct behavior for circuit-cpp integration: the caller knows which handles it cares about.
+- `voltage(string_view)` respects `.save` — unsaved signals throw `std::out_of_range`, matching current behavior
+- String-based iteration (`signal_names()`) only lists saved signals
+
+This means `.save` is a string-API filter, not a storage optimization. For large circuits where memory matters, a future `compact()` method could strip unsaved data.
+
+#### 4.3 DCResult
 
 ```cpp
 class DCResult {
@@ -262,48 +348,55 @@ public:
 };
 ```
 
-#### 4.2 ACResult
+#### 4.4 ACResult
 
 ```cpp
 class ACResult {
 public:
     std::span<const double> frequency() const;
 
+    // Raw stored data — spans
     std::span<const std::complex<double>> voltage(NodeId node) const;
     std::span<const std::complex<double>> voltage(std::string_view node) const;
-    std::span<const double> magnitude_db(NodeId node) const;
-    std::span<const double> magnitude_db(std::string_view node) const;
-    std::span<const double> phase_deg(NodeId node) const;
-    std::span<const double> phase_deg(std::string_view node) const;
-    std::span<const double> magnitude(NodeId node) const;
-    std::span<const double> magnitude(std::string_view node) const;
-
     std::span<const std::complex<double>> current(DevId dev) const;
     std::span<const std::complex<double>> current(std::string_view dev) const;
-    std::span<const double> current_magnitude_db(DevId dev) const;
-    std::span<const double> current_magnitude_db(std::string_view dev) const;
-    std::span<const double> current_phase_deg(DevId dev) const;
-    std::span<const double> current_phase_deg(std::string_view dev) const;
 
-    std::span<const std::complex<double>> diff(NodeId p, NodeId n) const;
-    std::span<const double> diff_magnitude_db(NodeId p, NodeId n) const;
+    // Derived quantities — computed, returned by value
+    std::vector<double> magnitude_db(NodeId node) const;
+    std::vector<double> magnitude_db(std::string_view node) const;
+    std::vector<double> phase_deg(NodeId node) const;
+    std::vector<double> phase_deg(std::string_view node) const;
+    std::vector<double> magnitude(NodeId node) const;
+    std::vector<double> magnitude(std::string_view node) const;
+    std::vector<double> current_magnitude_db(DevId dev) const;
+    std::vector<double> current_magnitude_db(std::string_view dev) const;
+    std::vector<double> current_phase_deg(DevId dev) const;
+    std::vector<double> current_phase_deg(std::string_view dev) const;
+
+    // Diff — computed, returned by value
+    std::vector<std::complex<double>> diff(NodeId p, NodeId n) const;
+    std::vector<double> diff_magnitude_db(NodeId p, NodeId n) const;
 
     std::vector<std::string> signal_names() const;
     SimStatus status() const;
 };
 ```
 
-#### 4.3 TransientResult
+#### 4.5 TransientResult
 
 ```cpp
 class TransientResult {
 public:
     std::span<const double> time() const;
+
+    // Raw stored data — spans
     std::span<const double> voltage(NodeId node) const;
     std::span<const double> voltage(std::string_view node) const;
     std::span<const double> current(DevId dev) const;
     std::span<const double> current(std::string_view dev) const;
-    std::span<const double> diff(NodeId p, NodeId n) const;
+
+    // Diff — computed, returned by value
+    std::vector<double> diff(NodeId p, NodeId n) const;
 
     int rejected_steps() const;
     std::vector<std::string> signal_names() const;
@@ -311,11 +404,11 @@ public:
 };
 ```
 
-#### 4.4 Other Result Types
+#### 4.6 Other Result Types
 
-`NoiseResult`, `DCSweepResult`, `TFResult`, `SensResult`, `PZResult` follow the same pattern: handle overloads added alongside existing string overloads, vector returns changed to span returns for array data. Scalar fields remain unchanged.
+`NoiseResult`, `DCSweepResult`, `TFResult`, `SensResult`, `PZResult` follow the same span/vector split: stored raw data as spans, derived quantities as vectors. Scalar fields remain unchanged.
 
-#### 4.5 SimStatus (enriched)
+#### 4.7 SimStatus (enriched)
 
 ```cpp
 struct SimStatus {
@@ -335,7 +428,34 @@ struct SimStatus {
 - `worst_node` as `NodeId` — circuit-cpp can map this back to its own typed net for meaningful diagnostics
 - `gmin_steps` / `source_steps` — circuit-cpp can flag "simulation converged but struggled" conditions
 
-#### 4.6 Derived Measurements
+**Solver support required:** `NewtonResult` (currently `{converged, iterations, solution}` in `src/core/newton.hpp:10`) must be extended to carry `residual` and `worst_node`. This is a straightforward change — the Newton solver already computes the residual vector; it just doesn't expose the norm or the argmax.
+
+#### 4.8 Error Handling: Exceptions vs Status
+
+Current behavior: failed convergence throws `ConvergenceError` (`src/core/dc.cpp:120`). This is problematic for Monte Carlo and parameter sweeps where some points may not converge but the run should continue.
+
+**Policy: dual mode.**
+
+- **Default (throw):** `run_dc()`, `run_ac()`, etc. throw `SimulationError` on convergence failure. `SimulationError` carries a `SimStatus` with diagnostics:
+
+```cpp
+class SimulationError : public std::runtime_error {
+public:
+    SimStatus status() const;
+};
+```
+
+- **Non-throwing (opt-in via options):** When `SimOptions::no_throw = true`, failed analyses return a result with `status().converged == false` instead of throwing. The result contains partial data (last Newton iterate for DC, last converged timepoint for transient). This is the mode Monte Carlo and parameter sweeps use.
+
+```cpp
+ckt.options().no_throw = true;
+auto dc = sim.run_dc(ckt);
+if (!dc.status().converged) {
+    // handle gracefully — log, skip, or inspect partial result
+}
+```
+
+#### 4.9 Derived Measurements
 
 Free functions in a separate header, not methods on result types. Result types remain pure data containers.
 
@@ -408,7 +528,7 @@ Custom device authors (for circuit-cpp behavioral models) implement the same int
 - **PyTorch-inspired construction** — components as objects, circuits as containers, subcircuits as subclasses
 - **SPICE engineering notation** — `"1k"`, `"100p"`, `"10meg"` accepted for values
 - **Kwargs replace spec objects** — `dc=5, ac=1` instead of `SourceSpec()`
-- **Three tiers**: one-liner convenience, statement-based, Module-style subclassing
+- **Four tiers**: one-liner convenience, statement-based, declarative constructor, Module-style subclassing
 
 #### 6.2 Circuit Construction
 
@@ -463,11 +583,20 @@ ckt = Amplifier()
 result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
 ```
 
-- `ns.SubCircuit` is the equivalent of `nn.Module` — attribute assignment registers components
-- `.at(...)` maps subcircuit ports to parent node names
-- Introspection via attribute access: `ckt.Rf`, `ckt.U1.Rin`
+#### 6.3 Module-Style Mechanics
 
-#### 6.3 Source Specifications
+`ns.SubCircuit` and `ns.Circuit` use Python's `__setattr__` to auto-register components (same pattern as `nn.Module`):
+
+- Assigning a component descriptor (returned by `ns.R(...)`, `ns.V(...)`, etc.) to `self.<name>` registers it with the circuit
+- The attribute name becomes the component's name if no explicit name was given
+- `ns.SubCircuit` defines `ports` as a class attribute listing external port names
+- `.at(...)` on a `SubCircuit` instance returns a `SubCircuitRef` that maps ports to parent node names
+- Introspection: `ckt.R1` returns the component descriptor; `ckt.U1.Rin` traverses into subcircuits
+- `ns.Circuit.__init__(*components)` accepts positional component descriptors for the declarative constructor (Tier 3)
+
+The Python `Circuit` / `SubCircuit` classes are pure Python wrappers. When passed to `Simulator.run_*()`, they are materialized into a C++ `neospice::Circuit` by iterating registered components and calling the corresponding C++ methods. This materialization is transparent to the user.
+
+#### 6.4 Source Specifications
 
 Keyword arguments replace separate spec objects:
 
@@ -480,7 +609,7 @@ ckt.I("I1", "in", "0", dc=1e-3)
 
 `SourceSpec`, `PulseSpec`, `SinSpec` structs are still available for users who prefer them, but kwargs are the primary API.
 
-#### 6.4 Analysis Methods
+#### 6.5 Analysis Methods
 
 ```python
 sim = ns.Simulator()
@@ -503,11 +632,11 @@ result = sim.run_sens(ckt, output="v(out)")
 - String-based node/device references (Python has no handles)
 - `run_dc_sweep` accepts positional tuples for conciseness
 
-#### 6.5 Result Types
+#### 6.6 Result Types
 
 Unchanged from current API — string-based access, numpy array returns. All existing methods remain.
 
-#### 6.6 Convenience Functions
+#### 6.7 Convenience Functions
 
 Unchanged:
 
@@ -640,9 +769,23 @@ The redesign is API-surface only. The solver core is untouched.
 |---|---|---|---|
 | Programmatic construction | String accumulation → reparse | Direct object creation | Faster (skips parse) |
 | Result access | `map<string, vector>` O(log n) | Array index O(1) | Faster |
-| Array result data | `vector` copy per access | `span` view | Faster (zero-copy) |
+| Array result data | `vector` copy per access | `span` view (stored) / `vector` (derived) | Faster for stored, same for derived |
 | Device evaluate() | Virtual dispatch | Virtual dispatch | Identical |
 | Matrix factorization | NeoSolver LU | NeoSolver LU | Identical |
 | Newton iteration | Same algorithm | Same algorithm | Identical |
 
 No simulation performance regression is expected.
+
+### 11. Implementation Phasing
+
+Recommended order to minimize risk and enable incremental testing:
+
+1. **Handle types + Circuit state machine** — `NodeId`/`DevId`/`ModelId`, `finalize_if_needed()`, `is_finalized()`. Foundation for everything else.
+2. **Header reorganization** — move public headers to `include/neospice/`, update all internal includes and CMake. Mechanical but touches many files.
+3. **Result storage + index maps** — internal dense array storage, handle-based O(1) access, span returns for stored data, vector returns for derived data. `.save` view layer. This phase has the most hidden behavior and should be done before Python changes.
+4. **Circuit typed device methods** — `R()`, `V()`, `M()`, etc. on `Circuit`. Each method creates the device internally and returns `DevId`. Remove `CircuitBuilder`.
+5. **Simulator as instance** — move from stateless to instance with registry. `ModelMatcher`-based dispatch. Update all analysis methods.
+6. **Enriched SimStatus + error handling** — extend `NewtonResult`, dual throw/no-throw mode, `SimulationError` carrying `SimStatus`.
+7. **Measurement utilities** — `neospice::measure` free functions.
+8. **Python bindings** — PyTorch-inspired `Circuit`/`SubCircuit` classes, kwargs, SPICE notation, four tiers. Done last because it wraps the C++ API.
+9. **Migration tool + skill updates** — include paths, test scaffolding, skill docs. Done after the C++ API stabilizes.
