@@ -17,8 +17,8 @@ using std::make_unique;
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(DCSweep, ResistorDivider) {
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 0.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_out, GROUND_INTERNAL, 1000.0));
@@ -51,8 +51,8 @@ TEST(DCSweep, ResistorDivider) {
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(DCSweep, ResistorDividerViaSimulator) {
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 0.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_out, GROUND_INTERNAL, 1000.0));
@@ -118,9 +118,9 @@ TEST(DCSweep, NestedSweep) {
     // R1 from in1→out, R2 from in2→out, R3 from out→gnd (all 1k)
     // V(out) = (V1 + V2) / 3  (superposition with equal resistors)
     Circuit ckt;
-    auto n_in1 = ckt.node("in1");
-    auto n_in2 = ckt.node("in2");
-    auto n_out = ckt.node("out");
+    int32_t n_in1 = static_cast<int32_t>(ckt.node("in1"));
+    int32_t n_in2 = static_cast<int32_t>(ckt.node("in2"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in1, GROUND_INTERNAL, 0.0));
     ckt.add_device(make_unique<VSource>("V2", n_in2, GROUND_INTERNAL, 0.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in1, n_out, 1000.0));
@@ -218,8 +218,8 @@ R3 out 0 1k
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(DCSweep, RawWriterBasic) {
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 0.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_out, GROUND_INTERNAL, 1000.0));
@@ -264,8 +264,8 @@ TEST(DCSweep, RawWriterBasic) {
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(DCSweep, BranchCurrentReported) {
     Circuit ckt;
-    auto n_top = ckt.node("top");
-    auto n_mid = ckt.node("mid");
+    int32_t n_top = static_cast<int32_t>(ckt.node("top"));
+    int32_t n_mid = static_cast<int32_t>(ckt.node("mid"));
     ckt.add_device(make_unique<VSource>("V1", n_top, GROUND_INTERNAL, 0.0));
     ckt.add_device(make_unique<Resistor>("R1", n_top, n_mid, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_mid, GROUND_INTERNAL, 1000.0));
@@ -295,7 +295,7 @@ TEST(DCSweep, BranchCurrentReported) {
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(DCSweep, UnknownSource) {
     Circuit ckt;
-    auto n_in = ckt.node("in");
+    int32_t n_in = static_cast<int32_t>(ckt.node("in"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 0.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, GROUND_INTERNAL, 1000.0));
     ckt.finalize();

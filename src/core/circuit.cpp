@@ -1,9 +1,17 @@
 #include "core/circuit.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <stdexcept>
 
 namespace neospice {
+
+std::string Circuit::model_key(std::string_view name) {
+    std::string key(name);
+    std::transform(key.begin(), key.end(), key.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return key;
+}
 
 // Out-of-line special members so ModelCardHolder's vtable is emitted here.
 Circuit::Circuit() = default;
@@ -16,15 +24,15 @@ Circuit& Circuit::operator=(Circuit&&) noexcept = default;
 // loop and clears it (via RAII) on the way out.
 thread_local const IntegratorCtx* tls_integrator_ctx = nullptr;
 
-int32_t Circuit::node(const std::string& name) {
+NodeId Circuit::node(const std::string& name) {
     // Treat "0", "gnd", "GND" as ground
     if (name == "0" || name == "gnd" || name == "GND") {
-        return GROUND_INTERNAL;
+        return GND;
     }
 
     auto it = node_map_.find(name);
     if (it != node_map_.end()) {
-        return it->second;
+        return NodeId{it->second};
     }
 
     if (finalized_)
@@ -34,7 +42,7 @@ int32_t Circuit::node(const std::string& name) {
     node_map_[name] = idx;
     node_names_.push_back(name);
     internal_nodes_.push_back(false);
-    return idx;
+    return NodeId{idx};
 }
 
 std::string Circuit::node_name(int32_t idx) const {
@@ -218,7 +226,7 @@ std::vector<std::string> Circuit::device_names() const {
     return names;
 }
 
-Device* Circuit::find_device(const std::string& name) {
+Device* Circuit::find_device_ptr(const std::string& name) {
     std::string lower_name = name;
     std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(),
                    [](unsigned char c) { return std::tolower(c); });
@@ -231,12 +239,12 @@ Device* Circuit::find_device(const std::string& name) {
     return nullptr;
 }
 
-const Device* Circuit::find_device(const std::string& name) const {
-    return const_cast<Circuit*>(this)->find_device(name);
+const Device* Circuit::find_device_ptr(const std::string& name) const {
+    return const_cast<Circuit*>(this)->find_device_ptr(name);
 }
 
 DeviceInfo Circuit::device_info(const std::string& name) const {
-    const Device* dev = find_device(name);
+    const Device* dev = find_device_ptr(name);
     if (!dev) throw std::out_of_range("Device not found: " + name);
 
     DeviceInfo info;
@@ -276,7 +284,7 @@ std::vector<std::string> Circuit::devices_at_node(const std::string& node) const
 }
 
 bool Circuit::set_param(const std::string& device_name, double value) {
-    Device* dev = find_device(device_name);
+    Device* dev = find_device_ptr(device_name);
     if (!dev) return false;
     bool changed = dev->set_value(value);
     if (changed) clear_operating_point();

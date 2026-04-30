@@ -387,6 +387,9 @@ static std::string extract_lib_section(const std::string& content,
 
 Circuit NetlistParser::parse(const std::string& netlist) {
     Circuit ckt;
+    auto node_raw = [&ckt](const std::string& s) -> int32_t {
+        return static_cast<int32_t>(ckt.node(s));
+    };
 
     // Strip leading whitespace so the tokenizer's title-line detection works
     // correctly even when the netlist starts with newlines.
@@ -991,7 +994,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     std::string llhs = to_lower(lhs);
                     if (llhs.size() > 3 && llhs.substr(0, 2) == "v(" && llhs.back() == ')') {
                         std::string node_name = lhs.substr(2, lhs.size() - 3);
-                        int32_t idx = ckt.node(node_name);
+                        NodeId idx = ckt.node(node_name);
                         ckt.ic[idx] = val;
                     }
                 }
@@ -1005,7 +1008,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     std::string llhs = to_lower(lhs);
                     if (llhs.size() > 3 && llhs.substr(0, 2) == "v(" && llhs.back() == ')') {
                         std::string node_name = lhs.substr(2, lhs.size() - 3);
-                        int32_t idx = ckt.node(node_name);
+                        NodeId idx = ckt.node(node_name);
                         ckt.nodeset[idx] = val;
                     }
                 }
@@ -1328,8 +1331,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": Resistor requires name, n+, n-, value");
             }
             std::string name = tokens[0];
-            int32_t np = ckt.node(tokens[1]);
-            int32_t nn = ckt.node(tokens[2]);
+            int32_t np = node_raw(tokens[1]);
+            int32_t nn = node_raw(tokens[2]);
             double val = parse_spice_number(tokens[3]);
             auto r = std::make_unique<Resistor>(name, np, nn, val);
 
@@ -1376,8 +1379,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": Capacitor requires name, n+, n-, value");
             }
             std::string name = tokens[0];
-            int32_t np = ckt.node(tokens[1]);
-            int32_t nn = ckt.node(tokens[2]);
+            int32_t np = node_raw(tokens[1]);
+            int32_t nn = node_raw(tokens[2]);
             double val = parse_spice_number(tokens[3]);
             auto c = std::make_unique<Capacitor>(name, np, nn, val);
 
@@ -1423,8 +1426,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": Inductor requires name, n+, n-, value");
             }
             std::string name = tokens[0];
-            int32_t np = ckt.node(tokens[1]);
-            int32_t nn = ckt.node(tokens[2]);
+            int32_t np = node_raw(tokens[1]);
+            int32_t nn = node_raw(tokens[2]);
 
             // Detect whether tokens[3] is a model name or a numeric value.
             // If it looks like a model name (found in ind_models), the value
@@ -1494,8 +1497,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": VSource requires name, n+, n-");
             }
             std::string name = tokens[0];
-            int32_t np = ckt.node(tokens[1]);
-            int32_t nn = ckt.node(tokens[2]);
+            int32_t np = node_raw(tokens[1]);
+            int32_t nn = node_raw(tokens[2]);
 
             ParsedSourceSpec spec = parse_source_spec(tokens, 3);
             auto vs = std::make_unique<VSource>(name, np, nn, spec.dc_val);
@@ -1516,8 +1519,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": ISource requires name, n+, n-");
             }
             std::string name = tokens[0];
-            int32_t np = ckt.node(tokens[1]);
-            int32_t nn = ckt.node(tokens[2]);
+            int32_t np = node_raw(tokens[1]);
+            int32_t nn = node_raw(tokens[2]);
 
             ParsedSourceSpec spec = parse_source_spec(tokens, 3);
             auto is = std::make_unique<ISource>(name, np, nn, spec.dc_val);
@@ -1574,10 +1577,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             DeferredMosfet m;
             m.name        = tokens[0];
-            m.nd          = ckt.node(tokens[1]);
-            m.ng          = ckt.node(tokens[2]);
-            m.ns          = ckt.node(tokens[3]);
-            m.nb          = ckt.node(tokens[4]);
+            m.nd          = node_raw(tokens[1]);
+            m.ng          = node_raw(tokens[2]);
+            m.ns          = node_raw(tokens[3]);
+            m.nb          = node_raw(tokens[4]);
             m.line_number = line.line_number;
 
             // Detect 5- or 6-terminal M-cards by scanning forward from
@@ -1604,15 +1607,15 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     tokens[6].find('=') == std::string::npos &&
                     tokens[7].find('=') == std::string::npos) {
                     // 6-terminal form (e.g. BSIMSOI): tokens[5]=p, tokens[6]=b
-                    m.nsub = ckt.node(tokens[5]);
+                    m.nsub = node_raw(tokens[5]);
                     m.nsub_given = true;
-                    m.npnode = ckt.node(tokens[6]);
+                    m.npnode = node_raw(tokens[6]);
                     m.nbulk_given = true;
                     m.model_name = tokens[7];
                     param_start = 8;
                 } else {
                     // 5-terminal form: tokens[5] is substrate node
-                    m.nsub = ckt.node(tokens[5]);
+                    m.nsub = node_raw(tokens[5]);
                     m.nsub_given = true;
                     m.model_name = tokens[6];
                     param_start = 7;
@@ -1670,8 +1673,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": VCVS requires name, np, nn, and source specification");
             }
             std::string name = tokens[0];
-            int32_t np  = ckt.node(tokens[1]);
-            int32_t nn  = ckt.node(tokens[2]);
+            int32_t np  = node_raw(tokens[1]);
+            int32_t nn  = node_raw(tokens[2]);
 
             // Detect POLY or TABLE keyword at token[3]
             std::string tok3 = to_lower(tokens[3]);
@@ -1709,8 +1712,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         throw ParseError("Line " + std::to_string(line.line_number) +
                                          ": POLY VCVS: not enough control node pairs");
                     }
-                    int32_t cp = ckt.node(tokens[idx]);
-                    int32_t cn = ckt.node(tokens[idx + 1]);
+                    int32_t cp = node_raw(tokens[idx]);
+                    int32_t cn = node_raw(tokens[idx + 1]);
                     ctrl_pairs.push_back({cp, cn});
                     idx += 2;
                 }
@@ -1745,10 +1748,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         // Support differential: V(n1,n2)
                         size_t comma = node_name.find(',');
                         if (comma != std::string::npos) {
-                            ctrl_pos = ckt.node(node_name.substr(0, comma));
-                            ctrl_neg = ckt.node(node_name.substr(comma + 1));
+                            ctrl_pos = node_raw(node_name.substr(0, comma));
+                            ctrl_neg = node_raw(node_name.substr(comma + 1));
                         } else {
-                            ctrl_pos = ckt.node(node_name);
+                            ctrl_pos = node_raw(node_name);
                             // ctrl_neg stays GROUND_INTERNAL
                         }
                     }
@@ -1795,8 +1798,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": VCVS requires name, np, nn, nc+, nc-, gain");
                 }
-                int32_t ncp = ckt.node(tokens[3]);
-                int32_t ncn = ckt.node(tokens[4]);
+                int32_t ncp = node_raw(tokens[3]);
+                int32_t ncn = node_raw(tokens[4]);
                 double  gain = parse_spice_number(tokens[5]);
                 ckt.add_device(std::make_unique<VCVS>(name, np, nn, ncp, ncn, gain));
             }
@@ -1808,8 +1811,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": VCCS requires name, np, nn, and source specification");
             }
             std::string name = tokens[0];
-            int32_t np  = ckt.node(tokens[1]);
-            int32_t nn  = ckt.node(tokens[2]);
+            int32_t np  = node_raw(tokens[1]);
+            int32_t nn  = node_raw(tokens[2]);
 
             std::string tok3g = to_lower(tokens[3]);
 
@@ -1842,8 +1845,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         throw ParseError("Line " + std::to_string(line.line_number) +
                                          ": POLY VCCS: not enough control node pairs");
                     }
-                    int32_t cp = ckt.node(tokens[idx]);
-                    int32_t cn = ckt.node(tokens[idx + 1]);
+                    int32_t cp = node_raw(tokens[idx]);
+                    int32_t cn = node_raw(tokens[idx + 1]);
                     ctrl_pairs.push_back({cp, cn});
                     idx += 2;
                 }
@@ -1871,10 +1874,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         std::string node_name = ctrl_expr.substr(2, close - 2);
                         size_t comma = node_name.find(',');
                         if (comma != std::string::npos) {
-                            ctrl_pos = ckt.node(node_name.substr(0, comma));
-                            ctrl_neg = ckt.node(node_name.substr(comma + 1));
+                            ctrl_pos = node_raw(node_name.substr(0, comma));
+                            ctrl_neg = node_raw(node_name.substr(comma + 1));
                         } else {
-                            ctrl_pos = ckt.node(node_name);
+                            ctrl_pos = node_raw(node_name);
                         }
                     }
                 }
@@ -1916,8 +1919,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": VCCS requires name, np, nn, nc+, nc-, gm");
                 }
-                int32_t ncp = ckt.node(tokens[3]);
-                int32_t ncn = ckt.node(tokens[4]);
+                int32_t ncp = node_raw(tokens[3]);
+                int32_t ncn = node_raw(tokens[4]);
                 double  gm  = parse_spice_number(tokens[5]);
                 auto vccs = std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm);
                 for (size_t k = 6; k < tokens.size(); ++k) {
@@ -1974,8 +1977,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 }
                 DeferredPolyCCVS hpd;
                 hpd.name = tokens[0];
-                hpd.np = ckt.node(tokens[1]);
-                hpd.nn = ckt.node(tokens[2]);
+                hpd.np = node_raw(tokens[1]);
+                hpd.nn = node_raw(tokens[2]);
                 hpd.vsense_names = std::move(vsense_names);
                 hpd.coeffs = std::move(coeffs);
                 hpd.line_number = line.line_number;
@@ -1984,8 +1987,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 // Linear form: H name np nn Vsense transresistance
                 DeferredCCVS hd;
                 hd.name        = tokens[0];
-                hd.np          = ckt.node(tokens[1]);
-                hd.nn          = ckt.node(tokens[2]);
+                hd.np          = node_raw(tokens[1]);
+                hd.nn          = node_raw(tokens[2]);
                 hd.vsense_name = tokens[3];
                 hd.rm          = parse_spice_number(tokens[4]);
                 hd.line_number = line.line_number;
@@ -2038,8 +2041,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 }
                 DeferredPolyCCCS fpd;
                 fpd.name = tokens[0];
-                fpd.np = ckt.node(tokens[1]);
-                fpd.nn = ckt.node(tokens[2]);
+                fpd.np = node_raw(tokens[1]);
+                fpd.nn = node_raw(tokens[2]);
                 fpd.vsense_names = std::move(vsense_names);
                 fpd.coeffs = std::move(coeffs);
                 fpd.line_number = line.line_number;
@@ -2048,8 +2051,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 // Linear form: F name np nn Vsense gain
                 DeferredCCCS fd;
                 fd.name        = tokens[0];
-                fd.np          = ckt.node(tokens[1]);
-                fd.nn          = ckt.node(tokens[2]);
+                fd.np          = node_raw(tokens[1]);
+                fd.nn          = node_raw(tokens[2]);
                 fd.vsense_name = tokens[3];
                 fd.gain        = parse_spice_number(tokens[4]);
                 fd.line_number = line.line_number;
@@ -2069,8 +2072,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             DeferredBJT q;
             q.name = tokens[0];
-            q.nb = ckt.node(tokens[2]);
-            q.ne = ckt.node(tokens[3]);
+            q.nb = node_raw(tokens[2]);
+            q.ne = node_raw(tokens[3]);
             q.line_number = line.line_number;
 
             // Determine if token[4] is a substrate node or model name.
@@ -2088,13 +2091,13 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             size_t param_start;
             if (is_model_name) {
-                q.nc = ckt.node(tokens[1]);
-                q.ns = ckt.node("0");  // default substrate = ground
+                q.nc = node_raw(tokens[1]);
+                q.ns = node_raw("0");  // default substrate = ground
                 q.model_name = tok4;
                 param_start = 5;
             } else if (tokens.size() >= 6) {
-                q.nc = ckt.node(tokens[1]);
-                q.ns = ckt.node(tok4);
+                q.nc = node_raw(tokens[1]);
+                q.ns = node_raw(tok4);
                 q.model_name = tokens[5];
                 param_start = 6;
             } else {
@@ -2270,10 +2273,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": T element requires name, p1+, p1-, p2+, p2-, Z0=val TD=val");
             }
             std::string tname = tokens[0];
-            int32_t tp1p = ckt.node(tokens[1]);
-            int32_t tp1n = ckt.node(tokens[2]);
-            int32_t tp2p = ckt.node(tokens[3]);
-            int32_t tp2n = ckt.node(tokens[4]);
+            int32_t tp1p = node_raw(tokens[1]);
+            int32_t tp1n = node_raw(tokens[2]);
+            int32_t tp2p = node_raw(tokens[3]);
+            int32_t tp2n = node_raw(tokens[4]);
 
             double tz0 = 0.0, ttd = -1.0, tf = -1.0, tnl = -1.0;
             double ic_v1 = 0, ic_i1 = 0, ic_v2 = 0, ic_i2 = 0;
@@ -2334,10 +2337,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             DeferredLTRA ol;
             ol.name       = tokens[0];
-            ol.p1p        = ckt.node(tokens[1]);
-            ol.p1n        = ckt.node(tokens[2]);
-            ol.p2p        = ckt.node(tokens[3]);
-            ol.p2n        = ckt.node(tokens[4]);
+            ol.p1p        = node_raw(tokens[1]);
+            ol.p1n        = node_raw(tokens[2]);
+            ol.p2p        = node_raw(tokens[3]);
+            ol.p2n        = node_raw(tokens[4]);
             ol.model_name = tokens[5];
             ol.line_number = line.line_number;
 
@@ -2384,10 +2387,10 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             DeferredVSwitch sd;
             sd.name       = tokens[0];
-            sd.np         = ckt.node(tokens[1]);
-            sd.nn         = ckt.node(tokens[2]);
-            sd.ncp        = ckt.node(tokens[3]);
-            sd.ncn        = ckt.node(tokens[4]);
+            sd.np         = node_raw(tokens[1]);
+            sd.nn         = node_raw(tokens[2]);
+            sd.ncp        = node_raw(tokens[3]);
+            sd.ncn        = node_raw(tokens[4]);
             sd.model_name = tokens[5];
             sd.line_number = line.line_number;
             deferred_vswitches.push_back(std::move(sd));
@@ -2400,8 +2403,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
             DeferredCSwitch wd;
             wd.name        = tokens[0];
-            wd.np          = ckt.node(tokens[1]);
-            wd.nn          = ckt.node(tokens[2]);
+            wd.np          = node_raw(tokens[1]);
+            wd.nn          = node_raw(tokens[2]);
             wd.vsense_name = tokens[3];
             wd.model_name  = tokens[4];
             wd.line_number = line.line_number;
@@ -2415,8 +2418,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": B element requires name, np, nn, V={expr} or I={expr}");
             }
             std::string name = tokens[0];
-            int32_t np = ckt.node(tokens[1]);
-            int32_t nn = ckt.node(tokens[2]);
+            int32_t np = node_raw(tokens[1]);
+            int32_t nn = node_raw(tokens[2]);
 
             // Separate expression tokens from instance parameter tokens (tc1=, tc2=, temp=, dtemp=)
             // Parameters are recognized as trailing tokens with known prefixes.
@@ -2479,7 +2482,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                  ": B element expression error: " + e.what());
             }
 
-            // Resolve variable references: V() refs use ckt.node(), I() refs deferred
+            // Resolve variable references: V() refs use node_raw(), I() refs deferred
             const auto& refs = compiled.var_refs();
             int nv = compiled.num_vars();
             std::vector<int32_t> node_indices(nv, -1);
@@ -2510,7 +2513,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     if (lname == "0" || lname == "gnd") {
                         node_indices[i] = GROUND_INTERNAL;
                     } else {
-                        node_indices[i] = ckt.node(lname);
+                        node_indices[i] = node_raw(lname);
                     }
                     break;
                 }
@@ -2518,9 +2521,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                     std::string ln1 = ref.name1;
                     std::string ln2 = ref.name2;
                     node_indices[i]  = (ln1 == "0" || ln1 == "gnd")
-                                       ? GROUND_INTERNAL : ckt.node(ln1);
+                                       ? GROUND_INTERNAL : node_raw(ln1);
                     node_indices2[i] = (ln2 == "0" || ln2 == "gnd")
-                                       ? GROUND_INTERNAL : ckt.node(ln2);
+                                       ? GROUND_INTERNAL : node_raw(ln2);
                     break;
                 }
                 case asrc::VarKind::BRANCH_CURRENT:
@@ -2653,8 +2656,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             card_it = dio_cards.emplace(dd.model_name,
                                         to_dio_card(it->second)).first;
         }
-        int32_t na = ckt.node(dd.anode);
-        int32_t nc = ckt.node(dd.cathode);
+        int32_t na = node_raw(dd.anode);
+        int32_t nc = node_raw(dd.cathode);
         auto dev = DIODevice::make(dd.name, na, nc, dd.geom, *card_it->second);
         if (dd.ic_vd_given) {
             dev->set_ic(dd.ic_vd, dd.ic_vd_given);
@@ -3137,9 +3140,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                      ": " + e.what());
                 }
             }
-            int32_t nd = ckt.node(j.nd);
-            int32_t ng = ckt.node(j.ng);
-            int32_t ns = ckt.node(j.ns);
+            int32_t nd = node_raw(j.nd);
+            int32_t ng = node_raw(j.ng);
+            int32_t ns = node_raw(j.ns);
             JFET2Device::Geom g2;
             g2.area = j.geom.area;
             g2.area_given = j.geom.area_given;
@@ -3163,9 +3166,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                                      ": " + e.what());
                 }
             }
-            int32_t nd = ckt.node(j.nd);
-            int32_t ng = ckt.node(j.ng);
-            int32_t ns = ckt.node(j.ns);
+            int32_t nd = node_raw(j.nd);
+            int32_t ng = node_raw(j.ng);
+            int32_t ns = node_raw(j.ns);
             auto dev = JFETDevice::make(j.name, nd, ng, ns,
                                          j.geom, *card_it->second);
             if (j.ic_vds_given || j.ic_vgs_given) {
@@ -3207,9 +3210,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         if (lvl_it != it->second.params.end()) {
             level = static_cast<int>(lvl_it->second);
         }
-        int32_t nd = ckt.node(z.nd);
-        int32_t ng = ckt.node(z.ng);
-        int32_t ns = ckt.node(z.ns);
+        int32_t nd = node_raw(z.nd);
+        int32_t ng = node_raw(z.ng);
+        int32_t ns = node_raw(z.ns);
 
         if (model_type == "nmf" || model_type == "pmf") {
             auto card_it = mes_cards.find(z.model_name);

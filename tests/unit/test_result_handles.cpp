@@ -14,8 +14,8 @@ using std::make_unique;
 
 TEST(ResultHandles, DCVoltageByNodeId) {
     Circuit ckt;
-    auto n_top = ckt.node("top");
-    auto n_mid = ckt.node("mid");
+    int32_t n_top = static_cast<int32_t>(ckt.node("top"));
+    int32_t n_mid = static_cast<int32_t>(ckt.node("mid"));
     ckt.add_device(make_unique<VSource>("V1", n_top, GROUND_INTERNAL, 10.0));
     ckt.add_device(make_unique<Resistor>("R1", n_top, n_mid, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_mid, GROUND_INTERNAL, 1000.0));
@@ -27,8 +27,8 @@ TEST(ResultHandles, DCVoltageByNodeId) {
 
 TEST(ResultHandles, DCVoltageByStringStillWorks) {
     Circuit ckt;
-    auto n_top = ckt.node("top");
-    auto n_mid = ckt.node("mid");
+    int32_t n_top = static_cast<int32_t>(ckt.node("top"));
+    int32_t n_mid = static_cast<int32_t>(ckt.node("mid"));
     ckt.add_device(make_unique<VSource>("V1", n_top, GROUND_INTERNAL, 10.0));
     ckt.add_device(make_unique<Resistor>("R1", n_top, n_mid, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_mid, GROUND_INTERNAL, 1000.0));
@@ -40,8 +40,8 @@ TEST(ResultHandles, DCVoltageByStringStillWorks) {
 
 TEST(ResultHandles, DCCurrentByDevId) {
     Circuit ckt;
-    auto n_top = ckt.node("top");
-    auto n_mid = ckt.node("mid");
+    int32_t n_top = static_cast<int32_t>(ckt.node("top"));
+    int32_t n_mid = static_cast<int32_t>(ckt.node("mid"));
     ckt.add_device(make_unique<VSource>("V1", n_top, GROUND_INTERNAL, 10.0));
     ckt.add_device(make_unique<Resistor>("R1", n_top, n_mid, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_mid, GROUND_INTERNAL, 1000.0));
@@ -53,8 +53,8 @@ TEST(ResultHandles, DCCurrentByDevId) {
 
 TEST(ResultHandles, DCDiffByNodeId) {
     Circuit ckt;
-    auto n_top = ckt.node("top");
-    auto n_mid = ckt.node("mid");
+    int32_t n_top = static_cast<int32_t>(ckt.node("top"));
+    int32_t n_mid = static_cast<int32_t>(ckt.node("mid"));
     ckt.add_device(make_unique<VSource>("V1", n_top, GROUND_INTERNAL, 10.0));
     ckt.add_device(make_unique<Resistor>("R1", n_top, n_mid, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_mid, GROUND_INTERNAL, 1000.0));
@@ -67,8 +67,8 @@ TEST(ResultHandles, DCDiffByNodeId) {
 
 TEST(ResultHandles, TransientVoltageByNodeId) {
     Circuit ckt;
-    auto n_in = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 5.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1e3));
     ckt.add_device(make_unique<Capacitor>("C1", n_out, GROUND_INTERNAL, 1e-6));
@@ -81,8 +81,8 @@ TEST(ResultHandles, TransientVoltageByNodeId) {
 
 TEST(ResultHandles, TransientTimeSpan) {
     Circuit ckt;
-    auto n_in = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 5.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1e3));
     ckt.add_device(make_unique<Capacitor>("C1", n_out, GROUND_INTERNAL, 1e-6));
@@ -95,8 +95,8 @@ TEST(ResultHandles, TransientTimeSpan) {
 
 TEST(ResultHandles, TransientDiffByNodeId) {
     Circuit ckt;
-    auto n_in = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 5.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1e3));
     ckt.add_device(make_unique<Capacitor>("C1", n_out, GROUND_INTERNAL, 1e-6));
@@ -111,8 +111,8 @@ TEST(ResultHandles, TransientDiffByNodeId) {
 
 TEST(ResultHandles, ACVoltageByNodeId) {
     Circuit ckt;
-    auto n_in = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     auto vs = make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 0.0);
     vs->set_ac(1.0, 0.0);
     ckt.add_device(std::move(vs));
@@ -127,8 +127,8 @@ TEST(ResultHandles, ACVoltageByNodeId) {
 
 TEST(ResultHandles, ACMagnitudeDbByNodeId) {
     Circuit ckt;
-    auto n_in = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     auto vs = make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 0.0);
     vs->set_ac(1.0, 0.0);
     ckt.add_device(std::move(vs));
@@ -143,8 +143,8 @@ TEST(ResultHandles, ACMagnitudeDbByNodeId) {
 
 TEST(ResultHandles, ACDiffMagnitudeDb) {
     Circuit ckt;
-    auto n_in = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     auto vs = make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 0.0);
     vs->set_ac(1.0, 0.0);
     ckt.add_device(std::move(vs));
@@ -160,8 +160,8 @@ TEST(ResultHandles, ACDiffMagnitudeDb) {
 
 TEST(ResultHandles, DCSweepVoltageByNodeId) {
     Circuit ckt;
-    auto n_in = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 0.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1e3));
     ckt.add_device(make_unique<Resistor>("R2", n_out, GROUND_INTERNAL, 1e3));

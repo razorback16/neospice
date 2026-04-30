@@ -29,13 +29,15 @@ PZResult solve_pz(Circuit& ckt,
     // 1. DC operating point (same approach as ac.cpp)
     std::vector<double> dc_solution(n, 0.0);
     std::vector<char> pinned(n, 0);
-    for (auto& [node_idx, value] : ckt.nodeset) {
+    for (auto& [node_id, value] : ckt.nodeset) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n) {
             dc_solution[node_idx] = value;
             pinned[node_idx] = 1;
         }
     }
-    for (auto& [node_idx, value] : ckt.ic) {
+    for (auto& [node_id, value] : ckt.ic) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
             dc_solution[node_idx] = value;
         }
@@ -69,7 +71,27 @@ PZResult solve_pz(Circuit& ckt,
                 if (dc_result.converged) {
                     dc_solution = dc_result.solution;
                 } else {
-                    throw ConvergenceError("PZ analysis: DC operating point failed to converge");
+                    SimStatus fail_status;
+                    fail_status.converged = false;
+                    fail_status.residual = dc_result.residual;
+                    fail_status.worst_node_idx = dc_result.worst_node_idx;
+                    if (!ckt.options.no_throw) {
+                        throw SimulationError(
+                            "PZ analysis: DC operating point failed to converge",
+                            fail_status);
+                    }
+                    auto t_end = std::chrono::steady_clock::now();
+                    fail_status.elapsed_seconds =
+                        std::chrono::duration<double>(t_end - t_start).count();
+                    PZResult fail_result;
+                    fail_result.type = type;
+                    fail_result.transfer_type = transfer;
+                    fail_result.input_pos = in_pos;
+                    fail_result.input_neg = in_neg;
+                    fail_result.output_pos = out_pos;
+                    fail_result.output_neg = out_neg;
+                    fail_result.status = fail_status;
+                    return fail_result;
                 }
             }
         }

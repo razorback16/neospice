@@ -87,8 +87,15 @@ int main(int argc, char* argv[]) {
     } catch (const neospice::ParseError& e) {
         std::cerr << "Parse error: " << e.what() << "\n";
         return 1;
-    } catch (const neospice::ConvergenceError& e) {
-        std::cerr << "Convergence error: " << e.what() << "\n";
+    } catch (const neospice::SimulationError& e) {
+        const auto& status = e.status();
+        std::cerr << "Simulation error: " << e.what() << "\n";
+        std::cerr << "  converged: " << (status.converged ? "true" : "false") << "\n";
+        std::cerr << "  iterations: " << status.iterations << "\n";
+        std::cerr << "  residual: " << status.residual << "\n";
+        std::cerr << "  worst_node_idx: " << status.worst_node_idx << "\n";
+        std::cerr << "  method: "
+                  << neospice::convergence_method_name(status.convergence_method) << "\n";
         return 1;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";

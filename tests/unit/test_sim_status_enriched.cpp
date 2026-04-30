@@ -8,7 +8,7 @@ using namespace neospice;
 
 TEST(SimStatusEnriched, DCResultHasResidual) {
     Circuit ckt;
-    auto n = ckt.node("n1");
+    int32_t n = static_cast<int32_t>(ckt.node("n1"));
     ckt.add_device(std::make_unique<VSource>("V1", n, GROUND_INTERNAL, 5.0));
     ckt.add_device(std::make_unique<Resistor>("R1", n, GROUND_INTERNAL, 1e3));
     ckt.finalize();
@@ -20,7 +20,7 @@ TEST(SimStatusEnriched, DCResultHasResidual) {
 
 TEST(SimStatusEnriched, DCResultHasGminSteps) {
     Circuit ckt;
-    auto n = ckt.node("n1");
+    int32_t n = static_cast<int32_t>(ckt.node("n1"));
     ckt.add_device(std::make_unique<VSource>("V1", n, GROUND_INTERNAL, 5.0));
     ckt.add_device(std::make_unique<Resistor>("R1", n, GROUND_INTERNAL, 1e3));
     ckt.finalize();
@@ -31,7 +31,7 @@ TEST(SimStatusEnriched, DCResultHasGminSteps) {
 
 TEST(SimStatusEnriched, WorstNodeIdxValid) {
     Circuit ckt;
-    auto n = ckt.node("n1");
+    int32_t n = static_cast<int32_t>(ckt.node("n1"));
     ckt.add_device(std::make_unique<VSource>("V1", n, GROUND_INTERNAL, 5.0));
     ckt.add_device(std::make_unique<Resistor>("R1", n, GROUND_INTERNAL, 1e3));
     ckt.finalize();
@@ -69,7 +69,7 @@ TEST(ErrorHandling, SimulationErrorIsRuntimeError) {
 
 TEST(ErrorHandling, NoThrowModeReturnsFalseConverged) {
     Circuit ckt;
-    auto n = ckt.node("n1");
+    int32_t n = static_cast<int32_t>(ckt.node("n1"));
     ckt.add_device(std::make_unique<VSource>("V1", n, GROUND_INTERNAL, 5.0));
     ckt.add_device(std::make_unique<Resistor>("R1", n, GROUND_INTERNAL, 1e3));
     ckt.options.no_throw = true;

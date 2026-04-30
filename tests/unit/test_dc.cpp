@@ -10,8 +10,8 @@ using std::make_unique;
 
 TEST(DC, ResistorDivider) {
     Circuit ckt;
-    auto n_top = ckt.node("top");
-    auto n_mid = ckt.node("mid");
+    int32_t n_top = static_cast<int32_t>(ckt.node("top"));
+    int32_t n_mid = static_cast<int32_t>(ckt.node("mid"));
     ckt.add_device(make_unique<VSource>("V1", n_top, GROUND_INTERNAL, 10.0));
     ckt.add_device(make_unique<Resistor>("R1", n_top, n_mid, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_mid, GROUND_INTERNAL, 1000.0));
@@ -23,7 +23,7 @@ TEST(DC, ResistorDivider) {
 
 TEST(DC, CurrentSourceWithResistor) {
     Circuit ckt;
-    auto n1 = ckt.node("n1");
+    int32_t n1 = static_cast<int32_t>(ckt.node("n1"));
     // ISource convention: current flows from np to nn through source
     // np=GROUND, nn=n1 means current enters n1
     ckt.add_device(make_unique<ISource>("I1", GROUND_INTERNAL, n1, 0.001));
@@ -35,8 +35,8 @@ TEST(DC, CurrentSourceWithResistor) {
 
 TEST(DC, BranchCurrentReported) {
     Circuit ckt;
-    auto n_top = ckt.node("top");
-    auto n_mid = ckt.node("mid");
+    int32_t n_top = static_cast<int32_t>(ckt.node("top"));
+    int32_t n_mid = static_cast<int32_t>(ckt.node("mid"));
     ckt.add_device(make_unique<VSource>("V1", n_top, GROUND_INTERNAL, 10.0));
     ckt.add_device(make_unique<Resistor>("R1", n_top, n_mid, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_mid, GROUND_INTERNAL, 1000.0));

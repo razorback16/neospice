@@ -105,6 +105,7 @@ add_executable(neospice_tests
     unit/test_handles.cpp
     unit/test_result_handles.cpp
     unit/test_circuit_typed.cpp
+    unit/test_circuit_semiconductor.cpp
     unit/test_measure_utils.cpp
     unit/test_kicad_lm358_ns.cpp
     unit/test_kicad_bc547a.cpp
@@ -178,4 +179,3 @@ add_executable(bench_neo_solver
 )
 target_link_libraries(bench_neo_solver PRIVATE neospice_lib)
 target_include_directories(bench_neo_solver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-

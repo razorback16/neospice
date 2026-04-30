@@ -30,8 +30,8 @@ TEST(Sens, VoltageDivider) {
     // dV(out)/dR2 =  V1*R1/(R1+R2)^2 =  10*1000/(2000)^2 =  2.5e-3
     // dV(out)/dV1 =  R2/(R1+R2) = 0.5
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 10.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_out, GROUND_INTERNAL, 1000.0));
@@ -70,8 +70,8 @@ TEST(Sens, UnequalDivider) {
     // dV(out)/dR2 =  V1*R1/(R1+R2)^2 =  5*2000/(10000)^2 =  1e-4
     // dV(out)/dV1 = R2/(R1+R2) = 0.8
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 5.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 2000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_out, GROUND_INTERNAL, 8000.0));
@@ -103,8 +103,8 @@ TEST(Sens, CurrentSource) {
     // dV(out)/dR2 = I1 = 0.001  (V/Ohm)
     // dV(out)/dI1 = R2 = 2000   (V/A)
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<ISource>("I1", GROUND_INTERNAL, n_in, 0.001));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_out, GROUND_INTERNAL, 2000.0));
@@ -183,9 +183,9 @@ TEST(Sens, ThreeResistorChain) {
     // dV(out)/dR2 = -V1*R3/(R1+R2+R3)^2 = -12*3000/(6000)^2 = -1e-3
     // dV(out)/dV1 = R3/(R1+R2+R3) = 0.5
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_mid = ckt.node("mid");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_mid = static_cast<int32_t>(ckt.node("mid"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 12.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_mid, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_mid, n_out, 2000.0));

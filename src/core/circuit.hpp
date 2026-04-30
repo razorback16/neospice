@@ -151,8 +151,8 @@ struct DeviceInfo {
 
 class Circuit {
 public:
-    /// Map node name to internal index. "0", "gnd", "GND" → GROUND_INTERNAL (-1)
-    int32_t node(const std::string& name);
+    /// Map node name to typed handle. "0", "gnd", "GND" -> GND (-1)
+    NodeId node(const std::string& name);
 
     int32_t num_nodes() const { return next_node_; }
     int32_t num_vars() const  { return num_vars_; }
@@ -160,28 +160,42 @@ public:
 
     // --- Typed device construction methods ---
     // Passives
-    DevId R(std::string_view name, int32_t a, int32_t b, double ohms);
-    DevId C(std::string_view name, int32_t a, int32_t b, double farads);
-    DevId L(std::string_view name, int32_t a, int32_t b, double henries);
+    DevId R(std::string_view name, NodeId a, NodeId b, double ohms);
+    DevId C(std::string_view name, NodeId a, NodeId b, double farads);
+    DevId L(std::string_view name, NodeId a, NodeId b, double henries);
     DevId K(std::string_view name, DevId L1, DevId L2, double coupling);
 
     // Independent sources
-    DevId V(std::string_view name, int32_t p, int32_t n, double dc);
-    DevId V(std::string_view name, int32_t p, int32_t n,
+    DevId V(std::string_view name, NodeId p, NodeId n, double dc);
+    DevId V(std::string_view name, NodeId p, NodeId n,
             double dc, double ac_mag, double ac_phase = 0.0);
-    DevId I(std::string_view name, int32_t p, int32_t n, double dc);
-    DevId I(std::string_view name, int32_t p, int32_t n,
+    DevId I(std::string_view name, NodeId p, NodeId n, double dc);
+    DevId I(std::string_view name, NodeId p, NodeId n,
             double dc, double ac_mag, double ac_phase = 0.0);
 
     // Dependent sources
-    DevId E(std::string_view name, int32_t op, int32_t on,
-            int32_t cp, int32_t cn, double gain);
-    DevId G(std::string_view name, int32_t op, int32_t on,
-            int32_t cp, int32_t cn, double gm);
-    DevId F(std::string_view name, int32_t op, int32_t on,
+    DevId E(std::string_view name, NodeId op, NodeId on,
+            NodeId cp, NodeId cn, double gain);
+    DevId G(std::string_view name, NodeId op, NodeId on,
+            NodeId cp, NodeId cn, double gm);
+    DevId F(std::string_view name, NodeId op, NodeId on,
             DevId vsense, double gain);
-    DevId H(std::string_view name, int32_t op, int32_t on,
+    DevId H(std::string_view name, NodeId op, NodeId on,
             DevId vsense, double transresistance);
+
+    // Semiconductor devices
+    DevId D(std::string_view name, NodeId anode, NodeId cathode,
+            std::string_view model);
+    DevId Q(std::string_view name, NodeId c, NodeId b, NodeId e,
+            std::string_view model);
+    DevId Q(std::string_view name, NodeId c, NodeId b, NodeId e, NodeId s,
+            std::string_view model);
+    DevId J(std::string_view name, NodeId d, NodeId g, NodeId s,
+            std::string_view model);
+    DevId M(std::string_view name, NodeId d, NodeId g, NodeId s, NodeId b,
+            std::string_view model);
+    DevId M(std::string_view name, NodeId d, NodeId g, NodeId s, NodeId b,
+            std::string_view model, double w, double l);
 
     // Custom device injection (returns DevId)
     DevId add_dev(std::unique_ptr<Device> dev);
@@ -192,9 +206,33 @@ public:
     /// a non-owning pointer to it.  T must be a complete type at the call
     /// site (the template captures the destructor via TypedModelCardHolder).
     template <typename T>
-    void add_model_card(std::unique_ptr<T> card) {
+    ModelId add_model_card(std::unique_ptr<T> card,
+                           std::string name = {},
+                           std::string model_type = {}) {
+        ModelId id{static_cast<int32_t>(model_cards_.size())};
+        if (!name.empty()) {
+            auto key = model_key(name);
+            if (model_card_index_.find(key) != model_card_index_.end())
+                throw std::invalid_argument("Model already exists: " + name);
+            model_card_index_[std::move(key)] = static_cast<int32_t>(model_cards_.size());
+        }
         model_cards_.push_back(
-            std::make_unique<TypedModelCardHolder<T>>(std::move(card)));
+            std::make_unique<TypedModelCardHolder<T>>(
+                std::move(card), std::move(name), std::move(model_type)));
+        return id;
+    }
+
+    ModelId model(std::string_view model_text);
+
+    template <typename T>
+    T* find_model(std::string_view name) const {
+        auto it = model_card_index_.find(model_key(name));
+        if (it == model_card_index_.end()) return nullptr;
+        auto idx = it->second;
+        if (idx < 0 || idx >= static_cast<int32_t>(model_cards_.size()))
+            return nullptr;
+        auto* holder = dynamic_cast<TypedModelCardHolder<T>*>(model_cards_[idx].get());
+        return holder ? holder->card.get() : nullptr;
     }
 
     /// Assign branch indices, build sparsity pattern, assign offsets.
@@ -236,8 +274,8 @@ public:
     std::vector<std::string> device_names() const;
     DeviceInfo device_info(const std::string& name) const;
     std::vector<std::string> devices_at_node(const std::string& node) const;
-    Device* find_device(const std::string& name);
-    const Device* find_device(const std::string& name) const;
+    Device* find_device_ptr(const std::string& name);
+    const Device* find_device_ptr(const std::string& name) const;
     bool set_param(const std::string& device_name, double value);
 
     // Handle-based introspection
@@ -250,8 +288,8 @@ public:
     std::string                         title;
     SimOptions                          options;
     std::vector<AnalysisCommand>        analyses;
-    std::unordered_map<int32_t, double> ic;       // .ic
-    std::unordered_map<int32_t, double> nodeset;  // .nodeset
+    std::unordered_map<NodeId, double, NodeIdHash> ic;       // .ic
+    std::unordered_map<NodeId, double, NodeIdHash> nodeset;  // .nodeset
     std::vector<std::string>            save_signals;
     std::vector<MeasureCommand>         measures;  // .meas / .measure
     std::vector<PrintCommand>           prints;    // .print / .plot
@@ -273,22 +311,32 @@ public:
     /// needing the complete type in this header.  The virtual destructor
     /// ensures proper cleanup through the base pointer.
     struct ModelCardHolder {
+        std::string name;
+        std::string model_type;
         virtual ~ModelCardHolder() = default;
     };
 
     template <typename T>
     struct TypedModelCardHolder : ModelCardHolder {
         std::unique_ptr<T> card;
-        explicit TypedModelCardHolder(std::unique_ptr<T> c) : card(std::move(c)) {}
+        explicit TypedModelCardHolder(std::unique_ptr<T> c,
+                                      std::string n = {},
+                                      std::string type = {})
+            : card(std::move(c)) {
+            this->name = std::move(n);
+            this->model_type = std::move(type);
+        }
     };
 
 private:
     void rebind_device_states();  // re-invoke set_state_ptrs on every device
+    static std::string model_key(std::string_view name);
 
     std::vector<std::unique_ptr<Device>> devices_;
     // Owns model card instances for the lifetime of the Circuit so
     // device non-owning model_ pointers stay valid.
     std::vector<std::unique_ptr<ModelCardHolder>> model_cards_;
+    std::unordered_map<std::string, int32_t> model_card_index_;
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     std::vector<bool>                        internal_nodes_;

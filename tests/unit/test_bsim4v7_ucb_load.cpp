@@ -52,9 +52,9 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
 
     // Node allocation (neospice convention: GROUND_INTERNAL = -1, real
     // nodes are consecutive non-negative integers starting at 0).
-    auto nd = ckt.node("d");
-    auto ng = ckt.node("g");
-    auto nb = ckt.node("b");
+    int32_t nd = static_cast<int32_t>(ckt.node("d"));
+    int32_t ng = static_cast<int32_t>(ckt.node("g"));
+    int32_t nb = static_cast<int32_t>(ckt.node("b"));
     auto ns = GROUND_INTERNAL;
 
     // Sources.
@@ -130,10 +130,10 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
 // ---------------------------------------------------------------------------
 TEST(BSIM4v7UCBLoad, DeclareInternalNodesSucceedsWithRgateMod) {
     Circuit ckt;
-    auto nd = ckt.node("d");
-    auto ng = ckt.node("g");
+    int32_t nd = static_cast<int32_t>(ckt.node("d"));
+    int32_t ng = static_cast<int32_t>(ckt.node("g"));
     auto ns = GROUND_INTERNAL;
-    auto nb = ckt.node("b");
+    int32_t nb = static_cast<int32_t>(ckt.node("b"));
 
     BSIM4v7ModelCard card;
     fill_nmod_card(card);

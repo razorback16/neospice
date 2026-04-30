@@ -10,9 +10,9 @@ TEST(Circuit, NodeMapping) {
     auto n1  = ckt.node("net1");
     auto n2  = ckt.node("net2");
     auto gnd = ckt.node("0");
-    EXPECT_EQ(n1,  0);
-    EXPECT_EQ(n2,  1);
-    EXPECT_EQ(gnd, GROUND_INTERNAL);
+    EXPECT_EQ(n1,  NodeId{0});
+    EXPECT_EQ(n2,  NodeId{1});
+    EXPECT_EQ(gnd, GND);
     EXPECT_EQ(ckt.num_nodes(), 2);
     EXPECT_EQ(ckt.node_name(0), "net1");
     EXPECT_EQ(ckt.node_name(1), "net2");
@@ -21,8 +21,9 @@ TEST(Circuit, NodeMapping) {
 TEST(Circuit, BuildAndFinalize) {
     Circuit ckt;
     auto n1 = ckt.node("net1");
-    ckt.add_device(std::make_unique<Resistor>("R1", n1, GROUND_INTERNAL, 1000.0));
-    ckt.add_device(std::make_unique<VSource>("V1", n1, GROUND_INTERNAL, 5.0));
+    auto n1_idx = static_cast<int32_t>(n1);
+    ckt.add_device(std::make_unique<Resistor>("R1", n1_idx, GROUND_INTERNAL, 1000.0));
+    ckt.add_device(std::make_unique<VSource>("V1", n1_idx, GROUND_INTERNAL, 5.0));
     ckt.finalize();
     EXPECT_EQ(ckt.num_nodes(), 1);
     EXPECT_EQ(ckt.num_vars(), 2);  // 1 node + 1 branch current
@@ -31,9 +32,9 @@ TEST(Circuit, BuildAndFinalize) {
 
 TEST(Circuit, GroundAliases) {
     Circuit ckt;
-    EXPECT_EQ(ckt.node("0"),   GROUND_INTERNAL);
-    EXPECT_EQ(ckt.node("gnd"), GROUND_INTERNAL);
-    EXPECT_EQ(ckt.node("GND"), GROUND_INTERNAL);
+    EXPECT_EQ(ckt.node("0"),   GND);
+    EXPECT_EQ(ckt.node("gnd"), GND);
+    EXPECT_EQ(ckt.node("GND"), GND);
 }
 
 TEST(Circuit, DuplicateNodeReturnsExistingIndex) {

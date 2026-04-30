@@ -49,13 +49,15 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
         // all-zero (where subthreshold gm/gds vanish).
         dc_solution.assign(n, 0.0);
         std::vector<char> pinned(n, 0);
-        for (auto& [node_idx, value] : ckt.nodeset) {
+        for (auto& [node_id, value] : ckt.nodeset) {
+            int32_t node_idx = static_cast<int32_t>(node_id);
             if (node_idx >= 0 && node_idx < n) {
                 dc_solution[node_idx] = value;
                 pinned[node_idx] = 1;
             }
         }
-        for (auto& [node_idx, value] : ckt.ic) {
+        for (auto& [node_id, value] : ckt.ic) {
+            int32_t node_idx = static_cast<int32_t>(node_id);
             if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
                 dc_solution[node_idx] = value;
             }
@@ -95,7 +97,21 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
                     if (result.converged) {
                         dc_solution = result.solution;
                     } else {
-                        throw ConvergenceError("AC analysis: DC operating point failed to converge");
+                        SimStatus fail_status;
+                        fail_status.converged = false;
+                        fail_status.residual = result.residual;
+                        fail_status.worst_node_idx = result.worst_node_idx;
+                        if (!ckt.options.no_throw) {
+                            throw SimulationError(
+                                "AC analysis: DC operating point failed to converge",
+                                fail_status);
+                        }
+                        auto t_end = std::chrono::steady_clock::now();
+                        fail_status.elapsed_seconds =
+                            std::chrono::duration<double>(t_end - t_start).count();
+                        ACResult fail_result;
+                        fail_result.status = fail_status;
+                        return fail_result;
                     }
                 }
             }
@@ -275,7 +291,7 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
                 std::string node_name = key.substr(2, key.size() - 3);
                 int32_t idx = ckt.node_index(node_name);
                 if (idx >= 0) {
-                    ckt.nodeset[idx] = val;
+                    ckt.nodeset[NodeId{idx}] = val;
                 }
             }
         }

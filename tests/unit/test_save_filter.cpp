@@ -99,8 +99,8 @@ R2 out 0 1k
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(SaveFilter, RunDcFilters) {
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 5.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1000.0));
     ckt.add_device(make_unique<Resistor>("R2", n_out, GROUND_INTERNAL, 1000.0));
@@ -302,8 +302,8 @@ R3 out 0 1k
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(SaveFilter, RunTransientFilters) {
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     ckt.add_device(make_unique<VSource>("V1", n_in, GROUND_INTERNAL, 1.0));
     ckt.add_device(make_unique<Resistor>("R1", n_in, n_out, 1000.0));
     ckt.add_device(make_unique<Capacitor>("C1", n_out, GROUND_INTERNAL, 1e-9));
@@ -323,8 +323,8 @@ TEST(SaveFilter, RunTransientFilters) {
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(SaveFilter, RunACFilters) {
     Circuit ckt;
-    auto n_in  = ckt.node("in");
-    auto n_out = ckt.node("out");
+    int32_t n_in  = static_cast<int32_t>(ckt.node("in"));
+    int32_t n_out = static_cast<int32_t>(ckt.node("out"));
     auto* vs = new VSource("V1", n_in, GROUND_INTERNAL, 0.0);
     vs->set_ac(1.0, 0.0);
     ckt.add_device(std::unique_ptr<VSource>(vs));

@@ -123,20 +123,22 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
 // Helper: Compute DC operating point
 // ===================================================================
 // Tries Newton, then gmin stepping, source stepping, pseudo-transient.
-// Returns the converged solution; throws ConvergenceError on failure.
+// Returns the converged solution; throws SimulationError on failure.
 static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
                                        std::vector<double>& solution,
                                        int& total_newton_iters) {
     // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
     const int32_t n = ckt.num_vars();
     std::vector<char> pinned(n, 0);
-    for (auto& [node_idx, value] : ckt.nodeset) {
+    for (auto& [node_id, value] : ckt.nodeset) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n) {
             solution[node_idx] = value;
             pinned[node_idx] = 1;
         }
     }
-    for (auto& [node_idx, value] : ckt.ic) {
+    for (auto& [node_id, value] : ckt.ic) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
             solution[node_idx] = value;
         }
@@ -188,7 +190,8 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
 // ===================================================================
 static void apply_ic_overrides(Circuit& ckt, std::vector<double>& solution) {
     const int32_t n = ckt.num_vars();
-    for (auto& [node_idx, value] : ckt.ic) {
+    for (auto& [node_id, value] : ckt.ic) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n)
             solution[node_idx] = value;
     }
@@ -853,7 +856,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                 std::string node_name = key.substr(2, key.size() - 3);
                 int32_t idx = ckt.node_index(node_name);
                 if (idx >= 0) {
-                    ckt.ic[idx] = val;
+                    ckt.ic[NodeId{idx}] = val;
                 }
             }
         }

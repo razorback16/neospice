@@ -78,7 +78,7 @@ void ucb_declare_internal_nodes(
 
     setup_ckt.node_alloc = [&ckt, &device_name](const char* name) -> int {
         std::string full = "__" + device_name + "_" + name;
-        int32_t neo = ckt.node(full);
+        int32_t neo = static_cast<int32_t>(ckt.node(full));
         ckt.mark_internal_node(neo);
         return neo + 1;  // UCB convention: ground=0, real>=1
     };

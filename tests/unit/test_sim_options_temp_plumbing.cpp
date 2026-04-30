@@ -49,7 +49,7 @@ private:
 
 TEST(SimOptionsPlumbing, NonDefaultTempReachesDeviceViaIntegratorCtx) {
     Circuit ckt;
-    int32_t na = ckt.node("a");
+    int32_t na = static_cast<int32_t>(ckt.node("a"));
     auto* probe = new TempProbe("XPROBE", na);
     ckt.add_device(std::unique_ptr<Device>(probe));
     ckt.finalize();
@@ -72,7 +72,7 @@ TEST(SimOptionsPlumbing, NonDefaultTempReachesDeviceViaIntegratorCtx) {
 
 TEST(SimOptionsPlumbing, DefaultTempIsTNominal) {
     Circuit ckt;
-    int32_t na = ckt.node("a");
+    int32_t na = static_cast<int32_t>(ckt.node("a"));
     auto* probe = new TempProbe("XPROBE", na);
     ckt.add_device(std::unique_ptr<Device>(probe));
     ckt.finalize();

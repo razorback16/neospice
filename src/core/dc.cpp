@@ -45,13 +45,15 @@ DCResult solve_dc(Circuit& ckt) {
     // seed lands in a region of vanishing MOSFET subthreshold conductance.
     std::vector<double> solution(n, 0.0);
     std::vector<char> pinned(n, 0);
-    for (auto& [node_idx, value] : ckt.nodeset) {
+    for (auto& [node_id, value] : ckt.nodeset) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n) {
             solution[node_idx] = value;
             pinned[node_idx] = 1;
         }
     }
-    for (auto& [node_idx, value] : ckt.ic) {
+    for (auto& [node_id, value] : ckt.ic) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
             solution[node_idx] = value;
         }
@@ -280,10 +282,12 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
 
     // Initial guess: zeros
     std::vector<double> solution(n, 0.0);
-    for (auto& [node_idx, value] : ckt.nodeset) {
+    for (auto& [node_id, value] : ckt.nodeset) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n) solution[node_idx] = value;
     }
-    for (auto& [node_idx, value] : ckt.ic) {
+    for (auto& [node_id, value] : ckt.ic) {
+        int32_t node_idx = static_cast<int32_t>(node_id);
         if (node_idx >= 0 && node_idx < n) solution[node_idx] = value;
     }
 

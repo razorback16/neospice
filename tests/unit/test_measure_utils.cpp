@@ -15,12 +15,14 @@ static TransientResult rc_step_transient(double tstep, double tstop) {
     auto out = ckt.node("out");
 
     // PULSE source: 0V -> 5V step at t=0 with very fast rise time
-    auto vs = std::make_unique<VSource>("V1", in, GROUND_INTERNAL, 0.0);
+    auto in_idx = static_cast<int32_t>(in);
+    auto out_idx = static_cast<int32_t>(out);
+    auto vs = std::make_unique<VSource>("V1", in_idx, GROUND_INTERNAL, 0.0);
     vs->set_pulse(PulseParams{0.0, 5.0, /*td=*/0.0, /*tr=*/1e-9, /*tf=*/1e-9,
                                /*pw=*/tstop, /*per=*/2*tstop});
     ckt.add_device(std::move(vs));
-    ckt.add_device(std::make_unique<Resistor>("R1", in, out, 1e3));
-    auto cap = std::make_unique<Capacitor>("C1", out, GROUND_INTERNAL, 1e-6);
+    ckt.add_device(std::make_unique<Resistor>("R1", in_idx, out_idx, 1e3));
+    auto cap = std::make_unique<Capacitor>("C1", out_idx, GROUND_INTERNAL, 1e-6);
     cap->set_ic(0.0);
     ckt.add_device(std::move(cap));
     ckt.finalize();
@@ -61,11 +63,11 @@ TEST(MeasureUtils, Overshoot) {
 TEST(MeasureUtils, RMS) {
     Circuit ckt;
     auto in = ckt.node("in");
-    ckt.V("V1", in, GROUND_INTERNAL, 5.0);
-    ckt.R("R1", in, GROUND_INTERNAL, 1e3);
+    ckt.V("V1", in, GND, 5.0);
+    ckt.R("R1", in, GND, 1e3);
     ckt.finalize();
     auto result = solve_transient(ckt, 1e-6, 1e-3);
-    double rms_val = measure::rms(result, NodeId{in}, 0.0, 1e-3);
+    double rms_val = measure::rms(result, in, 0.0, 1e-3);
     EXPECT_NEAR(rms_val, 5.0, 0.01);
 }
 
@@ -73,12 +75,12 @@ TEST(MeasureUtils, Bandwidth3dB) {
     Circuit ckt;
     auto in = ckt.node("in");
     auto out = ckt.node("out");
-    ckt.V("V1", in, GROUND_INTERNAL, 0.0, 1.0);  // ac=1
+    ckt.V("V1", in, GND, 0.0, 1.0);  // ac=1
     ckt.R("R1", in, out, 1e3);
-    ckt.C("C1", out, GROUND_INTERNAL, 1e-9);
+    ckt.C("C1", out, GND, 1e-9);
     ckt.finalize();
     auto result = solve_ac(ckt, ACMode::DEC, 100, 1e3, 1e9);
-    double bw = measure::bandwidth_3db(result, NodeId{out});
+    double bw = measure::bandwidth_3db(result, out);
     double expected = 1.0 / (2.0 * M_PI * 1e3 * 1e-9);  // ~159kHz
     EXPECT_NEAR(bw, expected, expected * 0.1);  // within 10%
 }

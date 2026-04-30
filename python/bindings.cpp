@@ -186,6 +186,42 @@ NB_MODULE(_core, m) {
                      const std::string& cp, const std::string& cn, double gm) -> int {
             return static_cast<int32_t>(c.G(name, c.node(op), c.node(on), c.node(cp), c.node(cn), gm));
         })
+        .def("model", [](Circuit& c, const std::string& model_text) -> int {
+            return static_cast<int32_t>(c.model(model_text));
+        })
+        .def("D", [](Circuit& c, const std::string& name,
+                     const std::string& anode, const std::string& cathode,
+                     const std::string& model) -> int {
+            return static_cast<int32_t>(c.D(name, c.node(anode), c.node(cathode), model));
+        })
+        .def("Q", [](Circuit& c, const std::string& name,
+                     const std::string& nc, const std::string& nb,
+                     const std::string& ne, const std::string& model) -> int {
+            return static_cast<int32_t>(
+                c.Q(name, c.node(nc), c.node(nb), c.node(ne), model));
+        })
+        .def("Q", [](Circuit& c, const std::string& name,
+                     const std::string& nc, const std::string& nb,
+                     const std::string& ne, const std::string& ns,
+                     const std::string& model) -> int {
+            return static_cast<int32_t>(
+                c.Q(name, c.node(nc), c.node(nb), c.node(ne), c.node(ns), model));
+        })
+        .def("J", [](Circuit& c, const std::string& name,
+                     const std::string& nd, const std::string& ng,
+                     const std::string& ns, const std::string& model) -> int {
+            return static_cast<int32_t>(
+                c.J(name, c.node(nd), c.node(ng), c.node(ns), model));
+        })
+        .def("M", [](Circuit& c, const std::string& name,
+                     const std::string& nd, const std::string& ng,
+                     const std::string& ns, const std::string& nb,
+                     const std::string& model, double w, double l) -> int {
+            return static_cast<int32_t>(
+                c.M(name, c.node(nd), c.node(ng), c.node(ns), c.node(nb), model, w, l));
+        }, nb::arg("name"), nb::arg("nd"), nb::arg("ng"), nb::arg("ns"),
+           nb::arg("nb"), nb::arg("model"), nb::arg("w") = 1e-6,
+           nb::arg("l") = 1e-7)
         .def("is_finalized", &Circuit::is_finalized)
         .def("finalize", &Circuit::finalize_if_needed);
 

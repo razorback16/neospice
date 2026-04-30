@@ -85,8 +85,4 @@ struct SinSpec {
 class ParseError : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
-
-class ConvergenceError : public std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
 } // namespace neospice

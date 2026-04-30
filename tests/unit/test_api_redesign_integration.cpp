@@ -34,12 +34,12 @@ TEST(APIRedesignIntegration, FullWorkflowProgrammatic_DC) {
 
     // Build a simple resistor divider
     Circuit ckt;
-    int32_t in_idx  = ckt.node("in");
-    int32_t out_idx = ckt.node("out");
+    auto in_idx  = ckt.node("in");
+    auto out_idx = ckt.node("out");
 
-    ckt.V("V1", in_idx, GROUND_INTERNAL, 10.0);
+    ckt.V("V1", in_idx, GND, 10.0);
     ckt.R("R1", in_idx, out_idx, 1e3);
-    ckt.R("R2", out_idx, GROUND_INTERNAL, 1e3);
+    ckt.R("R2", out_idx, GND, 1e3);
 
     EXPECT_FALSE(ckt.is_finalized());
     ckt.finalize();
@@ -55,20 +55,20 @@ TEST(APIRedesignIntegration, FullWorkflowProgrammatic_DC) {
     EXPECT_NEAR(dc.diff("in", "out"), 5.0, 1e-6);
 
     // Handle access
-    EXPECT_NEAR(dc.voltage(NodeId{in_idx}),  10.0, 1e-6);
-    EXPECT_NEAR(dc.voltage(NodeId{out_idx}),  5.0, 1e-6);
+    EXPECT_NEAR(dc.voltage(in_idx),  10.0, 1e-6);
+    EXPECT_NEAR(dc.voltage(out_idx),  5.0, 1e-6);
 }
 
 TEST(APIRedesignIntegration, FullWorkflowProgrammatic_Transient) {
     Simulator sim;
 
     Circuit ckt;
-    int32_t in_idx  = ckt.node("in");
-    int32_t out_idx = ckt.node("out");
+    auto in_idx  = ckt.node("in");
+    auto out_idx = ckt.node("out");
 
-    ckt.V("V1", in_idx, GROUND_INTERNAL, 5.0);
+    ckt.V("V1", in_idx, GND, 5.0);
     ckt.R("R1", in_idx, out_idx, 1e3);
-    ckt.C("C1", out_idx, GROUND_INTERNAL, 1e-6);
+    ckt.C("C1", out_idx, GND, 1e-6);
     ckt.finalize();
 
     TransientResult tran = sim.run_transient(ckt, 1e-5, 10e-3);
@@ -80,7 +80,7 @@ TEST(APIRedesignIntegration, FullWorkflowProgrammatic_Transient) {
     EXPECT_NEAR(vout_str.back(), 5.0, 0.05);
 
     // Handle access returns a span of the same data
-    auto vout_span = tran.voltage(NodeId{out_idx});
+    auto vout_span = tran.voltage(out_idx);
     EXPECT_EQ(vout_span.size(), tran.time.size());
     EXPECT_NEAR(vout_span.back(), 5.0, 0.05);
 }
@@ -89,12 +89,12 @@ TEST(APIRedesignIntegration, FullWorkflowProgrammatic_AC) {
     Simulator sim;
 
     Circuit ckt;
-    int32_t in_idx  = ckt.node("in");
-    int32_t out_idx = ckt.node("out");
+    auto in_idx  = ckt.node("in");
+    auto out_idx = ckt.node("out");
 
-    ckt.V("V1", in_idx, GROUND_INTERNAL, 0.0, 1.0);  // dc=0, ac=1
+    ckt.V("V1", in_idx, GND, 0.0, 1.0);  // dc=0, ac=1
     ckt.R("R1", in_idx, out_idx, 1e3);
-    ckt.C("C1", out_idx, GROUND_INTERNAL, 1e-6);
+    ckt.C("C1", out_idx, GND, 1e-6);
     ckt.finalize();
 
     ACResult ac = sim.run_ac(ckt, ACMode::DEC, 20, 10.0, 10e6);
@@ -106,7 +106,7 @@ TEST(APIRedesignIntegration, FullWorkflowProgrammatic_AC) {
     EXPECT_NEAR(db_str.front(), 0.0, 1.0);  // first point near 10 Hz → near 0 dB
 
     // Handle access
-    auto db_handle = ac.magnitude_db(NodeId{out_idx});
+    auto db_handle = ac.magnitude_db(out_idx);
     EXPECT_EQ(db_handle.size(), db_str.size());
 }
 
@@ -158,9 +158,9 @@ TEST(APIRedesignIntegration, CircuitStateTransitions) {
     Circuit ckt;
     EXPECT_FALSE(ckt.is_finalized());
 
-    int32_t n = ckt.node("n1");
-    ckt.V("V1", n, GROUND_INTERNAL, 5.0);
-    ckt.R("R1", n, GROUND_INTERNAL, 1e3);
+    auto n = ckt.node("n1");
+    ckt.V("V1", n, GND, 5.0);
+    ckt.R("R1", n, GND, 1e3);
 
     // Explicit finalize
     ckt.finalize();
@@ -168,7 +168,8 @@ TEST(APIRedesignIntegration, CircuitStateTransitions) {
 
     // Adding a device after finalize must throw
     EXPECT_THROW(
-        ckt.add_device(std::make_unique<Resistor>("R2", n, GROUND_INTERNAL, 2e3)),
+        ckt.add_device(std::make_unique<Resistor>(
+            "R2", static_cast<int32_t>(n), GROUND_INTERNAL, 2e3)),
         std::logic_error
     );
 
@@ -194,9 +195,9 @@ TEST(APIRedesignIntegration, CircuitStateTransitions) {
 TEST(APIRedesignIntegration, DualErrorMode_GoodCircuitNoThrow) {
     // A well-connected circuit should not throw and should converge.
     Circuit ckt;
-    int32_t n = ckt.node("n1");
-    ckt.V("V1", n, GROUND_INTERNAL, 5.0);
-    ckt.R("R1", n, GROUND_INTERNAL, 1e3);
+    auto n = ckt.node("n1");
+    ckt.V("V1", n, GND, 5.0);
+    ckt.R("R1", n, GND, 1e3);
     ckt.options.no_throw = false;  // default — throw on failure
     ckt.finalize();
 
@@ -212,9 +213,9 @@ TEST(APIRedesignIntegration, DualErrorMode_NoThrowFlag) {
     // the simplest demonstration is to verify that no_throw=true does not
     // change the behaviour for a converging circuit.
     Circuit ckt;
-    int32_t n = ckt.node("n1");
-    ckt.V("V1", n, GROUND_INTERNAL, 5.0);
-    ckt.R("R1", n, GROUND_INTERNAL, 1e3);
+    auto n = ckt.node("n1");
+    ckt.V("V1", n, GND, 5.0);
+    ckt.R("R1", n, GND, 1e3);
     ckt.options.no_throw = true;
 
     ckt.finalize();
@@ -251,12 +252,12 @@ TEST(APIRedesignIntegration, DCSweepWithHandles) {
     Simulator sim;
 
     Circuit ckt;
-    int32_t in_idx  = ckt.node("in");
-    int32_t out_idx = ckt.node("out");
+    auto in_idx  = ckt.node("in");
+    auto out_idx = ckt.node("out");
 
-    ckt.V("V1", in_idx, GROUND_INTERNAL, 0.0);   // dc swept 0→10 V
+    ckt.V("V1", in_idx, GND, 0.0);   // dc swept 0→10 V
     ckt.R("R1", in_idx, out_idx, 1e3);
-    ckt.R("R2", out_idx, GROUND_INTERNAL, 1e3);
+    ckt.R("R2", out_idx, GND, 1e3);
     ckt.finalize();
 
     DCSweepResult sweep = sim.run_dc_sweep(ckt, {{"V1", 0.0, 10.0, 1.0}});
@@ -268,12 +269,12 @@ TEST(APIRedesignIntegration, DCSweepWithHandles) {
     EXPECT_NEAR(vout_str.back(), 5.0, 1e-6);   // V1=10 → V(out)=5
 
     // Handle access
-    auto vout_span = sweep.voltage(NodeId{out_idx});
+    auto vout_span = sweep.voltage(out_idx);
     EXPECT_EQ(vout_span.size(), 11u);
     EXPECT_NEAR(vout_span.back(), 5.0, 1e-6);
 
     // diff via handles
-    auto vin_span  = sweep.voltage(NodeId{in_idx});
+    auto vin_span  = sweep.voltage(in_idx);
     EXPECT_EQ(vin_span.size(), 11u);
     EXPECT_NEAR(vin_span.back(), 10.0, 1e-6);
 }
@@ -290,8 +291,10 @@ TEST(APIRedesignIntegration, MeasurementWorkflow) {
     // 5% settling time ≈ 3τ = 3 ms.
 
     Circuit ckt;
-    int32_t in_idx  = ckt.node("in");
-    int32_t out_idx = ckt.node("out");
+    auto in_id  = ckt.node("in");
+    auto out_id = ckt.node("out");
+    int32_t in_idx  = static_cast<int32_t>(in_id);
+    int32_t out_idx = static_cast<int32_t>(out_id);
 
     auto vs = std::make_unique<VSource>("V1", in_idx, GROUND_INTERNAL, 0.0);
     vs->set_pulse(PulseParams{0.0, 5.0, 0.0, 1e-9, 1e-9, 50e-3, 100e-3});
@@ -307,8 +310,6 @@ TEST(APIRedesignIntegration, MeasurementWorkflow) {
     EXPECT_FALSE(tran.time.empty());
 
     // NodeId for "out"
-    NodeId out_id = NodeId{out_idx};
-
     // Rise time: 10% (0.5V) to 90% (4.5V) — use absolute thresholds
     double rt = measure::rise_time(tran, out_id, 0.5, 4.5);
     EXPECT_GT(rt, 0.5e-3);   // must be > 0.5 ms
@@ -356,10 +357,10 @@ C1 out 0 1n
     EXPECT_EQ(ckt.name(out_id), "out");
 
     // find_device — case-insensitive
-    DevId r1_id = ckt.find_device(std::string_view("R1"));
-    DevId r2_id = ckt.find_device(std::string_view("r2"));
-    DevId v1_id = ckt.find_device(std::string_view("V1"));
-    DevId c1_id = ckt.find_device(std::string_view("C1"));
+    DevId r1_id = ckt.find_device("R1");
+    DevId r2_id = ckt.find_device("r2");
+    DevId v1_id = ckt.find_device("V1");
+    DevId c1_id = ckt.find_device("C1");
     EXPECT_NE(r1_id, r2_id);
     EXPECT_NE(v1_id, c1_id);
 
@@ -387,7 +388,7 @@ C1 out 0 1n
 
     // find_node/find_device must throw on unknown names
     EXPECT_THROW(ckt.find_node("nonexistent"), std::out_of_range);
-    EXPECT_THROW(ckt.find_device(std::string_view("Z99")), std::out_of_range);
+    EXPECT_THROW(ckt.find_device("Z99"), std::out_of_range);
 
     // Run DC and verify handle access on result
     DCResult dc = sim.run_dc(ckt);
@@ -465,17 +466,17 @@ C1 out 0 1n
 
 TEST(APIRedesignIntegration, ACMagnitudeAndPhaseByHandle) {
     Circuit ckt;
-    int32_t in_idx  = ckt.node("in");
-    int32_t out_idx = ckt.node("out");
-    ckt.V("V1", in_idx, GROUND_INTERNAL, 0.0, 1.0);  // dc=0, ac=1
+    auto in_idx  = ckt.node("in");
+    auto out_idx = ckt.node("out");
+    ckt.V("V1", in_idx, GND, 0.0, 1.0);  // dc=0, ac=1
     ckt.R("R1", in_idx, out_idx, 1e3);
-    ckt.C("C1", out_idx, GROUND_INTERNAL, 1e-9);
+    ckt.C("C1", out_idx, GND, 1e-9);
     ckt.finalize();
 
     ACResult ac = solve_ac(ckt, ACMode::DEC, 50, 1e3, 1e9);
     EXPECT_FALSE(ac.frequency.empty());
 
-    NodeId out_id = NodeId{out_idx};
+    NodeId out_id = out_idx;
 
     // magnitude (linear) via handle
     auto mag = ac.magnitude(out_id);

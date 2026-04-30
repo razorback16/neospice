@@ -64,7 +64,7 @@ TEST(NewtonInitFlip, MODEINITJCTFlipsToFIXAfterIter0) {
     //   iter 2: device sees MODEINITFLOAT (converged under FIX -> FLOAT)
     //   iter 2 converges -> return
     Circuit ckt;
-    int32_t na = ckt.node("a");
+    int32_t na = static_cast<int32_t>(ckt.node("a"));
 
     auto *rec = new ModeRecorder("XMODE", na);
     ckt.add_device(std::unique_ptr<Device>(rec));
@@ -117,7 +117,7 @@ TEST(NewtonInitFlip, NoFlipWhenJCTBitAbsent) {
     // ngspice cascade is: FIX (iter 0) -> FLOAT once converged (iter 1) ->
     // return converged from FLOAT (iter 2).
     Circuit ckt;
-    int32_t na = ckt.node("a");
+    int32_t na = static_cast<int32_t>(ckt.node("a"));
     auto *rec = new ModeRecorder("XMODE", na);
     ckt.add_device(std::unique_ptr<Device>(rec));
     ckt.finalize();
@@ -145,7 +145,7 @@ TEST(NewtonInitFlip, NoFlipWhenJCTBitAbsent) {
 TEST(NewtonInitFlip, MODEINITTRANFlipsToFLOAT) {
     // First transient step: MODEINITTRAN -> MODEINITFLOAT after iter 0.
     Circuit ckt;
-    int32_t na = ckt.node("a");
+    int32_t na = static_cast<int32_t>(ckt.node("a"));
     auto *rec = new ModeRecorder("XMODE", na);
     ckt.add_device(std::unique_ptr<Device>(rec));
     ckt.finalize();
@@ -183,7 +183,7 @@ TEST(NewtonInitFlip, MODEINITTRANFlipsToFLOAT) {
 TEST(NewtonInitFlip, MODEINITPREDFlipsToFLOAT) {
     // Subsequent transient steps: MODEINITPRED -> MODEINITFLOAT after iter 0.
     Circuit ckt;
-    int32_t na = ckt.node("a");
+    int32_t na = static_cast<int32_t>(ckt.node("a"));
     auto *rec = new ModeRecorder("XMODE", na);
     ckt.add_device(std::unique_ptr<Device>(rec));
     ckt.finalize();

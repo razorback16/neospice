@@ -86,11 +86,11 @@ TEST_F(IntrospectionTest, DevicesAtGround) {
 }
 
 TEST_F(IntrospectionTest, FindDevice) {
-    auto* dev = ckt.find_device("R1");
+    auto* dev = ckt.find_device_ptr("R1");
     ASSERT_NE(dev, nullptr);
     EXPECT_EQ(dev->name(), "R1");
 
-    EXPECT_EQ(ckt.find_device("nonexistent"), nullptr);
+    EXPECT_EQ(ckt.find_device_ptr("nonexistent"), nullptr);
 }
 
 TEST(SetParam, ResistorValue) {
@@ -192,8 +192,8 @@ TEST(HandleIntrospection, FindNode) {
     Circuit ckt;
     auto in = ckt.node("in");
     auto out = ckt.node("out");
-    EXPECT_EQ(ckt.find_node("in"), NodeId{in});
-    EXPECT_EQ(ckt.find_node("out"), NodeId{out});
+    EXPECT_EQ(ckt.find_node("in"), in);
+    EXPECT_EQ(ckt.find_node("out"), out);
     EXPECT_EQ(ckt.find_node("0"), GND);
     EXPECT_EQ(ckt.find_node("gnd"), GND);
 }
@@ -207,30 +207,30 @@ TEST(HandleIntrospection, FindNodeNotFound) {
 TEST(HandleIntrospection, FindDeviceByHandle) {
     Circuit ckt;
     auto in = ckt.node("in");
-    DevId v = ckt.V("V1", in, GROUND_INTERNAL, 5.0);
-    DevId r = ckt.R("R1", in, GROUND_INTERNAL, 1e3);
-    EXPECT_EQ(ckt.find_device(std::string_view("v1")), v);
-    EXPECT_EQ(ckt.find_device(std::string_view("V1")), v);
-    EXPECT_EQ(ckt.find_device(std::string_view("r1")), r);
+    DevId v = ckt.V("V1", in, GND, 5.0);
+    DevId r = ckt.R("R1", in, GND, 1e3);
+    EXPECT_EQ(ckt.find_device("v1"), v);
+    EXPECT_EQ(ckt.find_device("V1"), v);
+    EXPECT_EQ(ckt.find_device("r1"), r);
 }
 
 TEST(HandleIntrospection, FindDeviceNotFoundByHandle) {
     Circuit ckt;
     auto in = ckt.node("in");
-    ckt.V("V1", in, GROUND_INTERNAL, 5.0);
-    EXPECT_THROW(ckt.find_device(std::string_view("v99")), std::out_of_range);
+    ckt.V("V1", in, GND, 5.0);
+    EXPECT_THROW(ckt.find_device("v99"), std::out_of_range);
 }
 
 TEST(HandleIntrospection, NodeName) {
     Circuit ckt;
     auto in = ckt.node("in");
-    EXPECT_EQ(ckt.name(NodeId{in}), "in");
+    EXPECT_EQ(ckt.name(in), "in");
 }
 
 TEST(HandleIntrospection, DeviceName) {
     Circuit ckt;
     auto in = ckt.node("in");
-    DevId v = ckt.V("V1", in, GROUND_INTERNAL, 5.0);
+    DevId v = ckt.V("V1", in, GND, 5.0);
     EXPECT_EQ(ckt.name(v), "V1");
 }
 
@@ -238,7 +238,7 @@ TEST(HandleIntrospection, DeviceInfoByDevId) {
     Circuit ckt;
     auto in = ckt.node("in");
     auto out = ckt.node("out");
-    ckt.V("V1", in, GROUND_INTERNAL, 5.0);
+    ckt.V("V1", in, GND, 5.0);
     DevId r = ckt.R("R1", in, out, 1e3);
     ckt.finalize();
     auto info = ckt.device_info(r);
