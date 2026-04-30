@@ -109,6 +109,7 @@ add_executable(neospice_tests
     unit/test_kicad_lm358_ns.cpp
     unit/test_kicad_bc547a.cpp
     unit/test_kicad_opa1632.cpp
+    unit/test_api_redesign_integration.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
