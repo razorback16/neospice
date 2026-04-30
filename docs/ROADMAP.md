@@ -3,8 +3,8 @@
 ## Current State
 
 neospice is a modern C++ SPICE simulator with 29 device models and 8 analysis types,
-validated against ngspice across 926+ C++ tests with tolerances as tight as 1e-6,
-plus 49 Python binding tests.
+validated against ngspice across 990+ C++ tests with tolerances as tight as 1e-6,
+plus Python binding tests.
 
 ### Analyses
 DC operating point, DC sweep (nested 2-parameter), transient (adaptive Trap/Gear-2/BE),
@@ -30,10 +30,10 @@ Fourier/THD, parameter sweep (.step), and .measure post-processing.
 
 ### What sets neospice apart
 - **Performance**: 1.5–6x faster than ngspice in-process; zero subprocess overhead as a library
-- **Embeddable C++ API**: clean `Simulator`/`Circuit`/`Result` interface
+- **Embeddable C++ API**: handle-based `Simulator`/`Circuit`/`Result` interface with typed device methods and O(1) result access
 - **Auto-differentiation**: B-source expressions get exact Jacobians (no numerical perturbation)
 - **Modern codebase**: C++20, clean Device abstraction, auto-migration tooling for ngspice models
-- **Python bindings**: `pip install neospice` — full API with NumPy arrays, convenience functions, CircuitBuilder
+- **Python bindings**: `pip install neospice` — full API with NumPy arrays, typed circuit construction, SPICE notation parser
 - **ngspice-compatible output**: raw file format matches ngspice for drop-in tool compatibility
 
 ---
@@ -43,13 +43,14 @@ Fourier/THD, parameter sweep (.step), and .measure post-processing.
 Exposes the full neospice API to Python via nanobind + scikit-build-core.
 
 ### What shipped
-- **nanobind C++ bindings** (`python/bindings.cpp`): all enums, options structs, Circuit, Simulator, CircuitBuilder, and every result type (DC, transient, AC, noise, DC sweep, TF, sensitivity, PZ, SimulationResult, MeasureResult, StepResult)
+- **nanobind C++ bindings** (`python/bindings.cpp`): all enums, options structs, Circuit (with typed device methods), Simulator, and every result type (DC, transient, AC, noise, DC sweep, TF, sensitivity, PZ, SimulationResult, MeasureResult, StepResult)
 - **NumPy integration**: all vector results (time, frequency, voltage, current, noise density) returned as `numpy.ndarray`
 - **Convenience API** (`python/neospice/__init__.py`): `dc()`, `ac()`, `transient()`, `noise()`, `dc_sweep()`, `tf()`, `sens()`, `run()` — one-liner functions that accept a file path or netlist string
-- **CircuitBuilder** exposed with full fluent API for programmatic circuit construction
+- **Typed Circuit construction**: `ckt.R()`, `ckt.C()`, `ckt.L()`, `ckt.V()`, `ckt.I()`, `ckt.E()`, `ckt.G()` with string node names (auto-converted to handles internally)
+- **SPICE notation parser**: `parse_value("4.7k")` → `4700.0`
 - **Circuit introspection**: `node_names()`, `device_names()`, `device_info()`, `devices_at_node()`
 - **CI/CD** (`.github/workflows/wheels.yml`): cibuildwheel building for Python 3.10–3.13, Linux (x86_64 + aarch64 via QEMU), macOS (x86_64 + arm64), with automatic PyPI publishing on tag push via trusted publishing
-- **49 Python tests** (`tests/python/test_bindings.py`): enums, options, source specs, load/parse, CircuitBuilder, all result types, convenience functions, end-to-end integration
+- **Python tests** (`tests/python/`, `python/tests/`): enums, options, source specs, load/parse, typed methods, all result types, convenience functions, SPICE notation parsing
 - **py.typed** marker for PEP 561 type checker support
 
 ### Usage
@@ -66,15 +67,15 @@ ckt = sim.load("amplifier.cir")
 result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
 gain_db = result.magnitude_db("out")   # numpy.ndarray
 
-# Programmatic circuit building
-spec = ns.SourceSpec()
-spec.ac_mag = 1.0
-ckt = ns.CircuitBuilder() \
-    .title("RC filter") \
-    .vsource("V1", "in", "0", spec) \
-    .resistor("R1", "in", "out", 1e3) \
-    .capacitor("C1", "out", "0", 100e-12) \
-    .build()
+# Programmatic circuit building with typed methods
+ckt = ns.Circuit()
+ckt.V("V1", "in", "0", 0.0, 1.0)      # DC=0, AC=1
+ckt.R("R1", "in", "out", 1e3)
+ckt.C("C1", "out", "0", 100e-12)
+
+# SPICE engineering notation
+from neospice import parse_value
+r = parse_value("4.7k")                # 4700.0
 
 # Custom simulator options
 result = ns.dc("amp.cir", reltol=1e-4, gmin=1e-14)
@@ -207,43 +208,56 @@ The API evolves through layers — each builds on the previous. The current API
 is netlist-in, struct-out. The target is a fully programmatic, composable,
 streaming-capable simulation engine.
 
-### Typed Result Access (partially implemented)
+### Typed Result Access (done)
 
-The main result types already provide typed accessors. DC, transient, AC, and
-DC sweep results have `.voltage()`, `.current()` helpers. AC adds
-`.magnitude_db()`, `.phase_deg()`, `.magnitude()`, `.diff()`, `.diff_magnitude_db()`.
-DC has `.diff()`. Remaining gaps: noise helpers, transient diff, DC sweep
-convenience, and current-based magnitude/phase on AC.
+All result types provide both string-based and handle-based access. String
+accessors work with any circuit; handle-based access provides O(1) dense array
+lookup via `NodeId`/`DevId`. DC, transient, AC, DC sweep, and noise results
+have `.voltage()`, `.current()` helpers. AC adds `.magnitude_db()`,
+`.phase_deg()`, `.magnitude()`, `.diff()`, `.diff_magnitude_db()`, and
+current-based variants. Measurement free functions in `neospice::measure`
+namespace provide `bandwidth_3db`, `rise_time`, `settling_time`, `overshoot`,
+`rms`, `phase_margin`, `gain_margin`, `spot_noise`.
 
 ```cpp
-// Already working today:
-auto ac = sim.run_ac(ckt, DEC, 10, 1, 100e6);
+// String-based access (works with any circuit):
+auto ac = sim.run_ac(ckt, ACMode::DEC, 10, 1, 100e6);
 auto gain_db = ac.magnitude_db("out");       // vector<double>
 auto phase   = ac.phase_deg("out");          // vector<double>
 auto vdiff   = ac.diff("out_p", "out_n");    // vector<complex>
 double vout  = dc.voltage("out");            // scalar
 double ibias = dc.current("v1");             // scalar
 
-// Planned additions:
-auto status  = ac.status;                    // SimStatus: converged, method, iterations
-auto tran_d  = tran.diff("out_p", "out_n");  // vector<double> differential
-auto onoise  = noise.output_noise("r1");     // per-device accessor
-auto inoise  = noise.integrated_input(1e3, 1e6); // integrated RMS input noise
+// Handle-based access (O(1) dense array lookup):
+NodeId out_id = ckt.find_node("out");
+auto gain_h   = ac.magnitude_db(out_id);     // vector<double>
+double vout_h = dc.voltage(out_id);          // scalar
+
+// Measurement utilities:
+double bw = measure::bandwidth_3db(ac, out_id);
+double rt = measure::rise_time(tran, out_id, 0.5, 4.5);
+
+// SimStatus with convergence diagnostics:
+auto status = dc.status;                     // converged, iterations, residual, worst_node
 ```
 
-### Programmatic Circuit Construction
+### Programmatic Circuit Construction (done)
 
-Build circuits in code without string formatting or netlist files.
+Build circuits in code with typed device methods. Each method returns a `DevId`
+handle for the created device.
 
 ```cpp
-auto ckt = neospice::CircuitBuilder()
-    .title("my amp")
-    .resistor("r1", "in", "out", 1e3)
-    .capacitor("c1", "out", "gnd", 100e-12)
-    .vsource("vin", "in", "gnd", {.dc = 1.0, .ac = 1.0})
-    .subcircuit("x1", "THS4131", {"inp", "inn", "vcc", "vee", "outp", "outn", "vocm"})
-    .include("ths4131.lib")
-    .build();
+using namespace neospice;
+
+Circuit ckt;
+auto in  = ckt.node("in");
+auto out = ckt.node("out");
+
+ckt.V("V1", in, GROUND_INTERNAL, 0.0, 1.0);  // DC=0, AC=1
+ckt.R("R1", in, out, 1e3);
+ckt.C("C1", out, GROUND_INTERNAL, 100e-12);
+ckt.E("E1", out2, gnd, in, gnd, 2.0);         // VCVS gain=2
+ckt.F("F1", np, nn, "V1", 0.5);               // CCCS
 ```
 
 ### Live Parameter Mutation
@@ -276,15 +290,22 @@ sim.run_transient(ckt, 1e-9, 1e-3, {
 });
 ```
 
-### Circuit Introspection
+### Circuit Introspection (done)
 
 Query topology and connectivity for validation, visualization, and automation.
+Both string-based and handle-based introspection.
 
 ```cpp
 auto nodes   = ckt.node_names();              // {"in", "out", "vcc", ...}
 auto devices = ckt.device_names();            // {"r1", "c1", "x1.q1", ...}
 auto info    = ckt.device_info("r1");         // {type, nodes, value}
 auto conn    = ckt.devices_at_node("out");    // {"r1", "c1", "x1.ehf"}
+
+// Handle-based introspection
+NodeId nid   = ckt.find_node("out");
+DevId  did   = ckt.find_device("R1");
+auto   name  = ckt.name(nid);                // "out"
+auto   dinfo = ckt.device_info(did);         // DeviceInfo struct
 ```
 
 ### Analysis Chaining
@@ -329,6 +350,7 @@ auto mc = sim.monte_carlo(ckt, {
 
 The C++ API is exposed 1:1 to Python via nanobind, with NumPy arrays for all
 vector results. Convenience functions provide one-liner access to every analysis.
+Circuit construction uses typed methods with string node names.
 
 ```python
 import neospice as ns
@@ -344,19 +366,22 @@ ckt = sim.load("amp.cir")
 result = sim.run_ac(ckt, ns.ACMode.DEC, 10, 1, 100e6)
 plt.semilogx(result.frequency, result.magnitude_db("out"))
 
-# Programmatic circuit building
-ckt = ns.CircuitBuilder() \
-    .title("RC filter") \
-    .resistor("R1", "in", "out", 1e3) \
-    .capacitor("C1", "out", "0", 100e-12) \
-    .build()
+# Programmatic circuit building with typed methods
+ckt = ns.Circuit()
+ckt.V("V1", "in", "0", 0.0, 1.0)
+ckt.R("R1", "in", "out", 1e3)
+ckt.C("C1", "out", "0", 100e-12)
+
+# SPICE engineering notation
+from neospice import parse_value
+r = parse_value("4.7k")    # 4700.0
 ```
 
 ### API Implementation Priority
 
-1. **Typed result access** — small effort, immediate usability win
-2. **`set_param()` on Circuit** — unlocks sweeps, optimization, interactive use
-3. **CircuitBuilder** — enables programmatic circuit construction
+1. ~~Typed result access~~ — **Done** (string + handle-based access on all result types)
+2. **`set_param()` on Circuit** — unlocks sweeps, optimization, interactive use (basic version done)
+3. ~~Programmatic circuit construction~~ — **Done** (typed device methods replace CircuitBuilder)
 4. **Streaming transient** — essential for long simulations and real-time use
 5. **Batch/sweep API** — builds on set_param + threading
 
@@ -366,11 +391,16 @@ ckt = ns.CircuitBuilder() \
 
 | Phase | Feature                    | Impact          | Effort   | Status |
 |-------|----------------------------|-----------------|----------|--------|
-| —     | Typed result access        | Usability       | Low      | Done |
-| —     | SimStatus error model      | Reliability     | Low      | Done |
+| —     | Handle types (NodeId/DevId/ModelId) | Type safety | Low  | Done |
+| —     | Typed result access (string + handle) | Usability | Low  | Done |
+| —     | Dense array result storage | Performance     | Medium   | Done |
+| —     | SimStatus error model + SimulationError | Reliability | Low | Done |
+| —     | Measurement utilities (8 functions) | Usability | Medium | Done |
+| —     | Typed device methods (R/C/L/V/I/E/G/F/H/K) | Usability | Medium | Done |
+| —     | Circuit state machine      | Safety          | Low      | Done |
+| —     | Handle-based introspection | Usability       | Medium   | Done |
 | —     | Noise per-device accessor  | Usability       | Low      | Done |
 | —     | Analysis chaining          | Usability       | Low      | Done |
-| —     | CircuitBuilder fluent API  | Usability       | Medium   | Done |
 | —     | Circuit introspection      | Usability       | Medium   | Done |
 | —     | Generic set_param()        | Optimization    | Medium   | Done |
 | 1     | Python bindings            | Adoption        | Medium   | Done |

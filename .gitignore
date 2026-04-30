@@ -17,3 +17,4 @@ Testing/
 .pytest_cache/
 .worktrees/
 .claude/worktrees/
+docs/superpowers/

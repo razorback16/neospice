@@ -6,10 +6,10 @@ A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a c
 
 - **8 analysis types** -- DC OP, DC sweep, transient (adaptive Trap/Gear-2/BE), AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero, Fourier/THD, parameter sweep (`.step`), and `.measure` post-processing
 - **29 device models** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, MESFETs, HFETs, and MOSFETs through BSIM4v7
-- **Embeddable C++ API** -- `Simulator`/`Circuit`/`Result` types with typed accessors, fluent `CircuitBuilder`, and circuit introspection
+- **Embeddable C++ API** -- `Simulator`/`Circuit`/`Result` types with handle-based and string-based accessors, typed device methods, and circuit introspection
 - **High performance** -- NeoSolver (dense + sparse column-LU with AMD ordering), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
-- **926+ tests** validated against ngspice with tolerances as tight as 1e-6
+- **990+ tests** validated against ngspice with tolerances as tight as 1e-6
 
 ## Quick Start (C++)
 
@@ -90,7 +90,7 @@ cd build && ctest -j$(nproc)
 ### Running a netlist
 
 ```cpp
-#include "api/neospice.hpp"
+#include "neospice/neospice.hpp"
 
 neospice::Simulator sim;
 auto ckt = sim.load("amplifier.cir");
@@ -111,28 +111,65 @@ double vout = dc.voltage("out");
 auto tran = sim.run_transient(ckt, 1e-9, 1e-6);
 auto vout_wave = tran.voltage("out");   // vector<double>
 
-auto ac = sim.run_ac(ckt, neospice::DEC, 10, 1.0, 100e6);
+auto ac = sim.run_ac(ckt, neospice::ACMode::DEC, 10, 1.0, 100e6);
 auto gain = ac.magnitude_db("out");     // vector<double>
 ```
 
 ### Building circuits programmatically
 
 ```cpp
-auto ckt = neospice::CircuitBuilder()
-    .title("RC filter")
-    .resistor("R1", "in", "out", 1e3)
-    .capacitor("C1", "out", "0", 100e-12)
-    .vsource("V1", "in", "0", {.dc = 1.0, .ac = 1.0})
-    .build();
+using namespace neospice;
+
+Circuit ckt;
+auto in  = ckt.node("in");
+auto out = ckt.node("out");
+
+ckt.V("V1", in, GROUND_INTERNAL, 0.0, 1.0);  // DC=0, AC=1
+ckt.R("R1", in, out, 1e3);
+ckt.C("C1", out, GROUND_INTERNAL, 100e-12);
+
+Simulator sim;
+auto ac = sim.run_ac(ckt, ACMode::DEC, 10, 1.0, 100e6);
+auto gain = ac.magnitude_db("out");
+```
+
+### Handle-based result access
+
+```cpp
+// String-based (works with any circuit)
+double vout = dc.voltage("out");
+
+// Handle-based (O(1) dense array access, type-safe)
+NodeId out_id = ckt.find_node("out");
+double vout_h = dc.voltage(out_id);
+auto vout_ac  = ac.magnitude_db(out_id);
+```
+
+### Measurement utilities
+
+```cpp
+#include "neospice/measure.hpp"
+
+NodeId out_id = ckt.find_node("out");
+double bw     = measure::bandwidth_3db(ac, out_id);
+double rt     = measure::rise_time(tran, out_id, 0.5, 4.5);
+double st     = measure::settling_time(tran, out_id, 5.0, 0.05);
+double vrms   = measure::rms(tran, out_id);
 ```
 
 ### Circuit introspection
 
 ```cpp
-auto nodes = ckt.node_names();            // {"in", "out", ...}
-auto devices = ckt.device_names();        // {"R1", "C1", "V1"}
-auto info = ckt.device_info("R1");        // type, nodes, value
-auto conn = ckt.devices_at_node("out");   // {"R1", "C1"}
+auto nodes   = ckt.node_names();            // {"in", "out", ...}
+auto devices = ckt.device_names();          // {"R1", "C1", "V1"}
+auto info    = ckt.device_info("R1");       // type, nodes, value
+auto conn    = ckt.devices_at_node("out");  // {"R1", "C1"}
+
+// Handle-based introspection
+NodeId nid   = ckt.find_node("out");
+DevId  did   = ckt.find_device("R1");
+auto   name  = ckt.name(nid);              // "out"
+auto   dinfo = ckt.device_info(did);       // DeviceInfo struct
 ```
 
 ## Python
@@ -164,15 +201,15 @@ ckt = sim.load("amplifier.cir")          # from file
 ckt = sim.parse("...\n.op\n.end\n")      # or from string
 result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
 
-# Build circuits programmatically
-spec = ns.SourceSpec()
-spec.ac_mag = 1.0
-ckt = ns.CircuitBuilder() \
-    .title("RC filter") \
-    .vsource("V1", "in", "0", spec) \
-    .resistor("R1", "in", "out", 1e3) \
-    .capacitor("C1", "out", "0", 100e-12) \
-    .build()
+# Build circuits programmatically with typed methods
+ckt = ns.Circuit()
+ckt.V("V1", "in", "0", 0.0, 1.0)        # DC=0, AC=1
+ckt.R("R1", "in", "out", 1e3)
+ckt.C("C1", "out", "0", 100e-12)
+
+# SPICE engineering notation
+from neospice import parse_value
+r = parse_value("4.7k")                  # 4700.0
 ```
 
 All result vectors are returned as NumPy arrays. Supports Python 3.10+ on Linux (x86_64, aarch64) and macOS (x86_64, arm64).
@@ -214,24 +251,26 @@ neospice reads standard SPICE netlists:
 ## Project Structure
 
 ```
-cli/          Command-line interface
+cli/            Command-line interface
+include/
+  neospice/     Public API headers (types.hpp, neospice.hpp, measure.hpp)
 src/
-  api/        C++ API (Simulator, CircuitBuilder, Result types)
-  core/       Analysis engines and linear solvers
-  devices/    29 device model implementations
-  parser/     Netlist parser and expression evaluator
-  output/     Raw file writer
+  api/          C++ API (Simulator, typed device methods, measurement utils)
+  core/         Analysis engines and linear solvers
+  devices/      29 device model implementations
+  parser/       Netlist parser and expression evaluator
+  output/       Raw file writer
 python/
   bindings.cpp  nanobind C++ → Python bridge
-  neospice/     Python package (convenience API, type stubs)
+  neospice/     Python package (convenience API, SPICE notation parser)
 tests/
-  unit/       Unit tests for all components
-  devices/    Per-device validation against ngspice
-  circuits/   Integration test netlists
-  python/     Python binding tests (49 tests)
-  bench/      Performance benchmarks
-docs/         Architecture, performance, and design documentation
-tools/        Device migration tooling (ngspice model auto-porter)
+  unit/         Unit tests for all components (990+)
+  devices/      Per-device validation against ngspice
+  circuits/     Integration test netlists
+  python/       Python binding tests
+  bench/        Performance benchmarks
+docs/           Architecture, performance, and design documentation
+tools/          Device migration tooling (ngspice model auto-porter)
 ```
 
 ## Documentation
@@ -247,7 +286,8 @@ tools/        Device migration tooling (ngspice model auto-porter)
 
 | Phase | Feature | Status |
 |---|---|---|
-| 1 | Python bindings (nanobind, PyPI wheels) | **Done** |
+| — | Handle-based API redesign (NodeId/DevId, typed methods, dense results, measurements) | **Done** |
+| 1 | Python bindings (nanobind, PyPI wheels, typed construction) | **Done** |
 | 2 | WebAssembly build for browser simulation | Planned |
 | 3 | Adjoint sensitivity / gradient computation | Planned |
 | 4 | Parallel parameter sweeps / Monte Carlo | Planned |
