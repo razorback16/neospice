@@ -55,6 +55,10 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
     constexpr int MODETRAN_BIT = 0x1;
     bool force_numeric = !(saved_mode & MODETRAN_BIT);
 
+    // Track residual norm and worst node across iterations.
+    double max_residual = 0.0;
+    int32_t worst_idx = -1;
+
     for (int iter = 0; iter < opts.max_iter; ++iter) {
         // Save old solution for convergence check
         std::vector<double> old_solution = solution;
@@ -86,6 +90,17 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             mat.add(off, opts.gmin);
         }
 
+        // Compute residual norm from the RHS before the solve overwrites it.
+        max_residual = 0.0;
+        worst_idx = -1;
+        for (int32_t i = 0; i < num_nodes; ++i) {
+            double r = std::abs(rhs[i]);
+            if (r > max_residual) {
+                max_residual = r;
+                worst_idx = i;
+            }
+        }
+
         // Factorize: try refactorize first (reuses pivot order), fall back
         // to full numeric factorization if the pivot order is unstable.
         // refactorize() returns true if any near-zero pivot was perturbed,
@@ -105,7 +120,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
                 }
             }
         } catch (const std::runtime_error&) {
-            return {false, iter, solution};
+            return {false, iter, solution, max_residual, worst_idx};
         }
 
         // Solve: rhs is overwritten with the delta or new solution
@@ -210,7 +225,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             // Corrector phase — convergence check is meaningful.
             if (converged) {
                 ckt.integrator_ctx.mode = saved_mode;
-                return {true, iter + 1, solution};
+                return {true, iter + 1, solution, max_residual, worst_idx};
             }
             // else: keep iterating in MODEINITFLOAT
         } else if (m & MODEINITJCT_BIT) {
@@ -235,7 +250,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             // If already converged, return success.
             if (converged) {
                 ckt.integrator_ctx.mode = saved_mode;
-                return {true, iter + 1, solution};
+                return {true, iter + 1, solution, max_residual, worst_idx};
             }
         }
     }
@@ -244,7 +259,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         std::cerr << "[newton] NOT converged after " << opts.max_iter << " iter\n";
 
     ckt.integrator_ctx.mode = saved_mode;
-    return {false, opts.max_iter, solution};
+    return {false, opts.max_iter, solution, max_residual, worst_idx};
 }
 
 } // namespace neospice

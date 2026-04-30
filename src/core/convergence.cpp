@@ -59,6 +59,8 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
     double accepted_gmin = gmin;
     int total_iterations = 0;
     bool have_accepted = false;
+    double last_residual = 0.0;
+    int32_t last_worst_idx = -1;
     SimOptions step_opts = opts;
     step_opts.max_iter = std::min(opts.max_iter, 50);
 
@@ -77,6 +79,9 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
             result.converged = false;
         }
 
+        last_residual = result.residual;
+        last_worst_idx = result.worst_node_idx;
+
         if (!result.converged) {
             if (!have_accepted) {
                 if (gmin < 1e6) {
@@ -87,7 +92,7 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
                 }
                 solution = entry_solution;
                 restore_state(ckt, entry_state);
-                return {false, total_iterations, solution};
+                return {false, total_iterations, solution, last_residual, last_worst_idx};
             }
 
             solution = accepted_solution;
@@ -98,7 +103,7 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
             // lower half of that interval.
             factor = std::min(1.25, std::sqrt(factor));
             if (factor < 1.05) {
-                return {false, total_iterations, solution};
+                return {false, total_iterations, solution, last_residual, last_worst_idx};
             }
             gmin = std::max(target_gmin, accepted_gmin / factor);
             continue;
@@ -132,7 +137,7 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
         solution = entry_solution;
         restore_state(ckt, entry_state);
     }
-    return {false, total_iterations, solution};
+    return {false, total_iterations, solution, last_residual, last_worst_idx};
 }
 
 NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
@@ -178,6 +183,8 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
     double step = 0.05;
     const double min_step = 1e-4;  // minimum step size before giving up
     int total_iterations = 0;
+    double last_residual = 0.0;
+    int32_t last_worst_idx = -1;
 
     // Start with all sources at zero and solve
     scale_sources(0.0);
@@ -187,10 +194,10 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
     try {
         result = newton_solve(ckt, solver, solution, opts);
     } catch (const std::runtime_error&) {
-        return {false, 0, solution};
+        return {false, 0, solution, 0.0, -1};
     }
     if (!result.converged) {
-        return {false, 0, solution};
+        return {false, 0, solution, result.residual, result.worst_node_idx};
     }
     total_iterations += result.iterations;
     solution = result.solution;
@@ -210,6 +217,9 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
             result.converged = false;
         }
 
+        last_residual = result.residual;
+        last_worst_idx = result.worst_node_idx;
+
         if (result.converged) {
             total_iterations += result.iterations;
             solution = result.solution;
@@ -227,7 +237,7 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
             scale_sources(fraction);
             step *= 0.1;
             if (step < min_step) {
-                return {false, total_iterations, solution};
+                return {false, total_iterations, solution, last_residual, last_worst_idx};
             }
         }
     }
@@ -298,7 +308,7 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
         } else {
             dt_pseudo *= 0.5;  // shrink on failure
             if (dt_pseudo < 1e-15) {
-                return {false, 0, solution};
+                return {false, 0, solution, result.residual, result.worst_node_idx};
             }
         }
     }
@@ -309,12 +319,12 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
     try {
         final_result = newton_solve(ckt, solver, solution, step_opts);
     } catch (const std::runtime_error&) {
-        return {false, 0, solution};
+        return {false, 0, solution, 0.0, -1};
     }
     if (final_result.converged) {
         return final_result;
     }
-    return {false, 0, solution};
+    return {false, 0, solution, final_result.residual, final_result.worst_node_idx};
 }
 
 } // namespace neospice

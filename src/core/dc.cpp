@@ -88,6 +88,8 @@ DCResult solve_dc(Circuit& ckt) {
     if (result.converged) {
         solution = result.solution;
         sim_status.iterations = result.iterations;
+        sim_status.residual = result.residual;
+        sim_status.worst_node_idx = result.worst_node_idx;
     } else {
         // 4. Try gmin stepping (fix/iterate mode)
         ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
@@ -96,6 +98,9 @@ DCResult solve_dc(Circuit& ckt) {
             solution = result.solution;
             sim_status.iterations = result.iterations;
             sim_status.convergence_method = ConvergenceMethod::GMIN_STEPPING;
+            sim_status.residual = result.residual;
+            sim_status.worst_node_idx = result.worst_node_idx;
+            sim_status.gmin_steps = 1;
             sim_status.warnings.push_back("gmin stepping used");
         } else {
             // 5. Try source stepping
@@ -105,6 +110,9 @@ DCResult solve_dc(Circuit& ckt) {
                 solution = result.solution;
                 sim_status.iterations = result.iterations;
                 sim_status.convergence_method = ConvergenceMethod::SOURCE_STEPPING;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.source_steps = 1;
                 sim_status.warnings.push_back("source stepping used");
             } else {
                 // 6. Try pseudo-transient continuation
@@ -114,6 +122,8 @@ DCResult solve_dc(Circuit& ckt) {
                     solution = result.solution;
                     sim_status.iterations = result.iterations;
                     sim_status.convergence_method = ConvergenceMethod::PSEUDO_TRANSIENT;
+                    sim_status.residual = result.residual;
+                    sim_status.worst_node_idx = result.worst_node_idx;
                     sim_status.warnings.push_back("pseudo-transient continuation used");
                 } else {
                     // 7. All failed
