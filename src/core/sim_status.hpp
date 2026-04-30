@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,15 @@ struct SimStatus {
     double elapsed_seconds = 0.0;
     std::optional<double> min_timestep; // transient only
     std::vector<std::string> warnings;
+};
+
+class SimulationError : public std::runtime_error {
+public:
+    SimulationError(const std::string& msg, SimStatus st)
+        : std::runtime_error(msg), status_(std::move(st)) {}
+    const SimStatus& status() const { return status_; }
+private:
+    SimStatus status_;
 };
 
 } // namespace neospice

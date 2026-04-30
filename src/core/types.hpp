@@ -37,6 +37,7 @@ struct SimOptions {
     int lte_ref_mode = 0;       // LTE reference mode: 0=per-node, 1=max-all, 2=max-per-signal-over-time
     bool verbose  = false;
     double restart_step_scale = 0.1; // dt reduction factor after crossing a source breakpoint
+    bool no_throw = false;           // if true, return partial result on non-convergence instead of throwing
 };
 
 /// Populated by the transient/DC driver before each Newton load, read by

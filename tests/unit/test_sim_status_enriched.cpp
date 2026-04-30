@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "core/dc.hpp"
+#include "core/sim_status.hpp"
 #include "devices/vsource.hpp"
 #include "devices/resistor.hpp"
 
@@ -37,4 +38,43 @@ TEST(SimStatusEnriched, WorstNodeIdxValid) {
     auto result = solve_dc(ckt);
     // worst_node_idx should be valid (>= -1)
     EXPECT_GE(result.status.worst_node_idx, -1);
+}
+
+// ---------------------------------------------------------------
+// SimulationError and no_throw tests
+// ---------------------------------------------------------------
+
+TEST(ErrorHandling, SimulationErrorCarriesStatus) {
+    SimStatus st;
+    st.converged = false;
+    st.iterations = 50;
+    st.residual = 1.5;
+    try {
+        throw SimulationError("test error", st);
+    } catch (const SimulationError& e) {
+        EXPECT_FALSE(e.status().converged);
+        EXPECT_EQ(e.status().iterations, 50);
+        EXPECT_NEAR(e.status().residual, 1.5, 1e-10);
+        EXPECT_STREQ(e.what(), "test error");
+    }
+}
+
+TEST(ErrorHandling, SimulationErrorIsRuntimeError) {
+    try {
+        throw SimulationError("test", SimStatus{});
+    } catch (const std::runtime_error& e) {
+        EXPECT_STREQ(e.what(), "test");
+    }
+}
+
+TEST(ErrorHandling, NoThrowModeReturnsFalseConverged) {
+    Circuit ckt;
+    auto n = ckt.node("n1");
+    ckt.add_device(std::make_unique<VSource>("V1", n, GROUND_INTERNAL, 5.0));
+    ckt.add_device(std::make_unique<Resistor>("R1", n, GROUND_INTERNAL, 1e3));
+    ckt.options.no_throw = true;
+    ckt.finalize();
+    // This simple circuit WILL converge, so test that no_throw doesn't break normal operation
+    auto result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
 }

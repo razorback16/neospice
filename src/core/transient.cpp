@@ -176,7 +176,11 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
         return;
     }
 
-    throw ConvergenceError("DC operating point failed to converge");
+    SimStatus dc_fail_status;
+    dc_fail_status.converged = false;
+    dc_fail_status.residual = result.residual;
+    dc_fail_status.worst_node_idx = result.worst_node_idx;
+    throw SimulationError("DC operating point failed to converge", dc_fail_status);
 }
 
 // ===================================================================
@@ -583,7 +587,17 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     std::vector<double> solution(n, 0.0);
     auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
-    compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
+    try {
+        compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
+    } catch (const SimulationError& e) {
+        if (!ckt.options.no_throw) throw;
+        // no_throw: return empty transient result with failed status
+        TransientResult fail_result;
+        fail_result.status = e.status();
+        auto t_end = std::chrono::steady_clock::now();
+        fail_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
+        return fail_result;
+    }
 
     // Seed state1 with DC op-point (BSIM4 reads from CKTstate1)
     ckt.rotate_state();
@@ -678,16 +692,28 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     double saved_delta = dt;
     int steps_after_bp = kNoRecentBreakpoint;
     int total_iterations = 0;
+    bool loop_converged = true;  // set false if we break due to no_throw failure
 
     while (ctrl.current_time() < tstop - 1e-18) {
         if (++total_iterations > kMaxTransientIterations) {
-            throw ConvergenceError(
-                "Transient exceeded " + std::to_string(kMaxTransientIterations) +
-                " iterations at t=" + std::to_string(ctrl.current_time()) +
-                " step_count=" + std::to_string(step_count) +
-                " dt=" + std::to_string(dt) +
-                " order=" + std::to_string(ctrl.order()) +
-                " steps_after_bp=" + std::to_string(steps_after_bp));
+            SimStatus iter_fail_status;
+            iter_fail_status.converged = false;
+            iter_fail_status.iterations = total_newton_iters;
+            iter_fail_status.elapsed_seconds = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - t_start).count();
+            if (!ckt.options.no_throw) {
+                throw SimulationError(
+                    "Transient exceeded " + std::to_string(kMaxTransientIterations) +
+                    " iterations at t=" + std::to_string(ctrl.current_time()) +
+                    " step_count=" + std::to_string(step_count) +
+                    " dt=" + std::to_string(dt) +
+                    " order=" + std::to_string(ctrl.order()) +
+                    " steps_after_bp=" + std::to_string(steps_after_bp),
+                    iter_fail_status);
+            }
+            // no_throw: break out of loop with partial results
+            loop_converged = false;
+            break;
         }
 
         // Clamp dt to bounds and breakpoints
@@ -715,7 +741,20 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             dt /= kNewtonFailureDtFactor;
             if (dt < dt_min) {
                 cleanup_transient_devices(ckt);
-                throw ConvergenceError("Transient failed to converge at t=" + std::to_string(t));
+                SimStatus nr_fail_status;
+                nr_fail_status.converged = false;
+                nr_fail_status.iterations = total_newton_iters;
+                nr_fail_status.min_timestep = dt;
+                nr_fail_status.elapsed_seconds = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - t_start).count();
+                if (!ckt.options.no_throw) {
+                    throw SimulationError("Transient failed to converge at t=" + std::to_string(t),
+                                          nr_fail_status);
+                }
+                // no_throw: build partial result with what we have so far
+                tran_result.rejected_steps = ctrl.rejected_count();
+                tran_result.status = nr_fail_status;
+                return tran_result;
             }
             continue;
         }
@@ -799,7 +838,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     tran_result.rejected_steps = ctrl.rejected_count();
 
     auto t_end = std::chrono::steady_clock::now();
-    tran_result.status.converged = true;
+    tran_result.status.converged = loop_converged;
     tran_result.status.iterations = total_newton_iters;
     tran_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
 

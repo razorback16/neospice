@@ -127,7 +127,13 @@ DCResult solve_dc(Circuit& ckt) {
                     sim_status.warnings.push_back("pseudo-transient continuation used");
                 } else {
                     // 7. All failed
-                    throw ConvergenceError("DC operating point failed to converge");
+                    sim_status.converged = false;
+                    sim_status.residual = result.residual;
+                    sim_status.worst_node_idx = result.worst_node_idx;
+                    if (!ckt.options.no_throw) {
+                        throw SimulationError("DC operating point failed to converge", sim_status);
+                    }
+                    // Fall through to build partial result with converged=false
                 }
             }
         }
@@ -359,7 +365,14 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
             first_point = false;
             return;
         }
-        throw ConvergenceError("DC sweep: convergence failed");
+        SimStatus sweep_fail_status;
+        sweep_fail_status.converged = false;
+        sweep_fail_status.residual = res.residual;
+        sweep_fail_status.worst_node_idx = res.worst_node_idx;
+        if (!ckt.options.no_throw) {
+            throw SimulationError("DC sweep: convergence failed", sweep_fail_status);
+        }
+        // no_throw: continue with unconverged solution
     };
 
     if (!src1) {
