@@ -170,6 +170,12 @@ public:
     /// Assign branch indices, build sparsity pattern, assign offsets.
     void finalize();
 
+    /// Returns true if the circuit has been finalized.
+    bool is_finalized() const { return finalized_; }
+
+    /// Finalize the circuit if it hasn't been finalized yet (idempotent).
+    void finalize_if_needed();
+
     const SparsityPattern& pattern() const { return *pattern_; }
     const std::vector<std::unique_ptr<Device>>& devices() const { return devices_; }
     std::vector<std::unique_ptr<Device>>& devices()             { return devices_; }
@@ -256,6 +262,7 @@ private:
     std::vector<double> state0_, state1_, state2_;
     std::vector<double> operating_point_;
     std::unique_ptr<SparsityPattern> pattern_;
+    bool finalized_ = false;
 };
 
 // Thread-local pointer to the active IntegratorCtx, set by newton_solve

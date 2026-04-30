@@ -99,6 +99,7 @@ add_executable(neospice_tests
     unit/test_pz.cpp
     unit/test_step.cpp
     unit/test_ringing.cpp
+    unit/test_circuit_state.cpp
     unit/test_circuit_builder.cpp
     unit/test_introspection.cpp
     unit/test_handles.cpp

@@ -27,6 +27,9 @@ int32_t Circuit::node(const std::string& name) {
         return it->second;
     }
 
+    if (finalized_)
+        throw std::logic_error("Cannot add node after circuit is finalized");
+
     int32_t idx = next_node_++;
     node_map_[name] = idx;
     node_names_.push_back(name);
@@ -70,11 +73,18 @@ int32_t Circuit::node_index(const std::string& name) const {
 }
 
 void Circuit::add_device(std::unique_ptr<Device> dev) {
+    if (finalized_)
+        throw std::logic_error("Cannot add device after circuit is finalized");
     devices_.push_back(std::move(dev));
 }
 
+void Circuit::finalize_if_needed() {
+    if (finalized_) return;
+    finalize();
+}
+
 void Circuit::finalize() {
-    assert(!pattern_ && "Circuit::finalize() called twice");
+    assert(!finalized_ && "Circuit::finalize() called twice");
 
     // 0. Let devices declare internal nodes. These get allocated from
     //    next_node_ via the normal Circuit::node() path, so they appear
@@ -134,6 +144,8 @@ void Circuit::finalize() {
     state2_.assign(num_states_, 0.0);
 
     rebind_device_states();
+
+    finalized_ = true;
 }
 
 void Circuit::rebind_device_states() {
