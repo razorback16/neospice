@@ -9,7 +9,7 @@ A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a c
 - **Embeddable C++ API** -- `Simulator`/`Circuit`/`Result` types with handle-based and string-based accessors, typed device methods, and circuit introspection
 - **High performance** -- NeoSolver (dense + sparse column-LU with AMD ordering), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
-- **990+ tests** validated against ngspice with tolerances as tight as 1e-6
+- **997 tests** validated against ngspice with tolerances as tight as 1e-6
 
 ## Quick Start (C++)
 
@@ -257,7 +257,7 @@ include/
 src/
   api/          C++ API (Simulator, typed device methods, measurement utils)
   core/         Analysis engines and linear solvers
-  devices/      29 device model implementations
+  devices/      29 device models, each self-contained with factory registration
   parser/       Netlist parser and expression evaluator
   output/       Raw file writer
 python/

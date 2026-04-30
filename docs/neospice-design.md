@@ -93,7 +93,11 @@ Noise analysis (`.noise`) using the adjoint method with per-device breakdown, co
 
 Added typed result accessors (`voltage()`, `current()`, `diff()`, `signal_names()`) to all result types. Embedded `SimStatus` (convergence method, iterations, elapsed time, warnings) in all 8 result types. Added `CircuitBuilder` fluent API for programmatic circuit construction. Added circuit introspection (`device_info()`, `devices_at_node()`, `node_names()`, `device_names()`). Added generic `set_param()` for runtime parameter modification. Added analysis chaining via `TransientOptions` and `ACOptions`.
 
-## Current State (2026-04-25)
+### Device Factory Pattern ✅
+
+Modularized all 17 semiconductor device families via `DeviceRegistry` factory pattern. Each device registers its model card factory, device builder, and element parser in a self-contained factory file. Adding a new device requires zero changes to `circuit_typed.cpp` or `netlist_parser.cpp` — just a factory file, one CMake line, and one `register_all()` call. Reduced `circuit_typed.cpp` from 414 to 295 lines and `netlist_parser.cpp` from 3727 to 2696 lines by extracting semiconductor parsing into 5 shared parser modules (`mosfet_common`, `bjt_common`, `jfet_common`, `hfet_common`, `dio_parser`).
+
+## Current State (2026-04-30)
 
 ### Analyses Implemented
 
@@ -452,8 +456,13 @@ neospice/
 │   │   ├── device.hpp                 # Base Device interface
 │   │   ├── ucb_compat.hpp             # Shared UCB compatibility macros
 │   │   ├── ucb_utils.hpp              # Shared UCB utility functions
+│   │   ├── device_registry.hpp/cpp     # DeviceRegistry — factory dispatch for model cards, builders, parsers
 │   │   ├── ucb_device_init.hpp        # Shared UCB device init template
 │   │   ├── model_card_utils.hpp       # Shared model card utilities
+│   │   ├── mosfet_common.hpp/cpp      # Shared MOSFET parser (prefix 'm')
+│   │   ├── bjt_common.hpp/cpp         # Shared BJT parser (prefix 'q')
+│   │   ├── jfet_common.hpp/cpp        # Shared JFET parser (prefix 'j')
+│   │   ├── hfet_common.hpp/cpp        # Shared HFET/MES parser (prefix 'z')
 │   │   ├── resistor.hpp/cpp           # + resistor_model.hpp
 │   │   ├── capacitor.hpp/cpp          # + capacitor_model.hpp
 │   │   ├── inductor.hpp/cpp           # + inductor_model.hpp
@@ -844,10 +853,15 @@ PYTHONPATH=tools python3 -m ngspice_migrate \
 ### Adding a New Device Model
 
 1. Create `tools/descriptors/<model>.yaml` with struct names, terminals, source files
-2. Run the migration tool
+2. Run the migration tool — generates device, model card, and factory files
 3. Copy generated files to `src/devices/<model>/`
-4. Wire parser (element line recognition, `.model` card routing)
-5. Add test circuits comparing against ngspice
+4. Create `<model>_factory.cpp` registering model card factory + device builder with `DeviceRegistry`
+5. Add one `register_<model>(*this)` call in `DeviceRegistry::register_all()`
+6. Add test circuits comparing against ngspice
+
+No changes to `circuit_typed.cpp` or `netlist_parser.cpp` are needed — the registry
+dispatches model card creation, device construction, and element parsing automatically
+for existing prefixes (M, D, Q, J, Z).
 
 ## Test Harness
 

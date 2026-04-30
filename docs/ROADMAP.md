@@ -32,7 +32,7 @@ Fourier/THD, parameter sweep (.step), and .measure post-processing.
 - **Performance**: 1.5–6x faster than ngspice in-process; zero subprocess overhead as a library
 - **Embeddable C++ API**: handle-based `Simulator`/`Circuit`/`Result` interface with typed device methods and O(1) result access
 - **Auto-differentiation**: B-source expressions get exact Jacobians (no numerical perturbation)
-- **Modern codebase**: C++20, clean Device abstraction, auto-migration tooling for ngspice models
+- **Modern codebase**: C++20, modular DeviceRegistry factory pattern (add a device without touching central files), auto-migration tooling for ngspice models
 - **Python bindings**: `pip install neospice` — full API with NumPy arrays, typed circuit construction, SPICE notation parser
 - **ngspice-compatible output**: raw file format matches ngspice for drop-in tool compatibility
 
