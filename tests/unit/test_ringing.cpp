@@ -175,7 +175,7 @@ R2 out 0 1k
     // The input is 0-1V, so the LC response should be bounded by roughly
     // 0 to 2V (overshoot from LC resonance is physical; ringing artifacts
     // would produce much larger values or rapid sign alternation).
-    auto& vout = result.voltages["v(out)"];
+    auto& vout = result.voltage("out");
     ASSERT_FALSE(vout.empty());
     for (size_t i = 0; i < vout.size(); ++i) {
         EXPECT_GT(vout[i], -0.5) << "Output too negative at t=" << result.time[i];
@@ -206,8 +206,8 @@ C1 out 0 1u
         if (result.time[i] >= 1e-3) { idx_1ms = i; break; }
     }
     double expected_1tau = 5.0 * (1.0 - std::exp(-1.0));
-    EXPECT_NEAR(result.voltages["v(out)"][idx_1ms], expected_1tau, 0.1);
+    EXPECT_NEAR(result.voltage("out")[idx_1ms], expected_1tau, 0.1);
 
     // At t=5ms (5tau): should be close to 5V
-    EXPECT_NEAR(result.voltages["v(out)"].back(), 5.0, 0.05);
+    EXPECT_NEAR(result.voltage("out").back(), 5.0, 0.05);
 }

@@ -411,15 +411,13 @@ def generate_test_compare(desc) -> str:
             if "nmos" in cir_name:
                 lines.append('')
                 lines.append('    // Verify basic MOSFET physics')
-                lines.append('    ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);')
-                lines.append('    double v_drain = cs_result.node_voltages["v(drain)"];')
+                lines.append('    double v_drain = cs_result.voltage("drain");')
                 lines.append('    EXPECT_GT(v_drain, 0.1) << "V(drain) should be above ground";')
                 lines.append('    EXPECT_LT(v_drain, 1.8) << "V(drain) should be below Vdd";')
             elif "pmos" in cir_name:
                 lines.append('')
                 lines.append('    // Verify PMOS physics')
-                lines.append('    ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);')
-                lines.append('    double v_drain = cs_result.node_voltages["v(drain)"];')
+                lines.append('    double v_drain = cs_result.voltage("drain");')
                 lines.append('    EXPECT_GT(v_drain, 0.01) << "PMOS drain should be pulled up";')
                 lines.append('    EXPECT_LT(v_drain, 1.8) << "PMOS drain should be below Vdd";')
 
@@ -427,8 +425,7 @@ def generate_test_compare(desc) -> str:
             if "npn" in cir_name:
                 lines.append('')
                 lines.append('    // Verify basic BJT physics')
-                lines.append('    ASSERT_TRUE(cs_result.node_voltages.count("v(col)") > 0);')
-                lines.append('    double v_col = cs_result.node_voltages["v(col)"];')
+                lines.append('    double v_col = cs_result.voltage("col");')
                 lines.append('    EXPECT_GT(v_col, 0.1) << "V(col) should be above ground";')
                 lines.append('    EXPECT_LT(v_col, 5.0) << "V(col) should be below Vcc";')
 

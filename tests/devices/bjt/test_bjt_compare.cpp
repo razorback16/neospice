@@ -61,7 +61,7 @@ Q1 col b_int 0 QMOD
     // Collector current at Vce=2V: from i(vce), sign convention is
     // current flowing *into* the Vce positive terminal = -(collector current).
     // i(vce) is the branch current of Vce, which equals -Ic (KCL at collector).
-    double i_vce_at_2v = sw.currents.at("i(vce)")[idx_2v];
+    double i_vce_at_2v = sw.current("vce")[idx_2v];
     double ic_at_2v = std::abs(i_vce_at_2v);  // magnitude
 
     // Expect Ic ~ 2mA = BF * Ib,  allow 50% tolerance for bias differences
@@ -80,7 +80,7 @@ Q1 col b_int 0 QMOD
     }
     ASSERT_GE(idx_05v, 0);
 
-    double ic_at_05v = std::abs(sw.currents.at("i(vce)")[idx_05v]);
+    double ic_at_05v = std::abs(sw.current("vce")[idx_05v]);
     // At 0.5V the BJT should be near or just entering active — Ic should
     // be at least half the active-region value
     EXPECT_GT(ic_at_05v, 0.1e-3) << "Ic at Vce=0.5V should be nonzero";
@@ -95,14 +95,14 @@ Q1 col b_int 0 QMOD
         }
     }
     ASSERT_GE(idx_01v, 0);
-    double ic_at_01v = std::abs(sw.currents.at("i(vce)")[idx_01v]);
+    double ic_at_01v = std::abs(sw.current("vce")[idx_01v]);
     EXPECT_LE(ic_at_01v, ic_at_05v + 1e-6)
         << "Ic at 0.1V should be <= Ic at 0.5V (saturation to active)";
 
     // At high Vce (5V): Early effect should cause slightly higher Ic
     // than at 2V, but not dramatically so with VAF=100
     size_t idx_5v = sw.sweep_values.size() - 1;
-    double ic_at_5v = std::abs(sw.currents.at("i(vce)")[idx_5v]);
+    double ic_at_5v = std::abs(sw.current("vce")[idx_5v]);
     double ratio_5v_2v = ic_at_5v / ic_at_2v;
     EXPECT_GT(ratio_5v_2v, 0.9) << "Ic at 5V should be close to Ic at 2V";
     EXPECT_LT(ratio_5v_2v, 1.5) << "Ic at 5V shouldn't be much bigger (Early)";
@@ -136,9 +136,9 @@ Rload vcc out 1k
     Circuit ckt = sim.parse(netlist);
     DCResult dc = sim.run_dc(ckt);
 
-    double v_ref = dc.node_voltages["v(ref)"];
-    double v_out = dc.node_voltages["v(out)"];
-    double v_vcc = dc.node_voltages["v(vcc)"];
+    double v_ref = dc.voltage("ref");
+    double v_out = dc.voltage("out");
+    double v_vcc = dc.voltage("vcc");
 
     EXPECT_NEAR(v_vcc, 5.0, 0.01);
 
@@ -211,8 +211,8 @@ Vin in 0 PULSE(0 0.05 0 1n 1n 50n 100n)
     ASSERT_TRUE(tran.voltages.count("v(col)") > 0);
     ASSERT_TRUE(tran.voltages.count("v(base)") > 0);
 
-    const auto& v_col  = tran.voltages["v(col)"];
-    const auto& v_base = tran.voltages["v(base)"];
+    const auto& v_col  = tran.voltage("col");
+    const auto& v_base = tran.voltage("base");
 
     // Find the pulse high and low periods to verify inversion.
     // Pulse: Vin goes from 0V to 0.05V at t=0, stays high for 50ns,
@@ -298,7 +298,7 @@ Vin in 0 DC 0 AC 1
     ASSERT_FALSE(ac.frequency.empty());
     ASSERT_TRUE(ac.voltages.count("v(col)") > 0);
 
-    const auto& v_col_ac = ac.voltages["v(col)"];
+    const auto& v_col_ac = ac.voltage("col");
     ASSERT_EQ(v_col_ac.size(), ac.frequency.size());
 
     // Find midband gain (around 10kHz — well above the coupling cap
@@ -365,9 +365,9 @@ Q1 col base emitter QMOD
     Circuit ckt = sim.parse(netlist);
     DCResult dc = sim.run_dc(ckt);
 
-    double v_emitter = dc.node_voltages["v(emitter)"];
-    double v_base    = dc.node_voltages["v(base)"];
-    double v_col     = dc.node_voltages["v(col)"];
+    double v_emitter = dc.voltage("emitter");
+    double v_base    = dc.voltage("base");
+    double v_col     = dc.voltage("col");
 
     EXPECT_NEAR(v_emitter, 5.0, 0.01);
 
@@ -445,10 +445,10 @@ Q2 c2 b2 0 LOW_GAIN
     Circuit ckt = sim.parse(netlist);
     DCResult dc = sim.run_dc(ckt);
 
-    double v_c1 = dc.node_voltages["v(c1)"];
-    double v_c2 = dc.node_voltages["v(c2)"];
-    double v_b1 = dc.node_voltages["v(b1)"];
-    double v_b2 = dc.node_voltages["v(b2)"];
+    double v_c1 = dc.voltage("c1");
+    double v_c2 = dc.voltage("c2");
+    double v_b1 = dc.voltage("b1");
+    double v_b2 = dc.voltage("b2");
 
     // Both should have reasonable base voltages (biased via Rb from Vcc)
     EXPECT_GT(v_b1, 0.4);

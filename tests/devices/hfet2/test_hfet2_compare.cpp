@@ -66,8 +66,8 @@ TEST_F(HFET2Validation, NhfetOperatingPoint) {
     ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);
     ASSERT_TRUE(cs_result.node_voltages.count("v(gate)") > 0);
 
-    double v_drain = cs_result.node_voltages["v(drain)"];
-    double v_gate  = cs_result.node_voltages["v(gate)"];
+    double v_drain = cs_result.voltage("drain");
+    double v_gate  = cs_result.voltage("gate");
 
     EXPECT_NEAR(v_drain, 1.0, 0.01);
     EXPECT_NEAR(v_gate, 0.3, 0.01);
@@ -115,8 +115,8 @@ TEST_F(HFET2Validation, NhfetIvCurveSweep) {
     ASSERT_TRUE(cs_result.currents.count("i(vds)") > 0)
         << "neospice missing i(vds)";
 
-    const auto& ng_ids = ng_result.currents.at("i(vds)");
-    const auto& cs_ids = cs_result.currents.at("i(vds)");
+    const auto& ng_ids = ng_result.current("vds");
+    const auto& cs_ids = cs_result.current("vds");
 
     double worst_err = 0;
     for (size_t i = 0; i < n; ++i) {

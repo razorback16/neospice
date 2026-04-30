@@ -262,9 +262,21 @@ type info) and the template handles the lookup + dispatch.
 1. **Model dispatch**: Add the include and `to_<ns>_card()` call in the main parser's
    model type dispatch (see `netlist_parser.cpp:2762` for BSIM3v32 example)
 2. **Element parsing**: Add parsing for the device's element card prefix in `netlist_parser.cpp`
-   (parse terminal nodes, look up model card, parse geometry + `ic=`, create device, add to circuit)
+   (parse terminal nodes, look up model card, parse geometry + `ic=`, create device,
+   call `ckt.add_device(std::move(dev))`)
 3. **Model card ownership**: Call `ckt.add_model_card(std::move(card))` — the generic
    template method handles any model card type
+
+### Include paths in generated files
+
+The auto-migrated device object library (generated `CMakeLists.txt`) exposes both
+`${CMAKE_SOURCE_DIR}/src` and `${CMAKE_SOURCE_DIR}/include` as PUBLIC include paths.
+Internal device headers use the `src/` path (e.g., `#include "devices/device.hpp"`);
+the public API types (`neospice/types.hpp`) come from the `include/` path.
+
+The parser headers in `src/parser/` include the internal path `api/neospice.hpp`, which
+resolves via the `src/` include root. Do **not** change these to `neospice/neospice.hpp`
+unless migrating to the public API in a higher-level consumer.
 
 ### SPICE element prefixes
 
@@ -319,6 +331,31 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 - [ ] `noise_sources()` returns correct noise types for the device
 - [ ] Noise analysis matches ngspice within 20% tolerance
 - [ ] No shadowing of base class `sim_temp_` (use `sim_temp()` accessor)
+
+### Dual-path include verification
+
+After migration, verify both internal and public include paths resolve correctly:
+
+1. **Device adapter headers** use internal paths (resolved via `src/` include root):
+   ```cpp
+   #include "devices/device.hpp"       // internal — correct
+   #include "core/circuit.hpp"         // internal — correct
+   #include "core/types.hpp"           // internal — correct
+   ```
+2. **Public API consumers** (test binaries, Python bindings) should use:
+   ```cpp
+   #include "neospice/neospice.hpp"    // public — via include/ root
+   // or equivalently (legacy internal path, still works via neospice_lib):
+   #include "api/neospice.hpp"
+   ```
+3. **Result accessors** in generated tests use string-based methods (not map access):
+   ```cpp
+   double v = result.voltage("drain");   // correct — new API
+   // NOT: result.node_voltages["v(drain)"]  — avoid direct map access
+   ```
+4. The generated `CMakeLists.txt` for device object libraries exposes both
+   `${CMAKE_SOURCE_DIR}/src` and `${CMAKE_SOURCE_DIR}/include` — this is required
+   because device headers include `neospice/types.hpp` from the public include path.
 
 ---
 

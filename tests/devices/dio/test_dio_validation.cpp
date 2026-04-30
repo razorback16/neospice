@@ -64,8 +64,8 @@ TEST_F(DiodeValidation, DCSweepNgspice) {
     ASSERT_TRUE(cs_result.voltages.count("v(out)") > 0)
         << "neospice result should contain v(out)";
 
-    const auto& ng_vout = ng_result.voltages.at("v(out)");
-    const auto& cs_vout = cs_result.voltages.at("v(out)");
+    const auto& ng_vout = ng_result.voltage("out");
+    const auto& cs_vout = cs_result.voltage("out");
 
     int mismatches = 0;
     double worst_rel_err = 0.0;
@@ -178,7 +178,7 @@ TEST_F(DiodeValidation, ACResponseNgspice) {
     // rd = NVt/Id = 0.026/4.3e-3 ~ 6 ohm
     // v(out)/v(in) = rd/(R1+rd) = 6/1006 ~ 0.006
     ASSERT_TRUE(cs_result.voltages.count("v(out)") > 0);
-    const auto& cs_vout = cs_result.voltages.at("v(out)");
+    const auto& cs_vout = cs_result.voltage("out");
 
     double gain_low = std::abs(cs_vout[0]);
     EXPECT_LT(gain_low, 0.05)
@@ -224,7 +224,7 @@ TEST_F(DiodeValidation, TransientSwitchingNgspice) {
     TransientResult ng_filtered;
     ng_filtered.time = ng_result.time;
     if (ng_result.voltages.count("v(out)") > 0) {
-        ng_filtered.voltages["v(out)"] = ng_result.voltages.at("v(out)");
+        ng_filtered.voltages["v(out)"] = ng_result.voltage("out");
     }
     // Do not include currents — i(v1) has the same sharp-edge issue.
 
@@ -238,7 +238,7 @@ TEST_F(DiodeValidation, TransientSwitchingNgspice) {
 
     // Verify basic transient physics
     ASSERT_TRUE(cs_result.voltages.count("v(out)") > 0);
-    const auto& v_out = cs_result.voltages.at("v(out)");
+    const auto& v_out = cs_result.voltage("out");
 
     // During pulse high (V1=5V), diode should be forward biased:
     // v(out) ~ 0.6-0.8V (diode forward drop).

@@ -229,7 +229,7 @@ R2 out 0 1k
     // Should converge without throwing
     ASSERT_NO_THROW({
         auto result = solve_dc(ckt);
-        EXPECT_NEAR(result.node_voltages["v(out)"], 2.5, 1e-6);
+        EXPECT_NEAR(result.voltage("out"), 2.5, 1e-6);
     });
 }
 

@@ -70,9 +70,9 @@ TEST_F(MOS1Validation, NmosOperatingPoint) {
     ASSERT_TRUE(cs_result.node_voltages.count("v(gate)") > 0);
     ASSERT_TRUE(cs_result.node_voltages.count("v(vdd)") > 0);
 
-    double v_drain = cs_result.node_voltages["v(drain)"];
-    double v_gate  = cs_result.node_voltages["v(gate)"];
-    double v_vdd   = cs_result.node_voltages["v(vdd)"];
+    double v_drain = cs_result.voltage("drain");
+    double v_gate  = cs_result.voltage("gate");
+    double v_vdd   = cs_result.voltage("vdd");
 
     EXPECT_NEAR(v_vdd, 5.0, 0.01);
     EXPECT_NEAR(v_gate, 2.0, 0.01);
@@ -130,8 +130,8 @@ TEST_F(MOS1Validation, NmosIvCurveSweep) {
     ASSERT_TRUE(cs_result.currents.count("i(vds)") > 0)
         << "neospice result should contain i(vds)";
 
-    const auto& ng_ids = ng_result.currents.at("i(vds)");
-    const auto& cs_ids = cs_result.currents.at("i(vds)");
+    const auto& ng_ids = ng_result.current("vds");
+    const auto& cs_ids = cs_result.current("vds");
 
     int mismatches = 0;
     double worst_rel_err = 0.0;
@@ -243,9 +243,9 @@ TEST_F(MOS1Validation, PmosOperatingPoint) {
     ASSERT_TRUE(cs_result.node_voltages.count("v(gate)") > 0);
     ASSERT_TRUE(cs_result.node_voltages.count("v(vdd)") > 0);
 
-    double v_drain = cs_result.node_voltages["v(drain)"];
-    double v_gate  = cs_result.node_voltages["v(gate)"];
-    double v_vdd   = cs_result.node_voltages["v(vdd)"];
+    double v_drain = cs_result.voltage("drain");
+    double v_gate  = cs_result.voltage("gate");
+    double v_vdd   = cs_result.voltage("vdd");
 
     EXPECT_NEAR(v_vdd, 5.0, 0.01);
     EXPECT_NEAR(v_gate, 3.0, 0.01);
@@ -316,7 +316,7 @@ TEST_F(MOS1Validation, NmosAcResponse) {
 
     // Verify basic AC physics
     ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
-    const auto& v_drain_ac = cs_result.voltages.at("v(drain)");
+    const auto& v_drain_ac = cs_result.voltage("drain");
 
     // Low-frequency gain: |Av| = gm * Rd should be > 1 for a CS amplifier
     double gain_low = std::abs(v_drain_ac.front());
@@ -376,7 +376,7 @@ TEST_F(MOS1Validation, NmosTransientPulse) {
     TransientResult ng_filtered;
     ng_filtered.time = ng_result.time;
     if (ng_result.voltages.count("v(drain)") > 0) {
-        ng_filtered.voltages["v(drain)"] = ng_result.voltages.at("v(drain)");
+        ng_filtered.voltages["v(drain)"] = ng_result.voltage("drain");
     }
 
     // Compare at ngspice's time grid with interpolation of neospice.
@@ -389,7 +389,7 @@ TEST_F(MOS1Validation, NmosTransientPulse) {
 
     // Verify basic transient physics
     ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
-    const auto& v_drain = cs_result.voltages.at("v(drain)");
+    const auto& v_drain = cs_result.voltage("drain");
 
     // During pulse high (Vin=5V), MOSFET should be on hard:
     // Id is large, V(drain) is pulled low.

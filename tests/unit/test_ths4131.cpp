@@ -57,8 +57,8 @@ TEST_F(THS4131Test, ACBandwidth) {
     ASSERT_TRUE(ac.voltages.count("v(out_p)") > 0);
     ASSERT_TRUE(ac.voltages.count("v(out_n)") > 0);
 
-    const auto& v_out_p = ac.voltages.at("v(out_p)");
-    const auto& v_out_n = ac.voltages.at("v(out_n)");
+    const auto& v_out_p = ac.voltage("out_p");
+    const auto& v_out_n = ac.voltage("out_n");
 
     // Compute differential gain at each frequency
     std::vector<double> gain_db(ac.frequency.size());

@@ -68,9 +68,9 @@ TEST_F(HiSIMHVValidation, NmosOperatingPoint) {
     ASSERT_TRUE(cs_result.node_voltages.count("v(gate)") > 0);
     ASSERT_TRUE(cs_result.node_voltages.count("v(vdd)") > 0);
 
-    double v_drain = cs_result.node_voltages["v(drain)"];
-    double v_gate  = cs_result.node_voltages["v(gate)"];
-    double v_vdd   = cs_result.node_voltages["v(vdd)"];
+    double v_drain = cs_result.voltage("drain");
+    double v_gate  = cs_result.voltage("gate");
+    double v_vdd   = cs_result.voltage("vdd");
 
     EXPECT_NEAR(v_vdd, 3.3, 0.01);
     EXPECT_NEAR(v_gate, 1.5, 0.01);
@@ -116,7 +116,7 @@ TEST_F(HiSIMHVValidation, PmosOperatingPoint) {
 
     // Verify PMOS physics
     ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);
-    double v_drain = cs_result.node_voltages["v(drain)"];
+    double v_drain = cs_result.voltage("drain");
 
     EXPECT_GT(v_drain, 0.01)
         << "PMOS drain should be pulled up from ground through Rload";
@@ -171,7 +171,7 @@ TEST_F(HiSIMHVValidation, NmosAcResponse) {
 
     // Verify basic AC physics
     ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
-    const auto& v_drain_ac = cs_result.voltages.at("v(drain)");
+    const auto& v_drain_ac = cs_result.voltage("drain");
 
     // Low-frequency gain: |Av| = gm * Rd should be > 0.01 for a CS amplifier
     double gain_low = std::abs(v_drain_ac.front());

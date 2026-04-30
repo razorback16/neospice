@@ -54,8 +54,8 @@ TEST_F(BSIM3v32Validation, NMOS_DC_OperatingPoint) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 
     // Sanity: drain and gate should be at their applied voltage
-    EXPECT_NEAR(cs_result.node_voltages["v(drain)"], 1.0, 0.01);
-    EXPECT_NEAR(cs_result.node_voltages["v(gate)"], 1.0, 0.01);
+    EXPECT_NEAR(cs_result.voltage("drain"), 1.0, 0.01);
+    EXPECT_NEAR(cs_result.voltage("gate"), 1.0, 0.01);
 
     // Drain current should be non-zero and positive (NMOS in saturation)
     auto it = cs_result.branch_currents.find("i(v1)");

@@ -20,7 +20,7 @@ C1 out 0 1n
     auto result = solve_ac(ckt, AnalysisCommand::DEC, 10, 100.0, 10e6);
 
     EXPECT_FALSE(result.frequency.empty());
-    EXPECT_FALSE(result.voltages["v(out)"].empty());
+    EXPECT_FALSE(result.voltage("out").empty());
 
     // Find frequency closest to fc ~ 159kHz
     double fc = 1.0 / (2.0 * M_PI * 1e3 * 1e-9);
@@ -31,11 +31,11 @@ C1 out 0 1n
         if (diff < min_diff) { min_diff = diff; idx_fc = static_cast<int>(i); }
     }
 
-    double mag_at_fc = std::abs(result.voltages["v(out)"][idx_fc]);
+    double mag_at_fc = std::abs(result.voltage("out")[idx_fc]);
     EXPECT_NEAR(mag_at_fc, 1.0 / std::sqrt(2.0), 0.05);
 
     // At low frequency: magnitude ~ 1
-    EXPECT_NEAR(std::abs(result.voltages["v(out)"].front()), 1.0, 0.01);
+    EXPECT_NEAR(std::abs(result.voltage("out").front()), 1.0, 0.01);
 }
 
 TEST(AC, ResultHasFrequencyVector) {

@@ -21,7 +21,7 @@ C1 out 0 1u
     auto ckt = parser.parse(netlist);
     auto result = solve_transient(ckt, 10e-6, 5e-3);
 
-    EXPECT_NEAR(result.voltages["v(in)"].front(), 5.0, 0.01);
+    EXPECT_NEAR(result.voltage("in").front(), 5.0, 0.01);
 
     // Find index closest to t=1ms
     int idx_1ms = 0;
@@ -29,10 +29,10 @@ C1 out 0 1u
         if (result.time[i] >= 1e-3) { idx_1ms = i; break; }
     }
     double expected_1tau = 5.0 * (1.0 - std::exp(-1.0));
-    EXPECT_NEAR(result.voltages["v(out)"][idx_1ms], expected_1tau, 0.1);
+    EXPECT_NEAR(result.voltage("out")[idx_1ms], expected_1tau, 0.1);
 
     // At t=5ms (5tau): should be close to 5V
-    EXPECT_NEAR(result.voltages["v(out)"].back(), 5.0, 0.05);
+    EXPECT_NEAR(result.voltage("out").back(), 5.0, 0.05);
 }
 
 TEST(Transient, PulseSourceCompletes) {

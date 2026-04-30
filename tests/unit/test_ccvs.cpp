@@ -161,9 +161,9 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(in)"],   1.0, 1e-9);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out1)"], 0.0, 1e-9);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"],  0.5, 1e-9);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("in"),   1.0, 1e-9);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out1"), 0.0, 1e-9);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"),  0.5, 1e-9);
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], -0.5, 1e-9);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), -0.5, 1e-9);
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], 0.0, 1e-9);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 0.0, 1e-9);
 }
 
 // ---------------------------------------------------------------------------
@@ -240,8 +240,8 @@ R3 outn 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    double vp = std::get<DCResult>(result.analysis).node_voltages["v(outp)"];
-    double vn = std::get<DCResult>(result.analysis).node_voltages["v(outn)"];
+    double vp = std::get<DCResult>(result.analysis).voltage("outp");
+    double vn = std::get<DCResult>(result.analysis).voltage("outn");
     EXPECT_NEAR(vp - vn, 0.5, 1e-9);
 }
 

@@ -68,9 +68,9 @@ TEST_F(HiSIM2Validation, NmosOperatingPoint) {
     ASSERT_TRUE(cs_result.node_voltages.count("v(gate)") > 0);
     ASSERT_TRUE(cs_result.node_voltages.count("v(vdd)") > 0);
 
-    double v_drain = cs_result.node_voltages["v(drain)"];
-    double v_gate  = cs_result.node_voltages["v(gate)"];
-    double v_vdd   = cs_result.node_voltages["v(vdd)"];
+    double v_drain = cs_result.voltage("drain");
+    double v_gate  = cs_result.voltage("gate");
+    double v_vdd   = cs_result.voltage("vdd");
 
     EXPECT_NEAR(v_vdd, 1.8, 0.01);
     EXPECT_NEAR(v_gate, 0.9, 0.01);
@@ -116,7 +116,7 @@ TEST_F(HiSIM2Validation, PmosOperatingPoint) {
 
     // Verify PMOS physics
     ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);
-    double v_drain = cs_result.node_voltages["v(drain)"];
+    double v_drain = cs_result.voltage("drain");
 
     EXPECT_GT(v_drain, 0.01)
         << "PMOS drain should be pulled up from ground through Rload";
@@ -163,8 +163,8 @@ TEST_F(HiSIM2Validation, NmosIvCurveSweep) {
     ASSERT_TRUE(cs_result.currents.count("i(vds)") > 0)
         << "neospice result should contain i(vds)";
 
-    const auto& ng_ids = ng_result.currents.at("i(vds)");
-    const auto& cs_ids = cs_result.currents.at("i(vds)");
+    const auto& ng_ids = ng_result.current("vds");
+    const auto& cs_ids = cs_result.current("vds");
 
     int mismatches = 0;
     double worst_rel_err = 0.0;
@@ -267,7 +267,7 @@ TEST_F(HiSIM2Validation, NmosAcResponse) {
 
     // Verify basic AC physics
     ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
-    const auto& v_drain_ac = cs_result.voltages.at("v(drain)");
+    const auto& v_drain_ac = cs_result.voltage("drain");
 
     // Low-frequency gain: |Av| = gm * Rd should be > 0.1 for a CS amplifier
     double gain_low = std::abs(v_drain_ac.front());

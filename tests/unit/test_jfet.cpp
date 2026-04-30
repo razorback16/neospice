@@ -202,7 +202,7 @@ TEST(JFETDevice, NjfCommonSourceDCBias) {
     DCResult result = solve_dc(ckt);
 
     // Check that we have a physically reasonable operating point
-    double v_drain = result.node_voltages["v(drain)"];
+    double v_drain = result.voltage("drain");
 
     // Drain should be near VDD (transistor is conducting ~0.1mA)
     // Id ~ 0.1mA, Vd = 10 - 0.1*1k = 9.9V
@@ -308,7 +308,7 @@ TEST(JFETDevice, NjfCommonSourceACGain) {
     }
 
     if (idx_10k >= 0) {
-        std::complex<double> v_drain_ac = ac.voltages.at("v(drain)")[idx_10k];
+        std::complex<double> v_drain_ac = ac.voltage("drain")[idx_10k];
         double gain_mag = std::abs(v_drain_ac);
 
         // Gain should be positive (inverting, but magnitude)
@@ -342,7 +342,7 @@ TEST(JFETNgspiceCompare, NjfDCBiasPoint) {
     Circuit ckt = p.parse(netlist);
     DCResult result = solve_dc(ckt);
 
-    double v_drain = result.node_voltages["v(drain)"];
+    double v_drain = result.voltage("drain");
 
     // Analytical: Id = BETA*(Vgs-Vto)^2*(1+LAMBDA*Vds)
     // In saturation with Vgs=-1, Vto=-2:
@@ -390,7 +390,7 @@ TEST(JFETDevice, ResetTempAllowsReEvaluation) {
 
     // First DC solve -- sets temp_done_ = true inside the JFET device.
     DCResult result1 = solve_dc(ckt);
-    double v_drain1 = result1.node_voltages["v(drain)"];
+    double v_drain1 = result1.voltage("drain");
     EXPECT_GT(v_drain1, 5.0);
 
     // Call reset_temp() on all JFET devices.
@@ -406,7 +406,7 @@ TEST(JFETDevice, ResetTempAllowsReEvaluation) {
     // Second DC solve after reset -- should recompute temperature params and
     // still converge to the same operating point.
     DCResult result2 = solve_dc(ckt);
-    double v_drain2 = result2.node_voltages["v(drain)"];
+    double v_drain2 = result2.voltage("drain");
     EXPECT_GT(v_drain2, 5.0);
 
     // Results should be consistent between solves.
@@ -434,7 +434,7 @@ TEST(JFETDevice, ResetTempBaseClassDefaultIsNoOp) {
     }
 
     DCResult result = solve_dc(ckt);
-    EXPECT_GT(result.node_voltages["v(drain)"], 5.0);
+    EXPECT_GT(result.voltage("drain"), 5.0);
 }
 
 TEST(JFETNgspiceCompare, NjfACMidBandGain) {
@@ -483,7 +483,7 @@ TEST(JFETNgspiceCompare, NjfACMidBandGain) {
     for (size_t i = 0; i < ac.frequency.size(); ++i) {
         double f = ac.frequency[i];
         if (f >= 5000 && f <= 20000) {
-            double gain = std::abs(ac.voltages.at("v(drain)")[i]);
+            double gain = std::abs(ac.voltage("drain")[i]);
             // Should be within a factor of 3 of expected
             EXPECT_GT(gain, expected_gain * 0.3);
             EXPECT_LT(gain, expected_gain * 3.0);

@@ -54,9 +54,9 @@ X1 inp outp rdiv r1=20k r2=10k
     auto ckt = parser.parse(netlist);
     DCResult result = solve_dc(ckt);
 
-    EXPECT_NEAR(result.node_voltages["v(inp)"], 3.0, 1e-6);
+    EXPECT_NEAR(result.voltage("inp"), 3.0, 1e-6);
     // Divider: 3.0 * 10k/(20k+10k) = 1.0 V
-    EXPECT_NEAR(result.node_voltages["v(outp)"], 1.0, 1e-3);
+    EXPECT_NEAR(result.voltage("outp"), 1.0, 1e-3);
 }
 
 // =========================================================================
@@ -84,12 +84,12 @@ X1 drain gate 0 0 nmos_wrapper w=2u l=100n
     DCResult result = solve_dc(ckt);
 
     // Gate is 1.0V, VTH0=0.4 => MOSFET should be ON (Vgs > Vth)
-    EXPECT_NEAR(result.node_voltages["v(drain)"], 1.8, 1e-6);
-    EXPECT_NEAR(result.node_voltages["v(gate)"], 1.0, 1e-6);
+    EXPECT_NEAR(result.voltage("drain"), 1.8, 1e-6);
+    EXPECT_NEAR(result.voltage("gate"), 1.0, 1e-6);
 
     // The MOSFET conducts => there should be drain current flowing
     // V1 provides current into drain node via VDD.
-    double i_vdd = std::abs(result.branch_currents["i(vdd)"]);
+    double i_vdd = std::abs(result.current("vdd"));
     EXPECT_GT(i_vdd, 1e-6) << "MOSFET should be conducting";
 }
 
@@ -133,17 +133,17 @@ CL out 0 10f
 
     // At VIN=0: output should be close to VDD (1.8V)
     // First sweep point is VIN=0.0
-    double v_out_at_0 = result.voltages["v(out)"][0];
+    double v_out_at_0 = result.voltage("out")[0];
     EXPECT_GT(v_out_at_0, 1.4) << "At VIN=0, PMOS on => Vout near VDD";
 
     // At VIN=1.8: output should be close to 0
-    double v_out_at_vdd = result.voltages["v(out)"].back();
+    double v_out_at_vdd = result.voltage("out").back();
     EXPECT_LT(v_out_at_vdd, 0.4) << "At VIN=VDD, NMOS on => Vout near 0";
 
     // Verify monotonic decreasing (inverter characteristic)
-    for (size_t i = 1; i < result.voltages["v(out)"].size(); ++i) {
-        EXPECT_LE(result.voltages["v(out)"][i],
-                  result.voltages["v(out)"][i - 1] + 0.01)
+    for (size_t i = 1; i < result.voltage("out").size(); ++i) {
+        EXPECT_LE(result.voltage("out")[i],
+                  result.voltage("out")[i - 1] + 0.01)
             << "Inverter output should be monotonically non-increasing";
     }
 }
@@ -180,23 +180,23 @@ CL out 0 10f
     auto result = solve_transient(ckt, 10e-12, 20e-9);
 
     ASSERT_FALSE(result.time.empty());
-    ASSERT_FALSE(result.voltages["v(out)"].empty());
-    ASSERT_FALSE(result.voltages["v(in)"].empty());
+    ASSERT_FALSE(result.voltage("out").empty());
+    ASSERT_FALSE(result.voltage("in").empty());
 
     // The output waveform should swing between the rails during the simulation.
     // With 3 inversions, the output inverts the input.
-    double v_min = *std::min_element(result.voltages["v(out)"].begin(),
-                                      result.voltages["v(out)"].end());
-    double v_max = *std::max_element(result.voltages["v(out)"].begin(),
-                                      result.voltages["v(out)"].end());
+    double v_min = *std::min_element(result.voltage("out").begin(),
+                                      result.voltage("out").end());
+    double v_max = *std::max_element(result.voltage("out").begin(),
+                                      result.voltage("out").end());
 
     // The chain should produce output that reaches near both rails
     EXPECT_GT(v_max, 1.0) << "3-stage chain output should reach near VDD";
     EXPECT_LT(v_min, 0.8) << "3-stage chain output should reach near VSS";
 
     // Verify all 3 stages produced intermediate waveforms
-    ASSERT_FALSE(result.voltages["v(n1)"].empty());
-    ASSERT_FALSE(result.voltages["v(n2)"].empty());
+    ASSERT_FALSE(result.voltage("n1").empty());
+    ASSERT_FALSE(result.voltage("n2").empty());
 
     // Verify time vector spans full simulation
     EXPECT_NEAR(result.time.front(), 0.0, 1e-12);
@@ -230,10 +230,10 @@ CL drain 0 100f
     auto result = solve_ac(ckt, AnalysisCommand::DEC, 10, 1e3, 100e9);
 
     ASSERT_FALSE(result.frequency.empty());
-    ASSERT_FALSE(result.voltages["v(drain)"].empty());
+    ASSERT_FALSE(result.voltage("drain").empty());
 
     // The AC response at the drain should be nonzero (MOSFET amplifies)
-    double mag_low = std::abs(result.voltages["v(drain)"].front());
+    double mag_low = std::abs(result.voltage("drain").front());
     EXPECT_GT(mag_low, 0.01)
         << "Common-source amp should have nonzero AC response at low freq";
 
@@ -293,7 +293,7 @@ TEST_F(PDKLibTest, CornerSelectionTTvsFF) {
         NetlistParser parser;
         auto ckt = parser.parse_file(main_path.string());
         DCResult result = solve_dc(ckt);
-        return std::abs(result.branch_currents["i(vdd)"]);
+        return std::abs(result.current("vdd"));
     };
 
     double i_tt = run_corner("tt");
@@ -333,7 +333,7 @@ TEST_F(PDKLibTest, IncludeWithSubcircuit) {
     DCResult result = solve_dc(ckt);
 
     // Divider: 6.0 * 2k/(2k+2k) = 3.0V
-    EXPECT_NEAR(result.node_voltages["v(outp)"], 3.0, 1e-3);
+    EXPECT_NEAR(result.voltage("outp"), 3.0, 1e-3);
 }
 
 // =========================================================================
@@ -366,9 +366,9 @@ TEST_F(PDKLibTest, IncludeAndLibCombined) {
     DCResult result = solve_dc(ckt);
 
     // MOSFET should be conducting
-    double i_vdd = std::abs(result.branch_currents["i(vdd)"]);
+    double i_vdd = std::abs(result.current("vdd"));
     EXPECT_GT(i_vdd, 1e-6) << "MOSFET in subcircuit should conduct current";
-    EXPECT_NEAR(result.node_voltages["v(drain)"], 1.8, 1e-6);
+    EXPECT_NEAR(result.voltage("drain"), 1.8, 1e-6);
 }
 
 // =========================================================================
@@ -422,7 +422,7 @@ CL out 0 10f
     // Wait: input=0 => PMOS on, NMOS off => mid=VDD(1.8)
     //        mid=1.8 => PMOS off, NMOS on => out=0
     // That means buf(0) = 0. Correct — buffer preserves logic level.
-    EXPECT_LT(result.node_voltages["v(out)"], 0.3)
+    EXPECT_LT(result.voltage("out"), 0.3)
         << "Buffer output should follow input = 0V => output near 0";
 }
 
@@ -454,7 +454,7 @@ CL out 0 10f
     DCResult result = solve_dc(ckt);
 
     // input=1.8 => inv1: NMOS on => mid~0 => inv2: PMOS on => out~1.8
-    EXPECT_GT(result.node_voltages["v(out)"], 1.4)
+    EXPECT_GT(result.voltage("out"), 1.4)
         << "Buffer output should follow input = 1.8V => output near VDD";
 }
 
@@ -494,7 +494,7 @@ CL out 0 10f
     // tech_l = 100n, min_w = 200n, inv_wp = 400n
     // PMOS W=400n, L=100n, NMOS W=200n, L=100n
     // VIN=0 => PMOS on => output ~ VDD
-    EXPECT_GT(result.node_voltages["v(out)"], 1.4)
+    EXPECT_GT(result.voltage("out"), 1.4)
         << "Parameter chain should resolve => inverter output high for input=0";
 }
 
@@ -520,7 +520,7 @@ X2 mid 0 rblock r=1k
     DCResult result = solve_dc(ckt);
 
     // Voltage divider: V(mid) = 12 * 1k / (3k + 1k) = 3.0V
-    EXPECT_NEAR(result.node_voltages["v(mid)"], 3.0, 1e-3);
+    EXPECT_NEAR(result.voltage("mid"), 3.0, 1e-3);
 }
 
 // =========================================================================
@@ -545,7 +545,7 @@ X1 inp outp rc_lpf r=1k c=1u
     auto result = solve_transient(ckt, 10e-6, 5e-3);
 
     ASSERT_FALSE(result.time.empty());
-    ASSERT_FALSE(result.voltages["v(outp)"].empty());
+    ASSERT_FALSE(result.voltage("outp").empty());
 
     // tau = R*C = 1k * 1u = 1ms
     // At t=1ms, V(out) ~ 5*(1-e^-1) ~ 3.16V
@@ -554,10 +554,10 @@ X1 inp outp rc_lpf r=1k c=1u
         if (result.time[i] >= 1e-3) { idx_1ms = i; break; }
     }
     double expected_1tau = 5.0 * (1.0 - std::exp(-1.0));
-    EXPECT_NEAR(result.voltages["v(outp)"][idx_1ms], expected_1tau, 0.15);
+    EXPECT_NEAR(result.voltage("outp")[idx_1ms], expected_1tau, 0.15);
 
     // At end (5ms = 5*tau), should be close to 5V
-    EXPECT_NEAR(result.voltages["v(outp)"].back(), 5.0, 0.1);
+    EXPECT_NEAR(result.voltage("outp").back(), 5.0, 0.1);
 }
 
 // =========================================================================
@@ -581,7 +581,7 @@ X1 inp outp rc_lpf r=1k c=1n
     auto result = solve_ac(ckt, AnalysisCommand::DEC, 10, 100.0, 10e6);
 
     ASSERT_FALSE(result.frequency.empty());
-    ASSERT_FALSE(result.voltages["v(outp)"].empty());
+    ASSERT_FALSE(result.voltage("outp").empty());
 
     // fc = 1/(2*pi*R*C) = 1/(2*pi*1e3*1e-9) ~ 159.15 kHz
     double fc = 1.0 / (2.0 * M_PI * 1e3 * 1e-9);
@@ -594,12 +594,12 @@ X1 inp outp rc_lpf r=1k c=1n
         if (diff < min_diff) { min_diff = diff; idx_fc = static_cast<int>(i); }
     }
 
-    double mag_at_fc = std::abs(result.voltages["v(outp)"][idx_fc]);
+    double mag_at_fc = std::abs(result.voltage("outp")[idx_fc]);
     // At -3dB point, magnitude should be 1/sqrt(2) ~ 0.707
     EXPECT_NEAR(mag_at_fc, 1.0 / std::sqrt(2.0), 0.05);
 
     // At low frequency: magnitude ~ 1
-    EXPECT_NEAR(std::abs(result.voltages["v(outp)"].front()), 1.0, 0.01);
+    EXPECT_NEAR(std::abs(result.voltage("outp").front()), 1.0, 0.01);
 }
 
 // =========================================================================
@@ -625,7 +625,7 @@ X1 drain gate 0 0 nfet w=5u l=100n
     DCResult result = solve_dc(ckt);
 
     // MOSFET should be on (Vgs=0.8 > Vth=0.4)
-    double i_vdd = std::abs(result.branch_currents["i(vdd)"]);
+    double i_vdd = std::abs(result.current("vdd"));
     EXPECT_GT(i_vdd, 1e-6) << "Self-contained MOSFET cell should conduct";
 }
 
@@ -673,7 +673,7 @@ Xvd inp outp vdiv r1=3k r2=1k
     DCResult result = solve_dc(ckt);
 
     // Divider: V(outp) = 10 * 1k / (3k + 1k) = 2.5V
-    EXPECT_NEAR(result.node_voltages["v(outp)"], 2.5, 1e-2);
+    EXPECT_NEAR(result.voltage("outp"), 2.5, 1e-2);
 }
 
 // =========================================================================
@@ -707,7 +707,7 @@ Rload outp 0 1Meg
     // But R2 connects mid to b (=outp). Rload from outp to 0.
     // Current path: inp -> inner.R1(500) -> mid -> R2(500) -> outp -> Rload(1M) -> 0
     // V(outp) = 10 * 1e6 / (500+500+1e6) ~ 9.99V
-    EXPECT_NEAR(result.node_voltages["v(outp)"], 10.0 * 1e6 / (1000 + 1e6), 1e-2);
+    EXPECT_NEAR(result.voltage("outp"), 10.0 * 1e6 / (1000 + 1e6), 1e-2);
 }
 
 // =========================================================================
@@ -740,14 +740,14 @@ CL out 0 50f
     auto result = solve_transient(ckt, 10e-12, 20e-9);
 
     ASSERT_FALSE(result.time.empty());
-    ASSERT_FALSE(result.voltages["v(out)"].empty());
+    ASSERT_FALSE(result.voltage("out").empty());
 
     // The output should swing between rail voltages during the simulation.
     // Find min and max of the output waveform.
-    double v_min = *std::min_element(result.voltages["v(out)"].begin(),
-                                      result.voltages["v(out)"].end());
-    double v_max = *std::max_element(result.voltages["v(out)"].begin(),
-                                      result.voltages["v(out)"].end());
+    double v_min = *std::min_element(result.voltage("out").begin(),
+                                      result.voltage("out").end());
+    double v_max = *std::max_element(result.voltage("out").begin(),
+                                      result.voltage("out").end());
 
     // Output should reach near VDD at some point (when input is low)
     EXPECT_GT(v_max, 1.2) << "Inverter output should reach near VDD";
@@ -797,7 +797,7 @@ Xdiv inp outp rdiv rtop=4k rbot=1k
 
     DCResult result = solve_dc(ckt);
     // V(outp) = 10 * 1k / (4k + 1k) = 2.0V
-    EXPECT_NEAR(result.node_voltages["v(outp)"], 2.0, 1e-2);
+    EXPECT_NEAR(result.voltage("outp"), 2.0, 1e-2);
 }
 
 // =========================================================================
@@ -828,9 +828,9 @@ CL out 0 10f
     DCResult result = solve_dc(ckt);
 
     // input=0 => X1: PMOS on => mid ~ VDD
-    EXPECT_GT(result.node_voltages["v(mid)"], 1.4);
+    EXPECT_GT(result.voltage("mid"), 1.4);
     // mid~VDD => X2: NMOS on => out ~ 0
-    EXPECT_LT(result.node_voltages["v(out)"], 0.3);
+    EXPECT_LT(result.voltage("out"), 0.3);
 }
 
 // =========================================================================
@@ -863,7 +863,7 @@ Rload outp 0 1Meg
     // OR simplified: if Rload is large, mid divides as R2/(R1+R2) referenced from inp
     // V(mid->outp) drop = I * R2 = 9 * 2000 / (3000+1e6), V(outp) = V(inp) - I*(R1+R2)
     // Better: V(outp) = 9 * 1e6 / (1e6 + 3000) ~ 8.973V
-    EXPECT_NEAR(result.node_voltages["v(outp)"], 9.0 * 1e6 / (3000 + 1e6), 1e-2);
+    EXPECT_NEAR(result.voltage("outp"), 9.0 * 1e6 / (3000 + 1e6), 1e-2);
 }
 
 // =========================================================================
@@ -897,9 +897,9 @@ VIN inp 0 10.0
     DCResult result = solve_dc(ckt);
 
     // Linear voltage drop: V(n5) = 10 * 5/10 = 5.0V
-    EXPECT_NEAR(result.node_voltages["v(n5)"], 5.0, 1e-3);
+    EXPECT_NEAR(result.voltage("n5"), 5.0, 1e-3);
     // V(n1) = 10 * 9/10 = 9.0V
-    EXPECT_NEAR(result.node_voltages["v(n1)"], 9.0, 1e-3);
+    EXPECT_NEAR(result.voltage("n1"), 9.0, 1e-3);
 }
 
 // =========================================================================
@@ -949,7 +949,7 @@ TEST_F(PDKLibTest, FullPDKFlowIncludeLibSubcircuit) {
     // input=1.8V (high) => buf output = high
     // inv1: in=1.8 => NMOS on => mid ~ 0
     // inv2: mid=0  => PMOS on => out ~ 1.8
-    EXPECT_GT(result.node_voltages["v(out)"], 1.4)
+    EXPECT_GT(result.voltage("out"), 1.4)
         << "Full PDK flow: buffer with high input should output high";
 }
 
@@ -976,5 +976,5 @@ X1 inp outp rdiv r1=3k r2=1k
 
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     // V(outp) = 8 * 1k/(3k+1k) = 2.0V
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(outp)"], 2.0, 1e-2);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("outp"), 2.0, 1e-2);
 }

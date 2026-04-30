@@ -246,8 +246,8 @@ TEST(BJTDevice, NpnCommonEmitterDCBias) {
     DCResult result = solve_dc(ckt);
 
     // Check that we have a physically reasonable operating point
-    double v_col = result.node_voltages["v(col)"];
-    double v_base = result.node_voltages["v(base)"];
+    double v_col = result.voltage("col");
+    double v_base = result.voltage("base");
 
     // Base voltage should be near Vbe (0.6-0.8V range)
     // (VBB through RB, less the small base current drop)
@@ -319,8 +319,8 @@ TEST(BJTDevice, TwoBJTsSameModelDifferentBias) {
     Circuit ckt = p.parse(netlist);
     DCResult result = solve_dc(ckt);
 
-    double v_col1 = result.node_voltages["v(col1)"];
-    double v_col2 = result.node_voltages["v(col2)"];
+    double v_col1 = result.voltage("col1");
+    double v_col2 = result.voltage("col2");
 
     // Q2 has more base drive, so it should have more collector current
     // and therefore a LOWER collector voltage

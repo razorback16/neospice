@@ -18,7 +18,7 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], 5.0, 1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 5.0, 1e-6);
 }
 
 TEST(SimulatorAPI, RunTransient) {

@@ -60,8 +60,8 @@ TEST_F(KiCad_OPA1632_Test, ACResponse) {
     ASSERT_TRUE(ac.voltages.count("v(outp)") > 0);
     ASSERT_TRUE(ac.voltages.count("v(outn)") > 0);
 
-    const auto& v_outp = ac.voltages.at("v(outp)");
-    const auto& v_outn = ac.voltages.at("v(outn)");
+    const auto& v_outp = ac.voltage("outp");
+    const auto& v_outn = ac.voltage("outn");
 
     // Low-frequency differential gain should be ~0 dB (unity gain)
     std::complex<double> diff_low = v_outp[0] - v_outn[0];

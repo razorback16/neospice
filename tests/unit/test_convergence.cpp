@@ -21,9 +21,9 @@ D1 mid 0 DMOD
     Simulator sim;
     auto ckt = sim.parse(netlist);
     DCResult result = sim.run_dc(ckt);
-    EXPECT_GT(result.node_voltages["v(mid)"], 0.5);
-    EXPECT_LT(result.node_voltages["v(mid)"], 0.9);
-    EXPECT_NEAR(result.node_voltages["v(top)"], 5.0, 1e-6);
+    EXPECT_GT(result.voltage("mid"), 0.5);
+    EXPECT_LT(result.voltage("mid"), 0.9);
+    EXPECT_NEAR(result.voltage("top"), 5.0, 1e-6);
 }
 
 TEST(Convergence, GminSteppingWorks) {
@@ -41,8 +41,8 @@ D1 mid 0 DMOD
     auto ckt = sim.parse(netlist);
     DCResult result = sim.run_dc(ckt);
     // Diode forward voltage should be around 0.5-0.7V
-    EXPECT_GT(result.node_voltages["v(mid)"], 0.3);
-    EXPECT_LT(result.node_voltages["v(mid)"], 0.75);
+    EXPECT_GT(result.voltage("mid"), 0.3);
+    EXPECT_LT(result.voltage("mid"), 0.75);
 }
 
 TEST(Convergence, SourceSteppingSimpleCircuit) {
@@ -62,9 +62,9 @@ D1 out 0 DMOD
     auto ckt = sim.parse(netlist);
     DCResult result = sim.run_dc(ckt);
     // Diode forward voltage ~0.6V, VDD = 3.3V
-    EXPECT_NEAR(result.node_voltages["v(vdd)"], 3.3, 1e-6);
-    EXPECT_GT(result.node_voltages["v(out)"], 0.5);
-    EXPECT_LT(result.node_voltages["v(out)"], 0.8);
+    EXPECT_NEAR(result.voltage("vdd"), 3.3, 1e-6);
+    EXPECT_GT(result.voltage("out"), 0.5);
+    EXPECT_LT(result.voltage("out"), 0.8);
 }
 
 TEST(Convergence, SourceSteppingCrossCoupledInverters) {
@@ -92,8 +92,8 @@ R1 q 0 100k
     Simulator sim;
     auto ckt = sim.parse(netlist);
     DCResult result = sim.run_dc(ckt);
-    double vq  = result.node_voltages["v(q)"];
-    double vqb = result.node_voltages["v(qb)"];
+    double vq  = result.voltage("q");
+    double vqb = result.voltage("qb");
     // The latch must settle to one of the two stable states:
     //   state A: q ~ VDD (5V), qb ~ 0V
     //   state B: q ~ 0V,       qb ~ VDD (5V)
@@ -103,7 +103,7 @@ R1 q 0 100k
     EXPECT_TRUE(state_a || state_b)
         << "Expected bistable latch to converge to a stable state, got v(q)="
         << vq << " v(qb)=" << vqb;
-    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
+    EXPECT_NEAR(result.voltage("vdd"), 5.0, 1e-6);
 }
 
 TEST(Convergence, SourceSteppingWithCurrentSource) {
@@ -122,8 +122,8 @@ D1 out 0 DMOD
     auto ckt = sim.parse(netlist);
     DCResult result = sim.run_dc(ckt);
     // 1 mA through a diode => forward voltage ~0.6V
-    EXPECT_GT(result.node_voltages["v(out)"], 0.5);
-    EXPECT_LT(result.node_voltages["v(out)"], 0.75);
+    EXPECT_GT(result.voltage("out"), 0.5);
+    EXPECT_LT(result.voltage("out"), 0.75);
 }
 
 TEST(Convergence, PseudoTransientSimpleCircuit) {
@@ -143,9 +143,9 @@ D1 out 0 DMOD
     Simulator sim;
     auto ckt = sim.parse(netlist);
     DCResult result = sim.run_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(vdd)"], 3.3, 1e-6);
-    EXPECT_GT(result.node_voltages["v(out)"], 0.5);
-    EXPECT_LT(result.node_voltages["v(out)"], 0.8);
+    EXPECT_NEAR(result.voltage("vdd"), 3.3, 1e-6);
+    EXPECT_GT(result.voltage("out"), 0.5);
+    EXPECT_LT(result.voltage("out"), 0.8);
 }
 
 TEST(Convergence, PseudoTransientDirectCall) {
@@ -198,8 +198,8 @@ R1 q 0 100k
     Simulator sim;
     auto ckt = sim.parse(netlist);
     DCResult result = sim.run_dc(ckt);
-    double vq  = result.node_voltages["v(q)"];
-    double vqb = result.node_voltages["v(qb)"];
+    double vq  = result.voltage("q");
+    double vqb = result.voltage("qb");
     // Must converge to one of the two stable states
     bool state_a = (vq > 4.0 && vqb < 1.0);
     bool state_b = (vq < 1.0 && vqb > 4.0);

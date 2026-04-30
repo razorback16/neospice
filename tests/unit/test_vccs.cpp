@@ -112,8 +112,8 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(in)"],   1.0,  1e-6);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], -10.0, 1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("in"),   1.0,  1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), -10.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,9 +142,9 @@ R1 out 0 2k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(inp)"],  3.0,  1e-6);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(inn)"],  1.0,  1e-6);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], -20.0, 1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("inp"),  3.0,  1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("inn"),  1.0,  1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), -20.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +163,7 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], 0.0, 1e-9);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 0.0, 1e-9);
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], 4.0, 1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 4.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -218,8 +218,8 @@ R2 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(mid)"], -5.0,  1e-6);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], 10.0, 1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("mid"), -5.0,  1e-6);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 10.0, 1e-6);
 }
 
 // ---------------------------------------------------------------------------

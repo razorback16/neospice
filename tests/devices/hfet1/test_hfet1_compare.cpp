@@ -51,8 +51,8 @@ TEST_F(HFET1Validation, NhfetOperatingPoint) {
     ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);
     ASSERT_TRUE(cs_result.node_voltages.count("v(gate)") > 0);
 
-    double v_drain = cs_result.node_voltages["v(drain)"];
-    double v_gate  = cs_result.node_voltages["v(gate)"];
+    double v_drain = cs_result.voltage("drain");
+    double v_gate  = cs_result.voltage("gate");
 
     EXPECT_NEAR(v_drain, 1.0, 0.01);
     EXPECT_NEAR(v_gate, 0.3, 0.01);
@@ -95,7 +95,7 @@ TEST_F(HFET1Validation, NhfetAcResponse) {
         << " error: " << cmp.worst_error;
 
     ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
-    const auto& v_drain_ac = cs_result.voltages.at("v(drain)");
+    const auto& v_drain_ac = cs_result.voltage("drain");
 
     double gain_low = std::abs(v_drain_ac.front());
     EXPECT_GT(gain_low, 0.01)

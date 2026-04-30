@@ -67,9 +67,9 @@ TEST_F(MOS3Validation, NmosOperatingPoint) {
     ASSERT_TRUE(cs_result.node_voltages.count("v(gate)") > 0);
     ASSERT_TRUE(cs_result.node_voltages.count("v(vdd)") > 0);
 
-    double v_drain = cs_result.node_voltages["v(drain)"];
-    double v_gate  = cs_result.node_voltages["v(gate)"];
-    double v_vdd   = cs_result.node_voltages["v(vdd)"];
+    double v_drain = cs_result.voltage("drain");
+    double v_gate  = cs_result.voltage("gate");
+    double v_vdd   = cs_result.voltage("vdd");
 
     EXPECT_NEAR(v_vdd, 5.0, 0.01);
     EXPECT_NEAR(v_gate, 2.0, 0.01);
@@ -120,8 +120,8 @@ TEST_F(MOS3Validation, NmosIvCurveSweep) {
     ASSERT_TRUE(cs_result.currents.count("i(vds)") > 0)
         << "neospice result should contain i(vds)";
 
-    const auto& ng_ids = ng_result.currents.at("i(vds)");
-    const auto& cs_ids = cs_result.currents.at("i(vds)");
+    const auto& ng_ids = ng_result.current("vds");
+    const auto& cs_ids = cs_result.current("vds");
 
     int mismatches = 0;
     double worst_rel_err = 0.0;
@@ -211,7 +211,7 @@ TEST_F(MOS3Validation, PmosOperatingPoint) {
 
     // Verify PMOS physics
     ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);
-    double v_drain = cs_result.node_voltages["v(drain)"];
+    double v_drain = cs_result.voltage("drain");
 
     EXPECT_GT(v_drain, 0.1)
         << "PMOS drain should be pulled up from ground";
@@ -266,7 +266,7 @@ TEST_F(MOS3Validation, NmosAcResponse) {
 
     // Verify basic AC physics
     ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
-    const auto& v_drain_ac = cs_result.voltages.at("v(drain)");
+    const auto& v_drain_ac = cs_result.voltage("drain");
 
     // Low-frequency gain: |Av| = gm * Rd should be > 1 for a CS amplifier
     double gain_low = std::abs(v_drain_ac.front());
@@ -323,7 +323,7 @@ TEST_F(MOS3Validation, NmosTransientPulse) {
     TransientResult ng_filtered;
     ng_filtered.time = ng_result.time;
     if (ng_result.voltages.count("v(drain)") > 0) {
-        ng_filtered.voltages["v(drain)"] = ng_result.voltages.at("v(drain)");
+        ng_filtered.voltages["v(drain)"] = ng_result.voltage("drain");
     }
 
     auto cmp = compare_transient(ng_filtered, cs_result, {5e-2, 5e-3});
@@ -333,7 +333,7 @@ TEST_F(MOS3Validation, NmosTransientPulse) {
 
     // Verify basic transient physics
     ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
-    const auto& v_drain = cs_result.voltages.at("v(drain)");
+    const auto& v_drain = cs_result.voltage("drain");
 
     int idx_high = -1;
     for (size_t i = 0; i < cs_result.time.size(); ++i) {

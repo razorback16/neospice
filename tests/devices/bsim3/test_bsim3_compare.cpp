@@ -55,8 +55,8 @@ TEST_F(BSIM3Validation, NMOS_DC_OperatingPoint) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 
     // Sanity: drain and gate should be at their applied voltage
-    EXPECT_NEAR(cs_result.node_voltages["v(drain)"], 1.0, 0.01);
-    EXPECT_NEAR(cs_result.node_voltages["v(gate)"], 1.0, 0.01);
+    EXPECT_NEAR(cs_result.voltage("drain"), 1.0, 0.01);
+    EXPECT_NEAR(cs_result.voltage("gate"), 1.0, 0.01);
 
     // Drain current should be non-zero and positive (NMOS in saturation)
     // i(v1) is the branch current of V1 (drain supply), which equals -Id
@@ -103,8 +103,8 @@ TEST_F(BSIM3Validation, NMOS_IV_Sweep) {
     ASSERT_TRUE(cs_result.currents.count("i(vds)") > 0)
         << "neospice result should contain i(vds)";
 
-    const auto& ng_ids = ng_result.currents.at("i(vds)");
-    const auto& cs_ids = cs_result.currents.at("i(vds)");
+    const auto& ng_ids = ng_result.current("vds");
+    const auto& cs_ids = cs_result.current("vds");
 
     int mismatches = 0;
     double worst_rel_err = 0.0;
@@ -191,8 +191,8 @@ TEST_F(BSIM3Validation, PMOS_DC_OperatingPoint) {
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 
     // Sanity: drain and gate should be at their applied voltage
-    EXPECT_NEAR(cs_result.node_voltages["v(drain)"], -1.0, 0.01);
-    EXPECT_NEAR(cs_result.node_voltages["v(gate)"], -1.0, 0.01);
+    EXPECT_NEAR(cs_result.voltage("drain"), -1.0, 0.01);
+    EXPECT_NEAR(cs_result.voltage("gate"), -1.0, 0.01);
 
     // PMOS drain current should flow in the opposite direction to NMOS.
     // i(v1) is the branch current of V1 (drain supply at -1V).
@@ -321,7 +321,7 @@ TEST_F(BSIM3Validation, CMOS_Inverter_Transitions) {
     ASSERT_GT(tran.time.size(), 10u);
     ASSERT_TRUE(tran.voltages.count("v(out)") > 0);
 
-    const auto& v_out = tran.voltages.at("v(out)");
+    const auto& v_out = tran.voltage("out");
 
     // The inverter should show output transitions:
     // When input goes high (0->1.8V), output should go low (1.8V->~0V)

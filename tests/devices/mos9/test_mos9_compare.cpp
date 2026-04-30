@@ -67,9 +67,9 @@ TEST_F(MOS9Validation, NmosOperatingPoint) {
     ASSERT_TRUE(cs_result.node_voltages.count("v(gate)") > 0);
     ASSERT_TRUE(cs_result.node_voltages.count("v(vdd)") > 0);
 
-    double v_drain = cs_result.node_voltages["v(drain)"];
-    double v_gate  = cs_result.node_voltages["v(gate)"];
-    double v_vdd   = cs_result.node_voltages["v(vdd)"];
+    double v_drain = cs_result.voltage("drain");
+    double v_gate  = cs_result.voltage("gate");
+    double v_vdd   = cs_result.voltage("vdd");
 
     EXPECT_NEAR(v_vdd, 5.0, 0.01);
     EXPECT_NEAR(v_gate, 2.0, 0.01);
@@ -128,7 +128,7 @@ TEST_F(MOS9Validation, NmosAcResponse) {
 
     // Verify basic AC physics
     ASSERT_TRUE(cs_result.voltages.count("v(drain)") > 0);
-    const auto& v_drain_ac = cs_result.voltages.at("v(drain)");
+    const auto& v_drain_ac = cs_result.voltage("drain");
 
     // Low-frequency gain: |Av| = gm * Rd should be > 1 for a CS amplifier
     double gain_low = std::abs(v_drain_ac.front());

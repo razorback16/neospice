@@ -48,7 +48,7 @@ EXPECT_NEAR(vbe, 0.65, 0.15)
         ASSERT_FALSE(ac.frequency.empty());
         ASSERT_TRUE(ac.voltages.count("v(out)") > 0);
 
-        const auto& v_out = ac.voltages.at("v(out)");
+        const auto& v_out = ac.voltage("out");
 
 // CE amp should have voltage gain > 1 at mid-frequencies
 double gain_mid = std::abs(v_out[v_out.size() / 2]);

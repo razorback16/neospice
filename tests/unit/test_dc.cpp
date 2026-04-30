@@ -17,8 +17,8 @@ TEST(DC, ResistorDivider) {
     ckt.add_device(make_unique<Resistor>("R2", n_mid, GROUND_INTERNAL, 1000.0));
     ckt.finalize();
     DCResult result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(top)"], 10.0, 1e-6);
-    EXPECT_NEAR(result.node_voltages["v(mid)"], 5.0, 1e-6);
+    EXPECT_NEAR(result.voltage("top"), 10.0, 1e-6);
+    EXPECT_NEAR(result.voltage("mid"), 5.0, 1e-6);
 }
 
 TEST(DC, CurrentSourceWithResistor) {
@@ -30,7 +30,7 @@ TEST(DC, CurrentSourceWithResistor) {
     ckt.add_device(make_unique<Resistor>("R1", n1, GROUND_INTERNAL, 2000.0));
     ckt.finalize();
     DCResult result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(n1)"], 2.0, 1e-6);
+    EXPECT_NEAR(result.voltage("n1"), 2.0, 1e-6);
 }
 
 TEST(DC, BranchCurrentReported) {
@@ -45,5 +45,5 @@ TEST(DC, BranchCurrentReported) {
     // Branch current through V1 should be reported
     ASSERT_TRUE(result.branch_currents.count("i(v1)") > 0);
     // Current = 10V / 2000 ohms = 5mA
-    EXPECT_NEAR(std::abs(result.branch_currents["i(v1)"]), 5e-3, 1e-9);
+    EXPECT_NEAR(std::abs(result.current("v1")), 5e-3, 1e-9);
 }

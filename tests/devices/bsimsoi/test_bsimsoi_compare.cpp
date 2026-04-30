@@ -56,7 +56,7 @@ TEST_F(BsimsoiValidation, NmosOperatingPoint) {
 
     // Verify basic MOSFET physics
     ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);
-    double v_drain = cs_result.node_voltages["v(drain)"];
+    double v_drain = cs_result.voltage("drain");
     EXPECT_GT(v_drain, 0.1) << "V(drain) should be above ground";
     EXPECT_LT(v_drain, 1.8) << "V(drain) should be below Vdd";
 }
@@ -92,7 +92,7 @@ TEST_F(BsimsoiValidation, PmosOperatingPoint) {
     // Verify PMOS physics: with minimal .model (default thresholds) and
     // Vgs=-0.8V the PMOS is essentially off, so drain ≈ 0V through Rload.
     ASSERT_TRUE(cs_result.node_voltages.count("v(drain)") > 0);
-    double v_drain = cs_result.node_voltages["v(drain)"];
+    double v_drain = cs_result.voltage("drain");
     EXPECT_GE(v_drain, 0.0) << "PMOS drain voltage should be non-negative";
     EXPECT_LT(v_drain, 1.8) << "PMOS drain should be below Vdd";
 }

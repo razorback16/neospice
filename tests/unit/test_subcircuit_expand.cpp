@@ -225,10 +225,10 @@ X1 inp outp rdiv
     DCResult result = solve_dc(ckt);
 
     // inp = 10V
-    EXPECT_NEAR(result.node_voltages["v(inp)"], 10.0, 1e-6);
+    EXPECT_NEAR(result.voltage("inp"), 10.0, 1e-6);
 
     // outp = 10V * R2/(R1+R2) = 10 * 1k/2k = 5V
-    EXPECT_NEAR(result.node_voltages["v(outp)"], 5.0, 1e-3);
+    EXPECT_NEAR(result.voltage("outp"), 5.0, 1e-3);
 }
 
 // -----------------------------------------------------------------------
@@ -360,7 +360,7 @@ X2 mid 0 rblock r=3k
     // DC solve: voltage divider with 1k on top, 3k on bottom
     DCResult result = solve_dc(ckt);
     // V(mid) = 10 * 3k/(1k+3k) = 7.5V
-    EXPECT_NEAR(result.node_voltages["v(mid)"], 7.5, 1e-3);
+    EXPECT_NEAR(result.voltage("mid"), 7.5, 1e-3);
 }
 
 // -----------------------------------------------------------------------
@@ -385,7 +385,7 @@ X1 inp bypass
 
     // DC solve: R1 connects inp to ground via 0
     DCResult result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(inp)"], 10.0, 1e-6);
+    EXPECT_NEAR(result.voltage("inp"), 10.0, 1e-6);
 }
 
 // -----------------------------------------------------------------------
@@ -446,9 +446,9 @@ X3 c 0 rdiv
     DCResult result = solve_dc(ckt);
 
     // Three 1k resistors in series: 12V / 3 = 4V per resistor
-    EXPECT_NEAR(result.node_voltages["v(a)"], 12.0, 1e-6);
-    EXPECT_NEAR(result.node_voltages["v(b)"], 8.0, 1e-3);
-    EXPECT_NEAR(result.node_voltages["v(c)"], 4.0, 1e-3);
+    EXPECT_NEAR(result.voltage("a"), 12.0, 1e-6);
+    EXPECT_NEAR(result.voltage("b"), 8.0, 1e-3);
+    EXPECT_NEAR(result.voltage("c"), 4.0, 1e-3);
 }
 
 // -----------------------------------------------------------------------
@@ -713,7 +713,7 @@ R5 c 0 1k
 
     // DC solve: vdd = 5V
     DCResult result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
+    EXPECT_NEAR(result.voltage("vdd"), 5.0, 1e-6);
 
     // Verify that x1.mid and x2.mid exist (internal nodes ARE prefixed)
     EXPECT_TRUE(result.node_voltages.count("v(x1.mid)") > 0)
@@ -748,7 +748,7 @@ R2 a 0 1k
     auto ckt = parser.parse(netlist);
 
     DCResult result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(vdd)"], 3.3, 1e-6);
+    EXPECT_NEAR(result.voltage("vdd"), 3.3, 1e-6);
 
     // vdd should not be prefixed
     EXPECT_TRUE(result.node_voltages.count("v(x1.vdd)") == 0)
@@ -779,8 +779,8 @@ R5 b 0 1k
     auto ckt = parser.parse(netlist);
 
     DCResult result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
-    EXPECT_NEAR(result.node_voltages["v(vss)"], -5.0, 1e-6);
+    EXPECT_NEAR(result.voltage("vdd"), 5.0, 1e-6);
+    EXPECT_NEAR(result.voltage("vss"), -5.0, 1e-6);
 
     // Neither vdd nor vss should be prefixed
     EXPECT_TRUE(result.node_voltages.count("v(x1.vdd)") == 0)
@@ -812,8 +812,8 @@ R5 b 0 1k
     auto ckt = parser.parse(netlist);
 
     DCResult result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
-    EXPECT_NEAR(result.node_voltages["v(vss)"], -5.0, 1e-6);
+    EXPECT_NEAR(result.voltage("vdd"), 5.0, 1e-6);
+    EXPECT_NEAR(result.voltage("vss"), -5.0, 1e-6);
 
     EXPECT_TRUE(result.node_voltages.count("v(x1.vdd)") == 0)
         << "Global node vdd should NOT be prefixed";
@@ -846,7 +846,7 @@ R_load2 bot 0 1k
     auto ckt = parser.parse(netlist);
 
     DCResult result = solve_dc(ckt);
-    EXPECT_NEAR(result.node_voltages["v(vdd)"], 5.0, 1e-6);
+    EXPECT_NEAR(result.voltage("vdd"), 5.0, 1e-6);
 
     // vdd should NOT appear as xouter.xin.vdd
     EXPECT_TRUE(result.node_voltages.count("v(xouter.xin.vdd)") == 0)

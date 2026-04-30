@@ -49,7 +49,7 @@ EXPECT_GT(std::abs(v_out), 0.01)
         ASSERT_FALSE(ac.frequency.empty());
         ASSERT_TRUE(ac.voltages.count("v(out)") > 0);
 
-        const auto& v_out = ac.voltages.at("v(out)");
+        const auto& v_out = ac.voltage("out");
 
 // Low-frequency gain should be ~20 dB (gain of 10)
 double gain_low = 20.0 * std::log10(std::max(std::abs(v_out[0]), 1e-20));

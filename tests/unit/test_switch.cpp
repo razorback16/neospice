@@ -284,7 +284,7 @@ S1 out 0 ctrl 0 SMOD
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     double expected = 5.0 * 1.0 / (1000.0 + 1.0);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], expected, 1e-3);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), expected, 1e-3);
 }
 
 TEST(VSwitchIntegration, SwitchOFF) {
@@ -306,7 +306,7 @@ S1 out 0 ctrl 0 SMOD
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     double expected = 5.0 * 1e6 / (1000.0 + 1e6);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], expected, 0.01);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), expected, 0.01);
 }
 
 TEST(VSwitchIntegration, SwitchHysteresisRegion) {
@@ -329,7 +329,7 @@ S1 out 0 ctrl 0 SMOD
     // In hysteresis region, switch defaults to off -> Roff=1Meg
     double Roff = 1e6;
     double expected = 5.0 * Roff / (1000.0 + Roff);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], expected, 0.01);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), expected, 0.01);
 }
 
 TEST(VSwitchIntegration, ACStamp) {
@@ -387,7 +387,7 @@ W1 out 0 Vsense WMOD
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     double expected = 5.0 * 1.0 / (1000.0 + 1.0);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], expected, 1e-3);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), expected, 1e-3);
 }
 
 TEST(CSwitchIntegration, SwitchOFF) {
@@ -409,7 +409,7 @@ W1 out 0 Vsense WMOD
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     double expected = 5.0 * 1e6 / (1000.0 + 1e6);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], expected, 0.01);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), expected, 0.01);
 }
 
 // ===========================================================================
@@ -466,7 +466,7 @@ S1 out 0 ctrl 0 MYMOD
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     double expected = 5.0 * 2.0 / (500.0 + 2.0);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], expected, 1e-3);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), expected, 1e-3);
 }
 
 TEST(SwitchParser, ParseCSWModelParameters) {
@@ -590,7 +590,7 @@ S1 out 0 ctrl 0 SMOD
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     double expected = 5.0 * 1.0 / 1001.0;
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], expected, expected * 0.01);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), expected, expected * 0.01);
 }
 
 TEST(VSwitchNgspice, RelaySwitchOFF) {
@@ -609,5 +609,5 @@ S1 out 0 ctrl 0 SMOD
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     double expected = 5.0 * 1e6 / (1000.0 + 1e6);
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).node_voltages["v(out)"], expected, 0.001);
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), expected, 0.001);
 }

@@ -38,5 +38,5 @@ def generate_cmake(desc: _Descriptor, source_files: list[str]) -> str:
         f"add_library({ns}_obj OBJECT\n"
         f"{files_block}\n"
         f")\n"
-        f"target_include_directories({ns}_obj PUBLIC ${{CMAKE_SOURCE_DIR}}/src)\n"
+        f"target_include_directories({ns}_obj PUBLIC ${{CMAKE_SOURCE_DIR}}/src ${{CMAKE_SOURCE_DIR}}/include)\n"
     )
