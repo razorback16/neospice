@@ -140,8 +140,8 @@ using namespace Shim;
 /*-----------------------------------*
 * HiSIM macros
 *-----------------*/
-#include "hisimhv.h"
-#include "hsmhvevalenv.h"
+#include "hisimhv.hpp"
+#include "hsmhvevalenv.hpp"
 #define C_IDD_MIN    1.0e-15
 #define C_sub_delta 0.1 /* CHECK! */
 #define C_sub_delta2 1.0e-9 /* CHECK! */
@@ -1046,7 +1046,7 @@ int HSMHVevaluate
   if ( here->HSMHVtempNode > 0 && pParam->HSMHV_rth0 != 0.0 ) {
 
 #define HSMHVEVAL
-#include "hsmhvtemp_eval.h"
+#include "hsmhvtemp_eval.hpp"
 
   } else {
     beta = here->HSMHV_beta ;
@@ -2058,7 +2058,7 @@ int HSMHVevaluate
      * depletion mode MOSFET
      *------------------*/
 
-#include "hsmhveval_dep.h"
+#include "hsmhveval_dep.hpp"
 
     } else {
 
@@ -5198,7 +5198,7 @@ start_of_mobility:
     cnst0over_func =    ModeNML * here->HSMHV_cnst0overs + ModeRVS * here->HSMHV_cnst0over ;
     cnst0over_func_dT = ModeNML * cnst0overs_dT         + ModeRVS * cnst0over_dT ;
 
-#include "hsmhveval_qover.h"
+#include "hsmhveval_qover.hpp"
 
 
     if (here->HSMHV_mode != HiSIM_NORMAL_MODE) {
@@ -5254,7 +5254,7 @@ start_of_mobility:
       Vxbgmt_dVds = 0.0 ;
       Vxbgmt_dVgs = 0.0 ;
 
-#include "hsmhveval_qover.h"
+#include "hsmhveval_qover.hpp"
       
       T4 = here->HSMHV_weffcv_nf * Lovers * CVDSOVER ;
       Qovsext =  T4 * QsuLD ;
@@ -5353,7 +5353,7 @@ start_of_mobility:
     cnst0over_func =    ModeNML * here->HSMHV_cnst0over + ModeRVS * here->HSMHV_cnst0overs ;
     cnst0over_func_dT = ModeNML * cnst0over_dT         + ModeRVS * cnst0overs_dT ;
 
-#include "hsmhveval_qover.h"
+#include "hsmhveval_qover.hpp"
 
 
     if (here->HSMHV_mode == HiSIM_NORMAL_MODE) {
@@ -5408,7 +5408,7 @@ start_of_mobility:
       Vxbgmt_dVds = 1.0 ;
       Vxbgmt_dVgs = 0.0 ;
 
-#include "hsmhveval_qover.h"
+#include "hsmhveval_qover.hpp"
 
       T4 = here->HSMHV_weffcv_nf * Loverd * CVDSOVER ;
       Qovdext =  T4 * QsuLD ;

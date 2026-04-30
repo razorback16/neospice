@@ -129,8 +129,8 @@ using namespace Shim;
 /*-----------------------------------*
 * HiSIM macros
 *-----------------*/
-#include "hisim2.h"
-#include "hsm2evalenv.h"
+#include "hisim2.hpp"
+#include "hsm2evalenv.hpp"
 
 /*-----------------------------------*
 * HiSIM constants

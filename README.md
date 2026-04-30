@@ -18,11 +18,12 @@ A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a c
 - C++20 compiler (GCC 12+ or Clang 15+)
 - CMake 3.20+
 - OpenBLAS
+- SLEEF (vectorized math library)
 
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install cmake g++ libopenblas-dev
+sudo apt install cmake g++ libopenblas-dev libsleef-dev
 ```
 
 ### Build

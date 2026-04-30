@@ -40,7 +40,7 @@ JFET2setup(Shim::Matrix *matrix, JFET2Model *inModel, Shim::Ckt *ckt, int *state
         }
 #define  PARAM(code,id,flag,ref,default,descrip) \
               if(!model->flag) {model->ref = default;}
-#include "jfet2parm.h"
+#include "jfet2parm.hpp"
 
         /* loop through all the instances of the model */
         for (here = model->JFET2instances; here != NULL ;

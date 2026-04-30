@@ -28,7 +28,7 @@ namespace neospice::hisim2 {
 
 using namespace Shim;
 
-#include "hsm2evalenv.h"
+#include "hsm2evalenv.hpp"
 #define BINNING(param) pParam->HSM2_##param = model->HSM2_##param \
   + model->HSM2_l##param / Lbin + model->HSM2_w##param / Wbin \
   + model->HSM2_p##param / LWbin ;

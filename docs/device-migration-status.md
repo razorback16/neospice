@@ -512,6 +512,12 @@ same tool but the source structure differs from hand-written ngspice devices.
 | **Total remaining** | **30** |
 | **Total ngspice devices** | **~62** |
 
+## Known Technical Debt
+
+Several auto-translated device `_setup.cpp` files contain `TODO(translator): TSTALLOC macro kept as-is; needs manual rewrite` comments. These mark matrix allocation code that was mechanically translated from ngspice's C macros. The code works correctly — the TODOs indicate it could be further cleaned up to use native C++ patterns. Affected devices: MOS1, MOS3, MOS9, JFET2, VBIC, HFET1, HFET2, DIO, BSIM3, BSIM3v32, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV, MES.
+
+---
+
 ## Migration Tooling
 
 | Tool | Location | Purpose |

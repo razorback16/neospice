@@ -70,7 +70,7 @@ namespace neospice::hisimhv {
 
 using namespace Shim;
 
-#include "hsmhvevalenv.h"
+#include "hsmhvevalenv.hpp"
 #define RANGECHECK(param, min, max, pname)                              \
   if ( (param) < (min) || (param) > (max) ) {             \
     printf("warning(HiSIM_HV(%s)): The model/instance parameter %s (= %e) must be in the range [%e , %e].\n", model->HSMHVmodName,\
@@ -484,9 +484,9 @@ int HSMHVtemp(
        *-----------------*/
       if ( here->HSMHVtempNode < 0 || pParam->HSMHV_rth0 == 0.0 ) {
 
-#include "hsmhvtemp_eval.h"
-#include "hsmhvtemp_eval_rdri.h"
-#include "hsmhvtemp_eval_dio.h"
+#include "hsmhvtemp_eval.hpp"
+#include "hsmhvtemp_eval_rdri.hpp"
+#include "hsmhvtemp_eval_dio.hpp"
 
       } /* end of if ( here->HSMHVtempNode < 0 || pParam->HSMHV_rth0 == 0.0 ) */
 

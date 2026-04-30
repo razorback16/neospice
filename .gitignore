@@ -18,3 +18,4 @@ Testing/
 .worktrees/
 .claude/worktrees/
 docs/superpowers/
+uv.lock

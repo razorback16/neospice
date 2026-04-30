@@ -28,7 +28,7 @@ namespace neospice::hisim2 {
 
 using namespace Shim;
 
-#include "hsm2evalenv.h"
+#include "hsm2evalenv.hpp"
 #define  Nsubmin     (1e15 / C_cm2m_p3) 
 #define  Nsubmin_dlt (0.01 / C_cm2m_p3)
 #define  lpext_dlt   (1e-8 / C_m2cm) 

@@ -70,7 +70,7 @@ namespace neospice::hisimhv {
 
 using namespace Shim;
 
-#include "hsmhvevalenv.h"
+#include "hsmhvevalenv.hpp"
 #define C_m2cm    (1.0e2)
 #define C_cm2m_p3 (1.0e-6)
 #define C_m2cm_p1o2 (1.0e1)

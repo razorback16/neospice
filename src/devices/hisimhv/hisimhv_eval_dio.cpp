@@ -84,8 +84,8 @@ using namespace Shim;
 /*-----------------------------------*
 * HiSIM macros
 *-----------------*/
-#include "hisimhv.h"
-#include "hsmhvevalenv.h"
+#include "hisimhv.hpp"
+#include "hsmhvevalenv.hpp"
 
 /*===========================================================*
 * Function HSMHVdio
@@ -165,7 +165,7 @@ int HSMHVdio
   if ( here->HSMHVtempNode > 0 && pParam->HSMHV_rth0 != 0.0 ) {
 
 #define HSMHVEVAL
-#include "hsmhvtemp_eval_dio.h"
+#include "hsmhvtemp_eval_dio.hpp"
 
   } else {
     TTEMP = ckt->CKTtemp;

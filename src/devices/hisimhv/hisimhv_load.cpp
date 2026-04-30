@@ -70,7 +70,7 @@ namespace neospice::hisimhv {
 
 using namespace Shim;
 
-#include "hisimhv.h"
+#include "hisimhv.hpp"
 #define SHOW_EPS_QUANT 1.0e-15
 
 static void ShowPhysVals
@@ -1786,7 +1786,7 @@ line755: /* standard entry if HSMHVevaluate is bypassed */
         }
       }
 
-#include "hsmhvld_info_eval.h"
+#include "hsmhvld_info_eval.hpp"
 
       /* For standard Newton method (SPICE_rhs == 0):                          */
       /*   if currents (and charges) are limited -> extrapolate onto x-values  */

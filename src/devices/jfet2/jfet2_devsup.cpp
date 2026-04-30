@@ -63,7 +63,7 @@ Shim::IfParm JFET2mPTable[] = { /* model parameters */
  IOPR("vbi",    JFET2_MOD_PB,      IF_REAL,"Gate junction potential"),
 #define  PARAM(code,id,flag,ref,default,descrip) IOP(code,id,IF_REAL,descrip),
 #define PARAMA(code,id,flag,ref,default,descrip) IOPA(code,id,IF_REAL,descrip),
-#include "jfet2parm.h"
+#include "jfet2parm.hpp"
 
  OPU("gd", JFET2_MOD_DRAINCONDUCT, IF_REAL,"Drain conductance"),
  OPU("gs", JFET2_MOD_SOURCECONDUCT,IF_REAL,"Source conductance"),

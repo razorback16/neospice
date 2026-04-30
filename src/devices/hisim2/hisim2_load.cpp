@@ -28,7 +28,7 @@ namespace neospice::hisim2 {
 
 using namespace Shim;
 
-#include "hisim2.h"
+#include "hisim2.hpp"
 #define SHOW_EPS_QUANT 1.0e-15
 #define BYP_TOL_FACTOR model->HSM2_byptol  
 

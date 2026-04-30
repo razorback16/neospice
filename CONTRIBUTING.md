@@ -7,12 +7,13 @@
 - C++20 compiler (GCC 12+ or Clang 15+)
 - CMake 3.20+
 - OpenBLAS
+- SLEEF (vectorized math library)
 - libngspice (shared library, required for test suite)
 
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install cmake g++ libopenblas-dev libngspice0-dev
+sudo apt install cmake g++ libopenblas-dev libsleef-dev libngspice0-dev
 ```
 
 ### Build

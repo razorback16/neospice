@@ -32,7 +32,7 @@ JFET2mParam(int param, Shim::IfValue *value, JFET2Model *inModels)
             break;
 #define PARAM(code,id,flag,ref,default,descrip) case id: \
                       model->flag = TRUE; model->ref = value->rValue; break;
-#include "jfet2parm.h"
+#include "jfet2parm.hpp"
         case JFET2_MOD_NJF:
             if(value->iValue) {
                 model->JFET2type = NJF;

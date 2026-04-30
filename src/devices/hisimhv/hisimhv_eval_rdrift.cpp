@@ -84,8 +84,8 @@ using namespace Shim;
 /*-----------------------------------*
 * HiSIM macros
 *-----------------*/
-#include "hisimhv.h"
-#include "hsmhvevalenv.h"
+#include "hisimhv.hpp"
+#include "hsmhvevalenv.hpp"
 
 /* local variables used in macro functions */
 static double TMF0 , TMF1 , TMF2 , TMF3 ;
@@ -298,7 +298,7 @@ int HSMHVrdrift
   if ( here->HSMHVtempNode > 0 && pParam->HSMHV_rth0 != 0.0 ) {
 
 #define HSMHVEVAL
-#include "hsmhvtemp_eval_rdri.h"
+#include "hsmhvtemp_eval_rdri.hpp"
 
   } else {
     if ( here->HSMHV_dtemp_Given ) { TTEMP = TTEMP + here->HSMHV_dtemp ; }
