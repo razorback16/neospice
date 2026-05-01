@@ -1,5 +1,7 @@
 # neospice
 
+[![CI](https://github.com/razorback16/neospice/actions/workflows/ci.yml/badge.svg)](https://github.com/razorback16/neospice/actions/workflows/ci.yml)
+
 A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a clean embeddable API, 1.7--8x faster per-analysis in-process performance, and auto-differentiation in behavioral sources.
 
 ## Features
