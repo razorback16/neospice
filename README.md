@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/razorback16/neospice/actions/workflows/ci.yml/badge.svg)](https://github.com/razorback16/neospice/actions/workflows/ci.yml)
 
-A modern C++20 SPICE circuit simulator. Drop-in replacement for ngspice with a clean embeddable API, 1.7--8x faster per-analysis in-process performance, and auto-differentiation in behavioral sources.
+A SPICE circuit simulator written from scratch in C++20 -- not a fork of ngspice or any Berkeley SPICE derivative. Clean architecture, native Python bindings, and MIT licensed with no LGPL baggage.
+
+Reads standard SPICE netlists and produces ngspice-compatible results, but runs 1.2--8x faster per-analysis in-process with a custom sparse solver, auto-differentiation in behavioral sources, and a modern embeddable API designed for integration into EDA tools, optimization loops, and notebooks.
 
 ## Features
 
@@ -237,7 +239,6 @@ Benchmarked in-process against ngspice-42 on Intel Core Ultra 9 285K, GCC 14, `-
 | **DC sweep** V1, 1001 pts | 816 us | 197 us | 4.1x |
 | **E2E** THS4131 (.op + .ac) | 726 us | 524 us | 1.4x |
 | **E2E** OPA1632 (.op + .ac) | 6.42 ms | 5.90 ms | 1.1x |
-| **Total** | **28.3 ms** | **23.6 ms** | **1.20x** |
 
 See [docs/performance-comparison-with-ngspice.md](docs/performance-comparison-with-ngspice.md) for the full methodology and results.
 
