@@ -8,12 +8,12 @@ Reads standard SPICE netlists and produces ngspice-compatible results, but runs 
 
 ## Features
 
-- **8 analysis types** -- DC OP, DC sweep, transient (adaptive Trap/Gear-2/BE), AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero, Fourier/THD, parameter sweep (`.step`), and `.measure` post-processing
-- **29 device models** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, MESFETs, HFETs, and MOSFETs through BSIM4v7
+- **10 analysis types** -- DC OP, DC sweep, transient (adaptive Trap/Gear-2/BE), AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero, Fourier/THD, parameter sweep (`.step`), and `.measure` post-processing
+- **32 device models** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, MESFETs, HFETs, and MOSFETs through BSIM4v7
 - **Embeddable C++ API** -- `Simulator`/`Circuit`/`Result` types with handle-based and string-based accessors, typed device methods, and circuit introspection
 - **High performance** -- NeoSolver (dense + sparse column-LU with AMD ordering), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
-- **997 tests** validated against ngspice with tolerances as tight as 1e-6
+- **972 tests** validated against ngspice with tolerances as tight as 1e-6
 
 ## Quick Start (C++)
 
@@ -129,9 +129,9 @@ Circuit ckt;
 auto in  = ckt.node("in");
 auto out = ckt.node("out");
 
-ckt.V("V1", in, GROUND_INTERNAL, 0.0, 1.0);  // DC=0, AC=1
+ckt.V("V1", in, GND, 0.0, 1.0);  // DC=0, AC=1
 ckt.R("R1", in, out, 1e3);
-ckt.C("C1", out, GROUND_INTERNAL, 100e-12);
+ckt.C("C1", out, GND, 100e-12);
 
 Simulator sim;
 auto ac = sim.run_ac(ckt, ACMode::DEC, 10, 1.0, 100e6);
@@ -261,14 +261,14 @@ include/
 src/
   api/          C++ API (Simulator, typed device methods, measurement utils)
   core/         Analysis engines and linear solvers
-  devices/      29 device models, each self-contained with factory registration
+  devices/      32 device models, each self-contained with factory registration
   parser/       Netlist parser and expression evaluator
   output/       Raw file writer
 python/
   bindings.cpp  nanobind C++ → Python bridge
   neospice/     Python package (convenience API, SPICE notation parser)
 tests/
-  unit/         Unit tests for all components (990+)
+  unit/         Unit tests for all components (970+)
   devices/      Per-device validation against ngspice
   circuits/     Integration test netlists
   python/       Python binding tests
@@ -302,9 +302,9 @@ A TLV3201-based Schmitt trigger oscillator simulated with the Python API. [Compa
 |---|---|---|
 | — | Handle-based API redesign (NodeId/DevId, typed methods, dense results, measurements) | **Done** |
 | 1 | Python bindings (nanobind, PyPI wheels, typed construction) | **Done** |
-| 2 | WebAssembly build for browser simulation | Planned |
-| 3 | Adjoint sensitivity / gradient computation | Planned |
-| 4 | Parallel parameter sweeps / Monte Carlo | Planned |
+| 2 | Parallel parameter sweeps / Monte Carlo | Planned |
+| 3 | WebAssembly build for browser simulation | Planned |
+| 4 | Adjoint sensitivity / gradient computation | Planned |
 | 5 | Incremental re-simulation | Planned |
 | 6 | GPU-accelerated simulation (CUDA) | Planned |
 | 7 | Extended devices (BSIM-CMG, Verilog-A) | Ongoing |

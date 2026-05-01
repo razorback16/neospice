@@ -211,7 +211,7 @@ On a CMOS inverter transient (20ns, BSIM4v7 NMOS + PMOS, 10fF load):
 - neospice is ~1.2x faster for the simulation itself
 
 The speed advantage comes primarily from C++ vs C overhead reduction and
-the KLU sparse solver integration.
+the NeoSolver custom sparse LU implementation.
 
 ---
 

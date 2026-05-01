@@ -469,7 +469,7 @@ NMOS DC OP, PMOS DC OP, NMOS AC response.
 | BSIM3SOI_DD | `bsim3soi_dd/` | Superseded by BSIMSOI |
 | BSIM3SOI_PD | `bsim3soi_pd/` | Superseded by BSIMSOI |
 | SOI3 | `soi3/` | Marked OBSOLETE in ngspice |
-| MES | `mes/` | GaAs MESFET, very niche |
+| ~~MES~~ | ~~`mes/`~~ | ~~GaAs MESFET~~ — **Migrated** (see Priority 2) |
 | MESA | `mesa/` | GaAs MESFET, multi-level |
 | CPL | `cpl/` | Coupled multiconductor lines |
 | TXL | `txl/` | Simple lossy T-line |

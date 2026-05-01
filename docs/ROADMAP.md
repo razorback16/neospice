@@ -2,8 +2,8 @@
 
 ## Current State
 
-neospice is a modern C++ SPICE simulator with 29 device models and 8 analysis types,
-validated against ngspice across 990+ C++ tests with tolerances as tight as 1e-6,
+neospice is a modern C++ SPICE simulator with 32 device models and 10 analysis types,
+validated against ngspice across 970+ C++ tests with tolerances as tight as 1e-6,
 plus Python binding tests.
 
 ### Analyses
@@ -253,11 +253,11 @@ Circuit ckt;
 auto in  = ckt.node("in");
 auto out = ckt.node("out");
 
-ckt.V("V1", in, GROUND_INTERNAL, 0.0, 1.0);  // DC=0, AC=1
+auto v1 = ckt.V("V1", in, GND, 0.0, 1.0);    // DC=0, AC=1
 ckt.R("R1", in, out, 1e3);
-ckt.C("C1", out, GROUND_INTERNAL, 100e-12);
+ckt.C("C1", out, GND, 100e-12);
 ckt.E("E1", out2, gnd, in, gnd, 2.0);         // VCVS gain=2
-ckt.F("F1", np, nn, "V1", 0.5);               // CCCS
+ckt.F("F1", np, nn, v1, 0.5);                 // CCCS
 ```
 
 ### Live Parameter Mutation

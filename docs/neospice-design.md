@@ -12,14 +12,14 @@ NEOSPICE is a modern SPICE circuit simulator written in C++20. It uses ngspice a
 1. **Correctness first** — every feature validated against ngspice before moving to the next milestone
 2. **Modern C++ codebase** — clean Device interface, sparse matrix abstraction, auto-migration tooling for ngspice models
 3. **GPU-acceleratable** — architecture designed for CUDA device evaluation and sparse solve (deferred until profiling warrants)
-4. **Fast CPU fallback** — KLU + OpenBLAS + OpenMP + SLEEF when no GPU is available
+4. **Fast CPU fallback** — NeoSolver + OpenBLAS + OpenMP + SLEEF when no GPU is available
 5. **Integration with circuit-cpp** — clean C++ API consumable by `circuit-cpp`'s `SpiceExporter`
 
 ## Milestone History
 
 ### Milestone 1: CPU-Only Correctness ✅
 
-CPU-only simulator passing all ngspice comparison tests for Phase 1 devices (R, C, L, V, I, Diode). Parser, MNA matrix assembly, KLU solver, Newton-Raphson with convergence aids, fixed-step transient, DC operating point, AC small-signal analysis.
+CPU-only simulator passing all ngspice comparison tests for Phase 1 devices (R, C, L, V, I, Diode). Parser, MNA matrix assembly, NeoSolver (custom sparse LU), Newton-Raphson with convergence aids, fixed-step transient, DC operating point, AC small-signal analysis.
 
 ### Milestone 1.5: Adaptive Transient ✅
 
@@ -91,7 +91,7 @@ Noise analysis (`.noise`) using the adjoint method with per-device breakdown, co
 
 ### API Refresh ✅
 
-Added typed result accessors (`voltage()`, `current()`, `diff()`, `signal_names()`) to all result types. Embedded `SimStatus` (convergence method, iterations, elapsed time, warnings) in all 8 result types. Added `CircuitBuilder` fluent API for programmatic circuit construction. Added circuit introspection (`device_info()`, `devices_at_node()`, `node_names()`, `device_names()`). Added generic `set_param()` for runtime parameter modification. Added analysis chaining via `TransientOptions` and `ACOptions`.
+Added typed result accessors (`voltage()`, `current()`, `diff()`, `signal_names()`) to all result types. Embedded `SimStatus` (convergence method, iterations, elapsed time, warnings) in all result types. Added typed device methods on `Circuit` (`R()`, `C()`, `V()`, `E()`, etc.) for programmatic circuit construction. Added circuit introspection (`device_info()`, `devices_at_node()`, `node_names()`, `device_names()`). Added generic `set_param()` for runtime parameter modification. Added analysis chaining via `TransientOptions` and `ACOptions`.
 
 ### Device Factory Pattern ✅
 
@@ -156,6 +156,7 @@ Modularized all 17 semiconductor device families via `DeviceRegistry` factory pa
 | Q | VBIC (Vertical Bipolar Inter-Company) | ✓ | ✓ | ✓ | ✓ |
 | J | JFET (Shichman-Hodges) | ✓ | ✓ | ✓ | ✓ |
 | J | JFET2 (Level 2) | ✓ | ✓ | ✓ | ✓ |
+| Z | MES (GaAs MESFET) | ✓ | ✓ | ✓ | ✓ |
 | Z | HFET1 | ✓ | ✓ | ✓ | ✓ |
 | Z | HFET2 | ✓ | ✓ | ✓ | ✓ |
 | M | MOS1 (Level 1) | ✓ | ✓ | ✓ | ✓ |
@@ -168,7 +169,7 @@ Modularized all 17 semiconductor device families via `DeviceRegistry` factory pa
 | M | HiSIM2 | ✓ | ✓ | ✓ | ✓ |
 | M | HiSIM_HV (High-Voltage) | ✓ | ✓ | ✓ | ✓ |
 
-**Total: 28 device types** (5 passive/source + 7 controlled/switch + 2 transmission line + 14 semiconductor)
+**Total: 32 device types** (6 passive/source + 7 controlled/switch + 2 transmission line + 17 semiconductor)
 
 ### Parser Implemented
 
@@ -252,7 +253,7 @@ The Newton-Raphson iteration has three phases:
       Device Evaluation     Matrix Assembly      Sparse Solve
               |                   |                   |
      +--------+--------+         |          +--------+--------+
-     | CPU: OpenMP +    |  Always CPU:      | CPU: KLU +      |
+     | CPU: OpenMP +    |  Always CPU:      | CPU: NeoSolver +|
      |      SLEEF SIMD  |  scatter into     |      OpenBLAS   |
      +--------+---------+  NumericMatrix    +--------+---------+
               |                  |                   |
@@ -282,10 +283,10 @@ The matrix system separates **structure** (sparsity pattern) from **values** (nu
 - Accumulates (row, col) entries from devices during symbolic analysis
 - Deduplicates and sorts into final SparsityPattern
 
-**KLU solver view:**
-- Wraps pattern's CSC arrays (`col_ptr`, `row_idx`) for KLU
+**NeoSolver view:**
+- Wraps pattern's CSC arrays (`col_ptr`, `row_idx`) for sparse LU
 - Values array shared by pointer — no copy
-- Symbolic factorization once, numeric refactorization per iteration
+- Symbolic factorization (AMD ordering) once, numeric refactorization per iteration
 
 ### State Management (Transient)
 
@@ -432,7 +433,7 @@ neospice/
 ├── src/
 │   ├── api/
 │   │   ├── neospice.hpp/cpp           # Public C++ API (Simulator class)
-│   │   └── circuit_builder.hpp/cpp    # Fluent CircuitBuilder API
+│   │   └── measure.hpp                # Public measurement utilities
 │   ├── core/
 │   │   ├── ac.hpp/cpp                 # AC small-signal frequency sweep
 │   │   ├── circuit.hpp/cpp            # Circuit representation + finalization
@@ -440,7 +441,7 @@ neospice/
 │   │   ├── dc.hpp/cpp                 # DC operating point + DC sweep
 │   │   ├── fourier.hpp/cpp            # .four Fourier analysis
 │   │   ├── freq_utils.hpp             # Frequency sweep generation (shared AC/noise)
-│   │   ├── klu_solver.hpp/cpp         # KLU sparse LU wrapper
+│   │   ├── neo_solver.hpp/cpp         # NeoSolver: custom sparse/dense LU with AMD ordering
 │   │   ├── matrix.hpp/cpp             # SparsityPattern + NumericMatrix
 │   │   ├── measure.hpp/cpp            # .meas measurement execution
 │   │   ├── newton.hpp/cpp             # Newton-Raphson iteration loop
@@ -547,7 +548,7 @@ neospice/
 │   ├── unit/                          # Unit + integration tests
 │   ├── devices/                       # Device comparison tests
 │   └── bench/                         # Benchmarks
-└── third_party/                       # KLU, SuiteSparse, OpenBLAS, SLEEF
+└── third_party/                       # BSIM4v7 reference, KiCad SPICE models
 ```
 
 ## Public API
@@ -747,34 +748,15 @@ class Circuit {
     bool set_param(const std::string& device_name, double value);
 };
 
-// --- CircuitBuilder (fluent API) ---
-class CircuitBuilder {
-public:
-    CircuitBuilder& title(const std::string& t);
-    CircuitBuilder& resistor(const std::string& name, const std::string& n1,
-                             const std::string& n2, double value);
-    CircuitBuilder& capacitor(const std::string& name, const std::string& n1,
-                              const std::string& n2, double value);
-    CircuitBuilder& inductor(const std::string& name, const std::string& n1,
-                             const std::string& n2, double value);
-    CircuitBuilder& vsource(const std::string& name, const std::string& np,
-                            const std::string& nn, const SourceSpec& spec);
-    CircuitBuilder& vsource_pulse(const std::string& name, const std::string& np,
-                                  const std::string& nn, const PulseSpec& spec);
-    CircuitBuilder& vsource_sin(const std::string& name, const std::string& np,
-                                const std::string& nn, const SinSpec& spec);
-    CircuitBuilder& isource(const std::string& name, const std::string& np,
-                            const std::string& nn, const SourceSpec& spec);
-    CircuitBuilder& diode(const std::string& name, const std::string& anode,
-                          const std::string& cathode, const std::string& model);
-    CircuitBuilder& subcircuit(const std::string& name, const std::string& model,
-                               const std::vector<std::string>& ports);
-    CircuitBuilder& model(const std::string& name, const std::string& type,
-                          const std::map<std::string, double>& params);
-    CircuitBuilder& include(const std::string& filepath);
-    CircuitBuilder& raw_line(const std::string& line);
-    Circuit build();
-};
+// --- Circuit typed device methods (programmatic construction) ---
+// Each method returns a DevId handle for the created device.
+//   ckt.V("V1", in, GND, 0.0, 1.0);   // DC=0, AC=1
+//   ckt.R("R1", in, out, 1e3);
+//   ckt.C("C1", out, GND, 100e-12);
+//   ckt.E("E1", out, gnd, in, gnd, 2.0);  // VCVS
+//   auto v1 = ckt.V("V1", in, GND, 1.0);
+//   ckt.F("F1", np, nn, v1, 0.5);         // CCCS
+// Also: G(), H(), L(), K(), I(), D(), Q(), M(), add_dev()
 
 } // namespace neospice
 ```
@@ -892,8 +874,7 @@ CMake 3.20+ with C++20. CUDA support is optional and not yet enabled.
 
 | Dependency | Purpose | License | Required? |
 |------------|---------|---------|-----------|
-| KLU (SuiteSparse) | Sparse LU solver | LGPL-2.1+ | Yes |
-| OpenBLAS | Dense BLAS for KLU internals | BSD-3 | Yes |
+| OpenBLAS | Dense BLAS for NeoSolver | BSD-3 | Yes |
 | OpenMP | Parallel device evaluation | Compiler-provided | No (optional) |
 | SLEEF | SIMD transcendentals | Boost | Yes |
 | Google Test | Testing framework | BSD-3 | Tests only |
@@ -916,7 +897,7 @@ Deferred until profiling on large circuits shows device evaluation is the domina
 - Device evaluation is embarrassingly parallel (one kernel thread per instance)
 - State arrays are contiguous (easy to transfer host↔device)
 
-**GPU Phase 1:** Custom CUDA kernels for batched BSIM4v7 evaluation, KLU stays on CPU.
+**GPU Phase 1:** Custom CUDA kernels for batched BSIM4v7 evaluation, NeoSolver stays on CPU.
 **GPU Phase 2:** cusolverRF for sparse refactorization if solver is bottleneck.
 **GPU Phase 3:** cuDSS for full GPU-resident factorization on large circuits.
 
@@ -930,7 +911,7 @@ Each phase gated by profiling data.
 | **Convergence differences** — different stepping/limiting than ngspice may produce different paths | Tests fail due to convergence, not math | Match ngspice's convergence aids. Accept wider tolerances on sensitive circuits. |
 | **GPU break-even uncertainty** — circuit matrices may be too small for GPU advantage | GPU investment without speedup | Defer GPU until profiling on real circuits. CPU path is the product. |
 | **PDK netlist compatibility** — real PDKs use complex `.lib`/`.param`/`.subckt` patterns | Can't run production netlists | Subcircuit flattening, expression evaluator, and `.lib` section selection all implemented. |
-| **SuiteSparse LGPL license** | Static linking restrictions | Dynamic linking for KLU. Evaluate BSD alternatives if needed. |
+| **Linear solver accuracy** | Sparse LU on ill-conditioned matrices | Custom NeoSolver with AMD ordering and pivoting. No external LGPL dependencies. |
 
 ## Resolved Design Decisions
 

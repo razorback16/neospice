@@ -1,6 +1,0 @@
-RC with fast pulse edges
-V1 in 0 PULSE(0 5 0 10n 10n 5u 10u)
-R1 in out 1k
-C1 out 0 100n
-.tran 100n 30u
-.end

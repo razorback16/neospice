@@ -240,7 +240,7 @@ perception:
 | LTspice | 2-5× faster than SPICE3 | Highly optimized, custom solver |
 | HSPICE | 1-3× | "Gold standard" for accuracy, not speed |
 | Spectre | 2-4× | Optimized for large analog circuits |
-| **neospice** | 1.2× on CMOS inverter | C++ overhead reduction + KLU. Expected to improve with larger circuits |
+| **neospice** | 1.2--8× depending on circuit | C++ overhead reduction + NeoSolver (custom sparse LU). Faster on small-medium circuits, competitive on large |
 
 ---
 

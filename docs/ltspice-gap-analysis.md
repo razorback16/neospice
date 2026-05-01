@@ -102,10 +102,10 @@ Features where neospice is ahead or differentiated:
 1. **Auto-differentiation in B-sources** — exact symbolic Jacobians vs. numerical perturbation
 2. **Pole-Zero analysis** (`.pz`) — LTSpice doesn't support this
 3. **Sensitivity analysis** (`.sens`) — LTSpice doesn't support this
-4. **Clean C++ API** — `Simulator`, `Circuit`, `CircuitBuilder`, typed result accessors
+4. **Clean C++ API** — `Simulator`, `Circuit` with typed device methods, handle-based result accessors
 5. **Circuit introspection** — `node_names()`, `device_names()`, `device_info()`, `set_param()`
 6. **1.5–6x faster** than ngspice (direct in-process, no subprocess overhead)
-7. **3-tier linear solver** — Dense / SmallSolver / KLU with adaptive dispatch
+7. **NeoSolver** — custom dense + sparse column-LU with AMD ordering
 8. **Advanced convergence** — 4-stage fallback (Newton → GMIN → source stepping → pseudo-transient)
 9. **Trap ringing detection** — automatic Gear-2 fallback
 10. **3 LTE reference modes** — per-node, max-all, max-per-signal (Xyce-inspired)

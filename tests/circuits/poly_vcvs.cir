@@ -1,7 +1,0 @@
-* POLY VCVS squarer: V(out) = V(in)^2
-* POLY(1) coefficients: 0 0 1  => c0=0, c1=0, c2=1 => V(out) = V(in)^2
-Vin in 0 DC 3.0
-E1 out 0 POLY(1) in 0 0 0 1
-R1 out 0 1k
-.op
-.end

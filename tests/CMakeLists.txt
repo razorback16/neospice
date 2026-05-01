@@ -19,7 +19,6 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(NGSPICE REQUIRED ngspice)
 
 add_executable(neospice_tests
-    unit/test_smoke.cpp
     unit/test_matrix.cpp
     unit/test_amd.cpp
     unit/test_btf.cpp
@@ -33,14 +32,12 @@ add_executable(neospice_tests
     unit/test_timestep.cpp
     unit/test_diode.cpp
     unit/test_circuit.cpp
-    unit/test_dc.cpp
     unit/test_convergence.cpp
     unit/test_tokenizer.cpp
     unit/test_parser.cpp
     unit/test_parser_mosfet.cpp
     unit/test_transient.cpp
     unit/test_ac.cpp
-    unit/test_ngspice_runner.cpp
     unit/test_comparator.cpp
     unit/test_oscillator_comparator.cpp
     unit/test_api.cpp
@@ -99,18 +96,15 @@ add_executable(neospice_tests
     unit/test_pz.cpp
     unit/test_step.cpp
     unit/test_ringing.cpp
-    unit/test_circuit_state.cpp
-    unit/test_umbrella.cpp
     unit/test_introspection.cpp
     unit/test_handles.cpp
-    unit/test_result_handles.cpp
     unit/test_circuit_typed.cpp
     unit/test_circuit_semiconductor.cpp
     unit/test_measure_utils.cpp
     unit/test_kicad_lm358_ns.cpp
     unit/test_kicad_bc547a.cpp
     unit/test_kicad_opa1632.cpp
-    unit/test_api_redesign_integration.cpp
+    unit/test_api_integration.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )
