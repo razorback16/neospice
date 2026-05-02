@@ -7,6 +7,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # OpenBLAS via pkg-config
 find_package(PkgConfig REQUIRED)
+if(APPLE)
+    # Homebrew installs openblas as keg-only; add its pkg-config path
+    execute_process(
+        COMMAND brew --prefix openblas
+        OUTPUT_VARIABLE _OPENBLAS_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(_OPENBLAS_PREFIX)
+        set(ENV{PKG_CONFIG_PATH} "${_OPENBLAS_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+    endif()
+endif()
 pkg_check_modules(OPENBLAS REQUIRED IMPORTED_TARGET openblas)
 
 # SLEEF
