@@ -25,7 +25,6 @@
 #include <cstdio>
 #include <cstring>
 
-using std::isnan;
 #include "devices/ucb_compat.hpp"
 
 namespace neospice::bsimsoi {

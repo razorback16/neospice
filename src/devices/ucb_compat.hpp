@@ -23,6 +23,12 @@
 
 // --- Math wrappers --------------------------------------------------------
 
+#ifndef isfinite
+#define isfinite(x) std::isfinite(x)
+#endif
+#ifndef isnan
+#define isnan(x) std::isnan(x)
+#endif
 #ifndef FABS
 #define FABS(x) std::fabs(x)
 #endif
