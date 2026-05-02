@@ -115,6 +115,7 @@ add_executable(neospice_tests
     framework/comparator.cpp
 )
 
+target_link_directories(neospice_tests PRIVATE ${NGSPICE_LIBRARY_DIRS})
 target_link_libraries(neospice_tests PRIVATE
     gtest_main
     neospice_lib
@@ -157,6 +158,7 @@ add_executable(bench_ths4131
     bench/bench_ths4131.cpp
 )
 
+target_link_directories(bench_ths4131 PRIVATE ${NGSPICE_LIBRARY_DIRS})
 target_link_libraries(bench_ths4131 PRIVATE neospice_lib ${NGSPICE_LIBRARIES})
 target_include_directories(bench_ths4131 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} ${NGSPICE_INCLUDE_DIRS})
@@ -167,6 +169,7 @@ target_compile_definitions(bench_ths4131 PRIVATE
 add_executable(bench_comprehensive
     bench/bench_comprehensive.cpp
 )
+target_link_directories(bench_comprehensive PRIVATE ${NGSPICE_LIBRARY_DIRS})
 target_link_libraries(bench_comprehensive PRIVATE neospice_lib ${NGSPICE_LIBRARIES})
 target_include_directories(bench_comprehensive PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} ${NGSPICE_INCLUDE_DIRS})

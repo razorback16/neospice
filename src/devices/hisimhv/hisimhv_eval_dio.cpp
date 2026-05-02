@@ -594,7 +594,7 @@ int HSMHVdio
           + *(ckt->CKTstate0 + here->HSMHVqbd)
           + here->HSMHV_capbs
           + here->HSMHV_capbd;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     flg_err = 1 ;
     fprintf(stderr ,
             "*** warning(HiSIM_HV(%s)): FP-exception (junction diode)\n",model->HSMHVmodName) ;

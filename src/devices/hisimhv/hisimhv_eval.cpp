@@ -1009,7 +1009,7 @@ int HSMHVevaluate
   }
 
   T1 = Vdse + Vgse + Vbse + Vds + Vgs + Vbs + vbd_jct + vbs_jct ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     fprintf (stderr ,
        "*** warning(HiSIM_HV(%s)): Unacceptable Bias(es).\n",model->HSMHVmodName ) ;
     fprintf (stderr , "----- bias information (HiSIM_HV)\n" ) ;
@@ -6046,7 +6046,7 @@ start_of_mobility:
    *-----------------*/
   T1 = here->HSMHV_ids + here->HSMHV_dIds_dVdsi + here->HSMHV_dIds_dVgsi + here->HSMHV_dIds_dVbsi ;
   T1 = T1 + here->HSMHV_qd - (here->HSMHV_dQdi_dVdsi + here->HSMHV_dQdi_dVgsi + here->HSMHV_dQdi_dVbsi) ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     flg_err = 1 ;
     fprintf (stderr ,
              "*** warning(HiSIM_HV(%s)): FP-exception (PART-1)\n", model->HSMHVmodName ) ;
@@ -6064,7 +6064,7 @@ start_of_mobility:
   }
   
   T1 = here->HSMHV_isub + here->HSMHV_dIsub_dVbsi + here->HSMHV_dIsub_dVdsi + here->HSMHV_dIsub_dVgsi ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     flg_err = 1 ;
     fprintf (stderr ,
              "*** warning(HiSIM_HV(%s)): FP-exception (PART-2)\n", model->HSMHVmodName) ;
@@ -6074,7 +6074,7 @@ start_of_mobility:
   }
   
   T1 = here->HSMHV_dQg_dVdsi + here->HSMHV_dQg_dVgsi + here->HSMHV_dQg_dVbsi ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     flg_err = 1 ;
     fprintf(stderr ,
             "*** warning(HiSIM_HV(%s)): FP-exception (PART-3)\n", model->HSMHVmodName) ;

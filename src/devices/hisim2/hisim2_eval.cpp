@@ -979,7 +979,7 @@ int HSM2evaluate
   }
   
   T1 = vbs + vds + vgs + vbd_jct + vbs_jct ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     fprintf (stderr ,
        "*** warning(HiSIM): Unacceptable Bias(es).\n" ) ;
     fprintf (stderr , "----- bias information (HiSIM)\n" ) ;
@@ -7499,7 +7499,7 @@ start_of_mobility:
    *-----------------*/ 
   T1 = here->HSM2_ids + here->HSM2_gmbs + here->HSM2_gds + here->HSM2_gm ;
   T1 = T1 + here->HSM2_qd + here->HSM2_cdsb ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     flg_err = 1 ;
     fprintf (stderr ,
              "*** warning(HiSIM): FP-exception (PART-1)\n" ) ;
@@ -7515,7 +7515,7 @@ start_of_mobility:
   }
   
   T1 = here->HSM2_isub + here->HSM2_gbbs + here->HSM2_gbds + here->HSM2_gbgs ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     flg_err = 1 ;
     fprintf (stderr ,
              "*** warning(HiSIM): FP-exception (PART-2)\n") ;
@@ -7525,7 +7525,7 @@ start_of_mobility:
   }
   
   T1 = here->HSM2_cgbo + Cgdo + Cgso + Cggo ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     flg_err = 1 ;
     fprintf(stderr ,
             "*** warning(HiSIM): FP-exception (PART-3)\n") ;
@@ -7537,7 +7537,7 @@ start_of_mobility:
   T1 = here->HSM2_ibs + here->HSM2_ibd + here->HSM2_gbs + here->HSM2_gbd ;
   T1 = T1 + *(ckt->CKTstate0 + here->HSM2qbs) + *(ckt->CKTstate0 + here->HSM2qbd) 
           + here->HSM2_capbs + here->HSM2_capbd ;
-  if ( ! finite (T1) ) {
+  if ( ! isfinite (T1) ) {
     flg_err = 1 ;
     fprintf(stderr ,
             "*** warning(HiSIM): FP-exception (PART-4)\n") ;

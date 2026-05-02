@@ -3,6 +3,7 @@ add_executable(test_hfet1_compare
     ${CMAKE_SOURCE_DIR}/tests/framework/ngspice_runner.cpp
     ${CMAKE_SOURCE_DIR}/tests/framework/comparator.cpp
 )
+target_link_directories(test_hfet1_compare PRIVATE ${NGSPICE_LIBRARY_DIRS})
 target_link_libraries(test_hfet1_compare PRIVATE gtest_main neospice_lib ${NGSPICE_LIBRARIES})
 target_include_directories(test_hfet1_compare PRIVATE
     ${CMAKE_SOURCE_DIR}/tests
