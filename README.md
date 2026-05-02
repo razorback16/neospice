@@ -276,6 +276,16 @@ docs/           Architecture, performance, and design documentation
 tools/          Device migration tooling (ngspice model auto-porter)
 ```
 
+## Examples
+
+### Comparator Relaxation Oscillator
+
+A TLV3201-based Schmitt trigger oscillator simulated with the Python API. [Comparator relaxation oscillator](examples/rc_relaxation_oscillator/rc_relaxation_oscillator.ipynb).
+
+![Circuit Schematic](examples/rc_relaxation_oscillator/relaxation_oscillator_schematic.svg)
+
+![Simulation Waveforms](examples/rc_relaxation_oscillator/relaxation_oscillator_waveforms.png)
+
 ## Documentation
 
 - [Performance comparison with ngspice](docs/performance-comparison-with-ngspice.md)
