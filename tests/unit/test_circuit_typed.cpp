@@ -173,3 +173,71 @@ TEST(CircuitTyped, ISourceWithAC) {
     auto dc = solve_dc(ckt);
     EXPECT_NEAR(dc.voltage(n1), 1.0, 1e-6);
 }
+
+TEST(CircuitTyped, BehavioralVoltageDoubler) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    auto out = ckt.node("out");
+    ckt.V("V1", in, GND, 3.0);
+    ckt.R("R1", in, GND, 1e3);
+    ckt.B("B1", out, GND, "V={2*V(in)}");
+    ckt.R("R2", out, GND, 1e3);
+    ckt.finalize();
+    auto dc = solve_dc(ckt);
+    EXPECT_TRUE(dc.status.converged);
+    EXPECT_NEAR(dc.voltage(out), 6.0, 1e-4);
+}
+
+TEST(CircuitTyped, BehavioralCurrentMode) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    auto out = ckt.node("out");
+    ckt.V("V1", in, GND, 2.0);
+    ckt.R("R1", in, GND, 1e3);
+    ckt.B("B1", out, GND, "I={V(in)*1e-3}");
+    ckt.R("R2", out, GND, 1e3);
+    ckt.finalize();
+    auto dc = solve_dc(ckt);
+    EXPECT_TRUE(dc.status.converged);
+    EXPECT_NEAR(dc.voltage(out), -2.0, 1e-4);
+}
+
+TEST(CircuitTyped, BehavioralWithCurrentRef) {
+    Circuit ckt;
+    auto in = ckt.node("in");
+    auto out = ckt.node("out");
+    ckt.V("V1", in, GND, 5.0);
+    ckt.R("R1", in, GND, 1e3);
+    ckt.B("B1", out, GND, "V={I(V1)*1000}");
+    ckt.R("R2", out, GND, 1e3);
+    ckt.finalize();
+    auto dc = solve_dc(ckt);
+    EXPECT_TRUE(dc.status.converged);
+}
+
+TEST(CircuitTyped, BehavioralCurrentRefNotFound) {
+    Circuit ckt;
+    auto out = ckt.node("out");
+    EXPECT_THROW(ckt.B("B1", out, GND, "V={I(Vbogus)*100}"), std::invalid_argument);
+}
+
+TEST(CircuitTyped, BehavioralDiffVoltage) {
+    Circuit ckt;
+    auto a = ckt.node("a");
+    auto b = ckt.node("b");
+    auto out = ckt.node("out");
+    ckt.V("V1", a, GND, 3.0);
+    ckt.V("V2", b, GND, 1.0);
+    ckt.B("B1", out, GND, "V={V(a,b)}");
+    ckt.R("R1", out, GND, 1e3);
+    ckt.finalize();
+    auto dc = solve_dc(ckt);
+    EXPECT_TRUE(dc.status.converged);
+    EXPECT_NEAR(dc.voltage(out), 2.0, 1e-4);
+}
+
+TEST(CircuitTyped, BehavioralBadFormat) {
+    Circuit ckt;
+    auto n = ckt.node("n");
+    EXPECT_THROW(ckt.B("B1", n, GND, "X={1+2}"), std::invalid_argument);
+}

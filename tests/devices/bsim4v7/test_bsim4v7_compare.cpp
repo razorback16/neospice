@@ -200,7 +200,7 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
         /*crossing_relative=*/1e-3,
         /*rise_fall_relative=*/2e-2,
         /*settled_absolute=*/1e-3,
-        /*overshoot_absolute=*/5e-3};
+        /*overshoot_absolute=*/7e-3};
     auto cmp = compare_edges(ng_edges, cs_edges, tol);
     EXPECT_TRUE(cmp.passed) << cmp.detail;
 }

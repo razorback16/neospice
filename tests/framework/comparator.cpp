@@ -646,7 +646,6 @@ EdgeCompareResult compare_edges(
     EdgeTolerance tol) {
 
     EdgeCompareResult result{true, "", 0.0, 0};
-    double worst_tol = tol.crossing_relative;
 
     if (expected.size() != actual.size()) {
         result.passed = false;
@@ -657,71 +656,64 @@ EdgeCompareResult compare_edges(
         return result;
     }
 
+    double worst_margin = 0.0;  // err / tol ratio — >1 means violation
+
     for (size_t i = 0; i < expected.size(); ++i) {
         const auto& e = expected[i];
         const auto& a = actual[i];
         std::string prefix = "edge[" + std::to_string(i) + "]";
 
+        auto check = [&](double err, double limit, const std::string& msg) {
+            result.num_edges_compared++;
+            double margin = (limit > 0) ? err / limit : 0.0;
+            if (margin > worst_margin) {
+                worst_margin = margin;
+                result.worst_error = err;
+                result.detail = msg;
+            }
+            if (err > limit) result.passed = false;
+        };
+
         // 50% crossing time
         if (e.cross_time > 0 && a.cross_time > 0) {
             double ref = std::max(std::abs(e.cross_time), 1e-18);
             double err = std::abs(e.cross_time - a.cross_time) / ref;
-            result.num_edges_compared++;
-            if (err > result.worst_error) {
-                result.worst_error = err;
-                worst_tol = tol.crossing_relative;
-                result.detail = prefix + " crossing: " +
-                    std::to_string(e.cross_time) + " vs " + std::to_string(a.cross_time) +
-                    " (" + std::to_string(err * 100) + "%)";
-            }
-            if (err > tol.crossing_relative) result.passed = false;
+            check(err, tol.crossing_relative,
+                  prefix + " crossing: " +
+                  std::to_string(e.cross_time) + " vs " + std::to_string(a.cross_time) +
+                  " (" + std::to_string(err * 100) + "%)");
         }
 
         // Rise/fall time
         if (e.rise_time != -1.0 && a.rise_time != -1.0) {
             double ref = std::max(std::abs(e.rise_time), 1e-18);
             double err = std::abs(std::abs(e.rise_time) - std::abs(a.rise_time)) / ref;
-            result.num_edges_compared++;
-            if (err > result.worst_error) {
-                result.worst_error = err;
-                worst_tol = tol.rise_fall_relative;
-                result.detail = prefix + (e.rise_time > 0 ? " rise_time: " : " fall_time: ") +
-                    std::to_string(std::abs(e.rise_time)) + " vs " + std::to_string(std::abs(a.rise_time)) +
-                    " (" + std::to_string(err * 100) + "%)";
-            }
-            if (err > tol.rise_fall_relative) result.passed = false;
+            check(err, tol.rise_fall_relative,
+                  prefix + (e.rise_time > 0 ? " rise_time: " : " fall_time: ") +
+                  std::to_string(std::abs(e.rise_time)) + " vs " + std::to_string(std::abs(a.rise_time)) +
+                  " (" + std::to_string(err * 100) + "%)");
         }
 
         // Settled value
         {
             double err = std::abs(e.settled_value - a.settled_value);
-            result.num_edges_compared++;
-            if (err > result.worst_error) {
-                result.worst_error = err;
-                worst_tol = tol.settled_absolute;
-                result.detail = prefix + " settled: " +
-                    std::to_string(e.settled_value) + " vs " + std::to_string(a.settled_value) +
-                    " (delta=" + std::to_string(err) + "V)";
-            }
-            if (err > tol.settled_absolute) result.passed = false;
+            check(err, tol.settled_absolute,
+                  prefix + " settled: " +
+                  std::to_string(e.settled_value) + " vs " + std::to_string(a.settled_value) +
+                  " (delta=" + std::to_string(err) + "V)");
         }
 
         // Overshoot
         {
             double err = std::abs(e.overshoot - a.overshoot);
-            result.num_edges_compared++;
-            if (err > result.worst_error) {
-                result.worst_error = err;
-                worst_tol = tol.overshoot_absolute;
-                result.detail = prefix + " overshoot: " +
-                    std::to_string(e.overshoot) + " vs " + std::to_string(a.overshoot) +
-                    " (delta=" + std::to_string(err) + "V)";
-            }
-            if (err > tol.overshoot_absolute) result.passed = false;
+            check(err, tol.overshoot_absolute,
+                  prefix + " overshoot: " +
+                  std::to_string(e.overshoot) + " vs " + std::to_string(a.overshoot) +
+                  " (delta=" + std::to_string(err) + "V)");
         }
     }
 
-    CMP_MARGIN_EDGE("EDGE", result, worst_tol);
+    CMP_MARGIN_EDGE("EDGE", result, (worst_margin > 0 ? result.worst_error / worst_margin : 0));
     return result;
 }
 
