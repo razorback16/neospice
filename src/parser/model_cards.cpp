@@ -31,6 +31,34 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
         rest += tokens[i];
     }
 
+    // PSpice AKO: (A Kind Of) model inheritance.
+    // Format: .MODEL FASTD AKO: BASED D(IS=2n RS=0.1)
+    // After joining tokens[2..], rest may start with "AKO: BASED ..."
+    {
+        std::string rest_lower = to_lower(rest);
+        // Check for "ako:" prefix (possibly with leading whitespace already trimmed)
+        size_t ako_pos = rest_lower.find("ako:");
+        if (ako_pos == 0) {
+            // Skip past "AKO:" and any whitespace
+            size_t pos = 4; // length of "ako:"
+            while (pos < rest.size() && std::isspace(static_cast<unsigned char>(rest[pos])))
+                ++pos;
+            // Next token is the base model name
+            size_t name_start = pos;
+            while (pos < rest.size() && !std::isspace(static_cast<unsigned char>(rest[pos])))
+                ++pos;
+            if (name_start == pos) {
+                throw ParseError(".model AKO: missing base model name");
+            }
+            card.ako_base = rest.substr(name_start, pos - name_start);
+            // Skip whitespace after base name
+            while (pos < rest.size() && std::isspace(static_cast<unsigned char>(rest[pos])))
+                ++pos;
+            // Remainder is TYPE(params...) or empty
+            rest = rest.substr(pos);
+        }
+    }
+
     // Find the type name. In SPICE, the .model line is either
     //   .model NAME TYPE(k=v ...)       (parenthesized)
     //   .model NAME TYPE k=v k=v ...    (bare — paren-less form)
@@ -63,6 +91,13 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
         type_str.pop_back();
     card.type = to_lower(type_str);
 
+    // Normalize PSpice model type aliases
+    if (card.type == "res") card.type = "r";
+    else if (card.type == "cap") card.type = "c";
+    else if (card.type == "ind") card.type = "l";
+    else if (card.type == "vswitch") card.type = "sw";
+    else if (card.type == "iswitch") card.type = "csw";
+
     // Parse parameters (from paren block or bare params)
     if (!params_str.empty()) {
 
@@ -86,6 +121,7 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
         // Parse key=value pairs: expect key, =, value.
         // Bare tokens without '=' are treated as flag parameters (value = 1.0).
         // This handles LTRA flags like nocontrol, steplimit, lininterp, etc.
+        // After each key=value, check for PSpice DEV/LOT tolerance annotations.
         for (size_t i = 0; i < ptokens.size(); ) {
             std::string key = to_lower(ptokens[i]);
             if (i + 2 < ptokens.size() && ptokens[i + 1] == "=") {
@@ -93,6 +129,55 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
                 double val = parse_spice_number(ptokens[i + 2]);
                 card.params[key] = val;
                 i += 3;
+
+                // Store PSpice temperature metadata in dedicated fields
+                if (key == "t_measured")        card.t_measured = val;
+                else if (key == "t_abs")        card.t_abs = val;
+                else if (key == "t_rel_global") card.t_rel_global = val;
+                else if (key == "t_rel_local")  card.t_rel_local = val;
+
+                // Check for PSpice DEV/LOT tolerance annotations after value.
+                // Format: DEV[/dist] value[%]  or  LOT[/dist] value[%]
+                // A parameter can have both DEV and LOT in sequence.
+                while (i < ptokens.size()) {
+                    std::string maybe_tol = to_lower(ptokens[i]);
+                    std::string tol_kind;
+                    std::string tol_dist;
+                    if (maybe_tol.size() >= 3 && maybe_tol.substr(0, 3) == "dev") {
+                        tol_kind = "dev";
+                        if (maybe_tol.size() > 3 && maybe_tol[3] == '/') {
+                            tol_dist = maybe_tol.substr(4);
+                        }
+                    } else if (maybe_tol.size() >= 3 && maybe_tol.substr(0, 3) == "lot") {
+                        tol_kind = "lot";
+                        if (maybe_tol.size() > 3 && maybe_tol[3] == '/') {
+                            tol_dist = maybe_tol.substr(4);
+                        }
+                    } else {
+                        break; // not a tolerance token
+                    }
+                    ++i; // consume the DEV/LOT token
+
+                    if (i >= ptokens.size()) break; // malformed, stop
+
+                    // Next token is the tolerance value, possibly with '%'
+                    std::string val_tok = ptokens[i];
+                    bool is_pct = false;
+                    if (!val_tok.empty() && val_tok.back() == '%') {
+                        is_pct = true;
+                        val_tok.pop_back();
+                    }
+                    double tol_val = parse_spice_number(val_tok);
+                    ++i; // consume the value token
+
+                    ToleranceAnnotation ta;
+                    ta.param_name = key;
+                    ta.kind = tol_kind;
+                    ta.distribution = tol_dist;
+                    ta.value = tol_val;
+                    ta.is_percent = is_pct;
+                    card.tolerances.push_back(std::move(ta));
+                }
             } else {
                 // Bare token — flag parameter (e.g., nocontrol, steplimit)
                 card.params[key] = 1.0;

@@ -105,7 +105,8 @@ void NeoSolver::build_permuted_csc() {
 // Uses Gilbert-Peierls reach computation so the left-looking update
 // only visits columns with nonzero U entries, making total work
 // proportional to nnz(L)+nnz(U) instead of O(n²).
-void NeoSolver::sparse_factor(const double* orig_values) {
+bool NeoSolver::sparse_factor(const double* orig_values) {
+    bool perturbed = false;
     l_cp_.assign(n_ + 1, 0);
     u_cp_.assign(n_ + 1, 0);
     l_ri_.clear();
@@ -219,8 +220,21 @@ void NeoSolver::sparse_factor(const double* orig_values) {
             pivot_row = best_row;
         }
 
-        if (pivot_row < 0 || std::abs(x_work_[pivot_row]) < 1e-30)
-            throw std::runtime_error("NeoSolver: singular matrix");
+        if (pivot_row < 0) {
+            // No unpivoted row had a nonzero — pick any unpivoted row
+            if (pinv_[col] < 0) {
+                pivot_row = col;
+            } else {
+                for (int32_t r = 0; r < n_; ++r) {
+                    if (pinv_[r] < 0) { pivot_row = r; break; }
+                }
+            }
+            x_work_[pivot_row] = 1e-12;
+            perturbed = true;
+        } else if (std::abs(x_work_[pivot_row]) < 1e-30) {
+            x_work_[pivot_row] = (x_work_[pivot_row] >= 0.0) ? 1e-12 : -1e-12;
+            perturbed = true;
+        }
 
         pinv_[pivot_row] = col;
         piv_[col] = pivot_row;
@@ -248,6 +262,7 @@ void NeoSolver::sparse_factor(const double* orig_values) {
         }
     }
     factored_ = true;
+    return perturbed;
 }
 
 // Refactorize: same pivot order and L/U structure, recompute values.
@@ -378,18 +393,18 @@ void NeoSolver::dense_solve(double* rhs) const {
 
 // ---- Dispatch: numeric / refactorize / solve ----
 
-void NeoSolver::numeric(const SparsityPattern& pattern, const NumericMatrix& mat) {
+bool NeoSolver::numeric(const SparsityPattern& pattern, const NumericMatrix& mat) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::numeric: symbolic() not called");
-    // CSC structure (col_ptr_, row_idx_) is built once in symbolic() and
-    // never changes — no need to rebuild from pattern here.
+    bool perturbed;
     if (use_dense_) {
         scatter_to_dense(mat.data());
-        dense_factor();
+        perturbed = dense_factor();
     } else {
-        sparse_factor(mat.data());
+        perturbed = sparse_factor(mat.data());
     }
     factored_ = true;
+    return perturbed;
 }
 
 bool NeoSolver::refactorize(const NumericMatrix& mat) {

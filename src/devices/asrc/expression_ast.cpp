@@ -91,7 +91,7 @@ int ExpressionParser::get_or_add_var(const VarRef& ref) {
 
 std::unique_ptr<ASTNode> ExpressionParser::parse() {
     skip_ws();
-    auto root = parse_additive();
+    auto root = parse_logical_or();
     skip_ws();
     if (pos_ < expr_.size()) {
         throw ParseError("ASRC expression: unexpected character '" +
@@ -99,6 +99,126 @@ std::unique_ptr<ASTNode> ExpressionParser::parse() {
                          std::to_string(pos_));
     }
     return root;
+}
+
+std::unique_ptr<ASTNode> ExpressionParser::parse_logical_or() {
+    auto node = parse_logical_xor();
+    while (pos_ < expr_.size()) {
+        skip_ws();
+        if (pos_ >= expr_.size()) break;
+        if (expr_[pos_] == '|') {
+            ++pos_;
+            auto rhs = parse_logical_xor();
+            auto op = std::make_unique<ASTNode>();
+            op->type = NodeType::LOGICAL_OR;
+            op->left = std::move(node);
+            op->right = std::move(rhs);
+            node = std::move(op);
+        } else {
+            break;
+        }
+    }
+    return node;
+}
+
+std::unique_ptr<ASTNode> ExpressionParser::parse_logical_xor() {
+    auto node = parse_logical_and();
+    while (pos_ < expr_.size()) {
+        skip_ws();
+        if (pos_ >= expr_.size()) break;
+        // '^' at this level is logical XOR. Note: '^' is also handled in
+        // parse_power() (higher precedence), so in practice 'a^b' parses as
+        // power.  XOR only fires when '^' appears between two already-reduced
+        // relational/equality subexpressions that don't go through parse_power
+        // again (rare in practice — users typically write '**' for power when
+        // mixing with logical ops).
+        if (expr_[pos_] == '^') {
+            ++pos_;
+            auto rhs = parse_logical_and();
+            auto op = std::make_unique<ASTNode>();
+            op->type = NodeType::LOGICAL_XOR;
+            op->left = std::move(node);
+            op->right = std::move(rhs);
+            node = std::move(op);
+        } else {
+            break;
+        }
+    }
+    return node;
+}
+
+std::unique_ptr<ASTNode> ExpressionParser::parse_logical_and() {
+    auto node = parse_equality();
+    while (pos_ < expr_.size()) {
+        skip_ws();
+        if (pos_ >= expr_.size()) break;
+        if (expr_[pos_] == '&') {
+            ++pos_;
+            auto rhs = parse_equality();
+            auto op = std::make_unique<ASTNode>();
+            op->type = NodeType::LOGICAL_AND;
+            op->left = std::move(node);
+            op->right = std::move(rhs);
+            node = std::move(op);
+        } else {
+            break;
+        }
+    }
+    return node;
+}
+
+std::unique_ptr<ASTNode> ExpressionParser::parse_equality() {
+    auto node = parse_relational();
+    while (pos_ < expr_.size()) {
+        skip_ws();
+        if (pos_ >= expr_.size()) break;
+        NodeType nt;
+        int advance = 0;
+        if (pos_ + 1 < expr_.size() && expr_[pos_] == '=' && expr_[pos_+1] == '=') {
+            nt = NodeType::EQ; advance = 2;
+        } else if (pos_ + 1 < expr_.size() && expr_[pos_] == '!' && expr_[pos_+1] == '=') {
+            nt = NodeType::NE; advance = 2;
+        } else {
+            break;
+        }
+        pos_ += advance;
+        auto rhs = parse_relational();
+        auto op = std::make_unique<ASTNode>();
+        op->type = nt;
+        op->left = std::move(node);
+        op->right = std::move(rhs);
+        node = std::move(op);
+    }
+    return node;
+}
+
+std::unique_ptr<ASTNode> ExpressionParser::parse_relational() {
+    auto node = parse_additive();
+    while (pos_ < expr_.size()) {
+        skip_ws();
+        if (pos_ >= expr_.size()) break;
+        NodeType nt;
+        int advance = 0;
+        if (pos_ + 1 < expr_.size() && expr_[pos_] == '>' && expr_[pos_+1] == '=') {
+            nt = NodeType::GE; advance = 2;
+        } else if (pos_ + 1 < expr_.size() && expr_[pos_] == '<' && expr_[pos_+1] == '=') {
+            nt = NodeType::LE; advance = 2;
+        } else if (expr_[pos_] == '>') {
+            nt = NodeType::GT; advance = 1;
+        } else if (expr_[pos_] == '<') {
+            nt = NodeType::LT; advance = 1;
+        } else {
+            break;
+        }
+        pos_ += advance;
+        auto rhs = parse_additive();
+        auto op = std::make_unique<ASTNode>();
+        op->type = nt;
+        op->left = std::move(node);
+        op->right = std::move(rhs);
+        node = std::move(op);
+    }
+    return node;
 }
 
 std::unique_ptr<ASTNode> ExpressionParser::parse_additive() {
@@ -193,6 +313,28 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_unary() {
         node->left = std::move(operand);
         return node;
     }
+    if (c == '~') {
+        ++pos_;
+        auto operand = parse_unary();
+        auto node = std::make_unique<ASTNode>();
+        node->type = NodeType::LOGICAL_NOT;
+        node->left = std::move(operand);
+        return node;
+    }
+    if (c == '!') {
+        // '!' alone is logical NOT, but '!=' is not-equal — check next char
+        skip_ws();
+        if (pos_ + 1 < expr_.size() && expr_[pos_ + 1] == '=') {
+            // This is '!=', not unary NOT — let parse_equality handle it
+            return parse_primary();
+        }
+        ++pos_;
+        auto operand = parse_unary();
+        auto node = std::make_unique<ASTNode>();
+        node->type = NodeType::LOGICAL_NOT;
+        node->left = std::move(operand);
+        return node;
+    }
     return parse_primary();
 }
 
@@ -206,7 +348,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
     // Parenthesized sub-expression
     if (c == '(') {
         ++pos_;
-        auto inner = parse_additive();
+        auto inner = parse_logical_or();
         skip_ws();
         if (pos_ >= expr_.size() || expr_[pos_] != ')')
             throw ParseError("ASRC expression: missing closing parenthesis");
@@ -469,7 +611,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_number() {
 std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& name) {
     // Parse argument list (already consumed '(')
     auto make_unary = [&](NodeType type) -> std::unique_ptr<ASTNode> {
-        auto arg = parse_additive();
+        auto arg = parse_logical_or();
         skip_ws();
         if (pos_ >= expr_.size() || expr_[pos_] != ')')
             throw ParseError("ASRC expression: missing ')' for function " + name);
@@ -481,12 +623,12 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     };
 
     auto make_binary = [&](NodeType type) -> std::unique_ptr<ASTNode> {
-        auto arg1 = parse_additive();
+        auto arg1 = parse_logical_or();
         skip_ws();
         if (pos_ >= expr_.size() || expr_[pos_] != ',')
             throw ParseError("ASRC expression: expected ',' in function " + name);
         ++pos_;
-        auto arg2 = parse_additive();
+        auto arg2 = parse_logical_or();
         skip_ws();
         if (pos_ >= expr_.size() || expr_[pos_] != ')')
             throw ParseError("ASRC expression: missing ')' for function " + name);
@@ -499,17 +641,17 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     };
 
     auto make_ternary = [&](NodeType type) -> std::unique_ptr<ASTNode> {
-        auto arg1 = parse_additive();
+        auto arg1 = parse_logical_or();
         skip_ws();
         if (pos_ >= expr_.size() || expr_[pos_] != ',')
             throw ParseError("ASRC expression: expected ',' in function " + name);
         ++pos_;
-        auto arg2 = parse_additive();
+        auto arg2 = parse_logical_or();
         skip_ws();
         if (pos_ >= expr_.size() || expr_[pos_] != ',')
             throw ParseError("ASRC expression: expected second ',' in function " + name);
         ++pos_;
-        auto arg3 = parse_additive();
+        auto arg3 = parse_logical_or();
         skip_ws();
         if (pos_ >= expr_.size() || expr_[pos_] != ')')
             throw ParseError("ASRC expression: missing ')' for function " + name);
@@ -542,7 +684,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     if (name == "asinh") return make_unary(NodeType::ASINH);
     if (name == "atanh") return make_unary(NodeType::ATANH);
     if (name == "sgn")   return make_unary(NodeType::SGN);
-    if (name == "u" || name == "ustep")
+    if (name == "u" || name == "ustep" || name == "stp")
                          return make_unary(NodeType::USTEP);
     if (name == "uramp") return make_unary(NodeType::URAMP);
     if (name == "ceil")  return make_unary(NodeType::CEIL);
@@ -553,12 +695,12 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
 
     // IDT(expr [, ic [, assert]]) — time integral with optional initial condition
     if (name == "idt") {
-        auto arg = parse_additive();
+        auto arg = parse_logical_or();
         double ic = 0.0;
         skip_ws();
         if (pos_ < expr_.size() && expr_[pos_] == ',') {
             ++pos_;
-            auto ic_node = parse_additive();
+            auto ic_node = parse_logical_or();
             if (ic_node->type != NodeType::CONSTANT)
                 throw ParseError("ASRC expression: IDT initial condition must be constant");
             ic = ic_node->value;
@@ -566,7 +708,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
             skip_ws();
             if (pos_ < expr_.size() && expr_[pos_] == ',') {
                 ++pos_;
-                parse_additive(); // parse and discard
+                parse_logical_or(); // parse and discard
             }
         }
         skip_ws();
@@ -584,6 +726,7 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     if (name == "atan2") return make_binary(NodeType::ATAN2);
     if (name == "pow")   return make_binary(NodeType::POW_FN);
     if (name == "pwr")   return make_binary(NodeType::PWR);
+    if (name == "pwrs")  return make_binary(NodeType::PWRS);
     if (name == "min")   return make_binary(NodeType::MIN);
     if (name == "max")   return make_binary(NodeType::MAX);
 
@@ -593,20 +736,20 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
     if (name == "limit") return make_ternary(NodeType::LIMIT);
 
     if (name == "pwl" || name == "table") {
-        auto x_arg = parse_additive();
+        auto x_arg = parse_logical_or();
         std::vector<std::pair<double,double>> points;
         while (true) {
             skip_ws();
             if (pos_ < expr_.size() && expr_[pos_] == ')') break;
             if (!match(','))
                 throw ParseError("ASRC expression: PWL: expected ','");
-            auto x_node = parse_additive();
+            auto x_node = parse_logical_or();
             if (x_node->type != NodeType::CONSTANT)
                 throw ParseError("ASRC expression: PWL breakpoint x must be constant");
             skip_ws();
             if (!match(','))
                 throw ParseError("ASRC expression: PWL: expected ',' between x,y pair");
-            auto y_node = parse_additive();
+            auto y_node = parse_logical_or();
             if (y_node->type != NodeType::CONSTANT)
                 throw ParseError("ASRC expression: PWL breakpoint y must be constant");
             points.emplace_back(x_node->value, y_node->value);
@@ -1080,6 +1223,24 @@ CompiledExpression::eval_node(const ASTNode* node,
         return result;
     }
 
+    case NodeType::PWRS: {
+        // pwrs(x,y) = copysign(|x|^y, x)  — PSpice signed power
+        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
+        auto b = eval_node(node->right.get(), var_values, nv, need_grad);
+        double abs_x = std::abs(a.val);
+        double raw = std::pow(abs_x, b.val);
+        result.val = std::copysign(raw, a.val);
+        if (need_grad) {
+            // d/dx[PWRS(x,y)] = y * |x|^(y-1)  (same magnitude as PWR)
+            double da_coeff = b.val * std::pow(abs_x, b.val - 1.0);
+            double db_coeff = (abs_x > 0.0) ? raw * std::log(abs_x) : 0.0;
+            double sign = (a.val >= 0.0) ? 1.0 : -1.0;
+            for (int i = 0; i < nv; ++i)
+                result.grad[i] = da_coeff * a.grad[i] + sign * db_coeff * b.grad[i];
+        }
+        return result;
+    }
+
     // --- Ternary ---
 
     case NodeType::IF_FN: {
@@ -1182,6 +1343,73 @@ CompiledExpression::eval_node(const ASTNode* node,
         ddt_current_values_[ddt_idx] = a.val;
         ddt_has_current_[ddt_idx] = true;
 
+        return result;
+    }
+
+    // --- Relational operators (return 1.0/0.0, derivative is 0) ---
+
+    case NodeType::GT: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        result.val = (a.val > b.val) ? 1.0 : 0.0;
+        return result;
+    }
+    case NodeType::GE: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        result.val = (a.val >= b.val) ? 1.0 : 0.0;
+        return result;
+    }
+    case NodeType::LT: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        result.val = (a.val < b.val) ? 1.0 : 0.0;
+        return result;
+    }
+    case NodeType::LE: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        result.val = (a.val <= b.val) ? 1.0 : 0.0;
+        return result;
+    }
+    case NodeType::EQ: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        result.val = (a.val == b.val) ? 1.0 : 0.0;
+        return result;
+    }
+    case NodeType::NE: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        result.val = (a.val != b.val) ? 1.0 : 0.0;
+        return result;
+    }
+
+    // --- Logical operators (nonzero = true, derivative is 0) ---
+
+    case NodeType::LOGICAL_AND: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        result.val = (a.val != 0.0 && b.val != 0.0) ? 1.0 : 0.0;
+        return result;
+    }
+    case NodeType::LOGICAL_OR: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        result.val = (a.val != 0.0 || b.val != 0.0) ? 1.0 : 0.0;
+        return result;
+    }
+    case NodeType::LOGICAL_XOR: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        auto b = eval_node(node->right.get(), var_values, nv, false);
+        bool ab = a.val != 0.0;
+        bool bb = b.val != 0.0;
+        result.val = (ab != bb) ? 1.0 : 0.0;
+        return result;
+    }
+    case NodeType::LOGICAL_NOT: {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        result.val = (a.val == 0.0) ? 1.0 : 0.0;
         return result;
     }
 

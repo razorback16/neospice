@@ -80,15 +80,12 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             dev->evaluate(solution, mat, rhs);
         }
 
-        // Add gmin only to diagonals that devices actually stamp into.
-        // Non-organic diagonals (e.g. VCVS-only nodes) stay at zero so
-        // the solver picks better off-diagonal pivots and V-source nodes
-        // don't get a spurious gmin current artifact.
         for (int32_t i = 0; i < num_nodes; ++i) {
             if (!ckt.has_organic_diagonal(i)) continue;
             MatrixOffset off = pattern.offset(i, i);
             mat.add(off, opts.gmin);
         }
+
 
         // Compute residual norm from the RHS before the solve overwrites it.
         max_residual = 0.0;
@@ -106,21 +103,18 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         // refactorize() returns true if any near-zero pivot was perturbed,
         // meaning the factorization is approximate — force a full numeric()
         // on the next iteration to re-establish an accurate pivot order.
-        try {
-            if (force_numeric) {
-                solver.numeric(pattern, mat);
-                force_numeric = false;
-            } else {
-                try {
-                    bool perturbed = solver.refactorize(mat);
-                    if (perturbed)
-                        force_numeric = true;
-                } catch (const std::exception&) {
-                    solver.numeric(pattern, mat);
-                }
+        if (force_numeric) {
+            bool perturbed = solver.numeric(pattern, mat);
+            force_numeric = perturbed;
+        } else {
+            try {
+                bool perturbed = solver.refactorize(mat);
+                if (perturbed)
+                    force_numeric = true;
+            } catch (const std::exception&) {
+                bool perturbed = solver.numeric(pattern, mat);
+                force_numeric = perturbed;
             }
-        } catch (const std::runtime_error&) {
-            return {false, iter, solution, max_residual, worst_idx};
         }
 
         // Solve: rhs is overwritten with the delta or new solution

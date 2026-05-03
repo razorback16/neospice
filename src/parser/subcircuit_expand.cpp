@@ -119,6 +119,12 @@ void extract_nested_defs(
             bool seen_param = false;
             for (size_t i = 2; i < line.tokens.size(); ++i) {
                 const std::string& tok = line.tokens[i];
+                // PSpice section keywords — skip the keyword itself
+                std::string tok_lower = to_lower(tok);
+                if (tok_lower == "params:" || tok_lower == "optional:" || tok_lower == "text:") {
+                    if (tok_lower == "params:") seen_param = true;
+                    continue;
+                }
                 auto eq_pos = tok.find('=');
                 if (eq_pos != std::string::npos) {
                     std::string key = to_lower(tok.substr(0, eq_pos));
@@ -510,6 +516,20 @@ std::vector<TokenizedLine> expand_instance(
                 }
             }
 
+            // E/G VALUE= form: E name np nn VALUE={expr} or VALUE = {expr}
+            // E/G TABLE form: E name np nn TABLE {V(in)} = (x,y)...
+            // These forms have only 2 output nodes (np, nn), not 4.
+            bool eg_abm = false;
+            if ((elem_type == 'e' || elem_type == 'g') && !eg_poly &&
+                line.tokens.size() > 3) {
+                std::string t3 = to_lower(line.tokens[3]);
+                if (t3 == "value" || t3.substr(0, 6) == "value=" ||
+                    t3 == "table" || t3.substr(0, 6) == "table{") {
+                    eg_abm = true;
+                    ncount = 2;
+                }
+            }
+
             TokenizedLine new_line;
             new_line.line_number = line.line_number;
 
@@ -545,6 +565,17 @@ std::vector<TokenizedLine> expand_instance(
                     new_line.tokens.push_back(subst_node(line.tokens[value_start]));
                     value_start++;
                 }
+            }
+
+            // E/G ABM (VALUE=/TABLE) form: pass all remaining tokens
+            // through as-is — the parser handles expression compilation
+            // in Pass 2.
+            if (eg_abm) {
+                for (size_t i = value_start; i < line.tokens.size(); ++i) {
+                    new_line.tokens.push_back(line.tokens[i]);
+                }
+                result.push_back(new_line);
+                continue;  // skip the normal value-evaluation loop below
             }
 
             // Special handling for H (CCVS) and F (CCCS) elements:

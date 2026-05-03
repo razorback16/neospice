@@ -374,6 +374,9 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ++start;
     std::string trimmed = netlist.substr(start);
 
+    if (dialect_ == SpiceDialect::AUTO)
+        dialect_ = detect_dialect(trimmed);
+
     // Extract the title (first non-empty line) before tokenization discards it.
     {
         auto nl = trimmed.find('\n');
@@ -434,6 +437,12 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 bool seen_param = false;
                 for (size_t i = 2; i < line.tokens.size(); ++i) {
                     const std::string& tok = line.tokens[i];
+                    // PSpice section keywords — skip the keyword itself
+                    std::string tok_lower = to_lower(tok);
+                    if (tok_lower == "params:" || tok_lower == "optional:" || tok_lower == "text:") {
+                        if (tok_lower == "params:") seen_param = true;
+                        continue;
+                    }
                     auto eq_pos = tok.find('=');
                     if (eq_pos != std::string::npos) {
                         // key=value => parameter default
@@ -743,6 +752,57 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
         }
     }
+    // Resolve PSpice AKO: (A Kind Of) model inheritance.
+    // Multiple passes handle chains (A inherits B, B inherits C).
+    {
+        // Track which models still need resolution
+        bool changed = true;
+        int max_passes = static_cast<int>(models.size()) + 1; // detect cycles
+        int pass = 0;
+        while (changed && pass < max_passes) {
+            changed = false;
+            ++pass;
+            for (auto& [name, card] : models) {
+                if (card.ako_base.empty()) continue;
+                auto base_it = models.find(card.ako_base);
+                if (base_it == models.end()) {
+                    throw ParseError(".model " + name + " AKO: base model '"
+                                     + card.ako_base + "' not found");
+                }
+                const auto& base = base_it->second;
+                // If base itself has unresolved AKO, defer to next pass
+                if (!base.ako_base.empty()) continue;
+                // Inherit type if derived doesn't specify one
+                if (card.type.empty()) {
+                    card.type = base.type;
+                }
+                // Merge params: start with base, overlay derived
+                auto merged = base.params;
+                for (const auto& [pk, pv] : card.params) {
+                    merged[pk] = pv;
+                }
+                card.params = std::move(merged);
+                // Mark as resolved
+                card.ako_base.clear();
+                changed = true;
+                // Update typed model maps
+                if (card.type == "r") {
+                    res_models[to_lower(name)] = to_resistor_model(card);
+                } else if (card.type == "c") {
+                    cap_models[to_lower(name)] = to_capacitor_model(card);
+                } else if (card.type == "l") {
+                    ind_models[to_lower(name)] = to_inductor_model(card);
+                }
+            }
+        }
+        // If any AKO still unresolved after max passes, there's a cycle
+        for (const auto& [name, card] : models) {
+            if (!card.ako_base.empty()) {
+                throw ParseError(".model " + name + " AKO: circular inheritance detected");
+            }
+        }
+    }
+
     // Resolve all .param definitions in dependency order (handles forward references)
     if (!raw_params.empty()) {
         params = resolve_params(raw_params);
@@ -1515,16 +1575,26 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 ckt.add_device(std::make_unique<NonlinearVCVS>(
                     name, np, nn, std::move(ctrl_pairs), std::move(coeffs)));
 
-            } else if (tok3 == "table") {
+            } else if (tok3 == "table" || tok3.substr(0, 6) == "table{") {
                 // TABLE {V(in)} = (x1,y1) (x2,y2) ...
+                // Also handle PSpice-style TABLE{V(in)} (no space between TABLE and {)
                 // Parse control expression: token[4] should be "{V(node)}" or similar
-                // For now support: TABLE {V(node)} = (x,y) (x,y) ...
-                if (tokens.size() < 6) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": TABLE VCVS requires control expression and table points");
+                std::string table_ctrl_token;
+                size_t table_data_start;
+                if (tok3.substr(0, 6) == "table{") {
+                    // No space: tok3 = "table{v(in)}" — extract from tok3 after "table"
+                    table_ctrl_token = tokens[3].substr(5);  // use original case
+                    table_data_start = 4;
+                } else {
+                    if (tokens.size() < 6) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": TABLE VCVS requires control expression and table points");
+                    }
+                    table_ctrl_token = tokens[4];
+                    table_data_start = 5;
                 }
-                // Extract node name from {V(node)} at token[4]
-                std::string ctrl_expr = tokens[4];
+                // Extract node name from {V(node)}
+                std::string ctrl_expr = table_ctrl_token;
                 // Strip braces
                 if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
                 if (!ctrl_expr.empty() && ctrl_expr.back() == '}') ctrl_expr.pop_back();
@@ -1546,8 +1616,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         }
                     }
                 }
-                // Skip "=" token if present at token[5]
-                size_t idx = 5;
+                // Skip "=" token if present
+                size_t idx = table_data_start;
                 if (idx < tokens.size() && tokens[idx] == "=") ++idx;
 
                 // Parse table points: (x,y) may be in one token or spread across tokens
@@ -1581,6 +1651,137 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 }
                 ckt.add_device(std::make_unique<TableVCVS>(
                     name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
+
+            } else if (tok3 == "value" || tok3.substr(0, 6) == "value=") {
+                // PSpice VALUE={expr} form — lower to ASRCDevice with VOLTAGE mode
+                // Extract expression from VALUE={expr} or VALUE = {expr} or VALUE ={expr}
+                std::string expr_str;
+                if (tok3.substr(0, 6) == "value=") {
+                    // VALUE={expr} as single token or VALUE=... — existing path
+                    std::string rest;
+                    for (size_t i = 3; i < tokens.size(); ++i) {
+                        if (!rest.empty()) rest += ' ';
+                        rest += tokens[i];
+                    }
+                    expr_str = rest.substr(rest.find('=') + 1);
+                } else {
+                    // tok3 == "value", look for = in next tokens
+                    size_t expr_start = 4;
+                    if (expr_start < tokens.size() && tokens[expr_start][0] == '=') {
+                        if (tokens[expr_start].size() > 1) {
+                            // "={expr}" — expression starts after =
+                            expr_str = tokens[expr_start].substr(1);
+                            for (size_t i = expr_start + 1; i < tokens.size(); ++i) {
+                                expr_str += ' ';
+                                expr_str += tokens[i];
+                            }
+                        } else {
+                            // "=" alone — expression is in remaining tokens
+                            for (size_t i = expr_start + 1; i < tokens.size(); ++i) {
+                                if (!expr_str.empty()) expr_str += ' ';
+                                expr_str += tokens[i];
+                            }
+                        }
+                    } else {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": E element VALUE form requires VALUE={expr}");
+                    }
+                }
+                // Strip surrounding whitespace
+                while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.front())))
+                    expr_str.erase(0, 1);
+                while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.back())))
+                    expr_str.pop_back();
+                // Strip surrounding braces
+                if (!expr_str.empty() && expr_str.front() == '{') expr_str.erase(0, 1);
+                if (!expr_str.empty() && expr_str.back() == '}') expr_str.pop_back();
+                // Strip whitespace again after brace removal
+                while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.front())))
+                    expr_str.erase(0, 1);
+                while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.back())))
+                    expr_str.pop_back();
+
+                if (expr_str.empty()) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": E element VALUE form has empty expression");
+                }
+
+                // Expand .func calls
+                expr_str = expand_funcs(expr_str, func_defs);
+
+                // Compile the expression
+                asrc::CompiledExpression compiled;
+                try {
+                    compiled = asrc::CompiledExpression::compile(expr_str);
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": E element VALUE expression error: " + e.what());
+                }
+
+                // Resolve variable references (same as B-source)
+                const auto& refs = compiled.var_refs();
+                int nv = compiled.num_vars();
+                std::vector<int32_t> e_node_indices(nv, -1);
+                std::vector<int32_t> e_node_indices2(nv, -1);
+                std::vector<std::string> e_vsrc_names(nv);
+
+                for (int i = 0; i < nv; ++i) {
+                    const auto& ref = refs[i];
+                    if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                        ref.name1 == "__time__") {
+                        e_node_indices[i] = -2;
+                        continue;
+                    }
+                    if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                        ref.name1 == "__temper__") {
+                        e_node_indices[i] = -2;
+                        continue;
+                    }
+                    if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                        ref.name1 == "__hertz__") {
+                        e_node_indices[i] = -2;
+                        continue;
+                    }
+                    switch (ref.kind) {
+                    case asrc::VarKind::NODE_VOLTAGE: {
+                        std::string lname = ref.name1;
+                        if (lname == "0" || lname == "gnd") {
+                            e_node_indices[i] = GROUND_INTERNAL;
+                        } else {
+                            e_node_indices[i] = node_raw(lname);
+                        }
+                        break;
+                    }
+                    case asrc::VarKind::DIFF_VOLTAGE: {
+                        std::string ln1 = ref.name1;
+                        std::string ln2 = ref.name2;
+                        e_node_indices[i]  = (ln1 == "0" || ln1 == "gnd")
+                                             ? GROUND_INTERNAL : node_raw(ln1);
+                        e_node_indices2[i] = (ln2 == "0" || ln2 == "gnd")
+                                             ? GROUND_INTERNAL : node_raw(ln2);
+                        break;
+                    }
+                    case asrc::VarKind::BRANCH_CURRENT:
+                        e_vsrc_names[i] = ref.name1;
+                        break;
+                    }
+                }
+
+                DeferredASRC bd;
+                bd.name = name;
+                bd.np = np;
+                bd.nn = nn;
+                bd.mode = ASRCDevice::Mode::VOLTAGE;
+                bd.expr = std::move(compiled);
+                bd.node_indices = std::move(e_node_indices);
+                bd.node_indices2 = std::move(e_node_indices2);
+                bd.vsrc_names = std::move(e_vsrc_names);
+                bd.line_number = line.line_number;
+                bd.tc1 = 0.0;
+                bd.tc2 = 0.0;
+                bd.temp = -1.0;
+                bd.dtemp = 0.0;
+                deferred_asrcs.push_back(std::move(bd));
 
             } else {
                 // Linear form: E name np nn nc+ nc- gain
@@ -1647,13 +1848,23 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 ckt.add_device(std::make_unique<NonlinearVCCS>(
                     name, np, nn, std::move(ctrl_pairs), std::move(coeffs)));
 
-            } else if (tok3g == "table") {
+            } else if (tok3g == "table" || tok3g.substr(0, 6) == "table{") {
                 // TABLE {V(node)} = (x,y) ...
-                if (tokens.size() < 6) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": TABLE VCCS requires control expression and table points");
+                // Also handle PSpice-style TABLE{V(in)} (no space between TABLE and {)
+                std::string table_ctrl_token;
+                size_t table_data_start;
+                if (tok3g.substr(0, 6) == "table{") {
+                    table_ctrl_token = tokens[3].substr(5);
+                    table_data_start = 4;
+                } else {
+                    if (tokens.size() < 6) {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": TABLE VCCS requires control expression and table points");
+                    }
+                    table_ctrl_token = tokens[4];
+                    table_data_start = 5;
                 }
-                std::string ctrl_expr = tokens[4];
+                std::string ctrl_expr = table_ctrl_token;
                 if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
                 if (!ctrl_expr.empty() && ctrl_expr.back() == '}') ctrl_expr.pop_back();
                 std::string ctrl_lower = to_lower(ctrl_expr);
@@ -1671,7 +1882,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                         }
                     }
                 }
-                size_t idx = 5;
+                size_t idx = table_data_start;
                 if (idx < tokens.size() && tokens[idx] == "=") ++idx;
 
                 std::string joined;
@@ -1702,6 +1913,131 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 }
                 ckt.add_device(std::make_unique<TableVCCS>(
                     name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
+
+            } else if (tok3g == "value" || tok3g.substr(0, 6) == "value=") {
+                // PSpice VALUE={expr} form — lower to ASRCDevice with CURRENT mode
+                // Extract expression from VALUE={expr} or VALUE = {expr} or VALUE ={expr}
+                std::string expr_str;
+                if (tok3g.substr(0, 6) == "value=") {
+                    // VALUE={expr} as single token or VALUE=... — existing path
+                    std::string rest;
+                    for (size_t i = 3; i < tokens.size(); ++i) {
+                        if (!rest.empty()) rest += ' ';
+                        rest += tokens[i];
+                    }
+                    expr_str = rest.substr(rest.find('=') + 1);
+                } else {
+                    // tok3g == "value", look for = in next tokens
+                    size_t expr_start = 4;
+                    if (expr_start < tokens.size() && tokens[expr_start][0] == '=') {
+                        if (tokens[expr_start].size() > 1) {
+                            // "={expr}" — expression starts after =
+                            expr_str = tokens[expr_start].substr(1);
+                            for (size_t i = expr_start + 1; i < tokens.size(); ++i) {
+                                expr_str += ' ';
+                                expr_str += tokens[i];
+                            }
+                        } else {
+                            // "=" alone — expression is in remaining tokens
+                            for (size_t i = expr_start + 1; i < tokens.size(); ++i) {
+                                if (!expr_str.empty()) expr_str += ' ';
+                                expr_str += tokens[i];
+                            }
+                        }
+                    } else {
+                        throw ParseError("Line " + std::to_string(line.line_number) +
+                                         ": G element VALUE form requires VALUE={expr}");
+                    }
+                }
+                while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.front())))
+                    expr_str.erase(0, 1);
+                while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.back())))
+                    expr_str.pop_back();
+                if (!expr_str.empty() && expr_str.front() == '{') expr_str.erase(0, 1);
+                if (!expr_str.empty() && expr_str.back() == '}') expr_str.pop_back();
+                while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.front())))
+                    expr_str.erase(0, 1);
+                while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.back())))
+                    expr_str.pop_back();
+
+                if (expr_str.empty()) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": G element VALUE form has empty expression");
+                }
+
+                expr_str = expand_funcs(expr_str, func_defs);
+
+                asrc::CompiledExpression compiled;
+                try {
+                    compiled = asrc::CompiledExpression::compile(expr_str);
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(line.line_number) +
+                                     ": G element VALUE expression error: " + e.what());
+                }
+
+                const auto& refs = compiled.var_refs();
+                int nv = compiled.num_vars();
+                std::vector<int32_t> g_node_indices(nv, -1);
+                std::vector<int32_t> g_node_indices2(nv, -1);
+                std::vector<std::string> g_vsrc_names(nv);
+
+                for (int i = 0; i < nv; ++i) {
+                    const auto& ref = refs[i];
+                    if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                        ref.name1 == "__time__") {
+                        g_node_indices[i] = -2;
+                        continue;
+                    }
+                    if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                        ref.name1 == "__temper__") {
+                        g_node_indices[i] = -2;
+                        continue;
+                    }
+                    if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                        ref.name1 == "__hertz__") {
+                        g_node_indices[i] = -2;
+                        continue;
+                    }
+                    switch (ref.kind) {
+                    case asrc::VarKind::NODE_VOLTAGE: {
+                        std::string lname = ref.name1;
+                        if (lname == "0" || lname == "gnd") {
+                            g_node_indices[i] = GROUND_INTERNAL;
+                        } else {
+                            g_node_indices[i] = node_raw(lname);
+                        }
+                        break;
+                    }
+                    case asrc::VarKind::DIFF_VOLTAGE: {
+                        std::string ln1 = ref.name1;
+                        std::string ln2 = ref.name2;
+                        g_node_indices[i]  = (ln1 == "0" || ln1 == "gnd")
+                                             ? GROUND_INTERNAL : node_raw(ln1);
+                        g_node_indices2[i] = (ln2 == "0" || ln2 == "gnd")
+                                             ? GROUND_INTERNAL : node_raw(ln2);
+                        break;
+                    }
+                    case asrc::VarKind::BRANCH_CURRENT:
+                        g_vsrc_names[i] = ref.name1;
+                        break;
+                    }
+                }
+
+                DeferredASRC bd;
+                bd.name = name;
+                bd.np = np;
+                bd.nn = nn;
+                bd.mode = ASRCDevice::Mode::CURRENT;
+                bd.expr = std::move(compiled);
+                bd.node_indices = std::move(g_node_indices);
+                bd.node_indices2 = std::move(g_node_indices2);
+                bd.vsrc_names = std::move(g_vsrc_names);
+                bd.line_number = line.line_number;
+                bd.tc1 = 0.0;
+                bd.tc2 = 0.0;
+                bd.temp = -1.0;
+                bd.dtemp = 0.0;
+                deferred_asrcs.push_back(std::move(bd));
 
             } else {
                 // Linear form: G name np nn nc+ nc- gm
@@ -2539,6 +2875,11 @@ std::string NetlistParser::resolve_includes(const std::string& content,
                 is_include = true;
                 filename_start = start + 8; // position in original line after ".include"
             }
+        } else if (lower_line.size() >= 4 && lower_line.substr(0, 4) == ".inc") {
+            if (lower_line.size() == 4 || std::isspace(static_cast<unsigned char>(lower_line[4]))) {
+                is_include = true;
+                filename_start = start + 4;
+            }
         }
 
         if (is_include) {
@@ -2665,6 +3006,24 @@ std::string NetlistParser::resolve_includes(const std::string& content,
     }
 
     return result.str();
+}
+
+SpiceDialect NetlistParser::detect_dialect(const std::string& content) const {
+    std::string upper = content;
+    std::transform(upper.begin(), upper.end(), upper.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+
+    for (const auto* kw : {"PARAMS:", "AKO:", "VALUE=", "OPTIONAL:", "TEXT:"}) {
+        if (upper.find(kw) != std::string::npos)
+            return SpiceDialect::PSPICE;
+    }
+
+    for (const auto* kw : {" VSWITCH ", " ISWITCH ", " RES ", " CAP ", " IND "}) {
+        if (upper.find(kw) != std::string::npos)
+            return SpiceDialect::PSPICE;
+    }
+
+    return SpiceDialect::NGSPICE;
 }
 
 Circuit NetlistParser::parse_file(const std::string& filepath) {

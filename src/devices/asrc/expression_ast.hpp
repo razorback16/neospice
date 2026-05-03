@@ -17,7 +17,7 @@
 // Supported functions:  sin cos tan asin acos atan atan2
 //                       exp log log10 sqrt abs pow min max
 //                       sinh cosh tanh acosh asinh atanh
-//                       sgn u ustep uramp ceil floor nint pwr
+//                       sgn u ustep stp uramp ceil floor nint pwr pwrs
 //                       limit if ddt idt db pwl table
 // Numeric literals with SPICE suffixes (1k, 2.5m, 100u, etc.)
 // ---------------------------------------------------------------------------
@@ -58,7 +58,12 @@ enum class NodeType {
     SGN, USTEP, URAMP,
     CEIL, FLOOR, NINT,
     // Functions (binary)
-    ATAN2, POW_FN, MIN, MAX, PWR,
+    ATAN2, POW_FN, MIN, MAX, PWR, PWRS,
+    // Relational operators (return 1.0 for true, 0.0 for false)
+    GT, GE, LT, LE, EQ, NE,
+    // Logical operators (treat nonzero as true)
+    LOGICAL_AND, LOGICAL_OR, LOGICAL_XOR,
+    LOGICAL_NOT,  // unary
     // Ternary
     IF_FN,          // if(cond, then, else) — cond != 0 selects then
     LIMIT,          // limit(x, lo, hi) = min(max(x, lo), hi)
@@ -188,7 +193,13 @@ private:
     int get_or_add_var(const VarRef& ref);
     static std::string var_key(const VarRef& ref);
 
-    // Grammar: additive > multiplicative > power > unary > primary
+    // Grammar: logical_or > logical_xor > logical_and > equality > relational
+    //        > additive > multiplicative > power > unary > primary
+    std::unique_ptr<ASTNode> parse_logical_or();
+    std::unique_ptr<ASTNode> parse_logical_xor();
+    std::unique_ptr<ASTNode> parse_logical_and();
+    std::unique_ptr<ASTNode> parse_equality();
+    std::unique_ptr<ASTNode> parse_relational();
     std::unique_ptr<ASTNode> parse_additive();
     std::unique_ptr<ASTNode> parse_multiplicative();
     std::unique_ptr<ASTNode> parse_power();

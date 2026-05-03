@@ -5,17 +5,39 @@
 #include "devices/inductor_model.hpp"
 #include "parser/tokenizer.hpp"
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace neospice {
+
+/// PSpice DEV/LOT tolerance annotation on a .MODEL parameter.
+/// Preserved for round-trip fidelity; not used in simulation.
+struct ToleranceAnnotation {
+    std::string param_name;
+    std::string kind;          // "dev" or "lot"
+    std::string distribution;  // "gauss", "uniform", or custom name (empty = default)
+    double value = 0.0;
+    bool is_percent = false;
+};
 
 struct ModelCard {
     std::string name;
     std::string type; // "d", "nmos", "pmos", "npn", "pnp" (lowercase)
+    std::string ako_base; // PSpice AKO: base model name (empty if not AKO)
     // Stored lowercase for case-insensitive lookup.  Values are parsed as
     // doubles; integer/flag BSIM4 parameters cast from double at dispatch.
     std::unordered_map<std::string, double> params;
+
+    // PSpice tolerance annotations (DEV/LOT on parameters)
+    std::vector<ToleranceAnnotation> tolerances;
+
+    // PSpice temperature metadata
+    std::optional<double> t_measured;
+    std::optional<double> t_abs;
+    std::optional<double> t_rel_global;
+    std::optional<double> t_rel_local;
 };
 
 ModelCard parse_model_card(const std::vector<std::string>& tokens);

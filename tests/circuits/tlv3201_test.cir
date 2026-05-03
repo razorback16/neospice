@@ -1,0 +1,9 @@
+TLV3201 Comparator Test
+.include tlv3201.lib
+VCC vcc 0 DC 3.3
+VIN in 0 DC 0 PULSE(0 3.3 1u 10n 10n 5u 10u)
+VREF ref 0 DC 1.65
+X1 in ref vcc 0 out TLV3201
+RL out 0 10k
+.tran 100n 30u
+.end

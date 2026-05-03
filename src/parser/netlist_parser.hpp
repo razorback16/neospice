@@ -12,12 +12,18 @@ public:
     Circuit parse(const std::string& netlist);
     Circuit parse_file(const std::string& filepath);
 
+    void set_dialect(SpiceDialect d) { dialect_ = d; }
+    SpiceDialect dialect() const { return dialect_; }
+
     const std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs() const {
         return subcircuit_defs_;
     }
 
 private:
+    SpiceDialect dialect_ = SpiceDialect::AUTO;
     std::unordered_map<std::string, SubcircuitDef> subcircuit_defs_;
+
+    SpiceDialect detect_dialect(const std::string& content) const;
 
     // Recursively resolve .include directives in a netlist string.
     // base_dir: directory of the file containing this netlist (for relative paths)

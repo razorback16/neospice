@@ -13,7 +13,7 @@ public:
     NeoSolver& operator=(const NeoSolver&) = delete;
 
     void symbolic(const SparsityPattern& pattern);
-    void numeric(const SparsityPattern& pattern, const NumericMatrix& mat);
+    bool numeric(const SparsityPattern& pattern, const NumericMatrix& mat);
     bool refactorize(const NumericMatrix& mat);
     void solve(std::vector<double>& rhs);
     void numeric_complex(const SparsityPattern& pattern,
@@ -85,7 +85,7 @@ private:
     bool sparse_factored_z_ = false;
 
     void build_permuted_csc();
-    void sparse_factor(const double* orig_values);
+    bool sparse_factor(const double* orig_values);
     bool sparse_refactor(const double* orig_values);
     void sparse_solve_real(double* b) const;
     void sparse_factor_complex(const double* orig_ax);

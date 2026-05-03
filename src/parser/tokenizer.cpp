@@ -17,10 +17,47 @@ static std::vector<std::string> split_tokens(const std::string& line) {
     std::vector<std::string> tokens;
     std::istringstream iss(line);
     std::string tok;
+    int brace_depth = 0;
+    std::string brace_accum;
+
     while (iss >> tok) {
-        if (tok[0] == '$') break;
+        if (brace_depth == 0 && tok[0] == '$') break;
+        if (brace_depth == 0 && tok[0] == ';') break;
+
+        if (brace_depth > 0) {
+            brace_accum += ' ';
+            brace_accum += tok;
+            for (char c : tok) {
+                if (c == '{') ++brace_depth;
+                else if (c == '}') --brace_depth;
+            }
+            if (brace_depth <= 0) {
+                brace_depth = 0;
+                tokens.push_back(std::move(brace_accum));
+                brace_accum.clear();
+            }
+            continue;
+        }
+
+        // Count braces in this token
+        int opens = 0, closes = 0;
+        for (char c : tok) {
+            if (c == '{') ++opens;
+            else if (c == '}') ++closes;
+        }
+        if (opens > closes) {
+            brace_depth = opens - closes;
+            brace_accum = tok;
+            continue;
+        }
+
         tokens.push_back(tok);
     }
+
+    if (!brace_accum.empty()) {
+        tokens.push_back(std::move(brace_accum));
+    }
+
     return tokens;
 }
 
@@ -122,6 +159,7 @@ double parse_spice_number(const std::string& str) {
     if (lsuffix[0] == 'g' || lsuffix.substr(0, 4) == "giga") return val * 1e9;
     if (lsuffix.substr(0, 3) == "meg") return val * 1e6;
     if (lsuffix[0] == 'k') return val * 1e3;
+    if (lsuffix.substr(0, 3) == "mil") return val * 25.4e-6;
     if (lsuffix[0] == 'm' && lsuffix.substr(0, 3) != "meg") return val * 1e-3;
     if (lsuffix[0] == 'u') return val * 1e-6;
     if (lsuffix[0] == 'n') return val * 1e-9;

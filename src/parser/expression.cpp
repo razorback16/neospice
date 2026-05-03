@@ -23,12 +23,17 @@ double uniform_minus1_plus1() { return tls_uniform(tls_rng); }
 // ---------------------------------------------------------------------------
 // Recursive-descent expression parser
 // ---------------------------------------------------------------------------
-// Grammar (highest to lowest precedence):
+// Grammar (lowest to highest precedence):
+//   logical_or     : logical_xor ( '|' logical_xor )*
+//   logical_xor    : logical_and ( '^' logical_and )*
+//   logical_and    : equality ( '&' equality )*
+//   equality       : relational ( ('==' | '!=') relational )*
+//   relational     : additive ( ('<' | '<=' | '>' | '>=') additive )*
 //   additive       : multiplicative ( ('+' | '-') multiplicative )*
 //   multiplicative : power ( ('*' | '/') power )*
 //   power          : unary ( '**' unary )*   (right-associative via recursion)
-//   unary          : ('+' | '-') unary | primary
-//   primary        : '(' additive ')'
+//   unary          : ('+' | '-' | '~') unary | primary
+//   primary        : '(' logical_or ')'
 //                  | number
 //                  | identifier '(' arg_list ')'    -- function call
 //                  | identifier                      -- parameter lookup
@@ -41,7 +46,7 @@ public:
 
     double parse() {
         skip_ws();
-        double result = parse_additive();
+        double result = parse_logical_or();
         skip_ws();
         if (pos_ < expr_.size()) {
             throw ParseError("Unexpected character in expression: '" +
@@ -63,6 +68,80 @@ private:
     char peek() {
         skip_ws();
         return pos_ < expr_.size() ? expr_[pos_] : '\0';
+    }
+
+    double parse_logical_or() {
+        double left = parse_logical_xor();
+        while (peek() == '|') {
+            ++pos_;
+            double right = parse_logical_xor();
+            left = (left != 0.0 || right != 0.0) ? 1.0 : 0.0;
+        }
+        return left;
+    }
+
+    double parse_logical_xor() {
+        double left = parse_logical_and();
+        while (peek() == '^') {
+            ++pos_;
+            double right = parse_logical_and();
+            left = ((left != 0.0) != (right != 0.0)) ? 1.0 : 0.0;
+        }
+        return left;
+    }
+
+    double parse_logical_and() {
+        double left = parse_equality();
+        while (peek() == '&') {
+            ++pos_;
+            double right = parse_equality();
+            left = (left != 0.0 && right != 0.0) ? 1.0 : 0.0;
+        }
+        return left;
+    }
+
+    double parse_equality() {
+        double left = parse_relational();
+        while (true) {
+            skip_ws();
+            if (pos_ + 1 < expr_.size()) {
+                if (expr_[pos_] == '=' && expr_[pos_ + 1] == '=') {
+                    pos_ += 2;
+                    left = (left == parse_relational()) ? 1.0 : 0.0;
+                } else if (expr_[pos_] == '!' && expr_[pos_ + 1] == '=') {
+                    pos_ += 2;
+                    left = (left != parse_relational()) ? 1.0 : 0.0;
+                } else break;
+            } else break;
+        }
+        return left;
+    }
+
+    double parse_relational() {
+        double left = parse_additive();
+        while (true) {
+            skip_ws();
+            if (pos_ < expr_.size()) {
+                if (expr_[pos_] == '<') {
+                    if (pos_ + 1 < expr_.size() && expr_[pos_ + 1] == '=') {
+                        pos_ += 2;
+                        left = (left <= parse_additive()) ? 1.0 : 0.0;
+                    } else {
+                        ++pos_;
+                        left = (left < parse_additive()) ? 1.0 : 0.0;
+                    }
+                } else if (expr_[pos_] == '>') {
+                    if (pos_ + 1 < expr_.size() && expr_[pos_ + 1] == '=') {
+                        pos_ += 2;
+                        left = (left >= parse_additive()) ? 1.0 : 0.0;
+                    } else {
+                        ++pos_;
+                        left = (left > parse_additive()) ? 1.0 : 0.0;
+                    }
+                } else break;
+            } else break;
+        }
+        return left;
     }
 
     double parse_additive() {
@@ -111,6 +190,7 @@ private:
         char c = peek();
         if (c == '+') { ++pos_; return parse_unary(); }
         if (c == '-') { ++pos_; return -parse_unary(); }
+        if (c == '~') { ++pos_; return parse_unary() != 0.0 ? 0.0 : 1.0; }
         return parse_primary();
     }
 
@@ -123,12 +203,12 @@ private:
             ++pos_;  // empty arg list
             return args;
         }
-        args.push_back(parse_additive());
+        args.push_back(parse_logical_or());
         while (true) {
             skip_ws();
             if (peek() == ',') {
                 ++pos_;
-                args.push_back(parse_additive());
+                args.push_back(parse_logical_or());
             } else {
                 break;
             }
@@ -189,6 +269,48 @@ private:
             double nominal = args[0], abs_var = args[1];
             return nominal + abs_var * uniform_minus1_plus1();
         }
+        // PSpice functions
+        if (lname == "limit") {
+            if (args.size() != 3)
+                throw ParseError("Function limit() requires 3 arguments");
+            return std::clamp(args[0], args[1], args[2]);
+        }
+        if (lname == "stp") { require(1); return args[0] > 0.0 ? 1.0 : 0.0; }
+        if (lname == "pwr") { require(2); return std::pow(std::abs(args[0]), args[1]); }
+        if (lname == "pwrs") {
+            require(2);
+            return std::copysign(std::pow(std::abs(args[0]), args[1]), args[0]);
+        }
+        if (lname == "sgn") {
+            require(1);
+            return (args[0] > 0.0) ? 1.0 : (args[0] < 0.0 ? -1.0 : 0.0);
+        }
+        if (lname == "atan2") { require(2); return std::atan2(args[0], args[1]); }
+        if (lname == "tan") { require(1); return std::tan(args[0]); }
+        if (lname == "asin") { require(1); return std::asin(args[0]); }
+        if (lname == "acos") { require(1); return std::acos(args[0]); }
+        if (lname == "atan") { require(1); return std::atan(args[0]); }
+        if (lname == "sinh") { require(1); return std::sinh(args[0]); }
+        if (lname == "cosh") { require(1); return std::cosh(args[0]); }
+        if (lname == "tanh") { require(1); return std::tanh(args[0]); }
+        if (lname == "table") {
+            if (args.size() < 3 || (args.size() - 1) % 2 != 0)
+                throw ParseError("Function table() requires odd number of args >= 3");
+            double x = args[0];
+            // Build pairs and do linear interpolation with endpoint clamping
+            size_t n = (args.size() - 1) / 2;
+            if (x <= args[1]) return args[2];
+            if (x >= args[args.size() - 2]) return args[args.size() - 1];
+            for (size_t i = 0; i < n - 1; ++i) {
+                double x0 = args[1 + 2*i], y0 = args[2 + 2*i];
+                double x1 = args[1 + 2*(i+1)], y1 = args[2 + 2*(i+1)];
+                if (x >= x0 && x <= x1) {
+                    double t = (x - x0) / (x1 - x0);
+                    return y0 + t * (y1 - y0);
+                }
+            }
+            return args[args.size() - 1]; // fallback
+        }
         throw ParseError("Unknown function: " + name);
     }
 
@@ -203,7 +325,7 @@ private:
         // Parenthesized sub-expression
         if (c == '(') {
             ++pos_;
-            double val = parse_additive();
+            double val = parse_logical_or();
             skip_ws();
             if (pos_ >= expr_.size() || expr_[pos_] != ')') {
                 throw ParseError("Missing closing parenthesis");
@@ -271,7 +393,10 @@ private:
 const std::unordered_set<std::string> kBuiltinFunctions = {
     "sqrt", "abs", "log", "log10", "exp", "sin", "cos",
     "min", "max", "pow", "if",
-    "gauss", "agauss", "unif", "aunif"
+    "gauss", "agauss", "unif", "aunif",
+    "limit", "stp", "pwr", "pwrs", "sgn", "atan2",
+    "tan", "asin", "acos", "atan",
+    "sinh", "cosh", "tanh", "table"
 };
 
 // ---------------------------------------------------------------------------

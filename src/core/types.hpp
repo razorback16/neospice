@@ -82,6 +82,8 @@ struct SinSpec {
     double vo = 0, va = 0, freq = 0, td = 0, theta = 0, phase = 0;
 };
 
+enum class SpiceDialect { AUTO, NGSPICE, PSPICE };
+
 class ParseError : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
