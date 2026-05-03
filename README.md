@@ -24,11 +24,7 @@ Reads standard SPICE netlists and produces ngspice-compatible results, but runs 
 - OpenBLAS
 - SLEEF (vectorized math library)
 
-On Ubuntu/Debian:
-
-```bash
-sudo apt install cmake g++ libopenblas-dev libsleef-dev
-```
+See [docs/building.md](docs/building.md) for platform-specific install commands.
 
 ### Build
 
@@ -286,6 +282,10 @@ A TLV3201-based Schmitt trigger oscillator simulated with the Python API. [Compa
 ![Circuit Schematic](examples/rc_relaxation_oscillator/relaxation_oscillator_schematic.svg)
 
 ![Simulation Waveforms](examples/rc_relaxation_oscillator/relaxation_oscillator_waveforms.png)
+
+## Contributing
+
+See [docs/building.md](docs/building.md) for platform-specific setup instructions, including building libngspice from source on macOS.
 
 ## Documentation
 
