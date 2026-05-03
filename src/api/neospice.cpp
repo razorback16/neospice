@@ -57,6 +57,7 @@ Circuit Simulator::parse(const std::string& netlist_text) {
 }
 
 DCResult Simulator::run_dc(Circuit& ckt) {
+    ckt.finalize_if_needed();
     auto result = solve_dc(ckt);
     apply_save_filter(result, ckt.save_signals);
     return result;
@@ -64,12 +65,14 @@ DCResult Simulator::run_dc(Circuit& ckt) {
 
 DCSweepResult Simulator::run_dc_sweep(Circuit& ckt,
                                       const std::vector<DCSweepParam>& params) {
+    ckt.finalize_if_needed();
     auto result = solve_dc_sweep(ckt, params);
     apply_save_filter(result, ckt.save_signals);
     return result;
 }
 
 TransientResult Simulator::run_transient(Circuit& ckt, double tstep, double tstop) {
+    ckt.finalize_if_needed();
     auto result = solve_transient(ckt, tstep, tstop);
     apply_save_filter(result, ckt.save_signals);
     return result;
@@ -77,6 +80,7 @@ TransientResult Simulator::run_transient(Circuit& ckt, double tstep, double tsto
 
 ACResult Simulator::run_ac(Circuit& ckt, ACMode mode,
                            int npoints, double fstart, double fstop) {
+    ckt.finalize_if_needed();
     auto result = solve_ac(ckt, mode, npoints, fstart, fstop);
     apply_save_filter(result, ckt.save_signals);
     return result;
@@ -84,6 +88,7 @@ ACResult Simulator::run_ac(Circuit& ckt, ACMode mode,
 
 TransientResult Simulator::run_transient(Circuit& ckt, double tstep, double tstop,
                                          const TransientOptions& opts) {
+    ckt.finalize_if_needed();
     auto result = solve_transient(ckt, tstep, tstop, opts);
     apply_save_filter(result, ckt.save_signals);
     return result;
@@ -92,6 +97,7 @@ TransientResult Simulator::run_transient(Circuit& ckt, double tstep, double tsto
 ACResult Simulator::run_ac(Circuit& ckt, ACMode mode,
                            int npoints, double fstart, double fstop,
                            const ACOptions& opts) {
+    ckt.finalize_if_needed();
     auto result = solve_ac(ckt, mode, npoints, fstart, fstop, opts);
     apply_save_filter(result, ckt.save_signals);
     return result;
@@ -101,19 +107,23 @@ NoiseResult Simulator::run_noise(Circuit& ckt, const std::string& output_node,
                                  const std::string& input_src,
                                  ACMode mode,
                                  int npoints, double fstart, double fstop) {
+    ckt.finalize_if_needed();
     return solve_noise(ckt, output_node, input_src, mode, npoints, fstart, fstop);
 }
 
 TFResult Simulator::run_tf(Circuit& ckt, const std::string& output_var,
                            const std::string& input_src) {
+    ckt.finalize_if_needed();
     return solve_tf(ckt, output_var, input_src);
 }
 
 SensResult Simulator::run_sens(Circuit& ckt, const std::string& output_var) {
+    ckt.finalize_if_needed();
     return solve_sens(ckt, output_var);
 }
 
 SimulationResult Simulator::run(Circuit& ckt) {
+    ckt.finalize_if_needed();
     if (!ckt.step_commands.empty()) {
         return run_step_sweep(ckt);
     }
