@@ -11,6 +11,8 @@
 #include "devices/cccs.hpp"
 #include "devices/ccvs.hpp"
 #include "devices/device_registry.hpp"
+#include "devices/asrc/asrc_device.hpp"
+#include "devices/asrc/expression_ast.hpp"
 #include "parser/model_cards.hpp"
 #include "parser/tokenizer.hpp"
 #include <algorithm>
@@ -43,6 +45,14 @@ std::invalid_argument missing_model(std::string_view device,
     return std::invalid_argument(std::string(device) +
                                  " device: model not found or wrong type: " +
                                  std::string(model));
+}
+
+int32_t resolve_b_node(Circuit& ckt, const std::string& name) {
+    std::string lower(name);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (lower == "0" || lower == "gnd") return GROUND_INTERNAL;
+    return static_cast<int32_t>(ckt.node(lower));
 }
 
 } // namespace
@@ -94,11 +104,14 @@ DevId Circuit::R(std::string_view name, NodeId a, NodeId b, double ohms) {
     return id;
 }
 
-DevId Circuit::C(std::string_view name, NodeId a, NodeId b, double farads) {
+DevId Circuit::C(std::string_view name, NodeId a, NodeId b, double farads,
+                 std::optional<double> ic) {
     DevId id{static_cast<int32_t>(devices_.size())};
-    add_device(std::make_unique<Capacitor>(std::string(name),
+    auto cap = std::make_unique<Capacitor>(std::string(name),
                                            static_cast<int32_t>(a),
-                                           static_cast<int32_t>(b), farads));
+                                           static_cast<int32_t>(b), farads);
+    if (ic) cap->set_ic(*ic);
+    add_device(std::move(cap));
     return id;
 }
 
@@ -221,6 +234,90 @@ DevId Circuit::H(std::string_view name, NodeId op, NodeId on,
                                       static_cast<int32_t>(on),
                                       transresistance, vs));
     return id;
+}
+
+// --- Behavioral source ---
+
+DevId Circuit::B(std::string_view name, NodeId np, NodeId nn,
+                 const std::string& expr_spec,
+                 double tc1, double tc2, double temp, double dtemp) {
+    // Parse V=/I= prefix
+    std::string spec_lower = lower_copy(expr_spec);
+    ASRCDevice::Mode mode;
+    std::string expr_str;
+    if (spec_lower.size() >= 2 && spec_lower[0] == 'v' && spec_lower[1] == '=') {
+        mode = ASRCDevice::Mode::VOLTAGE;
+        expr_str = expr_spec.substr(2);
+    } else if (spec_lower.size() >= 2 && spec_lower[0] == 'i' && spec_lower[1] == '=') {
+        mode = ASRCDevice::Mode::CURRENT;
+        expr_str = expr_spec.substr(2);
+    } else {
+        throw std::invalid_argument(
+            "B device '" + std::string(name) + "' requires 'V={expr}' or 'I={expr}', got: " + expr_spec);
+    }
+
+    // Strip optional surrounding braces and whitespace
+    while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.front())))
+        expr_str.erase(0, 1);
+    while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.back())))
+        expr_str.pop_back();
+    if (expr_str.size() >= 2 && expr_str.front() == '{' && expr_str.back() == '}')
+        expr_str = expr_str.substr(1, expr_str.size() - 2);
+
+    // Compile expression
+    auto compiled = asrc::CompiledExpression::compile(expr_str);
+
+    // Resolve variable references
+    const auto& refs = compiled.var_refs();
+    int nv = compiled.num_vars();
+    std::vector<int32_t> node_indices(nv, -1);
+    std::vector<int32_t> node_indices2(nv, -1);
+    std::vector<const VSource*> vsource_ptrs(nv, nullptr);
+
+    for (int i = 0; i < nv; ++i) {
+        const auto& ref = refs[i];
+
+        // Handle sentinels (TIME, TEMPER, HERTZ)
+        if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+            (ref.name1 == "__time__" || ref.name1 == "__temper__" || ref.name1 == "__hertz__")) {
+            node_indices[i] = -2;
+            continue;
+        }
+
+        switch (ref.kind) {
+        case asrc::VarKind::NODE_VOLTAGE:
+            node_indices[i] = resolve_b_node(*this, ref.name1);
+            break;
+        case asrc::VarKind::DIFF_VOLTAGE:
+            node_indices[i]  = resolve_b_node(*this, ref.name1);
+            node_indices2[i] = resolve_b_node(*this, ref.name2);
+            break;
+        case asrc::VarKind::BRANCH_CURRENT: {
+            auto* dev = find_device_ptr(ref.name1);
+            auto* vs = dev ? dynamic_cast<const VSource*>(dev) : nullptr;
+            if (!vs)
+                throw std::invalid_argument(
+                    "B device '" + std::string(name) +
+                    "': I() references unknown voltage source '" + ref.name1 +
+                    "' (voltage source must be added before B())");
+            vsource_ptrs[i] = vs;
+            break;
+        }
+        }
+    }
+
+    // Construct ASRCDevice
+    auto asrc_dev = std::make_unique<ASRCDevice>(
+        std::string(name), raw(np), raw(nn), mode,
+        std::move(compiled), std::move(node_indices),
+        std::move(node_indices2), std::move(vsource_ptrs));
+
+    asrc_dev->set_tc1(tc1);
+    asrc_dev->set_tc2(tc2);
+    if (temp > 0) asrc_dev->set_temp(temp);
+    asrc_dev->set_dtemp(dtemp);
+
+    return add_dev(std::move(asrc_dev));
 }
 
 // --- Semiconductors ---

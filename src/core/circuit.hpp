@@ -161,7 +161,8 @@ public:
     // --- Typed device construction methods ---
     // Passives
     DevId R(std::string_view name, NodeId a, NodeId b, double ohms);
-    DevId C(std::string_view name, NodeId a, NodeId b, double farads);
+    DevId C(std::string_view name, NodeId a, NodeId b, double farads,
+            std::optional<double> ic = std::nullopt);
     DevId L(std::string_view name, NodeId a, NodeId b, double henries);
     DevId K(std::string_view name, DevId L1, DevId L2, double coupling);
 
@@ -182,6 +183,12 @@ public:
             DevId vsense, double gain);
     DevId H(std::string_view name, NodeId op, NodeId on,
             DevId vsense, double transresistance);
+
+    // Behavioral source (arbitrary source)
+    DevId B(std::string_view name, NodeId np, NodeId nn,
+            const std::string& expr_spec,
+            double tc1 = 0.0, double tc2 = 0.0,
+            double temp = -1.0, double dtemp = 0.0);
 
     // Semiconductor devices
     DevId D(std::string_view name, NodeId anode, NodeId cathode,

@@ -144,6 +144,7 @@ NB_MODULE(_core, m) {
 
     // --- Circuit (move-only) ---
     nb::class_<Circuit>(m, "Circuit")
+        .def(nb::init<>())
         .def_ro("title", &Circuit::title)
         .def_rw("options", &Circuit::options)
         .def("node_names", &Circuit::node_names)
@@ -157,9 +158,11 @@ NB_MODULE(_core, m) {
             return static_cast<int32_t>(c.R(name, c.node(n1), c.node(n2), val));
         })
         .def("C", [](Circuit& c, const std::string& name,
-                     const std::string& n1, const std::string& n2, double val) -> int {
-            return static_cast<int32_t>(c.C(name, c.node(n1), c.node(n2), val));
-        })
+                     const std::string& n1, const std::string& n2, double val,
+                     std::optional<double> ic) -> int {
+            return static_cast<int32_t>(c.C(name, c.node(n1), c.node(n2), val, ic));
+        }, nb::arg("name"), nb::arg("n1"), nb::arg("n2"), nb::arg("val"),
+           nb::arg("ic") = nb::none())
         .def("L", [](Circuit& c, const std::string& name,
                      const std::string& n1, const std::string& n2, double val) -> int {
             return static_cast<int32_t>(c.L(name, c.node(n1), c.node(n2), val));
@@ -222,6 +225,16 @@ NB_MODULE(_core, m) {
         }, nb::arg("name"), nb::arg("nd"), nb::arg("ng"), nb::arg("ns"),
            nb::arg("nb"), nb::arg("model"), nb::arg("w") = 1e-6,
            nb::arg("l") = 1e-7)
+        .def("B", [](Circuit& c, const std::string& name,
+                     const std::string& np, const std::string& nn,
+                     const std::string& expr_spec,
+                     double tc1, double tc2, double temp, double dtemp) -> int {
+            return static_cast<int32_t>(c.B(name, c.node(np), c.node(nn),
+                                            expr_spec, tc1, tc2, temp, dtemp));
+        }, nb::arg("name"), nb::arg("np"), nb::arg("nn"),
+           nb::arg("expr"),
+           nb::arg("tc1") = 0.0, nb::arg("tc2") = 0.0,
+           nb::arg("temp") = -1.0, nb::arg("dtemp") = 0.0)
         .def("is_finalized", &Circuit::is_finalized)
         .def("finalize", &Circuit::finalize_if_needed);
 
