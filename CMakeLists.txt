@@ -18,6 +18,11 @@ if(APPLE)
     if(_OPENBLAS_PREFIX)
         set(ENV{PKG_CONFIG_PATH} "${_OPENBLAS_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
     endif()
+
+    # Prefer locally-built libngspice from scripts/build-libngspice-mac.sh
+    if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/libngspice/lib/pkgconfig")
+        set(ENV{PKG_CONFIG_PATH} "${CMAKE_SOURCE_DIR}/third_party/libngspice/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+    endif()
 endif()
 pkg_check_modules(OPENBLAS REQUIRED IMPORTED_TARGET openblas)
 
