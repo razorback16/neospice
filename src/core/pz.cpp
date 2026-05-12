@@ -47,26 +47,28 @@ PZResult solve_pz(Circuit& ckt,
     dc_solver->symbolic(ckt.pattern());
     ckt.integrator_ctx.options = &ckt.options;
 
-    constexpr int MODEDCOP_BIT    = 0x10;
-    constexpr int MODEINITJCT_BIT = 0x200;
-    constexpr int MODEINITFIX_BIT = 0x400;
+    constexpr int MODEDCOP_BIT       = 0x10;
+    constexpr int MODEINITJCT_BIT    = 0x200;
+    constexpr int MODEINITFLOAT_BIT  = 0x100;
+    constexpr int MODEINITFIX_BIT    = 0x400;
 
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto dc_result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
     if (dc_result.converged) {
         dc_solution = dc_result.solution;
     } else {
-        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        dc_result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options);
+        dc_result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options,
+                                  MODEDCOP_BIT | MODEINITJCT_BIT,
+                                  MODEDCOP_BIT | MODEINITFLOAT_BIT);
         if (dc_result.converged) {
             dc_solution = dc_result.solution;
         } else {
-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             dc_result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
             if (dc_result.converged) {
                 dc_solution = dc_result.solution;
             } else {
-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                 dc_result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
                 if (dc_result.converged) {
                     dc_solution = dc_result.solution;
@@ -96,6 +98,8 @@ PZResult solve_pz(Circuit& ckt,
             }
         }
     }
+    // Persist diag_gmin baseline after DC convergence
+    ckt.options.diag_gmin = ckt.options.gshunt;
 
     // 2. MODEINITSMSIG pass — compute small-signal parameters at DC operating point
     {

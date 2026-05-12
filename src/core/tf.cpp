@@ -65,9 +65,10 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
 
     ckt.integrator_ctx.options = &ckt.options;
 
-    constexpr int MODEDCOP_BIT    = 0x10;
-    constexpr int MODEINITJCT_BIT = 0x200;
-    constexpr int MODEINITFIX_BIT = 0x400;
+    constexpr int MODEDCOP_BIT       = 0x10;
+    constexpr int MODEINITJCT_BIT    = 0x200;
+    constexpr int MODEINITFLOAT_BIT  = 0x100;
+    constexpr int MODEINITFIX_BIT    = 0x400;
 
     // DC operating point — try newton, then gmin stepping, then source stepping
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
@@ -75,17 +76,18 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
     if (result.converged) {
         solution = result.solution;
     } else {
-        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        result = gmin_stepping(ckt, *solver, solution, ckt.options);
+        result = gmin_stepping(ckt, *solver, solution, ckt.options,
+                               MODEDCOP_BIT | MODEINITJCT_BIT,
+                               MODEDCOP_BIT | MODEINITFLOAT_BIT);
         if (result.converged) {
             solution = result.solution;
         } else {
-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             result = source_stepping(ckt, *solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
             } else {
-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                 result = pseudo_transient(ckt, *solver, solution, ckt.options);
                 if (result.converged) {
                     solution = result.solution;
@@ -113,6 +115,8 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
             }
         }
     }
+    // Persist diag_gmin baseline after DC convergence
+    ckt.options.diag_gmin = ckt.options.gshunt;
 
     // ---------------------------------------------------------------
     // 3. Re-assemble Jacobian at the converged point and factor.

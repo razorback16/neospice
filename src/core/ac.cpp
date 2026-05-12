@@ -72,9 +72,10 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
 
         // AC analysis runs a plain DC operating point first — use MODEDCOP (0x10),
         // same as solve_dc().  newton_solve() reads integrator_ctx.mode.
-        constexpr int MODEDCOP_BIT    = 0x10;
-        constexpr int MODEINITJCT_BIT = 0x200;
-        constexpr int MODEINITFIX_BIT = 0x400;
+        constexpr int MODEDCOP_BIT       = 0x10;
+        constexpr int MODEINITJCT_BIT    = 0x200;
+        constexpr int MODEINITFLOAT_BIT  = 0x100;
+        constexpr int MODEINITFIX_BIT    = 0x400;
 
         ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
         auto result = newton_solve(ckt, *dc_solver, dc_solution,
@@ -82,17 +83,18 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
         if (result.converged) {
             dc_solution = result.solution;
         } else {
-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-            result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options);
+            result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options,
+                                   MODEDCOP_BIT | MODEINITJCT_BIT,
+                                   MODEDCOP_BIT | MODEINITFLOAT_BIT);
             if (result.converged) {
                 dc_solution = result.solution;
             } else {
-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                 result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
                 if (result.converged) {
                     dc_solution = result.solution;
                 } else {
-                    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                     result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
                     if (result.converged) {
                         dc_solution = result.solution;
@@ -116,6 +118,8 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
                 }
             }
         }
+        // Persist diag_gmin baseline after DC convergence
+        ckt.options.diag_gmin = ckt.options.gshunt;
         ckt.set_operating_point(dc_solution);
     }
     ckt.integrator_ctx.options = &ckt.options;

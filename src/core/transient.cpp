@@ -61,12 +61,13 @@ constexpr int kGlobalLteMinStepsAfterBp = 4;
 constexpr int kLteMinStepCount = 2;
 
 // CKTmode bits (ngspice cktdefs.h)
-constexpr int MODETRANOP_BIT   = 0x20;
-constexpr int MODEINITJCT_BIT  = 0x200;
-constexpr int MODEINITFIX_BIT  = 0x400;
-constexpr int MODETRAN_BIT     = 0x1;
-constexpr int MODEINITTRAN_BIT = 0x1000;
-constexpr int MODEINITPRED_BIT = 0x2000;
+constexpr int MODETRANOP_BIT      = 0x20;
+constexpr int MODEINITJCT_BIT     = 0x200;
+constexpr int MODEINITFLOAT_BIT   = 0x100;
+constexpr int MODEINITFIX_BIT     = 0x400;
+constexpr int MODETRAN_BIT        = 0x1;
+constexpr int MODEINITTRAN_BIT    = 0x1000;
+constexpr int MODEINITPRED_BIT    = 0x2000;
 
 // ===================================================================
 // Small utility functions
@@ -151,30 +152,35 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
     if (result.converged) {
         solution = result.solution;
         total_newton_iters += result.iterations;
+        ckt.options.diag_gmin = ckt.options.gshunt;
         return;
     }
 
-    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
-    result = gmin_stepping(ckt, solver, solution, ckt.options);
+    result = gmin_stepping(ckt, solver, solution, ckt.options,
+                           MODETRANOP_BIT | MODEINITJCT_BIT,
+                           MODETRANOP_BIT | MODEINITFLOAT_BIT);
     if (result.converged) {
         solution = result.solution;
         total_newton_iters += result.iterations;
+        ckt.options.diag_gmin = ckt.options.gshunt;
         return;
     }
 
-    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
+    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
     result = source_stepping(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
         total_newton_iters += result.iterations;
+        ckt.options.diag_gmin = ckt.options.gshunt;
         return;
     }
 
-    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
+    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
     result = pseudo_transient(ckt, solver, solution, ckt.options);
     if (result.converged) {
         solution = result.solution;
         total_newton_iters += result.iterations;
+        ckt.options.diag_gmin = ckt.options.gshunt;
         return;
     }
 

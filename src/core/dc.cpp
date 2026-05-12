@@ -73,9 +73,10 @@ DCResult solve_dc(Circuit& ckt) {
     // Plain DC operating point uses MODEDCOP (0x10), NOT the full MODEDC mask.
     // This matters because BSIM4v7's load function checks MODEDCTRANCURVE to
     // decide whether to compute charges; for a plain DC op that bit must be off.
-    constexpr int MODEDCOP_BIT    = 0x10;
-    constexpr int MODEINITJCT_BIT = 0x200;
-    constexpr int MODEINITFIX_BIT = 0x400;
+    constexpr int MODEDCOP_BIT       = 0x10;
+    constexpr int MODEINITJCT_BIT    = 0x200;
+    constexpr int MODEINITFLOAT_BIT  = 0x100;
+    constexpr int MODEINITFIX_BIT    = 0x400;
 
     SimStatus sim_status;
 
@@ -93,9 +94,10 @@ DCResult solve_dc(Circuit& ckt) {
         sim_status.residual = result.residual;
         sim_status.worst_node_idx = result.worst_node_idx;
     } else {
-        // 4. Try gmin stepping (fix/iterate mode)
-        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-        result = gmin_stepping(ckt, *solver, solution, ckt.options);
+        // 4. Try gmin stepping
+        result = gmin_stepping(ckt, *solver, solution, ckt.options,
+                               MODEDCOP_BIT | MODEINITJCT_BIT,
+                               MODEDCOP_BIT | MODEINITFLOAT_BIT);
         if (result.converged) {
             solution = result.solution;
             sim_status.iterations = result.iterations;
@@ -106,7 +108,7 @@ DCResult solve_dc(Circuit& ckt) {
             sim_status.warnings.push_back("gmin stepping used");
         } else {
             // 5. Try source stepping
-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             result = source_stepping(ckt, *solver, solution, ckt.options);
             if (result.converged) {
                 solution = result.solution;
@@ -118,7 +120,7 @@ DCResult solve_dc(Circuit& ckt) {
                 sim_status.warnings.push_back("source stepping used");
             } else {
                 // 6. Try pseudo-transient continuation
-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                 result = pseudo_transient(ckt, *solver, solution, ckt.options);
                 if (result.converged) {
                     solution = result.solution;
@@ -140,6 +142,10 @@ DCResult solve_dc(Circuit& ckt) {
             }
         }
     }
+
+    // Persist diag_gmin baseline after DC convergence (ngspice: every path out
+    // of CKTop sets CKTdiagGmin = CKTgshunt, never CKTgmin).
+    ckt.options.diag_gmin = ckt.options.gshunt;
 
     ckt.set_operating_point(solution);
 
@@ -276,8 +282,9 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     // DC sweep uses MODEDCTRANCURVE (0x40), NOT the full MODEDC mask.
     // This is the ngspice convention: BSIM4v7's load function checks
     // MODEDCTRANCURVE to decide whether to compute charges during a DC sweep.
-    constexpr int MODEDCTRANCURVE_BIT = 0x40;
+    constexpr int MODEDCTRANCURVE_BIT  = 0x40;
     constexpr int MODEINITJCT_BIT     = 0x200;
+    constexpr int MODEINITFLOAT_BIT   = 0x100;
     constexpr int MODEINITFIX_BIT     = 0x400;
 
     // Initial guess: zeros
@@ -350,19 +357,22 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
             first_point = false;
             return;
         }
-        ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITFIX_BIT;
-        res = gmin_stepping(ckt, *solver, solution, ckt.options);
+        res = gmin_stepping(ckt, *solver, solution, ckt.options,
+                            MODEDCTRANCURVE_BIT | MODEINITJCT_BIT,
+                            MODEDCTRANCURVE_BIT | MODEINITFLOAT_BIT);
         if (res.converged) {
             solution = res.solution;
             first_point = false;
             return;
         }
+        ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = source_stepping(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
             first_point = false;
             return;
         }
+        ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = pseudo_transient(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             solution = res.solution;
@@ -401,6 +411,9 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     // Restore original source values
     src0->set_dc_value(orig_val0);
     if (src1) src1->set_dc_value(orig_val1);
+
+    // Persist diag_gmin baseline after DC sweep convergence
+    ckt.options.diag_gmin = ckt.options.gshunt;
 
     auto t_end = std::chrono::steady_clock::now();
     sweep_result.status.converged = true;
