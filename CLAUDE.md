@@ -17,3 +17,13 @@ ngspice source code is available locally at `~/Codes/ngspice`.
 ## Reference libraries
 
 SuiteSparse source code is available locally at `~/Codes/SuiteSparse`. Contains KLU, AMD, BTF, COLAMD, and other sparse solver components used as reference for our custom implementations.
+
+## Test diagnostics
+
+To see actual error margins in ngspice comparison tests, reconfigure with:
+
+```
+cmake .. -DNEOSPICE_DEBUG_COMPARE=ON
+```
+
+This enables `NEOSPICE_DEBUG_COMPARE` which prints `MARGIN_TRAN|signal|actual_err|tolerance|headroom` to stderr for every compare_transient / compare_dc / compare_ac call.
