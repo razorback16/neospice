@@ -1,4 +1,5 @@
 #include "core/circuit.hpp"
+#include "core/circuit_defs.hpp"  // DefinitionStore must be complete for defaulted dtor/move
 #include <algorithm>
 #include <cassert>
 #include <cctype>

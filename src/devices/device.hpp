@@ -126,6 +126,12 @@ public:
         return std::nullopt;
     }
 
+    /// Returns true if the device's matrix contributions changed drastically
+    /// enough during this iteration that the pivot ordering might be invalid
+    /// (e.g. a switch flipped state).  Default is false — most devices never
+    /// change matrix structure between Newton iterations.
+    virtual bool matrix_structure_changed() const { return false; }
+
     /// Reset device state for a fresh simulation pass (e.g. between .step
     /// sweep iterations).  Subclasses override to clear internal caches.
     virtual void reset() {}

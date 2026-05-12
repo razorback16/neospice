@@ -236,7 +236,13 @@ NB_MODULE(_core, m) {
            nb::arg("tc1") = 0.0, nb::arg("tc2") = 0.0,
            nb::arg("temp") = -1.0, nb::arg("dtemp") = 0.0)
         .def("is_finalized", &Circuit::is_finalized)
-        .def("finalize", &Circuit::finalize_if_needed);
+        .def("finalize", &Circuit::finalize_if_needed)
+        .def("include", &Circuit::include)
+        .def("X", [](Circuit& c, const std::string& name,
+                     const std::string& subckt,
+                     const std::vector<std::string>& nodes) {
+            c.X(name, subckt, nodes);
+        }, nb::arg("name"), nb::arg("subckt"), nb::arg("nodes"));
 
     nb::class_<DeviceInfo>(m, "DeviceInfo")
         .def_ro("name", &DeviceInfo::name)

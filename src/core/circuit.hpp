@@ -14,6 +14,9 @@
 
 namespace neospice {
 
+// Forward declaration for DefinitionSet (defined in parser/parse_state.hpp)
+struct DefinitionSet;
+
 struct DCSweepParam {
     std::string source_name;
     double start = 0.0;
@@ -209,6 +212,17 @@ public:
 
     void add_device(std::unique_ptr<Device> dev);
 
+    /// Load subcircuit / model / function / parameter definitions from a
+    /// SPICE file so that subsequent X() calls can instantiate them.
+    void include(const std::string& filepath);
+
+    /// Instantiate a subcircuit into this circuit.
+    /// Requires a prior include() call that loaded the definition.
+    void X(const std::string& instance_name,
+           const std::string& subckt_name,
+           const std::vector<std::string>& port_nodes,
+           const std::unordered_map<std::string, std::string>& params = {});
+
     /// Take ownership of a model card so it outlives any device that holds
     /// a non-owning pointer to it.  T must be a complete type at the call
     /// site (the template captures the destructor via TypedModelCardHolder).
@@ -362,6 +376,11 @@ private:
     std::vector<double> operating_point_;
     std::unique_ptr<SparsityPattern> pattern_;
     bool finalized_ = false;
+
+    // Opaque store for definitions loaded via include().
+    // Defined in circuit_include.cpp where DefinitionSet is complete.
+    struct DefinitionStore;
+    std::unique_ptr<DefinitionStore> def_store_;
 };
 
 // Thread-local pointer to the active IntegratorCtx, set by newton_solve

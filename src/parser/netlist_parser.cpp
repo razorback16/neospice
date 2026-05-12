@@ -362,9 +362,7 @@ static std::string extract_lib_section(const std::string& content,
 
 Circuit NetlistParser::parse(const std::string& netlist) {
     Circuit ckt;
-    auto node_raw = [&ckt](const std::string& s) -> int32_t {
-        return static_cast<int32_t>(ckt.node(s));
-    };
+    ParseState state(ckt, subcircuit_defs_);
 
     // Strip leading whitespace so the tokenizer's title-line detection works
     // correctly even when the netlist starts with newlines.
@@ -388,22 +386,36 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         ckt.title = first_line;
     }
 
-    auto lines = tokenize(trimmed);
+    state.lines = tokenize(trimmed);
+    state.dialect = dialect_;
 
-    // Pass 0: extract .subckt/.ends blocks into subcircuit_defs_
-    // This must run before Pass 1 and Pass 2 so subcircuit body lines are
-    // not processed as top-level elements.
+    pass0_extract_subcircuits(state);
+    pass025_resolve_funcs_params(state);
+    pass04_collect_globals(state);
+    pass05_expand_subcircuits(state);
+    pass1_collect_models_params(state);
+    pass2_parse_elements(state);
+    pass3_resolve_deferred(state);
+
+    ckt.finalize();
+    return ckt;
+}
+
+// ---------------------------------------------------------------------------
+// Pass 0: Extract .subckt/.ends blocks into subcircuit_defs_
+// ---------------------------------------------------------------------------
+void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
     {
-        subcircuit_defs_.clear();
+        state.subcircuit_defs.clear();
         std::vector<TokenizedLine> remaining_lines;
-        remaining_lines.reserve(lines.size());
+        remaining_lines.reserve(state.lines.size());
 
         int depth = 0;
         SubcircuitDef current_def;
         // Stack of outer defs when nesting deeper than 1
         std::vector<SubcircuitDef> def_stack;
 
-        for (const auto& line : lines) {
+        for (const auto& line : state.lines) {
             if (line.tokens.empty()) {
                 if (depth > 0) {
                     current_def.body.push_back(line);
@@ -473,7 +485,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 
                 if (depth == 0) {
                     // Finished the outermost subcircuit definition
-                    subcircuit_defs_[current_def.name] = std::move(current_def);
+                    state.subcircuit_defs[current_def.name] = std::move(current_def);
                     current_def = SubcircuitDef{};
                 } else {
                     // End of a nested subcircuit. Collect the inner def, pop the
@@ -521,36 +533,39 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             throw ParseError("Unterminated .subckt '" + current_def.name + "': missing .ends");
         }
 
-        lines = std::move(remaining_lines);
+        state.lines = std::move(remaining_lines);
     }
+}
 
-    // Pass 0.25: Pre-collect .func definitions, expand func calls in all
+// ---------------------------------------------------------------------------
+// Pass 0.25: Resolve .func and .param definitions
+// ---------------------------------------------------------------------------
+void NetlistParser::pass025_resolve_funcs_params(ParseState& state) {
+    // Pre-collect .func definitions, expand func calls in all
     // tokens, then collect top-level .param entries so that expansion
     // (Pass 0.5) can resolve parameter expressions like R={myR}.
-    std::unordered_map<std::string, FuncDef> func_defs;
-    std::unordered_map<std::string, double> global_params;
     {
         // First collect .func definitions
-        for (const auto& line : lines) {
+        for (const auto& line : state.lines) {
             if (line.tokens.empty()) continue;
             std::string first = to_lower(line.tokens[0]);
             if (first == ".func") {
-                parse_func_def(line.tokens, func_defs);
+                parse_func_def(line.tokens, state.func_defs);
             }
         }
 
         // Expand .func calls in all tokens (modifies lines in place)
-        if (!func_defs.empty()) {
-            for (auto& line : lines) {
+        if (!state.func_defs.empty()) {
+            for (auto& line : state.lines) {
                 for (auto& tok : line.tokens) {
-                    tok = expand_funcs(tok, func_defs);
+                    tok = expand_funcs(tok, state.func_defs);
                 }
             }
         }
 
         // Then collect .param entries
         std::vector<std::pair<std::string, std::string>> pre_raw_params;
-        for (const auto& line : lines) {
+        for (const auto& line : state.lines) {
             if (line.tokens.empty()) continue;
             std::string first = to_lower(line.tokens[0]);
             if (first == ".param") {
@@ -565,179 +580,75 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             }
         }
         if (!pre_raw_params.empty()) {
-            global_params = resolve_params(pre_raw_params);
+            state.global_params = resolve_params(pre_raw_params);
         }
     }
+}
 
-    // Pass 0.4: Collect .global node declarations.
+// ---------------------------------------------------------------------------
+// Pass 0.4: Collect .global node declarations
+// ---------------------------------------------------------------------------
+void NetlistParser::pass04_collect_globals(ParseState& state) {
     // Nodes listed on .global lines are shared across all subcircuit
     // hierarchies and must NOT be prefixed during expansion.
-    std::unordered_set<std::string> global_nodes;
-    for (const auto& line : lines) {
+    for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
         if (to_lower(line.tokens[0]) == ".global") {
             for (size_t i = 1; i < line.tokens.size(); ++i) {
-                global_nodes.insert(to_lower(line.tokens[i]));
+                state.global_nodes.insert(to_lower(line.tokens[i]));
             }
         }
     }
+}
 
-    // Pass 0.5: Expand X instances into primitive element lines.
+// ---------------------------------------------------------------------------
+// Pass 0.5: Expand subcircuit instances
+// ---------------------------------------------------------------------------
+void NetlistParser::pass05_expand_subcircuits(ParseState& state) {
+    // Expand X instances into primitive element lines.
     // After this step, `lines` contains no X elements.
-    // Always call — even when subcircuit_defs_ is empty — so that X lines
+    // Always call — even when subcircuit_defs is empty — so that X lines
     // referencing undefined subcircuits produce a proper ParseError.
-    lines = expand_all_instances(lines, subcircuit_defs_, global_params, global_nodes);
+    state.lines = expand_all_instances(state.lines, state.subcircuit_defs,
+                                       state.global_params, state.global_nodes);
+}
 
-    // Storage for params and models
-    std::unordered_map<std::string, double> params;
-    std::unordered_map<std::string, ModelCard> models;
-    std::unordered_map<std::string, ResistorModel> res_models;
-    std::unordered_map<std::string, CapacitorModel> cap_models;
-    std::unordered_map<std::string, InductorModel> ind_models;
-
-    // Parsed semiconductor elements — dispatched through DeviceRegistry
-    std::unordered_map<char, std::vector<std::unique_ptr<ParsedElement>>> parsed_elements;
-
-    // Deferred CCVS (H elements): resolved after all VSource devices exist so
-    // we can locate the sensing VSource by name and pass a pointer to CCVS.
-    struct DeferredCCVS {
-        std::string name;
-        int32_t np, nn;
-        std::string vsense_name;
-        double rm;
-        int line_number;
-    };
-    std::vector<DeferredCCVS> deferred_ccvs;
-
-    // Deferred CCCS (F elements): resolved after all VSource devices exist so
-    // we can locate the sensing VSource by name and pass a pointer to CCCS.
-    struct DeferredCCCS {
-        std::string name;
-        int32_t np, nn;
-        std::string vsense_name;
-        double gain;
-        double m = 1.0;
-        int line_number;
-    };
-    std::vector<DeferredCCCS> deferred_cccs;
-
-    // Deferred POLY CCVS (H POLY elements): resolved after all VSource devices exist.
-    struct DeferredPolyCCVS {
-        std::string name;
-        int32_t np, nn;
-        std::vector<std::string> vsense_names;
-        std::vector<double> coeffs;
-        int line_number;
-    };
-    std::vector<DeferredPolyCCVS> deferred_poly_ccvs;
-
-    // Deferred POLY CCCS (F POLY elements): resolved after all VSource devices exist.
-    struct DeferredPolyCCCS {
-        std::string name;
-        int32_t np, nn;
-        std::vector<std::string> vsense_names;
-        std::vector<double> coeffs;
-        int line_number;
-    };
-    std::vector<DeferredPolyCCCS> deferred_poly_cccs;
-
-    // Deferred coupled inductors (K elements): resolved after all Inductor
-    // devices exist so we can locate them by name and pass pointers.
-    struct DeferredCoupledInductor {
-        std::string name;
-        std::string l1_name;
-        std::string l2_name;
-        double coupling;
-        int line_number;
-    };
-    std::vector<DeferredCoupledInductor> deferred_coupled_inductors;
-
-    // Deferred VSwitch (S elements): resolved after all .model cards are known.
-    struct DeferredVSwitch {
-        std::string name;
-        int32_t np, nn, ncp, ncn;
-        std::string model_name;
-        int line_number;
-    };
-    std::vector<DeferredVSwitch> deferred_vswitches;
-
-    // Deferred CSwitch (W elements): resolved after all VSource devices and .model cards are known.
-    struct DeferredCSwitch {
-        std::string name;
-        int32_t np, nn;
-        std::string vsense_name;
-        std::string model_name;
-        int line_number;
-    };
-    std::vector<DeferredCSwitch> deferred_cswitches;
-
-    // Deferred LTRA (O elements): resolved after all .model cards are known.
-    struct DeferredLTRA {
-        std::string name;
-        int32_t p1p, p1n, p2p, p2n;
-        std::string model_name;
-        int line_number;
-        // Initial conditions
-        double ic_v1 = 0.0, ic_i1 = 0.0, ic_v2 = 0.0, ic_i2 = 0.0;
-        bool ic_v1_given = false, ic_i1_given = false;
-        bool ic_v2_given = false, ic_i2_given = false;
-    };
-    std::vector<DeferredLTRA> deferred_ltras;
-
-    // Deferred ASRC (B elements): the expression is compiled immediately but
-    // I() references need VSource pointers resolved in a second pass.
-    struct DeferredASRC {
-        std::string name;
-        int32_t np, nn;
-        ASRCDevice::Mode mode;
-        asrc::CompiledExpression expr;
-        // Per-variable resolved data (filled at parse time for V() refs)
-        std::vector<int32_t> node_indices;   // -1 = ground, -2 = TIME
-        std::vector<int32_t> node_indices2;  // second node for V(n1,n2)
-        // Names of vsources for I() refs (resolved later)
-        std::vector<std::string> vsrc_names; // empty string if not I() ref
-        int line_number;
-        // Temperature coefficients
-        double tc1 = 0.0;
-        double tc2 = 0.0;
-        double temp = -1.0;   // Kelvin, -1 = use sim default
-        double dtemp = 0.0;   // Kelvin
-    };
-    std::vector<DeferredASRC> deferred_asrcs;
-
-    // Pass 1: collect .model, .func, and .param cards
+// ---------------------------------------------------------------------------
+// Pass 1: Collect .model, .func, and .param cards
+// ---------------------------------------------------------------------------
+void NetlistParser::pass1_collect_models_params(ParseState& state) {
     // Re-collect .func from post-expansion lines (subcircuit bodies may define .func)
-    for (const auto& line : lines) {
+    for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
         std::string first = to_lower(line.tokens[0]);
         if (first == ".func") {
-            parse_func_def(line.tokens, func_defs);
+            parse_func_def(line.tokens, state.func_defs);
         }
     }
 
     // Expand .func calls in all tokens (post-subcircuit-expansion lines)
-    if (!func_defs.empty()) {
-        for (auto& line : lines) {
+    if (!state.func_defs.empty()) {
+        for (auto& line : state.lines) {
             for (auto& tok : line.tokens) {
-                tok = expand_funcs(tok, func_defs);
+                tok = expand_funcs(tok, state.func_defs);
             }
         }
     }
 
     std::vector<std::pair<std::string, std::string>> raw_params;
-    for (const auto& line : lines) {
+    for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
         std::string first = to_lower(line.tokens[0]);
 
         if (first == ".model") {
             auto card = parse_model_card(line.tokens);
-            models[card.name] = card;
+            state.models[card.name] = card;
             if (card.type == "r") {
-                res_models[to_lower(card.name)] = to_resistor_model(card);
+                state.res_models[to_lower(card.name)] = to_resistor_model(card);
             } else if (card.type == "c") {
-                cap_models[to_lower(card.name)] = to_capacitor_model(card);
+                state.cap_models[to_lower(card.name)] = to_capacitor_model(card);
             } else if (card.type == "l") {
-                ind_models[to_lower(card.name)] = to_inductor_model(card);
+                state.ind_models[to_lower(card.name)] = to_inductor_model(card);
             }
         } else if (first == ".param") {
             // .param key=value  or  .param key={expr}
@@ -757,15 +668,15 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     {
         // Track which models still need resolution
         bool changed = true;
-        int max_passes = static_cast<int>(models.size()) + 1; // detect cycles
+        int max_passes = static_cast<int>(state.models.size()) + 1; // detect cycles
         int pass = 0;
         while (changed && pass < max_passes) {
             changed = false;
             ++pass;
-            for (auto& [name, card] : models) {
+            for (auto& [name, card] : state.models) {
                 if (card.ako_base.empty()) continue;
-                auto base_it = models.find(card.ako_base);
-                if (base_it == models.end()) {
+                auto base_it = state.models.find(card.ako_base);
+                if (base_it == state.models.end()) {
                     throw ParseError(".model " + name + " AKO: base model '"
                                      + card.ako_base + "' not found");
                 }
@@ -787,16 +698,16 @@ Circuit NetlistParser::parse(const std::string& netlist) {
                 changed = true;
                 // Update typed model maps
                 if (card.type == "r") {
-                    res_models[to_lower(name)] = to_resistor_model(card);
+                    state.res_models[to_lower(name)] = to_resistor_model(card);
                 } else if (card.type == "c") {
-                    cap_models[to_lower(name)] = to_capacitor_model(card);
+                    state.cap_models[to_lower(name)] = to_capacitor_model(card);
                 } else if (card.type == "l") {
-                    ind_models[to_lower(name)] = to_inductor_model(card);
+                    state.ind_models[to_lower(name)] = to_inductor_model(card);
                 }
             }
         }
         // If any AKO still unresolved after max passes, there's a cycle
-        for (const auto& [name, card] : models) {
+        for (const auto& [name, card] : state.models) {
             if (!card.ako_base.empty()) {
                 throw ParseError(".model " + name + " AKO: circular inheritance detected");
             }
@@ -805,11 +716,43 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 
     // Resolve all .param definitions in dependency order (handles forward references)
     if (!raw_params.empty()) {
-        params = resolve_params(raw_params);
+        state.params = resolve_params(raw_params);
     }
+}
 
-    // Pass 2: parse element lines and dot commands
-    for (const auto& line : lines) {
+// ---------------------------------------------------------------------------
+// Pass 2: Parse element lines and dot commands
+// ---------------------------------------------------------------------------
+void NetlistParser::pass2_parse_elements(ParseState& state) {
+    auto& ckt = state.ckt;
+    auto& node_raw = state.node_raw;
+    auto& func_defs = state.func_defs;
+    auto& res_models = state.res_models;
+    auto& cap_models = state.cap_models;
+    auto& ind_models = state.ind_models;
+    auto& parsed_elements = state.parsed_elements;
+    auto& models = state.models;
+    auto& deferred_ccvs = state.deferred_ccvs;
+    auto& deferred_cccs = state.deferred_cccs;
+    auto& deferred_poly_ccvs = state.deferred_poly_ccvs;
+    auto& deferred_poly_cccs = state.deferred_poly_cccs;
+    auto& deferred_coupled_inductors = state.deferred_coupled_inductors;
+    auto& deferred_vswitches = state.deferred_vswitches;
+    auto& deferred_cswitches = state.deferred_cswitches;
+    auto& deferred_ltras = state.deferred_ltras;
+    auto& deferred_asrcs = state.deferred_asrcs;
+
+    using DeferredCCVS = ParseState::DeferredCCVS;
+    using DeferredCCCS = ParseState::DeferredCCCS;
+    using DeferredPolyCCVS = ParseState::DeferredPolyCCVS;
+    using DeferredPolyCCCS = ParseState::DeferredPolyCCCS;
+    using DeferredCoupledInductor = ParseState::DeferredCoupledInductor;
+    using DeferredVSwitch = ParseState::DeferredVSwitch;
+    using DeferredCSwitch = ParseState::DeferredCSwitch;
+    using DeferredLTRA = ParseState::DeferredLTRA;
+    using DeferredASRC = ParseState::DeferredASRC;
+
+    for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
         const auto& tokens = line.tokens;
         std::string first = to_lower(tokens[0]);
@@ -2493,6 +2436,25 @@ Circuit NetlistParser::parse(const std::string& netlist) {
         }
         // Ignore unknown lines
     }
+}
+
+// ---------------------------------------------------------------------------
+// Pass 3: Resolve deferred elements
+// ---------------------------------------------------------------------------
+void NetlistParser::pass3_resolve_deferred(ParseState& state) {
+    auto& ckt = state.ckt;
+    auto& node_raw = state.node_raw;
+    auto& models = state.models;
+    auto& deferred_ccvs = state.deferred_ccvs;
+    auto& deferred_cccs = state.deferred_cccs;
+    auto& deferred_poly_ccvs = state.deferred_poly_ccvs;
+    auto& deferred_poly_cccs = state.deferred_poly_cccs;
+    auto& deferred_coupled_inductors = state.deferred_coupled_inductors;
+    auto& deferred_vswitches = state.deferred_vswitches;
+    auto& deferred_cswitches = state.deferred_cswitches;
+    auto& deferred_ltras = state.deferred_ltras;
+    auto& deferred_asrcs = state.deferred_asrcs;
+    auto& parsed_elements = state.parsed_elements;
 
     // Resolve deferred CCVS (H elements) — find sensing VSource by name.
     // VSource devices were already added to ckt during Pass 2.
@@ -2792,9 +2754,6 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 
         ckt.add_device(std::move(asrc_dev));
     }
-
-    ckt.finalize();
-    return ckt;
 }
 
 // Helper: resolve a filename token (possibly quoted) from a line.
@@ -3050,6 +3009,106 @@ Circuit NetlistParser::parse_file(const std::string& filepath) {
     std::string expanded = resolve_includes(oss.str(), base_dir, include_stack);
 
     return parse(expanded);
+}
+
+// ---------------------------------------------------------------------------
+// load_definitions — read a file, resolve includes, extract definitions only
+// ---------------------------------------------------------------------------
+DefinitionSet NetlistParser::load_definitions(const std::string& filepath) {
+    std::ifstream ifs(filepath);
+    if (!ifs.is_open())
+        throw ParseError("Cannot open file: " + filepath);
+    std::ostringstream oss;
+    oss << ifs.rdbuf();
+
+    std::string base_dir = std::filesystem::path(filepath).parent_path().string();
+    if (base_dir.empty()) base_dir = ".";
+
+    std::set<std::string> include_stack;
+    try {
+        include_stack.insert(std::filesystem::canonical(filepath).string());
+    } catch (const std::filesystem::filesystem_error&) {
+        include_stack.insert(std::filesystem::absolute(filepath).string());
+    }
+    std::string expanded = resolve_includes(oss.str(), base_dir, include_stack);
+
+    // Auto-detect dialect if needed
+    SpiceDialect d = dialect_;
+    if (d == SpiceDialect::AUTO)
+        d = detect_dialect(expanded);
+
+    // Tokenize
+    auto lines = tokenize(expanded);
+
+    // Create temporary circuit and state for extraction passes
+    Circuit tmp_ckt;
+    std::unordered_map<std::string, SubcircuitDef> tmp_subdefs;
+    ParseState state(tmp_ckt, tmp_subdefs);
+    state.lines = std::move(lines);
+    state.dialect = d;
+
+    // Run only the definition-extraction passes
+    pass0_extract_subcircuits(state);      // extracts .subckt/.ends
+    pass025_resolve_funcs_params(state);   // .func + .param resolution
+    pass1_collect_models_params(state);    // .model parsing + AKO resolution
+
+    // Package results
+    DefinitionSet defs;
+    defs.subcircuit_defs = std::move(state.subcircuit_defs);
+    defs.models = std::move(state.models);
+    defs.func_defs = std::move(state.func_defs);
+    defs.params = std::move(state.params);
+    return defs;
+}
+
+// ---------------------------------------------------------------------------
+// expand_subcircuit_into — instantiate a subcircuit into an existing circuit
+// ---------------------------------------------------------------------------
+void NetlistParser::expand_subcircuit_into(
+    Circuit& ckt,
+    const std::string& instance_name,
+    const std::string& subckt_name,
+    const std::vector<std::string>& port_nodes,
+    const DefinitionSet& defs,
+    const std::unordered_map<std::string, std::string>& instance_params) {
+
+    // Look up subcircuit (case-insensitive, lowercase key)
+    std::string key = to_lower(subckt_name);
+    auto it = defs.subcircuit_defs.find(key);
+    if (it == defs.subcircuit_defs.end())
+        throw ParseError("Subcircuit not found: " + subckt_name);
+
+    // Build a synthetic X-line
+    TokenizedLine xline;
+    xline.line_number = 0;
+    xline.tokens.push_back("x" + instance_name);
+    for (const auto& node : port_nodes)
+        xline.tokens.push_back(node);
+    xline.tokens.push_back(subckt_name);
+    for (const auto& [k, v] : instance_params)
+        xline.tokens.push_back(k + "=" + v);
+
+    // Local copy of subcircuit_defs for ParseState reference
+    std::unordered_map<std::string, SubcircuitDef> local_subdefs = defs.subcircuit_defs;
+
+    // Expand the X-line into primitive element lines
+    auto expanded_lines = expand_all_instances(
+        {xline}, local_subdefs, defs.params, {});
+
+    // Create ParseState targeting caller's circuit
+    ParseState state(ckt, local_subdefs);
+    state.lines = std::move(expanded_lines);
+    state.dialect = dialect_;
+
+    // Pre-populate from defs
+    state.models = defs.models;
+    state.params = defs.params;
+    state.func_defs = defs.func_defs;
+
+    // Run passes to parse elements and resolve deferred devices
+    pass1_collect_models_params(state);  // picks up .model from expanded subcircuit body
+    pass2_parse_elements(state);         // adds devices to ckt
+    pass3_resolve_deferred(state);       // resolves deferred devices
 }
 
 } // namespace neospice

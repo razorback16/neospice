@@ -67,6 +67,7 @@ add_library(neospice_lib
     parser/netlist_parser.cpp
     api/neospice.cpp
     api/circuit_typed.cpp
+    api/circuit_include.cpp
     api/measure_utils.cpp
     output/raw_writer.cpp
     output/output.cpp

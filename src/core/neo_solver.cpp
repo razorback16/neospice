@@ -298,7 +298,7 @@ bool NeoSolver::sparse_refactor(const double* orig_values) {
         for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p)
             l_val_[p] = x_work_[l_ri_[p]] / diag;
 
-        // Clear touched positions (restore x_work_ to zero)
+        // Clear touched positions (restore x_work_ to zero).
         for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p)
             x_work_[perm_ri_[p]] = 0.0;
         for (int32_t up = u_cp_[col]; up < u_end; ++up) {

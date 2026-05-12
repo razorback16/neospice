@@ -1,8 +1,26 @@
 #include "devices/switch.hpp"
 #include "core/circuit.hpp"   // tls_integrator_ctx
+#include <cmath>
 #include <stdexcept>
 
 namespace neospice {
+
+// PSpice-style smooth switch conductance using cubic Hermite interpolation.
+// Returns a conductance between Goff and Gon based on ctrl relative to
+// Von/Voff, with a smooth (C1) transition in between.
+static double smooth_conductance(double ctrl, double Von, double Voff,
+                                 double Ron, double Roff) {
+    double Gon  = 1.0 / Ron;
+    double Goff = 1.0 / Roff;
+    if (Von == Voff)
+        return (ctrl >= Von) ? Gon : Goff;
+    double x = (ctrl - Voff) / (Von - Voff);
+    if (x <= 0.0) return Goff;
+    if (x >= 1.0) return Gon;
+    double h = x * x * (3.0 - 2.0 * x);
+    double lnG = std::log(Goff) + (std::log(Gon) - std::log(Goff)) * h;
+    return std::exp(lnG);
+}
 
 // Mode flag bits (ngspice cktdefs.h)
 static constexpr int MODEINITFIX_BIT    = 0x400;
@@ -155,42 +173,41 @@ void VSwitch::evaluate(const std::vector<double>& voltages,
     double Vcn = (ncn_ >= 0) ? voltages[ncn_] : 0.0;
     double v_ctrl = Vcp - Vcn;
 
-    // Read mode from integrator context
-    int mode = 0;
-    if (tls_integrator_ctx)
-        mode = tls_integrator_ctx->mode;
-
-    // State rotation: at the start of a new transient step (predictor phase),
-    // save current_state_ as previous_state_.  This mirrors ngspice's
-    // CKTstates[0] -> CKTstates[1] rotation that happens before the Newton
-    // loop for each timestep.  During DC init, bootstrap both to the same
-    // value.
-    if (mode & (MODEINITTRAN_BIT | MODEINITPRED_BIT)) {
-        prev_state_changed_ = state_changed_;
-        previous_state_ = current_state_;
-    }
-
-    SwitchState old_current = current_state_;
-
-    SwitchState new_state = compute_switch_state(
-        v_ctrl, model_.Vt, model_.Vh,
-        old_current, previous_state_, mode, initial_on_);
-
-    // Track state change for convergence (MODEINITFLOAT only, like ngspice)
-    if (mode & MODEINITFLOAT_BIT)
-        state_changed_ = (new_state != old_current);
-    else
+    double g;
+    if (model_.smooth) {
+        g = smooth_conductance(v_ctrl, model_.Von, model_.Voff,
+                               model_.Ron, model_.Roff);
         state_changed_ = false;
+    } else {
+        // Read mode from integrator context
+        int mode = 0;
+        if (tls_integrator_ctx)
+            mode = tls_integrator_ctx->mode;
 
-    current_state_ = new_state;
+        if (mode & (MODEINITTRAN_BIT | MODEINITPRED_BIT)) {
+            prev_state_changed_ = state_changed_;
+            previous_state_ = current_state_;
+        }
 
-    // During DC init, bootstrap previous_state_ = current_state_
-    if (mode & (MODEINITFIX_BIT | MODEINITJCT_BIT))
-        previous_state_ = current_state_;
+        SwitchState old_current = current_state_;
 
-    // Compute conductance
-    double g = switch_is_on(current_state_) ? (1.0 / model_.Ron)
-                                            : (1.0 / model_.Roff);
+        SwitchState new_state = compute_switch_state(
+            v_ctrl, model_.Vt, model_.Vh,
+            old_current, previous_state_, mode, initial_on_);
+
+        if (mode & MODEINITFLOAT_BIT)
+            state_changed_ = (new_state != old_current);
+        else
+            state_changed_ = false;
+
+        current_state_ = new_state;
+
+        if (mode & (MODEINITFIX_BIT | MODEINITJCT_BIT))
+            previous_state_ = current_state_;
+
+        g = switch_is_on(current_state_) ? (1.0 / model_.Ron)
+                                         : (1.0 / model_.Roff);
+    }
     last_g_ = g;
 
     // Stamp conductance
@@ -254,38 +271,40 @@ void CSwitch::evaluate(const std::vector<double>& voltages,
     double i_ctrl = (bidx >= 0 && bidx < static_cast<int32_t>(voltages.size()))
                     ? voltages[bidx] : 0.0;
 
-    // Read mode from integrator context
-    int mode = 0;
-    if (tls_integrator_ctx)
-        mode = tls_integrator_ctx->mode;
-
-    // State rotation: predictor phase saves current as previous
-    if (mode & (MODEINITTRAN_BIT | MODEINITPRED_BIT)) {
-        prev_state_changed_ = state_changed_;
-        previous_state_ = current_state_;
-    }
-
-    SwitchState old_current = current_state_;
-
-    SwitchState new_state = compute_switch_state(
-        i_ctrl, model_.Vt, model_.Vh,
-        old_current, previous_state_, mode, initial_on_);
-
-    // Track state change for convergence (MODEINITFLOAT only)
-    if (mode & MODEINITFLOAT_BIT)
-        state_changed_ = (new_state != old_current);
-    else
+    double g;
+    if (model_.smooth) {
+        g = smooth_conductance(i_ctrl, model_.Von, model_.Voff,
+                               model_.Ron, model_.Roff);
         state_changed_ = false;
+    } else {
+        int mode = 0;
+        if (tls_integrator_ctx)
+            mode = tls_integrator_ctx->mode;
 
-    current_state_ = new_state;
+        if (mode & (MODEINITTRAN_BIT | MODEINITPRED_BIT)) {
+            prev_state_changed_ = state_changed_;
+            previous_state_ = current_state_;
+        }
 
-    // During DC init, bootstrap previous_state_ = current_state_
-    if (mode & (MODEINITFIX_BIT | MODEINITJCT_BIT))
-        previous_state_ = current_state_;
+        SwitchState old_current = current_state_;
 
-    // Compute conductance
-    double g = switch_is_on(current_state_) ? (1.0 / model_.Ron)
-                                            : (1.0 / model_.Roff);
+        SwitchState new_state = compute_switch_state(
+            i_ctrl, model_.Vt, model_.Vh,
+            old_current, previous_state_, mode, initial_on_);
+
+        if (mode & MODEINITFLOAT_BIT)
+            state_changed_ = (new_state != old_current);
+        else
+            state_changed_ = false;
+
+        current_state_ = new_state;
+
+        if (mode & (MODEINITFIX_BIT | MODEINITJCT_BIT))
+            previous_state_ = current_state_;
+
+        g = switch_is_on(current_state_) ? (1.0 / model_.Ron)
+                                         : (1.0 / model_.Roff);
+    }
     last_g_ = g;
 
     // Stamp conductance

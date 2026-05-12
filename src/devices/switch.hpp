@@ -16,6 +16,9 @@ struct SwitchModel {
     double Vh  = 0.0;    // hysteresis voltage (SW) / hysteresis current (CSW)
     double Ron  = 1.0;   // on-state resistance (Ohm)
     double Roff = 1e12;  // off-state resistance (Ohm) — ngspice default
+    bool smooth = false;  // PSpice-style smooth transition (Von/Voff specified)
+    double Von  = 0.0;   // control value for full ON (PSpice)
+    double Voff = 0.0;   // control value for full OFF (PSpice)
 };
 
 // ---------------------------------------------------------------------------
@@ -60,6 +63,7 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
     bool device_converged() const override { return !state_changed_; }
+    bool matrix_structure_changed() const override { return state_changed_; }
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
 
@@ -110,6 +114,7 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
     bool device_converged() const override { return !state_changed_; }
+    bool matrix_structure_changed() const override { return state_changed_; }
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
 

@@ -585,21 +585,22 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     const bool use_gear = (ckt.options.method == "gear");
 
     // ---------------------------------------------------------------
-    // 1. DC operating point
+    // 1. DC operating point (skipped when UIC is set)
     // ---------------------------------------------------------------
     std::vector<double> solution(n, 0.0);
     auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
-    try {
-        compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
-    } catch (const SimulationError& e) {
-        if (!ckt.options.no_throw) throw;
-        // no_throw: return empty transient result with failed status
-        TransientResult fail_result;
-        fail_result.status = e.status();
-        auto t_end = std::chrono::steady_clock::now();
-        fail_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
-        return fail_result;
+    if (!uic) {
+        try {
+            compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
+        } catch (const SimulationError& e) {
+            if (!ckt.options.no_throw) throw;
+            TransientResult fail_result;
+            fail_result.status = e.status();
+            auto t_end = std::chrono::steady_clock::now();
+            fail_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
+            return fail_result;
+        }
     }
 
     // Seed state1 with DC op-point (BSIM4 reads from CKTstate1)

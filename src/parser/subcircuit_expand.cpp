@@ -3,6 +3,7 @@
 #include "core/types.hpp"
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <unordered_set>
 
 namespace neospice {
@@ -43,6 +44,12 @@ int node_count_for_element(char elem_type) {
             return 4;  // Q has 4 node tokens (C B E S) — substrate should be explicit in subcircuits
         case 'j':
             return 3;  // J has 3 node tokens (D G S)
+        case 't': case 'o':
+            return 4;  // T (transmission line) and O (LTRA) have 4 node tokens
+        case 's':
+            return 4;  // S (voltage switch): n+ n- nc+ nc-
+        case 'w':
+            return 2;  // W (current switch): n+ n- (then Vname model)
         case 'k':
             return 0;  // K has no node tokens (references inductor device names, not nodes)
         default:
@@ -52,6 +59,98 @@ int node_count_for_element(char elem_type) {
 
 /// Check if a token looks like a parameter expression (contains braces or
 /// references a known parameter name).
+/// Substitute node references inside an ABM expression string.
+/// Finds V(name), V(name,name), and I(Vname) patterns and applies subst_node
+/// to each node/device name.  Also substitutes bare parameter names.
+std::string subst_expr_nodes(
+    const std::string& expr,
+    const std::function<std::string(const std::string&)>& subst_node,
+    const std::string& instance_prefix) {
+
+    std::string result;
+    result.reserve(expr.size() * 2);
+    size_t i = 0;
+    size_t len = expr.size();
+
+    while (i < len) {
+        // Look for V( or I( patterns (case-insensitive)
+        if (i + 1 < len &&
+            (std::tolower(static_cast<unsigned char>(expr[i])) == 'v' ||
+             std::tolower(static_cast<unsigned char>(expr[i])) == 'i') &&
+            expr[i + 1] == '(') {
+
+            char func_char = expr[i];
+            bool is_current = (std::tolower(static_cast<unsigned char>(func_char)) == 'i');
+
+            // Make sure this is a standalone function call, not part of a longer
+            // identifier like "VMID" or "IF".  The preceding character (if any)
+            // must be non-alphanumeric and non-underscore.
+            if (i > 0) {
+                char prev = expr[i - 1];
+                if (std::isalnum(static_cast<unsigned char>(prev)) || prev == '_') {
+                    result += expr[i];
+                    ++i;
+                    continue;
+                }
+            }
+
+            // Find the matching close paren
+            size_t paren_start = i + 2;
+            int depth = 1;
+            size_t j = paren_start;
+            while (j < len && depth > 0) {
+                if (expr[j] == '(') ++depth;
+                else if (expr[j] == ')') --depth;
+                ++j;
+            }
+            if (depth != 0) {
+                // Unmatched paren — pass through
+                result += expr[i];
+                ++i;
+                continue;
+            }
+            // j now points past the closing ')'
+            std::string inner = expr.substr(paren_start, j - 1 - paren_start);
+
+            if (is_current) {
+                // I(Vname) — prefix the device name
+                std::string dev_lower = to_lower(inner);
+                std::string subst = instance_prefix + "." + dev_lower;
+                result += func_char;
+                result += '(';
+                result += subst;
+                result += ')';
+            } else {
+                // V(name) or V(name,name)
+                size_t comma = inner.find(',');
+                if (comma != std::string::npos) {
+                    std::string n1 = inner.substr(0, comma);
+                    std::string n2 = inner.substr(comma + 1);
+                    // Trim whitespace
+                    while (!n1.empty() && std::isspace(static_cast<unsigned char>(n1.back()))) n1.pop_back();
+                    while (!n2.empty() && std::isspace(static_cast<unsigned char>(n2.front()))) n2.erase(0, 1);
+                    result += func_char;
+                    result += '(';
+                    result += subst_node(n1);
+                    result += ',';
+                    result += subst_node(n2);
+                    result += ')';
+                } else {
+                    result += func_char;
+                    result += '(';
+                    result += subst_node(inner);
+                    result += ')';
+                }
+            }
+            i = j;
+        } else {
+            result += expr[i];
+            ++i;
+        }
+    }
+    return result;
+}
+
 bool is_param_expr(const std::string& token,
                    const std::unordered_map<std::string, double>& params) {
     if (token.find('{') != std::string::npos) return true;
@@ -567,12 +666,17 @@ std::vector<TokenizedLine> expand_instance(
                 }
             }
 
-            // E/G ABM (VALUE=/TABLE) form: pass all remaining tokens
-            // through as-is — the parser handles expression compilation
-            // in Pass 2.
+            // E/G ABM (VALUE=/TABLE) form: substitute node references
+            // inside the expression, then pass through.
             if (eg_abm) {
                 for (size_t i = value_start; i < line.tokens.size(); ++i) {
-                    new_line.tokens.push_back(line.tokens[i]);
+                    const std::string& tok = line.tokens[i];
+                    if (tok.find('(') != std::string::npos) {
+                        std::string subst = subst_expr_nodes(tok, subst_node, instance_prefix);
+                        new_line.tokens.push_back(subst);
+                    } else {
+                        new_line.tokens.push_back(tok);
+                    }
                 }
                 result.push_back(new_line);
                 continue;  // skip the normal value-evaluation loop below

@@ -215,19 +215,37 @@ SwitchModel to_switch_model(const ModelCard& card) {
             "' (only SW/CSW supported)");
     }
 
+    bool has_vt = false, has_vh = false;
+    double von = 0.0, voff = 0.0;
+    bool has_von = false, has_voff = false;
+
     for (const auto& [key, val] : card.params) {
         if (model.is_voltage_controlled) {
-            if      (key == "vt")   model.Vt   = val;
-            else if (key == "vh")   model.Vh   = val;
+            if      (key == "vt")   { model.Vt = val; has_vt = true; }
+            else if (key == "vh")   { model.Vh = val; has_vh = true; }
+            else if (key == "von")  { von = val; has_von = true; }
+            else if (key == "voff") { voff = val; has_voff = true; }
             else if (key == "ron")  model.Ron  = val;
             else if (key == "roff") model.Roff = val;
         } else {
-            // CSW uses It/Ih instead of Vt/Vh
-            if      (key == "it")   model.Vt   = val;
-            else if (key == "ih")   model.Vh   = val;
+            if      (key == "it")   { model.Vt = val; has_vt = true; }
+            else if (key == "ih")   { model.Vh = val; has_vh = true; }
+            else if (key == "ion")  { von = val; has_von = true; }
+            else if (key == "ioff") { voff = val; has_voff = true; }
             else if (key == "ron")  model.Ron  = val;
             else if (key == "roff") model.Roff = val;
         }
+    }
+
+    // PSpice uses Von/Voff with smooth transition; ngspice uses Vt/Vh with
+    // abrupt 4-state hysteresis.  When Von/Voff are specified, enable smooth
+    // mode and also compute Vt/Vh for backwards compatibility.
+    if (has_von && has_voff) {
+        model.smooth = true;
+        model.Von  = von;
+        model.Voff = voff;
+        if (!has_vt) model.Vt = (von + voff) / 2.0;
+        if (!has_vh) model.Vh = (von - voff) / 2.0;
     }
 
     return model;

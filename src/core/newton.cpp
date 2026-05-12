@@ -87,6 +87,20 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         }
 
 
+        // Check if any device changed matrix structure this iteration
+        // (e.g. a switch flipped state).  If so, force full numeric
+        // factorization for this solve to re-establish valid pivot ordering.
+        // Only relevant during DC — transient already handles this via the
+        // warm-start path.
+        if (!(saved_mode & MODETRAN_BIT)) {
+            for (const auto& dev : ckt.devices()) {
+                if (dev->matrix_structure_changed()) {
+                    force_numeric = true;
+                    break;
+                }
+            }
+        }
+
         // Compute residual norm from the RHS before the solve overwrites it.
         max_residual = 0.0;
         worst_idx = -1;

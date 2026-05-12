@@ -458,12 +458,14 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_voltage_ref() {
     ++pos_;
 
     // Parse node name(s): V(node) or V(n1, n2)
+    // Node names can contain alphanumeric, underscore, period, plus, minus
+    // (PSpice models use names like V+_BUFFER, IN-BUFF)
     skip_ws();
     size_t start = pos_;
-    // Node names can contain alphanumeric, underscore, period
     while (pos_ < expr_.size() &&
            (std::isalnum(static_cast<unsigned char>(expr_[pos_])) ||
-            expr_[pos_] == '_' || expr_[pos_] == '.'))
+            expr_[pos_] == '_' || expr_[pos_] == '.' ||
+            expr_[pos_] == '+' || expr_[pos_] == '-'))
         ++pos_;
     std::string node1 = expr_.substr(start, pos_ - start);
     if (node1.empty())
@@ -480,7 +482,8 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_voltage_ref() {
         start = pos_;
         while (pos_ < expr_.size() &&
                (std::isalnum(static_cast<unsigned char>(expr_[pos_])) ||
-                expr_[pos_] == '_' || expr_[pos_] == '.'))
+                expr_[pos_] == '_' || expr_[pos_] == '.' ||
+                expr_[pos_] == '+' || expr_[pos_] == '-'))
             ++pos_;
         std::string node2 = expr_.substr(start, pos_ - start);
         std::transform(node2.begin(), node2.end(), node2.begin(), ::tolower);
@@ -525,7 +528,8 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_current_ref() {
     size_t start = pos_;
     while (pos_ < expr_.size() &&
            (std::isalnum(static_cast<unsigned char>(expr_[pos_])) ||
-            expr_[pos_] == '_' || expr_[pos_] == '.'))
+            expr_[pos_] == '_' || expr_[pos_] == '.' ||
+            expr_[pos_] == '+' || expr_[pos_] == '-'))
         ++pos_;
     std::string vsrc_name = expr_.substr(start, pos_ - start);
     if (vsrc_name.empty())
