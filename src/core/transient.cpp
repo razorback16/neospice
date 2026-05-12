@@ -609,9 +609,6 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         }
     }
 
-    // Seed state1 with DC op-point (BSIM4 reads from CKTstate1)
-    ckt.rotate_state();
-
     // Apply .ic overrides
     apply_ic_overrides(ckt, solution);
 
@@ -657,6 +654,15 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     enable_transient_on_devices(ckt, tstep, use_gear);
     initialize_device_dc_state(ckt, solution, uic);
     resolve_tl_initial_conditions(ckt, *solver, solution, tstep);
+
+    // Copy state0 -> state1 (ngspice dctran.c:343: bcopy, NOT rotate)
+    // This seeds the "previous step" state for the first transient iteration.
+    {
+        const int32_t ns = ckt.num_states();
+        if (ns > 0) {
+            std::copy_n(ckt.state0(), ns, ckt.state1());
+        }
+    }
 
     // Store t=0 output point
     store_point(0.0, solution);
