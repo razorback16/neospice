@@ -58,6 +58,9 @@ public:
     double ic() const { return ic_; }
     void apply_ic_override();  // Override v_prev with IC value (call after init_dc_state)
 
+    int32_t state_vars() const override { return 2; }
+    void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
+
     /// Apply temperature-dependent adjustment to effective capacitance.
     void process_temperature(double sim_temp, double sim_tnom) override;
 
@@ -88,6 +91,12 @@ private:
     double q_prev2_ = 0.0;        // Q(n-2)
     double q_prev3_ = 0.0;        // Q(n-3)
     double dt_prev_ = 0.0;        // timestep at previous accepted step
+
+    // State-vector pointers (set by Circuit::finalize via set_state_ptrs)
+    double* state0_ = nullptr;
+    double* state1_ = nullptr;
+    double* state2_ = nullptr;
+    int32_t state_base_ = -1;
 
     MatrixOffset off_pp_ = -1, off_pn_ = -1, off_np_ = -1, off_nn_ = -1;
 };

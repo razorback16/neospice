@@ -1,4 +1,5 @@
 #include "devices/capacitor.hpp"
+#include "core/circuit.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -23,18 +24,92 @@ void Capacitor::assign_offsets(const SparsityPattern& pattern) {
     off_nn_ = offset_if_not_ground(pattern, nn_, nn_);
 }
 
-void Capacitor::evaluate(const std::vector<double>& /*voltages*/,
+void Capacitor::evaluate(const std::vector<double>& voltages,
                          NumericMatrix& mat, std::vector<double>& rhs) {
+    if (state0_) {
+        // State-vector path (matches ngspice capload.c)
+        const IntegratorCtx* ic = tls_integrator_ctx;
+        if (!ic) return;
+
+        constexpr int MODETRAN_BIT     = 0x1;
+        constexpr int MODEAC_BIT       = 0x2;
+        constexpr int MODETRANOP_BIT   = 0x20;
+        constexpr int MODEUIC_BIT      = 0x10000;
+        constexpr int MODEINITPRED_BIT = 0x2000;
+        constexpr int MODEINITTRAN_BIT = 0x1000;
+        constexpr int MODEINITJCT_BIT  = 0x200;
+        constexpr int MODEDC_BIT       = 0x70;
+
+        if (!(ic->mode & (MODETRAN_BIT | MODEAC_BIT | MODETRANOP_BIT)))
+            return;
+
+        bool cond1 = ((ic->mode & MODEDC_BIT) && (ic->mode & MODEINITJCT_BIT))
+                   || ((ic->mode & MODEUIC_BIT) && (ic->mode & MODEINITTRAN_BIT));
+
+        double vcap;
+        if (cond1) {
+            vcap = has_ic() ? ic_ : 0.0;
+        } else {
+            double vp = (np_ >= 0 ? voltages[np_] : 0.0);
+            double vn = (nn_ >= 0 ? voltages[nn_] : 0.0);
+            vcap = vp - vn;
+        }
+
+        if (ic->mode & (MODETRAN_BIT | MODEAC_BIT)) {
+            if (ic->mode & MODEINITPRED_BIT) {
+                state0_[0] = state1_[0];
+            } else {
+                state0_[0] = cap_eff_ * vcap;
+                if (ic->mode & MODEINITTRAN_BIT) {
+                    state1_[0] = state0_[0];
+                }
+            }
+
+            // NIintegrate inline (matches bsim4v7_shim.cpp and ngspice niinteg.c)
+            int order = ic->order;
+            if (order < 1) order = 1;
+            if (order > 2) order = 2;
+
+            double deriv;
+            if (order == 1) {
+                deriv = ic->ag[0] * state0_[0] + ic->ag[1] * state1_[0];
+            } else if (ic->integrate_method == 0) {
+                // Trapezoidal
+                deriv = -state1_[1] + ic->ag[0] * state0_[0] + ic->ag[1] * state1_[0];
+            } else {
+                // Gear BDF-2
+                deriv = ic->ag[0] * state0_[0] + ic->ag[1] * state1_[0]
+                      + ic->ag[2] * state2_[0];
+            }
+            state0_[1] = deriv;
+
+            double geq = ic->ag[0] * cap_eff_;
+            double ceq = state0_[1] - geq * state0_[0];
+
+            if (ic->mode & MODEINITTRAN_BIT) {
+                state1_[1] = state0_[1];
+            }
+
+            double m = m_;
+            add_if_valid(mat, off_pp_,  m * geq);
+            add_if_valid(mat, off_pn_, -m * geq);
+            add_if_valid(mat, off_np_, -m * geq);
+            add_if_valid(mat, off_nn_,  m * geq);
+
+            add_rhs_if_valid(rhs, np_, -m * ceq);
+            add_rhs_if_valid(rhs, nn_,  m * ceq);
+        } else {
+            state0_[0] = cap_eff_ * vcap;
+        }
+        return;
+    }
+
+    // Legacy path: explicit companion model (for standalone unit tests)
     if (!transient_) return;
 
     double g_eq, i_eq;
 
     if (integration_method_ == 1 && gear_ready_) {
-        // Gear BDF-2 with variable-timestep coefficients
-        // From ngspice NIcomCof: r = dt_prev/dt
-        //   ag0 = (2+r)/((1+r)*dt)
-        //   ag1 = -(1+r)/(r*dt)
-        //   ag2 = 1/((1+r)*r*dt)
         double r = (dt_prev_ > 0.0) ? dt_prev_ / dt_ : 1.0;
         double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
         g_eq = ag0 * cap_eff_;
@@ -42,11 +117,9 @@ void Capacitor::evaluate(const std::vector<double>& /*voltages*/,
         double ag2 = 1.0 / ((1.0 + r) * r * dt_);
         i_eq = -cap_eff_ * (ag1 * v_prev_ + ag2 * v_prev2_);
     } else if (integrator_order_ <= 1) {
-        // Backward Euler: matches ngspice NIintegrate order 1
         g_eq = cap_eff_ / dt_;
         i_eq = g_eq * v_prev_;
     } else {
-        // Trapezoidal (order 2)
         g_eq = 2.0 * cap_eff_ / dt_;
         i_eq = g_eq * v_prev_ + i_prev_;
     }
@@ -167,44 +240,45 @@ void Capacitor::init_dc_state_gear(double v_prev, double i_prev,
 // ---------------------------------------------------------------------------
 double Capacitor::compute_trunc(const IntegratorCtx& ctx,
                                 const SimOptions& opts) const {
-    if (!transient_ || ctx.order < 2 || ctx.delta <= 0.0)
-        return 1e30;
+    if (ctx.order < 2 || ctx.delta <= 0.0) return 1e30;
 
-    const double h0 = ctx.delta;              // current timestep
-    const double h1 = ctx.delta_old[1];       // previous timestep
+    const double h0 = ctx.delta;
+    const double h1 = ctx.delta_old[1];
     if (h1 <= 0.0) return 1e30;
 
-    // Current charge and current (dQ/dt companion model)
-    double q0 = cap_eff_ * v_prev_;    // charge at current accepted solution
-    // Note: q_prev_ was saved BEFORE v_prev_ was updated, so it holds Q(n-1)
-    double q1 = q_prev_;           // charge at previous step
-    double q2 = q_prev2_;          // charge at two steps ago
+    double q0, q1, q2, ccap0, ccap1;
 
-    // Second divided difference of charge (CKTterr divided-difference loop)
+    if (state0_) {
+        q0 = state0_[0];
+        q1 = state1_[0];
+        q2 = state2_[0];
+        ccap0 = state0_[1];
+        ccap1 = state1_[1];
+    } else {
+        if (!transient_) return 1e30;
+        q0 = cap_eff_ * v_prev_;
+        q1 = q_prev_;
+        q2 = q_prev2_;
+        ccap0 = i_prev_;
+        ccap1 = ccap0;  // approximate
+    }
+
     double dd1 = (q0 - q1) / h0;
     double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
 
-    // Tolerance (matches CKTterr):
-    //   volttol = abstol + reltol * max(|ccap0|, |ccap1|)
-    //   chargetol = reltol * max(|q0|, chgtol) / delta
-    //   tol = max(volttol, chargetol)
-    // The current (ccap) is i_prev_ after the step was accepted.
     double volttol = opts.abstol + opts.reltol *
-                     std::max(std::abs(i_prev_), std::abs(dd1));
+                     std::max(std::abs(ccap0), std::abs(ccap1));
     double chargetol = opts.reltol *
                        std::max(std::abs(q0), opts.chgtol) / h0;
     double tol = std::max(volttol, chargetol);
     if (tol <= 0.0) return 1e30;
 
-    // LTE coefficient: trap order 2 = 1/12, gear order 2 = 2/9
     const double lte_coeff = ctx.lte_coefficient();
-
     double lte_abs = lte_coeff * std::abs(dd2);
-    if (lte_abs <= opts.abstol) return 1e30;   // ngspice: max(abstol, factor*|diff|)
+    if (lte_abs <= opts.abstol) return 1e30;
 
     double del = opts.trtol * tol / lte_abs;
-    del = std::sqrt(del);    // order == 2
-
+    del = std::sqrt(del);
     return del;
 }
 
@@ -230,6 +304,13 @@ void Capacitor::process_temperature(double sim_temp, double sim_tnom) {
     double difference = (temp + dtemp) - tnom;
     double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
     cap_eff_ = cap_nom_ * factor * scale_ * m_;
+}
+
+void Capacitor::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+    state0_ = s0;
+    state1_ = s1;
+    state2_ = s2;
+    state_base_ = base;
 }
 
 } // namespace neospice
