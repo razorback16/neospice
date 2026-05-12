@@ -849,7 +849,6 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
         // LTE-conditioned order promotion (ngspice dctran.c:862-873)
         if (ctrl.order() == 1 && step_count >= 2) {
-            int saved_order = ckt.integrator_ctx.order;
             ckt.integrator_ctx.order = 2;
             double device_dt_order2 = 1e30;
             for (const auto& dev : ckt.devices()) {
