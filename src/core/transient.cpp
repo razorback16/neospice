@@ -721,9 +721,22 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     double dt = std::min(tstop / kInitialStepDivisor, tstep) / kInitialStepDivisor;
     ckt.integrator_ctx.integrate_method = use_gear ? 1 : 0;
 
-    double prev_prev_dt = dt;
     double saved_delta = dt;
     int steps_after_bp = kNoRecentBreakpoint;
+
+    // ngspice dctran.c:548-577: at the first breakpoint (t=0 for PULSE with TD=0),
+    // clamp dt by breakpoint gap and reduce further for firsttime.
+    {
+        double bp_gap = ctrl.next_breakpoint_gap();
+        if (bp_gap < tstop) {
+            dt = std::min(dt, 0.1 * std::min(saved_delta, bp_gap));
+            dt /= 10;  // firsttime extra reduction (dctran.c:569)
+            dt = std::max(dt, dt_min * 2.0);
+        }
+    }
+    saved_delta = dt;
+    double prev_prev_dt = dt;
+
     int total_iterations = 0;
     bool loop_converged = true;  // set false if we break due to no_throw failure
 
@@ -821,9 +834,10 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         step_count++;
         if (steps_after_bp < kNoRecentBreakpoint) ++steps_after_bp;
 
-        // After crossing a source breakpoint: reduce dt
+        // After crossing a source breakpoint: reduce dt and drop order
         if (ctrl.crossed_source_breakpoint() && step_count > 2) {
             steps_after_bp = 0;
+            ctrl.set_order(1);  // ngspice: CKTorder = 1 at breakpoints (dctran.c:548)
             double bp_gap = ctrl.next_breakpoint_gap();
             double scale = ckt.options.restart_step_scale;
             if (ctrl.last_bp_type() == TimeStepController::BreakpointType::SOFT) {
@@ -833,9 +847,19 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             dt = std::max(dt, dt_min * 2.0);
         }
 
-        // Advance to order 2 once two steps have been accepted
-        if (step_count == 2) {
-            ctrl.set_order(2);
+        // LTE-conditioned order promotion (ngspice dctran.c:862-873)
+        if (ctrl.order() == 1 && step_count >= 2) {
+            int saved_order = ckt.integrator_ctx.order;
+            ckt.integrator_ctx.order = 2;
+            double device_dt_order2 = 1e30;
+            for (const auto& dev : ckt.devices()) {
+                device_dt_order2 = std::min(device_dt_order2,
+                    dev->compute_trunc(ckt.integrator_ctx, ckt.options));
+            }
+            if (device_dt_order2 > 1.05 * dt) {
+                ctrl.set_order(2);
+            }
+            ckt.integrator_ctx.order = ctrl.order();
         }
 
         // Rotate state history ring and accept on devices

@@ -90,7 +90,7 @@ TEST_F(NgspiceCompareTest, RCLowpassTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-2, 1e-4});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2e-4, 2e-4});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -112,7 +112,7 @@ TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-2, 1e-4});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2e-5, 2e-5});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
