@@ -726,10 +726,14 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
     // ngspice dctran.c:548-577: at the first breakpoint (t=0 for PULSE with TD=0),
     // clamp dt by breakpoint gap and reduce further for firsttime.
+    // Use ngspice's CKTsaveDelta initial value (finalTime/50, dctran.c:317)
+    // instead of our already-reduced dt; this prevents the formula from
+    // double-reducing dt when dt < bp_gap (as in the CMOS inverter circuit).
     {
         double bp_gap = ctrl.next_breakpoint_gap();
         if (bp_gap < tstop) {
-            dt = std::min(dt, 0.1 * std::min(saved_delta, bp_gap));
+            double init_save_delta = tstop / 50.0;  // ngspice dctran.c:317
+            dt = std::min(dt, 0.1 * std::min(init_save_delta, bp_gap));
             dt /= 10;  // firsttime extra reduction (dctran.c:569)
             dt = std::max(dt, dt_min * 2.0);
         }
