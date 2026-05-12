@@ -101,7 +101,7 @@ void Inductor::evaluate(const std::vector<double>& voltages,
             state0_[1] = deriv;
 
             req = ic->ag[0] * newmind;
-            veq = state0_[1] - req * state0_[0];
+            veq = state0_[1] - ic->ag[0] * state0_[0];
         }
 
         if (ic->mode & MODEINITTRAN_BIT) {
@@ -299,9 +299,9 @@ void Inductor::process_temperature(double sim_temp, double sim_tnom) {
 }
 
 void Inductor::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
-    state0_ = s0;
-    state1_ = s1;
-    state2_ = s2;
+    state0_ = s0 + base;
+    state1_ = s1 + base;
+    state2_ = s2 + base;
     state_base_ = base;
 }
 
