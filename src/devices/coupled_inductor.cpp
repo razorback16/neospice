@@ -13,7 +13,12 @@ CoupledInductor::CoupledInductor(std::string name, Inductor* l1, Inductor* l2, d
               throw std::invalid_argument("CoupledInductor: coupling coefficient must be in [-1, 1]");
           return coupling * std::sqrt(l1->inductance() * l2->inductance());
       }())
-{}
+{
+    // Mark inductors as coupled so they use the legacy path until
+    // CoupledInductor gets its own state-vector integration (Task 3).
+    l1_->set_coupled(true);
+    l2_->set_coupled(true);
+}
 
 void CoupledInductor::stamp_pattern(SparsityBuilder& builder) const {
     int32_t br1 = l1_->branch_index();

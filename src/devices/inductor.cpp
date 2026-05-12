@@ -1,4 +1,5 @@
 #include "devices/inductor.hpp"
+#include "core/circuit.hpp"
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>
@@ -35,22 +36,92 @@ void Inductor::assign_offsets(const SparsityPattern& pattern) {
     off_br_br_ = pattern.offset(branch_idx_, branch_idx_);
 }
 
-void Inductor::evaluate(const std::vector<double>& /*voltages*/,
+void Inductor::evaluate(const std::vector<double>& voltages,
                         NumericMatrix& mat, std::vector<double>& rhs) {
+    // KCL coupling ±1 stamps (always present)
     add_if_valid(mat, off_p_br_,  1.0);
     add_if_valid(mat, off_n_br_, -1.0);
     add_if_valid(mat, off_br_p_,  1.0);
     add_if_valid(mat, off_br_n_, -1.0);
 
+    if (state0_ && !coupled_) {
+        // State-vector path (matches ngspice indload.c)
+        const IntegratorCtx* ic = tls_integrator_ctx;
+        if (!ic) return;
+
+        constexpr int MODETRAN_BIT     = 0x1;
+        constexpr int MODEDC_BIT       = 0x70;
+        constexpr int MODEUIC_BIT      = 0x10000;
+        constexpr int MODEINITPRED_BIT = 0x2000;
+        constexpr int MODEINITTRAN_BIT = 0x1000;
+
+        double m = m_;
+        double newmind = inductance_eff_ / m;
+
+        if (!(ic->mode & (MODEDC_BIT | MODEINITPRED_BIT))) {
+            if ((ic->mode & MODEUIC_BIT) && (ic->mode & MODEINITTRAN_BIT)) {
+                state0_[0] = newmind * (has_ic() ? ic_ : 0.0);
+            } else {
+                double i_branch = (branch_idx_ >= 0 ?
+                    voltages[branch_idx_] : 0.0);
+                state0_[0] = newmind * i_branch;
+            }
+        }
+
+        if (ic->mode & MODEDC_BIT) {
+            // DC: short circuit (no R_eq, no V_eq)
+            return;
+        }
+
+        if (ic->mode & MODEINITPRED_BIT) {
+            state0_[0] = state1_[0];
+        } else if (ic->mode & MODEINITTRAN_BIT) {
+            state1_[0] = state0_[0];
+        }
+
+        // NIintegrate inline
+        double req, veq;
+        {
+            int order = ic->order;
+            if (order < 1) order = 1;
+            if (order > 2) order = 2;
+
+            double deriv;
+            if (order == 1) {
+                deriv = ic->ag[0] * state0_[0] + ic->ag[1] * state1_[0];
+            } else if (ic->integrate_method == 0) {
+                // Trapezoidal
+                deriv = -state1_[1] + ic->ag[0] * state0_[0]
+                      + ic->ag[1] * state1_[0];
+            } else {
+                // Gear BDF-2
+                deriv = ic->ag[0] * state0_[0] + ic->ag[1] * state1_[0]
+                      + ic->ag[2] * state2_[0];
+            }
+            state0_[1] = deriv;
+
+            req = ic->ag[0] * newmind;
+            veq = state0_[1] - req * state0_[0];
+        }
+
+        if (ic->mode & MODEINITTRAN_BIT) {
+            state1_[1] = state0_[1];
+        }
+
+        // rhs[br] += veq (ngspice sign convention)
+        if (branch_idx_ >= 0)
+            rhs[branch_idx_] += veq;
+
+        // mat[br,br] -= req
+        mat.add(off_br_br_, -req);
+        return;
+    }
+
+    // Legacy path: explicit companion model
     if (transient_) {
         double r_eq, v_eq;
 
         if (integration_method_ == 1 && gear_ready_) {
-            // Gear BDF-2 with variable-timestep coefficients
-            // From ngspice NIcomCof: r = dt_prev/dt
-            //   ag0 = (2+r)/((1+r)*dt)
-            //   ag1 = -(1+r)/(r*dt)
-            //   ag2 = 1/((1+r)*r*dt)
             double r = (dt_prev_ > 0.0) ? dt_prev_ / dt_ : 1.0;
             double ag0 = (2.0 + r) / ((1.0 + r) * dt_);
             r_eq = ag0 * inductance_eff_;
@@ -58,11 +129,9 @@ void Inductor::evaluate(const std::vector<double>& /*voltages*/,
             double ag2 = 1.0 / ((1.0 + r) * r * dt_);
             v_eq = -inductance_eff_ * (ag1 * i_prev_ + ag2 * i_prev2_);
         } else if (integrator_order_ <= 1) {
-            // Backward Euler: matches ngspice NIintegrate order 1
             r_eq = inductance_eff_ / dt_;
             v_eq = r_eq * i_prev_;
         } else {
-            // Trapezoidal (order 2)
             r_eq = 2.0 * inductance_eff_ / dt_;
             v_eq = r_eq * i_prev_ + v_prev_;
         }
@@ -174,44 +243,45 @@ std::vector<std::string> Inductor::output_currents() const {
 // ---------------------------------------------------------------------------
 double Inductor::compute_trunc(const IntegratorCtx& ctx,
                                const SimOptions& opts) const {
-    if (!transient_ || ctx.order < 2 || ctx.delta <= 0.0)
-        return 1e30;
+    if (ctx.order < 2 || ctx.delta <= 0.0) return 1e30;
 
-    const double h0 = ctx.delta;              // current timestep
-    const double h1 = ctx.delta_old[1];       // previous timestep
+    const double h0 = ctx.delta;
+    const double h1 = ctx.delta_old[1];
     if (h1 <= 0.0) return 1e30;
 
-    // Current flux
-    double phi0 = inductance_eff_ * i_prev_;    // flux at current accepted solution
-    double phi1 = phi_prev_;                 // flux at previous step
-    double phi2 = phi_prev2_;                // flux at two steps ago
+    double phi0, phi1, phi2, volt0, volt1;
 
-    // Second divided difference of flux (CKTterr divided-difference loop)
+    if (state0_ && !coupled_) {
+        phi0 = state0_[0];
+        phi1 = state1_[0];
+        phi2 = state2_[0];
+        volt0 = state0_[1];
+        volt1 = state1_[1];
+    } else {
+        if (!transient_) return 1e30;
+        phi0 = inductance_eff_ * i_prev_;
+        phi1 = phi_prev_;
+        phi2 = phi_prev2_;
+        volt0 = v_prev_;
+        volt1 = volt0;  // approximate
+    }
+
     double dd1 = (phi0 - phi1) / h0;
     double dd2 = ((phi0 - phi1) / h0 - (phi1 - phi2) / h1) / (h0 + h1);
 
-    // Tolerance (matches CKTterr):
-    //   volttol = abstol + reltol * max(|v_branch0|, |v_branch1|)
-    //   chargetol = reltol * max(|phi0|, chgtol) / delta
-    //   tol = max(volttol, chargetol)
-    // For inductor, the "voltage" on the state variable is the voltage across
-    // the inductor (v_prev_), which is the derivative of flux.
     double volttol = opts.abstol + opts.reltol *
-                     std::max(std::abs(v_prev_), std::abs(dd1));
+                     std::max(std::abs(volt0), std::abs(volt1));
     double chargetol = opts.reltol *
                        std::max(std::abs(phi0), opts.chgtol) / h0;
     double tol = std::max(volttol, chargetol);
     if (tol <= 0.0) return 1e30;
 
-    // LTE coefficient: trap order 2 = 1/12, gear order 2 = 2/9
     const double lte_coeff = ctx.lte_coefficient();
-
     double lte_abs = lte_coeff * std::abs(dd2);
-    if (lte_abs <= opts.abstol) return 1e30;   // ngspice: max(abstol, factor*|diff|)
+    if (lte_abs <= opts.abstol) return 1e30;
 
     double del = opts.trtol * tol / lte_abs;
-    del = std::sqrt(del);    // order == 2
-
+    del = std::sqrt(del);
     return del;
 }
 
@@ -226,6 +296,13 @@ void Inductor::process_temperature(double sim_temp, double sim_tnom) {
     double difference = (temp + dtemp) - tnom;
     double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
     inductance_eff_ = inductance_nom_ * factor * scale_ / m_;
+}
+
+void Inductor::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+    state0_ = s0;
+    state1_ = s1;
+    state2_ = s2;
+    state_base_ = base;
 }
 
 } // namespace neospice

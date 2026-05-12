@@ -57,6 +57,13 @@ public:
     double ic() const { return ic_; }
     void apply_ic_override(std::vector<double>& sol);  // Override i_prev/solution with IC value
 
+    int32_t state_vars() const override { return 2; }
+    void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
+    double* state0() const { return state0_; }
+    double multiplier() const { return m_; }
+    void set_coupled(bool c) { coupled_ = c; }
+    bool is_coupled() const { return coupled_; }
+
     /// Apply temperature-dependent adjustment to effective inductance.
     void process_temperature(double sim_temp, double sim_tnom) override;
 
@@ -94,6 +101,13 @@ private:
     double phi_prev2_ = 0.0;      // flux(n-2)
     double phi_prev3_ = 0.0;      // flux(n-3)
     double dt_prev_ = 0.0;        // timestep at previous accepted step
+
+    // State-vector pointers (set by Circuit::finalize via set_state_ptrs)
+    double* state0_ = nullptr;
+    double* state1_ = nullptr;
+    double* state2_ = nullptr;
+    int32_t state_base_ = -1;
+    bool coupled_ = false;  // true when part of a CoupledInductor pair (disables state-vector path until Task 3)
 
     MatrixOffset off_p_br_  = -1;  // (np, branch)
     MatrixOffset off_n_br_  = -1;  // (nn, branch)
