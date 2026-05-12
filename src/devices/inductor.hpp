@@ -27,6 +27,7 @@ public:
     void set_transient(double dt);
     void clear_transient();
     void set_integration_method(int method);  // 0=trap, 1=gear2
+    void set_integrator_order(int order) { integrator_order_ = order; }
     void accept_step(double i_branch, double v_across);
     void accept_step_from_solution(const std::vector<double>& sol);
     void init_dc_state(const std::vector<double>& sol);
@@ -83,6 +84,7 @@ private:
     double v_prev_ = 0.0;
     double i_prev_ = 0.0;
     int integration_method_ = 0;  // 0=trapezoidal, 1=gear2
+    int integrator_order_ = 1;   // 1=backward Euler, 2=trapezoidal/gear2
     double v_prev2_ = 0.0;
     double i_prev2_ = 0.0;
     bool gear_ready_ = false;

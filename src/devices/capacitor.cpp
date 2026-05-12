@@ -41,8 +41,12 @@ void Capacitor::evaluate(const std::vector<double>& /*voltages*/,
         double ag1 = -(1.0 + r) / (r * dt_);
         double ag2 = 1.0 / ((1.0 + r) * r * dt_);
         i_eq = -cap_eff_ * (ag1 * v_prev_ + ag2 * v_prev2_);
+    } else if (integrator_order_ <= 1) {
+        // Backward Euler: matches ngspice NIintegrate order 1
+        g_eq = cap_eff_ / dt_;
+        i_eq = g_eq * v_prev_;
     } else {
-        // Trapezoidal
+        // Trapezoidal (order 2)
         g_eq = 2.0 * cap_eff_ / dt_;
         i_eq = g_eq * v_prev_ + i_prev_;
     }
@@ -98,7 +102,19 @@ void Capacitor::accept_step(double v_across) {
         i_prev2_ = i_prev_;
         v_prev_ = v_across;
         i_prev_ = i_new;
+    } else if (integrator_order_ <= 1) {
+        // Backward Euler current
+        double g_eq = cap_eff_ / dt_;
+        double i_new = g_eq * (v_across - v_prev_);
+        v_prev2_ = v_prev_;
+        i_prev2_ = i_prev_;
+        v_prev_ = v_across;
+        i_prev_ = i_new;
+        if (integration_method_ == 1) {
+            gear_ready_ = true;
+        }
     } else {
+        // Trapezoidal current (order 2)
         double g_eq = 2.0 * cap_eff_ / dt_;
         double i_eq = g_eq * v_prev_ + i_prev_;
         double i_new = g_eq * v_across - i_eq;

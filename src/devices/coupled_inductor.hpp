@@ -33,6 +33,7 @@ public:
     void set_transient(double dt);
     void clear_transient();
     void set_integration_method(int method);  // 0=trap, 1=gear2
+    void set_integrator_order(int order) { integrator_order_ = order; }
     void init_dc_state(const std::vector<double>& sol);
     void accept_step_from_solution(const std::vector<double>& sol);
 
@@ -52,6 +53,7 @@ private:
     double dt_ = 0.0;
     double dt_prev_ = 0.0;       // timestep at previous accepted step
     int integration_method_ = 0;  // 0=trapezoidal, 1=gear2
+    int integrator_order_ = 1;   // 1=backward Euler, 2=trapezoidal/gear2
     bool gear_ready_ = false;
 
     // Previous partner currents (for RHS history terms)

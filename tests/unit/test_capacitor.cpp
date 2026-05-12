@@ -35,7 +35,7 @@ TEST(Capacitor, DCIsOpenCircuit) {
 }
 
 TEST(Capacitor, TransientCompanionModel) {
-    // Trapezoidal: G_eq = 2C/dt
+    // Order 2 trapezoidal: G_eq = 2C/dt
     // After accept_step(0.0) with v_prev=0, i_prev=0 => i_eq = 0
     // Stamps G_eq into matrix, stamps -i_eq=0 into RHS
     const double C = 1e-6;
@@ -50,6 +50,7 @@ TEST(Capacitor, TransientCompanionModel) {
     cap.assign_offsets(pattern);
 
     cap.set_transient(dt);
+    cap.set_integrator_order(2);
     cap.accept_step(0.0);  // initialize state: v_prev=0 after this call
 
     std::vector<double> voltages = {1.0, 0.0};

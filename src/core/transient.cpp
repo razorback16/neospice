@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <iostream>
 
 namespace neospice {
 
@@ -340,14 +341,17 @@ static void resolve_source_defaults(Circuit& ckt, double tstep, double tstop) {
 // ===================================================================
 // Helper: Update timestep on reactive devices for current dt
 // ===================================================================
-static void update_device_timestep(Circuit& ckt, double dt) {
+static void update_device_timestep(Circuit& ckt, double dt, int order = 1) {
     for (auto& dev : ckt.devices()) {
         if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
             cap->set_transient(dt);
+            cap->set_integrator_order(order);
         } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
             ind->set_transient(dt);
+            ind->set_integrator_order(order);
         } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
             ki->set_transient(dt);
+            ki->set_integrator_order(order);
         }
     }
 }
@@ -609,6 +613,14 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         }
     }
 
+    if (ckt.options.verbose) {
+        std::cerr << "[tran] DC OP done. Checking for large values:\n";
+        for (int32_t i = 0; i < num_nodes; ++i) {
+            if (std::abs(solution[i]) > 100.0)
+                std::cerr << "  " << ckt.node_name(i) << " = " << solution[i] << "\n";
+        }
+    }
+
     // Apply .ic overrides
     apply_ic_overrides(ckt, solution);
 
@@ -655,12 +667,17 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     initialize_device_dc_state(ckt, solution, uic);
     resolve_tl_initial_conditions(ckt, *solver, solution, tstep);
 
-    // Copy state0 -> state1 (ngspice dctran.c:343: bcopy, NOT rotate)
-    // This seeds the "previous step" state for the first transient iteration.
+    // Seed state history from DC operating point.
+    // ngspice bcopy's state0→state1 (dctran.c:343), then at the start of
+    // each step it rotates: state0→state1→state2→…  After the first
+    // rotation, state1=DC and state2=DC, so the MODEINITTRAN predictor
+    // computes  v = (1+xfact)*state1 − xfact*state2 = DC  (perfect).
+    // We don't rotate before solving, so seed state2 too.
     {
         const int32_t ns = ckt.num_states();
         if (ns > 0) {
             std::copy_n(ckt.state0(), ns, ckt.state1());
+            std::copy_n(ckt.state0(), ns, ckt.state2());
         }
     }
 
@@ -745,7 +762,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         double t = ctrl.current_time() + dt;
 
         // Prepare devices and integrator for this timestep
-        update_device_timestep(ckt, dt);
+        update_device_timestep(ckt, dt, ctrl.order());
         update_source_time(ckt, t);
         fill_integrator_context(ckt, dt, step_count, ctrl);
 
@@ -754,6 +771,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         tran_opts.max_iter = ckt.options.itl4;
         auto nr = newton_solve(ckt, *solver, solution, tran_opts);
         if (!nr.converged) {
+            if (ckt.options.verbose)
+                std::cerr << "[tran] NEWTON FAIL sc=" << step_count << " dt=" << dt << " t=" << t << "\n";
             dt /= kNewtonFailureDtFactor;
             if (dt < dt_min) {
                 cleanup_transient_devices(ckt);
@@ -772,6 +791,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                 tran_result.status = nr_fail_status;
                 return tran_result;
             }
+            solution = sol_prev;   // restore last accepted solution
             continue;
         }
         solution = nr.solution;
@@ -783,6 +803,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                                      num_nodes, dt, dt_min, step_count, steps_after_bp,
                                      device_dt);
         if (!accepted) {
+            if (ckt.options.verbose)
+                std::cerr << "[tran] LTE REJECT sc=" << step_count << " dt=" << dt << " proposed=" << ctrl.proposed_dt() << "\n";
             solution = sol_prev;
             double proposed = ctrl.proposed_dt();
             if (device_dt < proposed)

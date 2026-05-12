@@ -57,7 +57,12 @@ void Inductor::evaluate(const std::vector<double>& /*voltages*/,
             double ag1 = -(1.0 + r) / (r * dt_);
             double ag2 = 1.0 / ((1.0 + r) * r * dt_);
             v_eq = -inductance_eff_ * (ag1 * i_prev_ + ag2 * i_prev2_);
+        } else if (integrator_order_ <= 1) {
+            // Backward Euler: matches ngspice NIintegrate order 1
+            r_eq = inductance_eff_ / dt_;
+            v_eq = r_eq * i_prev_;
         } else {
+            // Trapezoidal (order 2)
             r_eq = 2.0 * inductance_eff_ / dt_;
             v_eq = r_eq * i_prev_ + v_prev_;
         }

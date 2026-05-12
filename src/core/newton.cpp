@@ -234,6 +234,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         } else if (m & MODEINITTRAN_BIT) {
             // First transient step: predictor/init -> corrector
             ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFLOAT_BIT;
+            force_numeric = true;  // ngspice: NISHOULDREORDER after MODEINITTRAN (niiter.c:257)
         } else if (m & MODEINITPRED_BIT) {
             // Subsequent transient steps: predictor -> corrector
             ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFLOAT_BIT;

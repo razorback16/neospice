@@ -58,8 +58,9 @@ TEST(Inductor, TransientStamp) {
     NumericMatrix mat(pattern);
     ind.assign_offsets(pattern);
 
-    // Enable transient with dt=1e-3 s, i_prev=0, v_prev=0
+    // Enable transient with dt=1e-3 s, order 2 (trapezoidal), i_prev=0, v_prev=0
     ind.set_transient(1e-3);
+    ind.set_integrator_order(2);
 
     std::vector<double> voltages(3, 0.0);
     std::vector<double> rhs(3, 0.0);
@@ -81,7 +82,7 @@ TEST(Inductor, TransientStamp) {
 }
 
 TEST(Inductor, TransientRHSWithState) {
-    // Verify V_eq = R_eq * I_prev + V_prev is correctly placed in RHS
+    // Verify V_eq = R_eq * I_prev + V_prev is correctly placed in RHS (order 2)
     Inductor ind("L1", 0, GROUND_INTERNAL, 1e-3);
     ind.set_branch_index(1);
     SparsityBuilder builder(2);
@@ -92,6 +93,7 @@ TEST(Inductor, TransientRHSWithState) {
 
     double dt = 1e-3;
     ind.set_transient(dt);
+    ind.set_integrator_order(2);
 
     // Set previous state: i_prev=0.5 A, v_prev=1.0 V
     ind.accept_step(0.5, 1.0);

@@ -27,7 +27,7 @@ TEST(GearCapacitor, CompanionConductance) {
     EXPECT_NEAR(mat.value(pattern.offset(0, 0)), 1.5, 1e-12);
 }
 
-TEST(GearCapacitor, FallsBackToTrapOnFirstStep) {
+TEST(GearCapacitor, FallsBackToBEOnFirstStep) {
     Capacitor cap("C1", 0, -1, 1e-6);
     SparsityBuilder builder(1);
     cap.stamp_pattern(builder);
@@ -46,8 +46,8 @@ TEST(GearCapacitor, FallsBackToTrapOnFirstStep) {
     std::vector<double> rhs(1, 0.0);
     cap.evaluate(voltages, mat, rhs);
 
-    // Trapezoidal fallback: G_eq = 2C/dt = 2.0
-    EXPECT_NEAR(mat.value(pattern.offset(0, 0)), 2.0, 1e-12);
+    // Backward Euler fallback (order 1): G_eq = C/dt = 1.0
+    EXPECT_NEAR(mat.value(pattern.offset(0, 0)), 1.0, 1e-12);
 }
 
 TEST(GearCapacitor, AcceptStepBuildsHistory) {
@@ -98,7 +98,7 @@ TEST(GearInductor, CompanionResistance) {
     EXPECT_NEAR(mat.value(pattern.offset(1, 1)), -1500.0, 1e-6);
 }
 
-TEST(GearInductor, FallsBackToTrapOnFirstStep) {
+TEST(GearInductor, FallsBackToBEOnFirstStep) {
     Inductor ind("L1", 0, -1, 1e-3);
     ind.set_branch_index(1);
     SparsityBuilder builder(2);
@@ -118,6 +118,6 @@ TEST(GearInductor, FallsBackToTrapOnFirstStep) {
     std::vector<double> rhs(2, 0.0);
     ind.evaluate(voltages, mat, rhs);
 
-    // Trapezoidal: R_eq = 2*1e-3/1e-6 = 2000, stamped as -2000
-    EXPECT_NEAR(mat.value(pattern.offset(1, 1)), -2000.0, 1e-6);
+    // Backward Euler (order 1): R_eq = 1e-3/1e-6 = 1000, stamped as -1000
+    EXPECT_NEAR(mat.value(pattern.offset(1, 1)), -1000.0, 1e-6);
 }

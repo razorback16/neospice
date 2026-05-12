@@ -66,10 +66,14 @@ void CoupledInductor::evaluate(const std::vector<double>& /*voltages*/,
         add_rhs_if_valid(rhs, br1, -v_eq_12);
         add_rhs_if_valid(rhs, br2, -v_eq_21);
     } else {
-        // Trapezoidal: R_eq_m = 2 * M / dt
-        r_eq_m = 2.0 * mutual_ / dt_;
+        if (integrator_order_ <= 1) {
+            // Backward Euler: R_eq_m = M / dt
+            r_eq_m = mutual_ / dt_;
+        } else {
+            // Trapezoidal: R_eq_m = 2 * M / dt
+            r_eq_m = 2.0 * mutual_ / dt_;
+        }
 
-        // Trapezoidal companion: V_eq = R_eq_m * I_partner_prev
         double v_eq_12 = r_eq_m * i2_prev_;
         double v_eq_21 = r_eq_m * i1_prev_;
 

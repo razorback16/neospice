@@ -133,7 +133,7 @@ TEST(CoupledInductor, DCNoStamp) {
 }
 
 TEST(CoupledInductor, TransientStamp) {
-    // Verify transient companion model stamps
+    // Verify transient companion model stamps at order 2 (trapezoidal)
     Inductor l1("L1", 0, 1, 1e-3);
     l1.set_branch_index(4);
     Inductor l2("L2", 2, 3, 1e-3);
@@ -151,13 +151,14 @@ TEST(CoupledInductor, TransientStamp) {
 
     double dt = 1e-4;
     k.set_transient(dt);
+    k.set_integrator_order(2);
 
     std::vector<double> voltages(6, 0.0);
     std::vector<double> rhs(6, 0.0);
     k.evaluate(voltages, mat, rhs);
 
     double M = 0.5e-3;
-    double r_eq_m = 2.0 * M / dt;  // Trapezoidal
+    double r_eq_m = 2.0 * M / dt;  // Trapezoidal (order 2)
 
     EXPECT_DOUBLE_EQ(mat.value(pattern.offset(4, 5)), -r_eq_m);
     EXPECT_DOUBLE_EQ(mat.value(pattern.offset(5, 4)), -r_eq_m);
@@ -447,9 +448,10 @@ TEST(CoupledInductorTransient, TrapezoidalCompanionModel) {
     double M = 0.5e-3;
     double r_eq_m = 2.0 * M / dt;
 
-    // Set up transient with trapezoidal (method=0)
+    // Set up transient with trapezoidal (method=0, order=2)
     k.set_transient(dt);
     k.set_integration_method(0);
+    k.set_integrator_order(2);
 
     // After init: all history = 0
     std::vector<double> sol(6, 0.0);
