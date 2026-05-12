@@ -137,22 +137,6 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         // rhs now contains the new proposed solution
         solution = rhs;
 
-        // Global node damping: clamp voltage updates that exceed a threshold.
-        // Only apply during corrector (MODEINITFLOAT) iterations where the
-        // solution is refining around the operating point.  During junction
-        // init (INITJCT/INITFIX) large voltage jumps are expected as the
-        // solver bootstraps from zero toward supply rails.
-        if (ckt.integrator_ctx.mode & MODEINITFLOAT_BIT) {
-            constexpr double VDAMP_THRESHOLD = 3.5;  // ~10 * Vt at 300K
-            for (int32_t i = 0; i < num_nodes; ++i) {
-                double delta = solution[i] - old_solution[i];
-                if (std::abs(delta) > VDAMP_THRESHOLD) {
-                    solution[i] = old_solution[i] +
-                        VDAMP_THRESHOLD * ((delta > 0) ? 1.0 : -1.0);
-                }
-            }
-        }
-
         // Apply per-device voltage limiting between old and proposed solutions
         // to tame large Newton swings at nonlinear junctions.
         for (auto& dev : ckt.devices()) {
