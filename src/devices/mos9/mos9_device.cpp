@@ -50,9 +50,9 @@ MOS9Device::make(std::string name,
 
     // Geometry.
     inst.MOS9w = geom.W;
-    inst.MOS9wGiven = (geom.W != 1e-6) ? 1 : 0;
+    inst.MOS9wGiven = geom.wGiven ? 1 : 0;
     inst.MOS9l = geom.L;
-    inst.MOS9lGiven = (geom.L != 1e-4) ? 1 : 0;
+    inst.MOS9lGiven = geom.lGiven ? 1 : 0;
     inst.MOS9drainArea = geom.AD;
     inst.MOS9drainAreaGiven = (geom.AD != 0.0) ? 1 : 0;
     inst.MOS9sourceArea = geom.AS;

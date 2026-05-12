@@ -112,8 +112,8 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
             continue;
         }
         double val = parse_spice_number(tokens[i].substr(eq + 1));
-        if      (key == "w")   m->geom.W   = val;
-        else if (key == "l")   m->geom.L   = val;
+        if      (key == "w")   { m->geom.W = val; m->wGiven = true; }
+        else if (key == "l")   { m->geom.L = val; m->lGiven = true; }
         else if (key == "nf")  m->geom.NF  = val;
         else if (key == "ad")  m->geom.AD  = val;
         else if (key == "as")  m->geom.AS  = val;
@@ -194,6 +194,8 @@ void resolve_mosfets(
             mos1_geom.NRD = m.geom.NRD;
             mos1_geom.NRS = m.geom.NRS;
             mos1_geom.M   = m.geom.M;
+            mos1_geom.wGiven = m.wGiven;
+            mos1_geom.lGiven = m.lGiven;
             auto dev = MOS1Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos1_geom, *card_it->second);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
@@ -224,6 +226,8 @@ void resolve_mosfets(
             mos3_geom.NRD = m.geom.NRD;
             mos3_geom.NRS = m.geom.NRS;
             mos3_geom.M   = m.geom.M;
+            mos3_geom.wGiven = m.wGiven;
+            mos3_geom.lGiven = m.lGiven;
             auto dev = MOS3Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos3_geom, *card_it->second);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
@@ -321,6 +325,8 @@ void resolve_mosfets(
             mos9_geom.NRD = m.geom.NRD;
             mos9_geom.NRS = m.geom.NRS;
             mos9_geom.M   = m.geom.M;
+            mos9_geom.wGiven = m.wGiven;
+            mos9_geom.lGiven = m.lGiven;
             auto dev = MOS9Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos9_geom, *card_it->second);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {

@@ -12,6 +12,7 @@ struct ParsedMosfet : ParsedElement {
     int32_t nbulk = GROUND_INTERNAL;
     bool nbulk_given = false;
     BSIM4v7Device::Geom geom;
+    bool wGiven = false, lGiven = false;
     // Instance initial conditions from ic=VDS,VGS,VBS
     double ic_vds = 0.0, ic_vgs = 0.0, ic_vbs = 0.0;
     bool ic_vds_given = false, ic_vgs_given = false, ic_vbs_given = false;

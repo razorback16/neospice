@@ -50,9 +50,9 @@ MOS3Device::make(std::string name,
 
     // Geometry.
     inst.MOS3w = geom.W;
-    inst.MOS3wGiven = (geom.W != 1e-6) ? 1 : 0;
+    inst.MOS3wGiven = geom.wGiven ? 1 : 0;
     inst.MOS3l = geom.L;
-    inst.MOS3lGiven = (geom.L != 1e-4) ? 1 : 0;
+    inst.MOS3lGiven = geom.lGiven ? 1 : 0;
     inst.MOS3drainArea = geom.AD;
     inst.MOS3drainAreaGiven = (geom.AD != 0.0) ? 1 : 0;
     inst.MOS3sourceArea = geom.AS;

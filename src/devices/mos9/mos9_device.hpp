@@ -26,7 +26,7 @@ struct MOS9ModelCard {
 class MOS9Device : public Device {
 public:
     struct Geom {
-        double W = 1e-6;
+        double W = 1e-4;
         double L = 1e-4;
         double AD = 0.0;
         double AS = 0.0;
@@ -35,6 +35,8 @@ public:
         double NRD = 0.0;
         double NRS = 0.0;
         double M = 1.0;
+        bool wGiven = false;
+        bool lGiven = false;
     };
 
     static std::unique_ptr<MOS9Device> make(

@@ -13,8 +13,8 @@ using NodeIndex = int32_t;
 constexpr NodeIndex GROUND = 0;
 using MatrixOffset = int32_t;
 
-constexpr double BOLTZMANN = 1.380649e-23;
-constexpr double CHARGE_Q  = 1.602176634e-19;
+constexpr double BOLTZMANN = 1.3806226e-23;
+constexpr double CHARGE_Q  = 1.6021918e-19;
 constexpr double T_NOMINAL = 300.15;
 
 inline double thermal_voltage(double temp = T_NOMINAL) {
@@ -28,6 +28,7 @@ struct SimOptions {
     double trtol  = 7.0;
     double chgtol = 1e-14;   // charge tolerance for device LTE (ngspice default)
     double gmin   = 1e-12;
+    double diag_gmin = 0.0;  // internal continuation shunt, separate from device gmin
     double temp   = T_NOMINAL;
     double tnom   = T_NOMINAL; // nominal temperature for model parameters (default 27°C = 300.15K)
     int max_iter  = 100;

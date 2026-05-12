@@ -18,7 +18,7 @@ namespace neospice::bjt {
 
 // --- UCB physical constants (from ngspice/const.h) -------------------------
 #ifndef CONSTKoverQ
-#define CONSTKoverQ 8.6171e-05       // Boltzmann/charge  (eV/K)
+#define CONSTKoverQ (1.3806226e-23/1.6021918e-19)  // Boltzmann/charge  (eV/K)
 #endif
 #ifndef CONSTboltz
 #define CONSTboltz 1.3806226e-23     // Boltzmann constant  (J/K)
