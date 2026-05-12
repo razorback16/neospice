@@ -53,7 +53,9 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
     const std::vector<double> entry_solution = solution;
     const StateCheckpoint entry_state = save_state(ckt);
 
-    const double target_gmin = opts.gmin;
+    // ngspice targets MAX(CKTgmin, CKTgshunt) -- step diag_gmin down to device
+    // gmin level, then clear it (final solve uses gshunt).
+    const double target_gmin = std::max(opts.gmin, opts.gshunt);
     double gmin = std::max(1.0, target_gmin);
     double factor = 10.0;
     double accepted_gmin = gmin;
@@ -71,7 +73,7 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
     StateCheckpoint accepted_state = save_state(ckt);
 
     for (int step = 0; step < 80 && gmin >= target_gmin; ++step) {
-        step_opts.gmin = gmin;
+        step_opts.diag_gmin = gmin;
         NewtonResult result;
         try {
             result = newton_solve(ckt, solver, solution, step_opts);
@@ -261,14 +263,14 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
     const double C_pseudo = 1e-3;       // fictitious capacitance (F)
     double dt_pseudo      = 1e-6;       // initial pseudo-timestep (s)
     const int max_steps   = 200;
-    const double target_gmin = opts.gmin;
+    const double target_gmin = opts.diag_gmin;
     double final_probe_g = std::max(1e-6, target_gmin * 1e6);
 
     SimOptions step_opts = opts;
 
     for (int step = 0; step < max_steps; ++step) {
         double G_pseudo = C_pseudo / dt_pseudo;
-        step_opts.gmin = target_gmin + G_pseudo;
+        step_opts.diag_gmin = target_gmin + G_pseudo;
 
         NewtonResult result;
         try {
@@ -284,7 +286,7 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
 
             if (G_pseudo <= final_probe_g) {
                 std::vector<double> accepted_solution = solution;
-                step_opts.gmin = target_gmin;
+                step_opts.diag_gmin = target_gmin;
                 NewtonResult final_result;
                 try {
                     final_result = newton_solve(ckt, solver, solution, step_opts);
@@ -313,8 +315,8 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
         }
     }
 
-    // Final solve with the true gmin (no pseudo-capacitor contribution)
-    step_opts.gmin = target_gmin;
+    // Final solve with the true diag_gmin (no pseudo-capacitor contribution)
+    step_opts.diag_gmin = target_gmin;
     NewtonResult final_result;
     try {
         final_result = newton_solve(ckt, solver, solution, step_opts);

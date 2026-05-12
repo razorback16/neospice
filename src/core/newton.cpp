@@ -80,12 +80,12 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             dev->evaluate(solution, mat, rhs);
         }
 
-        for (int32_t i = 0; i < num_nodes; ++i) {
-            if (!ckt.has_organic_diagonal(i)) continue;
-            MatrixOffset off = pattern.offset(i, i);
-            mat.add(off, opts.gmin);
+        if (opts.diag_gmin != 0.0) {
+            for (int32_t i = 0; i < num_nodes; ++i) {
+                MatrixOffset off = pattern.offset(i, i);
+                mat.add(off, opts.diag_gmin);
+            }
         }
-
 
         // Check if any device changed matrix structure this iteration
         // (e.g. a switch flipped state).  If so, force full numeric

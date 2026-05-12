@@ -28,7 +28,8 @@ struct SimOptions {
     double trtol  = 7.0;
     double chgtol = 1e-14;   // charge tolerance for device LTE (ngspice default)
     double gmin   = 1e-12;
-    double diag_gmin = 0.0;  // internal continuation shunt, separate from device gmin
+    double gshunt = 0.0;      // minimum shunt conductance on all nodes (ngspice CKTgshunt)
+    double diag_gmin = 0.0;   // solver diagonal regularization (ngspice CKTdiagGmin), separate from device gmin
     double temp   = T_NOMINAL;
     double tnom   = T_NOMINAL; // nominal temperature for model parameters (default 27°C = 300.15K)
     int max_iter  = 100;
