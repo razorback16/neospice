@@ -9,7 +9,8 @@ class NeoSolver;
 
 NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
                            std::vector<double>& solution,
-                           const SimOptions& opts);
+                           const SimOptions& opts,
+                           int firstmode, int continuemode);
 
 NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
                              std::vector<double>& solution,

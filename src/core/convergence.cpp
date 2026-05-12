@@ -49,31 +49,39 @@ void clear_state(Circuit& ckt) {
 
 NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
                            std::vector<double>& solution,
-                           const SimOptions& opts) {
+                           const SimOptions& opts,
+                           int firstmode, int continuemode) {
     const std::vector<double> entry_solution = solution;
     const StateCheckpoint entry_state = save_state(ckt);
 
-    // ngspice targets MAX(CKTgmin, CKTgshunt) -- step diag_gmin down to device
-    // gmin level, then clear it (final solve uses gshunt).
-    const double target_gmin = std::max(opts.gmin, opts.gshunt);
-    double gmin = std::max(1.0, target_gmin);
-    double factor = 10.0;
-    double accepted_gmin = gmin;
+    const double gmin_factor = 10.0;
+    double factor = gmin_factor;
+    double OldGmin = 1e-2;
+    double diag_gmin = OldGmin / factor;  // starts at 1e-3
+    const double gtarget = std::max(opts.gmin, opts.gshunt);
+
     int total_iterations = 0;
-    bool have_accepted = false;
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
-    SimOptions step_opts = opts;
-    step_opts.max_iter = std::min(opts.max_iter, 50);
+    bool success = false;
+    bool failed = false;
 
+    SimOptions step_opts = opts;
+    step_opts.max_iter = std::min(opts.max_iter, 100);
+
+    // Start from zero initial guess (matching ngspice)
     solution.assign(solution.size(), 0.0);
     clear_state(ckt);
 
-    std::vector<double> accepted_solution = solution;
-    StateCheckpoint accepted_state = save_state(ckt);
+    std::vector<double> saved_solution = solution;
+    StateCheckpoint saved_state = save_state(ckt);
 
-    for (int step = 0; step < 80 && gmin >= target_gmin; ++step) {
-        step_opts.diag_gmin = gmin;
+    // Set first mode (e.g. MODETRANOP|MODEINITJCT)
+    ckt.integrator_ctx.mode = firstmode;
+
+    while (!success && !failed) {
+        step_opts.diag_gmin = diag_gmin;
+
         NewtonResult result;
         try {
             result = newton_solve(ckt, solver, solution, step_opts);
@@ -83,62 +91,64 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
 
         last_residual = result.residual;
         last_worst_idx = result.worst_node_idx;
+        int iters = result.iterations;
+        total_iterations += iters;
 
-        if (!result.converged) {
-            if (!have_accepted) {
-                if (gmin < 1e6) {
-                    gmin *= 10.0;
-                    solution.assign(solution.size(), 0.0);
-                    clear_state(ckt);
-                    continue;
+        if (result.converged) {
+            // Switch to continuation mode (e.g. MODETRANOP|MODEINITFLOAT)
+            ckt.integrator_ctx.mode = continuemode;
+            solution = result.solution;
+
+            if (diag_gmin <= gtarget) {
+                success = true;
+            } else {
+                // Save accepted solution and state
+                saved_solution = solution;
+                saved_state = save_state(ckt);
+
+                // Adapt factor based on iteration count (ngspice cktop.c:187-194)
+                if (iters <= step_opts.max_iter / 4) {
+                    factor *= std::sqrt(factor);
+                    if (factor > gmin_factor)
+                        factor = gmin_factor;
                 }
-                solution = entry_solution;
-                restore_state(ckt, entry_state);
-                return {false, total_iterations, solution, last_residual, last_worst_idx};
+                if (iters > (3 * step_opts.max_iter / 4)) {
+                    factor = std::sqrt(factor);
+                }
+
+                OldGmin = diag_gmin;
+
+                // Reduce diag_gmin, clamping to gtarget (ngspice cktop.c:198-203)
+                if (diag_gmin < factor * gtarget) {
+                    factor = diag_gmin / gtarget;
+                    diag_gmin = gtarget;
+                } else {
+                    diag_gmin /= factor;
+                }
             }
+        } else {
+            // Convergence failure at this gmin level
+            if (factor < 1.00005) {
+                failed = true;
+            } else {
+                // Reduce factor aggressiveness and retry (ngspice cktop.c:213-214)
+                factor = std::sqrt(std::sqrt(factor));
+                diag_gmin = OldGmin / factor;
 
-            solution = accepted_solution;
-            restore_state(ckt, accepted_state);
-            // A failed continuation point usually means the previous gmin
-            // drop crossed a sharp nonlinear transition. Retry near the last
-            // accepted point instead of spending full Newton solves on the
-            // lower half of that interval.
-            factor = std::min(1.25, std::sqrt(factor));
-            if (factor < 1.05) {
-                return {false, total_iterations, solution, last_residual, last_worst_idx};
+                // Restore last accepted solution
+                solution = saved_solution;
+                restore_state(ckt, saved_state);
             }
-            gmin = std::max(target_gmin, accepted_gmin / factor);
-            continue;
         }
-
-        total_iterations += result.iterations;
-        solution = result.solution;
-        accepted_solution = solution;
-        accepted_state = save_state(ckt);
-        accepted_gmin = gmin;
-        have_accepted = true;
-
-        if (gmin <= target_gmin) {
-            result.iterations = total_iterations;
-            result.solution = solution;
-            return result;
-        }
-
-        if (result.iterations < opts.max_iter / 4) {
-            factor = std::min(100.0, factor * 1.5);
-        } else if (result.iterations > opts.max_iter / 2) {
-            factor = std::max(1.05, std::sqrt(factor));
-        }
-        gmin = std::max(target_gmin, gmin / factor);
     }
 
-    if (have_accepted) {
-        solution = accepted_solution;
-        restore_state(ckt, accepted_state);
-    } else {
-        solution = entry_solution;
-        restore_state(ckt, entry_state);
+    if (success) {
+        return {true, total_iterations, solution, last_residual, last_worst_idx};
     }
+
+    // Failed — restore entry state
+    solution = entry_solution;
+    restore_state(ckt, entry_state);
     return {false, total_iterations, solution, last_residual, last_worst_idx};
 }
 
