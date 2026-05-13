@@ -154,6 +154,12 @@ void Circuit::finalize() {
         if (!organic_diagonal_[i])
             builder.add(i, i);
     }
+    // Ensure branch equation diagonals exist too (matches ngspice's
+    // LoadGmin which adds CKTdiagGmin to every matrix diagonal).
+    for (int32_t i = next_node_; i < num_vars_; ++i) {
+        if (!builder.has_diagonal(i))
+            builder.add(i, i);
+    }
     pattern_ = std::make_unique<SparsityPattern>(builder.build());
 
     // 4. Assign offsets into the pattern for each device.

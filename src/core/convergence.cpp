@@ -142,6 +142,26 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
     }
 
     if (success) {
+        // ngspice cktop.c:229+242 — final solve at true gmin (no artificial diagonal)
+        // After gmin stepping converges, ngspice sets CKTdiagGmin = CKTgshunt
+        // and runs one more NIiter to confirm the solution holds without the
+        // artificial diagonal conductance.
+        SimOptions final_opts = opts;
+        final_opts.diag_gmin = std::max(opts.gshunt, 0.0);
+        NewtonResult final_result;
+        try {
+            final_result = newton_solve(ckt, solver, solution, final_opts);
+        } catch (const std::runtime_error&) {
+            final_result.converged = false;
+        }
+        if (!final_result.converged) {
+            // Final solve failed — gmin stepping didn't truly converge.
+            // Restore entry state so the caller can try the next method.
+            solution = entry_solution;
+            restore_state(ckt, entry_state);
+            return {false, total_iterations + final_result.iterations, final_result.residual, final_result.worst_node_idx};
+        }
+        total_iterations += final_result.iterations;
         return {true, total_iterations, last_residual, last_worst_idx};
     }
 

@@ -171,6 +171,28 @@ target_compile_definitions(bench_comprehensive PRIVATE
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )
 
+add_executable(bench_tlv3201
+    bench/bench_tlv3201.cpp
+    framework/ngspice_runner.cpp
+    framework/comparator.cpp
+)
+target_link_directories(bench_tlv3201 PRIVATE ${NGSPICE_LIBRARY_DIRS})
+target_link_libraries(bench_tlv3201 PRIVATE neospice_lib ${NGSPICE_LIBRARIES})
+target_include_directories(bench_tlv3201 PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${NGSPICE_INCLUDE_DIRS})
+target_compile_definitions(bench_tlv3201 PRIVATE
+    TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
+)
+
+add_executable(debug_tlv3201
+    bench/debug_tlv3201.cpp
+)
+target_link_libraries(debug_tlv3201 PRIVATE neospice_lib)
+target_include_directories(debug_tlv3201 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(debug_tlv3201 PRIVATE
+    TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
+)
+
 add_executable(bench_neo_solver
     bench/bench_neo_solver.cpp
 )

@@ -1,0 +1,9 @@
+TLV3201 Switching Comparator Test
+.include ../../examples/tlv3201.txt
+VCC vcc 0 DC 5
+VIN inp 0 DC 2.5 PULSE(2.0 3.0 1u 10n 10n 5u 10u)
+VREF inm 0 DC 2.5
+X1 inp inm vcc 0 out TLV3201
+RL out 0 10k
+.tran 100n 30u
+.end

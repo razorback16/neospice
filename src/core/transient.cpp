@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <iostream>
 
@@ -151,9 +152,26 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
     ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
-        total_newton_iters += result.iterations;
-        ckt.options.diag_gmin = ckt.options.gshunt;
-        return;
+        // Sanity check: reject DC operating points with unreasonably large
+        // node voltages.  Different LU pivot strategies can converge Newton
+        // to non-physical fixed points (e.g. internal nodes at millions of
+        // volts).  When detected, fall through to gmin stepping which is
+        // more robust against degenerate solutions.
+        constexpr double MAX_NODE_VOLTAGE = 1e4;
+        bool plausible = true;
+        for (int32_t i = 0; i < ckt.num_nodes(); ++i) {
+            if (std::abs(solution[i]) > MAX_NODE_VOLTAGE) {
+                plausible = false;
+                break;
+            }
+        }
+        if (plausible) {
+            total_newton_iters += result.iterations;
+            ckt.options.diag_gmin = ckt.options.gshunt;
+            return;
+        }
+        // Reset for gmin stepping
+        std::fill(solution.begin(), solution.end(), 0.0);
     }
 
     result = gmin_stepping(ckt, solver, solution, ckt.options,
@@ -175,6 +193,9 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
 
     ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
     result = pseudo_transient(ckt, solver, solution, ckt.options);
+    if (ckt.options.verbose)
+        std::fprintf(stderr, "[dc] Pseudo-transient %s (%d iters)\n",
+                     result.converged ? "converged" : "failed", result.iterations);
     if (result.converged) {
         total_newton_iters += result.iterations;
         ckt.options.diag_gmin = ckt.options.gshunt;
