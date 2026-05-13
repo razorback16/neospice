@@ -99,7 +99,7 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
     std::vector<double> solution(ckt.num_vars(), 0.0);
     auto result = newton_solve(ckt, *solver, solution, ckt.options);
     ASSERT_TRUE(result.converged) << "Newton failed to converge";
-    solution = result.solution;
+    // newton_solve modifies solution in-place; no copy needed
 
     // Drain current through M1 = -solution[VDD.branch_index()] because
     // VSource's MNA row carries "current flowing through the source from

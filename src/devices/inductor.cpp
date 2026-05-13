@@ -187,6 +187,7 @@ void Inductor::accept_step(double i_branch, double v_across) {
 }
 
 void Inductor::accept_step_from_solution(const std::vector<double>& sol) {
+    if (state0_ && !coupled_) return;
     double va = (np_ >= 0) ? sol[np_] : 0.0;
     double vc = (nn_ >= 0) ? sol[nn_] : 0.0;
     double i  = (branch_idx_ >= 0) ? sol[branch_idx_] : 0.0;

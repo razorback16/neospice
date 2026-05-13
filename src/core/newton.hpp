@@ -11,7 +11,6 @@ class NeoSolver;
 struct NewtonResult {
     bool converged = false;
     int iterations = 0;
-    std::vector<double> solution;
     double residual = 0.0;          // max |rhs[i]| at final iteration
     int32_t worst_node_idx = -1;    // node with largest residual
 };

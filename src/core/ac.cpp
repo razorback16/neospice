@@ -81,23 +81,23 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
         auto result = newton_solve(ckt, *dc_solver, dc_solution,
                                    direct_attempt_options(ckt.options));
         if (result.converged) {
-            dc_solution = result.solution;
+            // dc_solution modified in-place by newton_solve
         } else {
             result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options,
                                    MODEDCOP_BIT | MODEINITJCT_BIT,
                                    MODEDCOP_BIT | MODEINITFLOAT_BIT);
             if (result.converged) {
-                dc_solution = result.solution;
+                // dc_solution modified in-place
             } else {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                 result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
                 if (result.converged) {
-                    dc_solution = result.solution;
+                    // dc_solution modified in-place
                 } else {
                     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                     result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
                     if (result.converged) {
-                        dc_solution = result.solution;
+                        // dc_solution modified in-place
                     } else {
                         SimStatus fail_status;
                         fail_status.converged = false;

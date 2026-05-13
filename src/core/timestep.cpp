@@ -54,9 +54,9 @@ bool TimeStepController::evaluate_step(const std::vector<double>& sol,
     }
 
     double max_ratio = 0.0;
+    const double lte_coeff = (opts.method == "gear") ? (2.0 / 9.0) : (1.0 / 12.0);
     for (int32_t i = 0; i < num_nodes; ++i) {
         double delta2 = sol[i] - 2.0 * sol_prev[i] + sol_prev2[i];
-        double lte_coeff = (opts.method == "gear") ? (2.0 / 9.0) : (1.0 / 12.0);
         double lte = std::abs(delta2) * lte_coeff;
         double tol;
         switch (opts.lte_ref_mode) {

@@ -174,8 +174,8 @@ D1 mid 0 DMOD
 
     auto result = pseudo_transient(ckt, *solver, solution, ckt.options);
     EXPECT_TRUE(result.converged);
-    // Verify the solution vector has the right size
-    EXPECT_EQ(result.solution.size(), static_cast<size_t>(n));
+    // Verify the solution vector has the right size (solution is modified in-place)
+    EXPECT_EQ(solution.size(), static_cast<size_t>(n));
 }
 
 TEST(Convergence, PseudoTransientCrossCoupledMOS) {

@@ -78,6 +78,10 @@ private:
 
     // Dense accumulator for factorization
     std::vector<double> x_work_;
+    std::vector<double> xr_work_;     // complex factorization real workspace
+    std::vector<double> xi_work_;     // complex factorization imag workspace
+    std::vector<double> yr_work_;     // complex solve real workspace
+    std::vector<double> yi_work_;     // complex solve imag workspace
 
     // Complex L/U values (same structure as real)
     std::vector<double> l_val_z_;
@@ -90,7 +94,7 @@ private:
     void sparse_solve_real(double* b) const;
     void sparse_factor_complex(const double* orig_ax);
     bool sparse_refactor_complex(const double* orig_ax);
-    void sparse_solve_complex(double* b) const;
+    void sparse_solve_complex(double* b);
 };
 
 }  // namespace neospice

@@ -59,9 +59,10 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
     double max_residual = 0.0;
     int32_t worst_idx = -1;
 
+    std::vector<double> old_solution(solution.size());
     for (int iter = 0; iter < opts.max_iter; ++iter) {
         // Save old solution for convergence check
-        std::vector<double> old_solution = solution;
+        old_solution = solution;
 
         // Clear matrix and RHS
         mat.clear();
@@ -217,7 +218,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             // Corrector phase — convergence check is meaningful.
             if (converged) {
                 ckt.integrator_ctx.mode = saved_mode;
-                return {true, iter + 1, solution, max_residual, worst_idx};
+                return {true, iter + 1, max_residual, worst_idx};
             }
             // else: keep iterating in MODEINITFLOAT
         } else if (m & MODEINITJCT_BIT) {
@@ -243,7 +244,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             // If already converged, return success.
             if (converged) {
                 ckt.integrator_ctx.mode = saved_mode;
-                return {true, iter + 1, solution, max_residual, worst_idx};
+                return {true, iter + 1, max_residual, worst_idx};
             }
         }
     }
@@ -252,7 +253,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         std::cerr << "[newton] NOT converged after " << opts.max_iter << " iter\n";
 
     ckt.integrator_ctx.mode = saved_mode;
-    return {false, opts.max_iter, solution, max_residual, worst_idx};
+    return {false, opts.max_iter, max_residual, worst_idx};
 }
 
 } // namespace neospice

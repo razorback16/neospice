@@ -55,23 +55,23 @@ PZResult solve_pz(Circuit& ckt,
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto dc_result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
     if (dc_result.converged) {
-        dc_solution = dc_result.solution;
+        // dc_solution modified in-place by newton_solve
     } else {
         dc_result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options,
                                   MODEDCOP_BIT | MODEINITJCT_BIT,
                                   MODEDCOP_BIT | MODEINITFLOAT_BIT);
         if (dc_result.converged) {
-            dc_solution = dc_result.solution;
+            // dc_solution modified in-place
         } else {
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             dc_result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
             if (dc_result.converged) {
-                dc_solution = dc_result.solution;
+                // dc_solution modified in-place
             } else {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                 dc_result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
                 if (dc_result.converged) {
-                    dc_solution = dc_result.solution;
+                    // dc_solution modified in-place
                 } else {
                     SimStatus fail_status;
                     fail_status.converged = false;

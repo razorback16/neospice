@@ -97,7 +97,6 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
         if (result.converged) {
             // Switch to continuation mode (e.g. MODETRANOP|MODEINITFLOAT)
             ckt.integrator_ctx.mode = continuemode;
-            solution = result.solution;
 
             if (diag_gmin <= gtarget) {
                 success = true;
@@ -143,13 +142,13 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
     }
 
     if (success) {
-        return {true, total_iterations, solution, last_residual, last_worst_idx};
+        return {true, total_iterations, last_residual, last_worst_idx};
     }
 
     // Failed — restore entry state
     solution = entry_solution;
     restore_state(ckt, entry_state);
-    return {false, total_iterations, solution, last_residual, last_worst_idx};
+    return {false, total_iterations, last_residual, last_worst_idx};
 }
 
 NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
@@ -206,13 +205,12 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
     try {
         result = newton_solve(ckt, solver, solution, opts);
     } catch (const std::runtime_error&) {
-        return {false, 0, solution, 0.0, -1};
+        return {false, 0, 0.0, -1};
     }
     if (!result.converged) {
-        return {false, 0, solution, result.residual, result.worst_node_idx};
+        return {false, 0, result.residual, result.worst_node_idx};
     }
     total_iterations += result.iterations;
-    solution = result.solution;
     std::vector<double> accepted_solution = solution;
     StateCheckpoint accepted_state = save_state(ckt);
 
@@ -234,7 +232,6 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
 
         if (result.converged) {
             total_iterations += result.iterations;
-            solution = result.solution;
             fraction = next_frac;
             accepted_solution = solution;
             accepted_state = save_state(ckt);
@@ -249,7 +246,7 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
             scale_sources(fraction);
             step *= 0.1;
             if (step < min_step) {
-                return {false, total_iterations, solution, last_residual, last_worst_idx};
+                return {false, total_iterations, last_residual, last_worst_idx};
             }
         }
     }
@@ -257,7 +254,6 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
     // fraction == 1.0 and sources are at their original values; the restorer
     // will write them again on exit, which is harmless.
     result.iterations = total_iterations;
-    result.solution = solution;
     return result;
 }
 
@@ -290,7 +286,6 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
         }
 
         if (result.converged) {
-            solution = result.solution;
             StateCheckpoint accepted_state = save_state(ckt);
             dt_pseudo *= 2.0;  // grow pseudo-timestep (decay G_pseudo)
 
@@ -320,7 +315,7 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
         } else {
             dt_pseudo *= 0.5;  // shrink on failure
             if (dt_pseudo < 1e-15) {
-                return {false, 0, solution, result.residual, result.worst_node_idx};
+                return {false, 0, result.residual, result.worst_node_idx};
             }
         }
     }
@@ -331,12 +326,12 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
     try {
         final_result = newton_solve(ckt, solver, solution, step_opts);
     } catch (const std::runtime_error&) {
-        return {false, 0, solution, 0.0, -1};
+        return {false, 0, 0.0, -1};
     }
     if (final_result.converged) {
         return final_result;
     }
-    return {false, 0, solution, final_result.residual, final_result.worst_node_idx};
+    return {false, 0, final_result.residual, final_result.worst_node_idx};
 }
 
 } // namespace neospice

@@ -74,23 +74,23 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, *solver, solution, ckt.options);
     if (result.converged) {
-        solution = result.solution;
+        // solution modified in-place by newton_solve
     } else {
         result = gmin_stepping(ckt, *solver, solution, ckt.options,
                                MODEDCOP_BIT | MODEINITJCT_BIT,
                                MODEDCOP_BIT | MODEINITFLOAT_BIT);
         if (result.converged) {
-            solution = result.solution;
+            // solution modified in-place
         } else {
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             result = source_stepping(ckt, *solver, solution, ckt.options);
             if (result.converged) {
-                solution = result.solution;
+                // solution modified in-place
             } else {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                 result = pseudo_transient(ckt, *solver, solution, ckt.options);
                 if (result.converged) {
-                    solution = result.solution;
+                    // solution modified in-place
                 } else {
                     SimStatus fail_status;
                     fail_status.converged = false;

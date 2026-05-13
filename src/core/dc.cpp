@@ -89,7 +89,6 @@ DCResult solve_dc(Circuit& ckt) {
         result.converged = false;
     }
     if (result.converged) {
-        solution = result.solution;
         sim_status.iterations = result.iterations;
         sim_status.residual = result.residual;
         sim_status.worst_node_idx = result.worst_node_idx;
@@ -99,7 +98,6 @@ DCResult solve_dc(Circuit& ckt) {
                                MODEDCOP_BIT | MODEINITJCT_BIT,
                                MODEDCOP_BIT | MODEINITFLOAT_BIT);
         if (result.converged) {
-            solution = result.solution;
             sim_status.iterations = result.iterations;
             sim_status.convergence_method = ConvergenceMethod::GMIN_STEPPING;
             sim_status.residual = result.residual;
@@ -111,7 +109,6 @@ DCResult solve_dc(Circuit& ckt) {
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             result = source_stepping(ckt, *solver, solution, ckt.options);
             if (result.converged) {
-                solution = result.solution;
                 sim_status.iterations = result.iterations;
                 sim_status.convergence_method = ConvergenceMethod::SOURCE_STEPPING;
                 sim_status.residual = result.residual;
@@ -123,7 +120,6 @@ DCResult solve_dc(Circuit& ckt) {
                 ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
                 result = pseudo_transient(ckt, *solver, solution, ckt.options);
                 if (result.converged) {
-                    solution = result.solution;
                     sim_status.iterations = result.iterations;
                     sim_status.convergence_method = ConvergenceMethod::PSEUDO_TRANSIENT;
                     sim_status.residual = result.residual;
@@ -353,7 +349,6 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | init_bit;
         auto res = newton_solve(ckt, *solver, solution, ckt.options);
         if (res.converged) {
-            solution = res.solution;
             first_point = false;
             return;
         }
@@ -361,21 +356,18 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
                             MODEDCTRANCURVE_BIT | MODEINITJCT_BIT,
                             MODEDCTRANCURVE_BIT | MODEINITFLOAT_BIT);
         if (res.converged) {
-            solution = res.solution;
             first_point = false;
             return;
         }
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = source_stepping(ckt, *solver, solution, ckt.options);
         if (res.converged) {
-            solution = res.solution;
             first_point = false;
             return;
         }
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = pseudo_transient(ckt, *solver, solution, ckt.options);
         if (res.converged) {
-            solution = res.solution;
             first_point = false;
             return;
         }

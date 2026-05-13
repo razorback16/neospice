@@ -151,7 +151,6 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
     ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
-        solution = result.solution;
         total_newton_iters += result.iterations;
         ckt.options.diag_gmin = ckt.options.gshunt;
         return;
@@ -161,7 +160,6 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
                            MODETRANOP_BIT | MODEINITJCT_BIT,
                            MODETRANOP_BIT | MODEINITFLOAT_BIT);
     if (result.converged) {
-        solution = result.solution;
         total_newton_iters += result.iterations;
         ckt.options.diag_gmin = ckt.options.gshunt;
         return;
@@ -170,7 +168,6 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
     ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
     result = source_stepping(ckt, solver, solution, ckt.options);
     if (result.converged) {
-        solution = result.solution;
         total_newton_iters += result.iterations;
         ckt.options.diag_gmin = ckt.options.gshunt;
         return;
@@ -179,7 +176,6 @@ static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
     ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
     result = pseudo_transient(ckt, solver, solution, ckt.options);
     if (result.converged) {
-        solution = result.solution;
         total_newton_iters += result.iterations;
         ckt.options.diag_gmin = ckt.options.gshunt;
         return;
@@ -320,9 +316,8 @@ static void resolve_tl_initial_conditions(Circuit& ckt, NeoSolver& solver,
         ckt.integrator_ctx.delta = tstep;
         ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
         auto ic_result = newton_solve(ckt, solver, solution, ckt.options);
-        if (ic_result.converged) {
-            solution = ic_result.solution;
-        }
+        // newton_solve modifies solution in-place; nothing to copy on success
+        (void)ic_result;
     }
 }
 
@@ -581,6 +576,84 @@ static void detect_and_handle_ringing(
 }
 
 // ===================================================================
+// Cached typed device pointers — built once, eliminates per-step dynamic_cast
+// ===================================================================
+struct CachedDevicePtrs {
+    std::vector<Capacitor*> caps;
+    std::vector<Inductor*> inds;
+    std::vector<CoupledInductor*> coupled;
+    std::vector<VSource*> vsrc;
+    std::vector<ISource*> isrc;
+    std::vector<ASRCDevice*> asrc;
+    std::vector<TransmissionLine*> tline;
+    std::vector<LossyTransmissionLine*> ltline;
+
+    void build(Circuit& ckt) {
+        for (auto& dev : ckt.devices()) {
+            if (auto* p = dynamic_cast<Capacitor*>(dev.get())) caps.push_back(p);
+            else if (auto* p = dynamic_cast<Inductor*>(dev.get())) inds.push_back(p);
+            else if (auto* p = dynamic_cast<CoupledInductor*>(dev.get())) coupled.push_back(p);
+            else if (auto* p = dynamic_cast<VSource*>(dev.get())) vsrc.push_back(p);
+            else if (auto* p = dynamic_cast<ISource*>(dev.get())) isrc.push_back(p);
+            else if (auto* p = dynamic_cast<ASRCDevice*>(dev.get())) asrc.push_back(p);
+            else if (auto* p = dynamic_cast<TransmissionLine*>(dev.get())) tline.push_back(p);
+            else if (auto* p = dynamic_cast<LossyTransmissionLine*>(dev.get())) ltline.push_back(p);
+        }
+    }
+};
+
+// ===================================================================
+// Cached-pointer overloads of per-step helpers (no dynamic_cast)
+// ===================================================================
+
+static void update_device_timestep(const CachedDevicePtrs& c, double dt, int order = 1) {
+    for (auto* cap : c.caps) { cap->set_transient(dt); cap->set_integrator_order(order); }
+    for (auto* ind : c.inds) { ind->set_transient(dt); ind->set_integrator_order(order); }
+    for (auto* ki : c.coupled) { ki->set_transient(dt); ki->set_integrator_order(order); }
+}
+
+static void update_source_time(const CachedDevicePtrs& c, double t) {
+    for (auto* vs : c.vsrc) vs->set_time(t);
+    for (auto* is : c.isrc) is->set_time(t);
+    for (auto* bs : c.asrc) bs->set_time(t);
+}
+
+static void accept_step_on_devices(const CachedDevicePtrs& c, double t,
+                                   const std::vector<double>& solution) {
+    for (auto* cap : c.caps) cap->accept_step_from_solution(solution);
+    for (auto* ind : c.inds) ind->accept_step_from_solution(solution);
+    for (auto* ki : c.coupled) ki->accept_step_from_solution(solution);
+    for (auto* tl : c.tline) tl->accept_step(t, solution);
+    for (auto* ltl : c.ltline) ltl->accept_step(t, solution);
+    for (auto* asrc : c.asrc) { asrc->expression().accept_ddt(); asrc->expression().accept_idt(); }
+}
+
+static void detect_and_handle_ringing(
+    Circuit& ckt, const CachedDevicePtrs& c, TimeStepController& ctrl,
+    const std::vector<double>& solution,
+    const std::vector<double>& sol_prev,
+    const std::vector<double>& sol_prev2,
+    const std::vector<double>& sol_prev3,
+    int32_t num_nodes, int step_count, bool use_gear, int steps_after_bp)
+{
+    if (step_count < 3 || use_gear || steps_after_bp < kRingingMinStepsAfterBp)
+        return;
+
+    ctrl.check_ringing(solution, sol_prev, sol_prev2, sol_prev3,
+                       num_nodes, ckt.options);
+    ctrl.tick_cooldown();
+
+    // Switch integration method based on ringing state
+    int new_method = (ctrl.ringing_detected() || ctrl.ringing_cooldown() > 0) ? 1 : 0;
+    if (new_method != ckt.integrator_ctx.integrate_method) {
+        ckt.integrator_ctx.integrate_method = new_method;
+        for (auto* cap : c.caps) cap->set_integration_method(new_method);
+        for (auto* ind : c.inds) ind->set_integration_method(new_method);
+        for (auto* ki : c.coupled) ki->set_integration_method(new_method);
+    }
+}
+
+// ===================================================================
 // Main entry point: solve_transient
 // ===================================================================
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
@@ -612,6 +685,10 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             return fail_result;
         }
     }
+
+    // Cache typed device pointers (one-time cost, eliminates per-step dynamic_cast)
+    CachedDevicePtrs cached;
+    cached.build(ckt);
 
     if (ckt.options.verbose) {
         std::cerr << "[tran] DC OP done. Checking for large values:\n";
@@ -705,10 +782,13 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     const double dt_min = tstep * kMinTimeStepRatio;
     const double dt_max = std::min(tstep, tstop / 50.0);
 
-    // History for LTE
-    std::vector<double> sol_prev = solution;
-    std::vector<double> sol_prev2 = solution;
-    std::vector<double> sol_prev3 = solution;
+    // History for LTE — ring buffer of 3 vectors (pointer rotation instead of 3 copies)
+    std::vector<double> hist_buf0 = solution;
+    std::vector<double> hist_buf1 = solution;
+    std::vector<double> hist_buf2 = solution;
+    std::vector<double>* sol_prev  = &hist_buf0;
+    std::vector<double>* sol_prev2 = &hist_buf1;
+    std::vector<double>* sol_prev3 = &hist_buf2;
     double next_output_time = tstep;
     int step_count = 0;
 
@@ -779,8 +859,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         double t = ctrl.current_time() + dt;
 
         // Prepare devices and integrator for this timestep
-        update_device_timestep(ckt, dt, ctrl.order());
-        update_source_time(ckt, t);
+        update_device_timestep(cached, dt, ctrl.order());
+        update_source_time(cached, t);
         fill_integrator_context(ckt, dt, step_count, ctrl);
 
         // Newton-Raphson solve
@@ -808,21 +888,21 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                 tran_result.status = nr_fail_status;
                 return tran_result;
             }
-            solution = sol_prev;   // restore last accepted solution
+            solution = *sol_prev;   // restore last accepted solution
             continue;
         }
-        solution = nr.solution;
+        // newton_solve modifies solution in-place; no copy needed
         total_newton_iters += nr.iterations;
 
         // Evaluate LTE — reject step if error too large
         double device_dt = 1e30;
-        bool accepted = evaluate_lte(ckt, ctrl, solution, sol_prev, sol_prev2,
+        bool accepted = evaluate_lte(ckt, ctrl, solution, *sol_prev, *sol_prev2,
                                      num_nodes, dt, dt_min, step_count, steps_after_bp,
                                      device_dt);
         if (!accepted) {
             if (ckt.options.verbose)
                 std::cerr << "[tran] LTE REJECT sc=" << step_count << " dt=" << dt << " proposed=" << ctrl.proposed_dt() << "\n";
-            solution = sol_prev;
+            solution = *sol_prev;
             double proposed = ctrl.proposed_dt();
             if (device_dt < proposed)
                 proposed = device_dt;
@@ -867,21 +947,25 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
         // Rotate state history ring and accept on devices
         ckt.rotate_state();
-        accept_step_on_devices(ckt, ctrl.current_time(), solution);
+        accept_step_on_devices(cached, ctrl.current_time(), solution);
 
         // Store output at tstep intervals (interpolate if we overshot)
         interpolate_and_store_outputs(ctrl, dt, prev_prev_dt, tstep, tstop,
-                                      step_count, n, solution, sol_prev,
-                                      sol_prev2, next_output_time, store_point);
+                                      step_count, n, solution, *sol_prev,
+                                      *sol_prev2, next_output_time, store_point);
 
-        // Shift history
-        sol_prev3 = sol_prev2;
-        sol_prev2 = sol_prev;
-        sol_prev = solution;
+        // Rotate ring buffer: oldest buffer gets current solution (1 copy instead of 3)
+        {
+            std::vector<double>* tmp = sol_prev3;
+            *tmp = solution;
+            sol_prev3 = sol_prev2;
+            sol_prev2 = sol_prev;
+            sol_prev = tmp;
+        }
 
         // Ringing detection and integration method switching
-        detect_and_handle_ringing(ckt, ctrl, solution, sol_prev, sol_prev2,
-                                  sol_prev3, num_nodes, step_count, use_gear,
+        detect_and_handle_ringing(ckt, cached, ctrl, solution, *sol_prev, *sol_prev2,
+                                  *sol_prev3, num_nodes, step_count, use_gear,
                                   steps_after_bp);
 
         // Propose next dt from device and global LTE

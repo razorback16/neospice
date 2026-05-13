@@ -202,6 +202,7 @@ void Capacitor::accept_step(double v_across) {
 }
 
 void Capacitor::accept_step_from_solution(const std::vector<double>& sol) {
+    if (state0_) return;
     double va = (np_ >= 0) ? sol[np_] : 0.0;
     double vc = (nn_ >= 0) ? sol[nn_] : 0.0;
     accept_step(va - vc);
