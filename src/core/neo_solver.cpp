@@ -3,6 +3,7 @@
 #include "core/matching.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -105,7 +106,7 @@ void NeoSolver::build_permuted_csc() {
     }
 }
 
-// Left-looking column-LU with threshold diagonal pivoting.
+// Left-looking column-LU with Markowitz pivot selection.
 // Uses Gilbert-Peierls reach computation so the left-looking update
 // only visits columns with nonzero U entries, making total work
 // proportional to nnz(L)+nnz(U) instead of O(n²).
@@ -140,6 +141,13 @@ bool NeoSolver::sparse_factor(const double* orig_values) {
     std::vector<int32_t> nz_rows;
     nz_rows.reserve(n_);
     std::vector<bool> in_nz(n_, false);
+
+    // Markowitz row counts: number of nonzeros per row in permuted CSC.
+    // Used as tie-breaker when diagonal pivot fails threshold.
+    std::vector<int32_t> row_nnz(n_, 0);
+    for (int32_t j = 0; j < n_; ++j)
+        for (int32_t p = perm_cp_[j]; p < perm_cp_[j + 1]; ++p)
+            row_nnz[perm_ri_[p]]++;
 
     for (int32_t col = 0; col < n_; ++col) {
         nz_rows.clear();
@@ -205,23 +213,44 @@ bool NeoSolver::sparse_factor(const double* orig_values) {
             }
         }
 
-        // Threshold pivot: scan only touched rows
+        // Markowitz pivot selection: among numerically acceptable candidates,
+        // choose the one with fewest row nonzeros to minimize fill-in.
+        // Diagonal is preferred as tie-breaker to preserve structural symmetry.
         double col_max = 0.0;
-        int32_t best_row = -1;
-        double best_val = -1.0;
         for (int32_t row : nz_rows) {
             if (pinv_[row] >= 0) continue;
             double v = std::abs(x_work_[row]);
             if (v > col_max) col_max = v;
-            if (v > best_val) { best_val = v; best_row = row; }
         }
 
-        int32_t pivot_row;
-        double diag_val = (pinv_[col] < 0) ? std::abs(x_work_[col]) : 0.0;
-        if (diag_val >= PIVOT_THRESHOLD * col_max && diag_val > 0.0) {
-            pivot_row = col;
-        } else {
-            pivot_row = best_row;
+        double threshold = PIVOT_THRESHOLD * col_max;
+        int32_t pivot_row = -1;
+        int32_t best_nnz = std::numeric_limits<int32_t>::max();
+        double best_abs = -1.0;
+
+        for (int32_t row : nz_rows) {
+            if (pinv_[row] >= 0) continue;
+            double v = std::abs(x_work_[row]);
+            if (v < threshold) continue;
+            int32_t rnnz = row_nnz[row];
+            if (rnnz < best_nnz || (rnnz == best_nnz && v > best_abs)) {
+                best_nnz = rnnz;
+                best_abs = v;
+                pivot_row = row;
+            }
+        }
+
+        // Diagonal preference: if diagonal passes threshold and ties on
+        // Markowitz count, prefer it to preserve structural symmetry.
+        if (pivot_row >= 0 && pinv_[col] < 0) {
+            double dv = std::abs(x_work_[col]);
+            if (dv >= threshold) {
+                int32_t dnnz = row_nnz[col];
+                if (dnnz < best_nnz ||
+                    (dnnz == best_nnz && col != pivot_row)) {
+                    pivot_row = col;
+                }
+            }
         }
 
         if (pivot_row < 0) {
@@ -239,6 +268,8 @@ bool NeoSolver::sparse_factor(const double* orig_values) {
             x_work_[pivot_row] = (x_work_[pivot_row] >= 0.0) ? 1e-12 : -1e-12;
             perturbed = true;
         }
+
+        row_nnz[pivot_row] = -1;
 
         pinv_[pivot_row] = col;
         piv_[col] = pivot_row;
