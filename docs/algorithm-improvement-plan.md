@@ -245,6 +245,31 @@ All 817 tests pass after implementation.
 
 ---
 
+## Pending: Complex Markowitz Factorization
+
+**Gap**: When no prior real factorization exists (pure AC without DC OP, i.e. the
+`noopac` path), `NeoSolver::numeric_complex()` establishes L/U pivot structure by
+factoring the magnitudes `|a_r + j*a_i|` as a real matrix, then uses that structure
+for the actual complex factorization. This is a proxy — the magnitudes of partially
+eliminated column entries evolve differently in a real vs. complex factorization,
+so the Markowitz pivot choices may be suboptimal.
+
+**ngspice behavior**: ngspice does an independent full complex Markowitz
+factorization (`spOrderAndFactor()` with `Complex=YES`) on the first AC frequency.
+The DC real pivot order is not reused — AC gets its own ordering.
+
+**Impact**: Low. This path is almost never triggered because AC analysis virtually
+always has a preceding DC OP that sets `factored_ = true`, making the magnitude
+proxy unreachable. The `noopac` option (linear-only circuits) is rare.
+
+**Fix when needed**: Write a `sparse_factor_complex_with_pivoting()` that performs
+Markowitz pivot selection on `std::hypot(xr, xi)` during the actual complex column
+elimination, rather than on a separate magnitude-only real factorization.
+
+**Files**: `src/core/neo_solver.cpp`, `src/core/neo_solver.hpp`
+
+---
+
 ## Metrics
 
 For each improvement, measure:

@@ -304,8 +304,14 @@ static void initialize_device_dc_state(Circuit& ckt, std::vector<double>& soluti
 }
 
 // ===================================================================
-// Helper: Re-solve at t=0 when transmission lines have IC values
+// Helper: Resolve TL initial conditions into the solution vector
 // ===================================================================
+// After DC OP (TL is short circuit) and TL IC initialization (history
+// filled with IC values), the node voltages don't reflect the TL ICs.
+// This solve uses the TL companion model with IC-initialized history
+// to make node voltages consistent before storing the t=0 output.
+// ngspice achieves this implicitly: its first output point is after
+// the first MODEINITTRAN Newton step, so ICs are already resolved.
 static void resolve_tl_initial_conditions(Circuit& ckt, NeoSolver& solver,
                                           std::vector<double>& solution,
                                           double tstep) {
@@ -315,14 +321,15 @@ static void resolve_tl_initial_conditions(Circuit& ckt, NeoSolver& solver,
             if (tl->has_ic()) { tl_has_ic = true; break; }
         }
     }
-    if (tl_has_ic) {
-        ckt.integrator_ctx.current_time = 0.0;
-        ckt.integrator_ctx.delta = tstep;
-        ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
-        auto ic_result = newton_solve(ckt, solver, solution, ckt.options);
-        // newton_solve modifies solution in-place; nothing to copy on success
-        (void)ic_result;
-    }
+    if (!tl_has_ic) return;
+
+    ckt.integrator_ctx.current_time = 0.0;
+    ckt.integrator_ctx.delta = tstep;
+    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
+    auto result = newton_solve(ckt, solver, solution, ckt.options);
+    if (!result.converged && ckt.options.verbose)
+        std::fprintf(stderr, "[tran] TL IC resolve did not converge (%d iters)\n",
+                     result.iterations);
 }
 
 // ===================================================================
@@ -672,22 +679,24 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     const bool use_gear = (ckt.options.method == "gear");
 
     // ---------------------------------------------------------------
-    // 1. DC operating point (skipped when UIC is set)
+    // 1. DC operating point
     // ---------------------------------------------------------------
+    // ngspice always computes a DC OP, even with UIC — the MODEUIC flag
+    // modifies device loading but doesn't skip the solve.  We do the same:
+    // the DC OP establishes baseline node voltages, then apply_ic_overrides
+    // and initialize_device_dc_state override with user-specified IC values.
     std::vector<double> solution(n, 0.0);
     auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
-    if (!uic) {
-        try {
-            compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
-        } catch (const SimulationError& e) {
-            if (!ckt.options.no_throw) throw;
-            TransientResult fail_result;
-            fail_result.status = e.status();
-            auto t_end = std::chrono::steady_clock::now();
-            fail_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
-            return fail_result;
-        }
+    try {
+        compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
+    } catch (const SimulationError& e) {
+        if (!ckt.options.no_throw) throw;
+        TransientResult fail_result;
+        fail_result.status = e.status();
+        auto t_end = std::chrono::steady_clock::now();
+        fail_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
+        return fail_result;
     }
 
     // Cache typed device pointers (one-time cost, eliminates per-step dynamic_cast)
@@ -695,7 +704,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     cached.build(ckt);
 
     if (ckt.options.verbose) {
-        std::cerr << "[tran] DC OP done. Checking for large values:\n";
+        std::cerr << "[tran] DC OP done" << (uic ? " (UIC)" : "") << ". Checking for large values:\n";
         for (int32_t i = 0; i < num_nodes; ++i) {
             if (std::abs(solution[i]) > 100.0)
                 std::cerr << "  " << ckt.node_name(i) << " = " << solution[i] << "\n";
