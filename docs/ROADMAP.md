@@ -3,7 +3,7 @@
 ## Current State
 
 neospice is a modern C++ SPICE simulator with 32 device models and 10 analysis types,
-validated against ngspice across 970+ C++ tests with tolerances as tight as 1e-6,
+validated against ngspice across 978 C++ tests with tolerances as tight as 1e-6,
 plus Python binding tests.
 
 ### Analyses
@@ -404,9 +404,9 @@ r = parse_value("4.7k")    # 4700.0
 | —     | Circuit introspection      | Usability       | Medium   | Done |
 | —     | Generic set_param()        | Optimization    | Medium   | Done |
 | 1     | Python bindings            | Adoption        | Medium   | Done |
-| 2     | WASM build                 | Accessibility   | Low      | Planned |
-| 3     | Sensitivity/gradients      | Optimization    | High     | Planned |
-| 4     | Parallel sweeps            | Performance     | Medium   | Planned |
+| 2     | Parallel sweeps            | Performance     | Medium   | Planned |
+| 3     | WASM build                 | Accessibility   | Low      | Planned |
+| 4     | Sensitivity/gradients      | Optimization    | High     | Planned |
 | 5     | Incremental re-simulation  | Interactivity   | Medium   | Planned |
 | 6     | GPU acceleration           | Large circuits  | High     | Planned |
 | 7     | Extended devices/analyses  | Completeness    | Ongoing  | Active  |

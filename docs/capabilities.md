@@ -54,4 +54,4 @@ auto result = sim.run(ckt);            // runs all analyses in the netlist
 Results are returned as structured data (maps keyed by signal name like `"v(out)"`, `"i(v1)"`).
 
 ### Validation
-970+ tests including direct ngspice comparison tests across all analysis types, with tolerances as tight as 1e-6 relative error on simple circuits and sub-1% on CMOS inverter edge timing.
+978 tests including direct ngspice comparison tests across all analysis types, with tolerances as tight as 1e-6 relative error on simple circuits and sub-1% on CMOS inverter edge timing.

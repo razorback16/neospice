@@ -7,7 +7,7 @@ Ordered by impact-to-effort ratio.
 
 ## R1. Shared UCB constants header [LOW EFFORT / HIGH IMPACT]
 
-**Status:** DONE — 105 files updated, `src/devices/ucb_compat.hpp` created, `transformer.py` updated. 866/866 tests pass.
+**Status:** DONE — 105 files updated, `src/devices/ucb_compat.hpp` created, `transformer.py` updated. 978/978 tests pass.
 
 **Problem:** ~48 translated files (`_load.cpp`, `_setup.cpp`, `_temp.cpp` across 16 devices)
 each contain an identical block of 55-70 lines of `#ifndef`/`#define` macros: physical
@@ -32,7 +32,7 @@ Two groups exist:
 
 ## R2. Shared utility functions [LOW EFFORT / MEDIUM IMPACT]
 
-**Status:** DONE — `src/devices/ucb_utils.hpp` created with `neo_to_ucb()`, `ucb_to_neo()`, `str_tolower()`. 28 files updated (16 device, 9 model card, 2 migration scripts, 1 test). Dead `to_lower_mc()` removed from 9 model card files. 866/866 tests pass.
+**Status:** DONE — `src/devices/ucb_utils.hpp` created with `neo_to_ucb()`, `ucb_to_neo()`, `str_tolower()`. 28 files updated (16 device, 9 model card, 2 migration scripts, 1 test). Dead `to_lower_mc()` removed from 9 model card files. 978/978 tests pass.
 
 **Problem:** Small helper functions copy-pasted into 14-15 device files each:
 - `str_tolower()` — 15 files (e.g., `bjt_device.cpp:483`, `bsim4v7_device.cpp:1123`)
@@ -51,7 +51,7 @@ generating inline helpers.
 
 ## R3. Template model card parser [MEDIUM EFFORT / HIGH IMPACT]
 
-**Status:** DONE — `src/devices/model_card_utils.hpp` created with `validate_model_type()` and `convert_model_card_params<>()`. 9 model_card.cpp files simplified (~65 lines to ~25 lines each). Migration script updated. Net -343 lines. 866/866 tests pass.
+**Status:** DONE — `src/devices/model_card_utils.hpp` created with `validate_model_type()` and `convert_model_card_params<>()`. 9 model_card.cpp files simplified (~65 lines to ~25 lines each). Migration script updated. Net -343 lines. 978/978 tests pass.
 
 **Problem:** 9 `*_model_card.cpp` files contain nearly identical logic (~70 lines each):
 `to_lower_mc()` helper, type validation (NMOS/PMOS etc.), linear parameter lookup,
@@ -75,7 +75,7 @@ a traits struct + template instantiation instead of the full function body.
 
 ## R4. Template device initialization (declare_internal_nodes / assign_offsets) [MEDIUM EFFORT / HIGH IMPACT]
 
-**Status:** DONE — `src/devices/ucb_device_init.hpp` created with `ucb_declare_internal_nodes<>()`, `ucb_stamp_pattern()`, `ucb_compute_offsets()`, and `UCB_SPLICE_INSTANCE` macro. 16 device files updated. Migration script updated. Net -928 lines. 866/866 tests pass.
+**Status:** DONE — `src/devices/ucb_device_init.hpp` created with `ucb_declare_internal_nodes<>()`, `ucb_stamp_pattern()`, `ucb_compute_offsets()`, and `UCB_SPLICE_INSTANCE` macro. 16 device files updated. Migration script updated. Net -928 lines. 978/978 tests pass.
 
 **Problem:** 14 `*_device.cpp` files contain nearly identical implementations of
 `declare_internal_nodes()` (~45 lines) and `assign_offsets()` (~40 lines):
@@ -97,7 +97,7 @@ methods into each `_device.cpp`.
 
 ## R5. AnalysisCommand as std::variant [MEDIUM EFFORT / MEDIUM IMPACT]
 
-**Status:** DONE — Replaced flat struct with 8 per-analysis structs (`OpCmd`, `TranCmd`, `ACCmd`, etc.) and `std::variant`. `ACMode` promoted to standalone enum. Parser, runner, and tests updated. 866/866 tests pass.
+**Status:** DONE — Replaced flat struct with 8 per-analysis structs (`OpCmd`, `TranCmd`, `ACCmd`, etc.) and `std::variant`. `ACMode` promoted to standalone enum. Parser, runner, and tests updated. 978/978 tests pass.
 
 **Problem:** `AnalysisCommand` in `circuit.hpp:88-111` is a flat struct with a tag enum
 and mutually exclusive fields (`tran_tstep`/`ac_mode`/`noise_output`/`tf_output`/
@@ -111,7 +111,7 @@ and mutually exclusive fields (`tran_tstep`/`ac_mode`/`noise_output`/`tf_output`
 
 ## R6. Generic model card storage in Circuit [MEDIUM EFFORT / MEDIUM IMPACT]
 
-**Status:** DONE — Replaced 16 forward decls + 16 methods + 16 vectors with type-erased `ModelCardHolder` and single `add_model_card<T>()` template. Net -65 lines. Adding new device types requires zero changes to circuit.hpp/cpp. 866/866 tests pass.
+**Status:** DONE — Replaced 16 forward decls + 16 methods + 16 vectors with type-erased `ModelCardHolder` and single `add_model_card<T>()` template. Net -65 lines. Adding new device types requires zero changes to circuit.hpp/cpp. 978/978 tests pass.
 
 **Problem:** `circuit.hpp:212-227` has 16 separate
 `std::vector<std::unique_ptr<XXXModelCard>>` members and 16 corresponding
@@ -125,7 +125,7 @@ touching both files to add boilerplate.
 
 ## R7. SimulationResult as std::variant [LOW EFFORT / LOW IMPACT]
 
-**Status:** DONE — Replaced 8 `std::optional` fields with `AnalysisResult = std::variant<std::monostate, DCResult, ...>`. `measures`, `print_output`, `step` remain orthogonal. 30+ test files, CLI, and raw_writer updated. 866/866 tests pass.
+**Status:** DONE — Replaced 8 `std::optional` fields with `AnalysisResult = std::variant<std::monostate, DCResult, ...>`. `measures`, `print_output`, `step` remain orthogonal. 30+ test files, CLI, and raw_writer updated. 978/978 tests pass.
 
 **Problem:** `neospice.hpp:20-32` holds 8 `std::optional` result types but only one is
 populated per run.
@@ -136,7 +136,7 @@ populated per run.
 
 ## R8. Shared test base fixture [LOW EFFORT / LOW IMPACT]
 
-**Status:** DONE — `tests/devices/ngspice_compare_base.hpp` created. 17 test files updated to inherit from `NgspiceComparisonTest`. 866/866 tests pass.
+**Status:** DONE — `tests/devices/ngspice_compare_base.hpp` created. 17 test files updated to inherit from `NgspiceComparisonTest`. 978/978 tests pass.
 
 **Problem:** 17 `test_*_compare.cpp` files define identical test fixtures:
 ```cpp
@@ -154,7 +154,7 @@ protected:
 
 ## R9. Reduce dynamic_cast dispatch [HIGH EFFORT / MEDIUM IMPACT]
 
-**Status:** DONE — Added 3 virtual methods to Device (`branch_index()`, `process_temperature()`, `apply_ac_excitation()`). dynamic_cast count: 99 -> 63 (36% reduction). 15 files changed. Remaining casts are one-off lookups not worth abstracting. 866/866 tests pass.
+**Status:** DONE — Added 3 virtual methods to Device (`branch_index()`, `process_temperature()`, `apply_ac_excitation()`). dynamic_cast count: 99 -> 63 (36% reduction). 15 files changed. Remaining casts are one-off lookups not worth abstracting. 978/978 tests pass.
 
 **Problem:** 99 `dynamic_cast` calls for device-type dispatch in `ac.cpp`, `circuit.cpp`,
 `output.cpp`, and other core files. Each new device type requires updating every dispatch
@@ -167,7 +167,7 @@ site.
 
 ## R10. Decompose solve_transient() [MEDIUM EFFORT / MEDIUM IMPACT]
 
-**Status:** DONE — Extracted 15 named helper functions, 12 named constants. `solve_transient()` reduced from 624 lines to 222 lines (~120 lines of logic). 866/866 tests pass.
+**Status:** DONE — Extracted 15 named helper functions, 12 named constants. `solve_transient()` reduced from 624 lines to 222 lines (~120 lines of logic). 978/978 tests pass.
 
 **Problem:** `transient.cpp:70-693` — 625 lines, 7 levels of nesting. Handles DC OP,
 transient init, Newton loop, timestep control, breakpoints, and convergence in one function.

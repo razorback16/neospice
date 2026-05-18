@@ -97,7 +97,7 @@ Added typed result accessors (`voltage()`, `current()`, `diff()`, `signal_names(
 
 Modularized all 17 semiconductor device families via `DeviceRegistry` factory pattern. Each device registers its model card factory, device builder, and element parser in a self-contained factory file. Adding a new device requires zero changes to `circuit_typed.cpp` or `netlist_parser.cpp` — just a factory file, one CMake line, and one `register_all()` call. Reduced `circuit_typed.cpp` from 414 to 295 lines and `netlist_parser.cpp` from 3727 to 2696 lines by extracting semiconductor parsing into 5 shared parser modules (`mosfet_common`, `bjt_common`, `jfet_common`, `hfet_common`, `dio_parser`).
 
-## Current State (2026-04-30)
+## Current State (2026-05-17)
 
 ### Analyses Implemented
 
@@ -189,7 +189,7 @@ Modularized all 17 semiconductor device families via `DeviceRegistry` factory pa
 - `.meas` / `.measure` (TRIG/TARG, FIND/WHEN, AVG, RMS, MIN, MAX, PP, INTEG)
 - `.step` (parameter, source, and temperature sweeps)
 - `.save` and `.print` / `.plot` (output signal selection)
-- `.options` (`reltol`, `abstol`, `vntol`, `gmin`, `trtol`, `chgtol`, `temp`, `tnom`, `method`, `itl1`, `itl4`, `lte_ref_mode`, `restart_step_scale`)
+- `.options` (`reltol`, `abstol`, `vntol`, `gmin`, `trtol`, `chgtol`, `temp`, `tnom`, `method`, `itl1`, `itl4`, `lte_ref_mode`, `restart_step_scale`, `interp`)
 - Controlled source POLY forms (multi-input polynomial)
 - Behavioral expressions (`V=`, `I=`, `ddt()`, `idt()`, `temper`, trig functions, PWL)
 - Source waveforms: DC, AC, PULSE, SIN, PWL, EXP, SFFM, AM
@@ -207,9 +207,9 @@ Unsupported constructs produce a clear error at parse time listing the line numb
 
 ### Test Suite
 
-- **1,109 C++ tests** (Google Test) across 101 test source files (~25K LOC test code)
+- **978 C++ tests** (Google Test) across 105 test source files (~25K LOC test code)
 - **173 Python test methods** across 14 test files for the auto-migration tool
-- **123 golden circuit netlists** validated against ngspice, covering:
+- **124 golden circuit netlists** validated against ngspice, covering:
   - Passives: resistor divider, RC/RLC filters, coupled inductors, inductor/capacitor/resistor models
   - Sources: PULSE, PWL, EXP, SFFM, AM waveforms
   - Diodes: I-V, DC sweep, rectifier, transient, AC response, noise (thermal + flicker)
@@ -286,7 +286,7 @@ The matrix system separates **structure** (sparsity pattern) from **values** (nu
 **NeoSolver view:**
 - Wraps pattern's CSC arrays (`col_ptr`, `row_idx`) for sparse LU
 - Values array shared by pointer — no copy
-- Symbolic factorization (AMD ordering) once, numeric refactorization per iteration
+- Symbolic factorization (AMD ordering, maximum transversal, Markowitz pivoting with Gilbert-Peierls reach) once, numeric refactorization per iteration
 
 ### State Management (Transient)
 
@@ -441,7 +441,7 @@ neospice/
 │   │   ├── dc.hpp/cpp                 # DC operating point + DC sweep
 │   │   ├── fourier.hpp/cpp            # .four Fourier analysis
 │   │   ├── freq_utils.hpp             # Frequency sweep generation (shared AC/noise)
-│   │   ├── neo_solver.hpp/cpp         # NeoSolver: custom sparse/dense LU with AMD ordering
+│   │   ├── neo_solver.hpp/cpp         # NeoSolver: custom sparse/dense LU with AMD ordering + Markowitz pivoting
 │   │   ├── matrix.hpp/cpp             # SparsityPattern + NumericMatrix
 │   │   ├── measure.hpp/cpp            # .meas measurement execution
 │   │   ├── newton.hpp/cpp             # Newton-Raphson iteration loop
@@ -911,7 +911,7 @@ Each phase gated by profiling data.
 | **Convergence differences** — different stepping/limiting than ngspice may produce different paths | Tests fail due to convergence, not math | Match ngspice's convergence aids. Accept wider tolerances on sensitive circuits. |
 | **GPU break-even uncertainty** — circuit matrices may be too small for GPU advantage | GPU investment without speedup | Defer GPU until profiling on real circuits. CPU path is the product. |
 | **PDK netlist compatibility** — real PDKs use complex `.lib`/`.param`/`.subckt` patterns | Can't run production netlists | Subcircuit flattening, expression evaluator, and `.lib` section selection all implemented. |
-| **Linear solver accuracy** | Sparse LU on ill-conditioned matrices | Custom NeoSolver with AMD ordering and pivoting. No external LGPL dependencies. |
+| **Linear solver accuracy** | Sparse LU on ill-conditioned matrices | Custom NeoSolver with AMD ordering, maximum transversal, and Markowitz pivoting. No external LGPL dependencies. |
 
 ## Resolved Design Decisions
 

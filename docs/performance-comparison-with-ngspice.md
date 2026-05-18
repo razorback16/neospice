@@ -48,9 +48,10 @@ neospice uses a **two-tier solver** (`NeoSolver`) behind an abstract
 - **Dense tier** (n < 12): column-major dense LU with partial pivoting.
   Avoids all sparse overhead for trivial circuits.
 - **Sparse tier** (n ≥ 12): left-looking column-LU with AMD ordering,
-  maximum transversal row permutation, threshold diagonal pivoting, and CSC
-  L/U storage. Uses the same pivot order for refactorize (values-only update)
-  and complex factorization. Scales to arbitrarily large matrices.
+  maximum transversal row permutation, Markowitz pivot selection with
+  Gilbert-Peierls reach computation, and CSC L/U storage. Uses the same
+  pivot order for refactorize (values-only update) and complex
+  factorization. Scales to arbitrarily large matrices.
 
 A `create_solver(n)` factory function dispatches to `NeoSolver`. Both tiers
 share the same `LinearSolver` interface (`symbolic`, `numeric`,
@@ -153,8 +154,9 @@ NeoSolver uses a left-looking column-LU algorithm with:
    dependencies).
 2. **Maximum transversal** row permutation to move large entries onto the
    diagonal before factorization.
-3. **Threshold diagonal pivoting** (prefer diagonal if |diag| ≥ 0.1 ×
-   max(column)) — similar to Sparse 1.3's strategy.
+3. **Markowitz pivot selection** with Gilbert-Peierls reach computation —
+   selects the pivot with lowest Markowitz count among numerically
+   acceptable candidates (|entry| >= 0.1 * max(column)).
 4. **CSC L/U storage** with flat arrays for cache-friendly access.
 5. **Structure-reusing refactorize**: recomputes values using the same L/U
    sparsity pattern and pivot order, iterating only over stored nonzero

@@ -44,7 +44,7 @@ global check catches accumulated integration error on all nodes.
 would accept, contributing to the timestep sequence divergence described in
 item 1.
 
-**Source:** `src/core/transient.cpp:462-472`, `src/core/timestep.cpp:29-66`
+**Source:** `src/core/transient.cpp:470-483`, `src/core/timestep.cpp:36-78`
 
 ---
 
@@ -56,7 +56,7 @@ uniform tstep grid output with quadratic Lagrange interpolation (matching
 ngspice's `.option interp` with linear interpolation). Both Spectre
 (`strobeperiod`) and Xyce offer similar interpolated output modes.
 
-**Source:** `src/core/transient.cpp:547-579`
+**Source:** `src/core/transient.cpp:514-553` (interpolation helper), `src/core/transient.cpp:965-973` (interp vs raw output branch)
 
 ---
 
@@ -69,7 +69,7 @@ at order 1, it re-evaluates device `compute_trunc` at order 2 and only
 promotes if the order-2 dt bound exceeds the current dt by 5%, matching
 ngspice `dctran.c:863-873`.
 
-**Source:** `src/core/transient.cpp:948-959`
+**Source:** `src/core/transient.cpp:947-959`
 
 ---
 
@@ -106,7 +106,7 @@ adds per-frequency delta corrections directly into the complex `ax`
 array. This preserves the O(1) device-stamp cost while supporting
 NQS scaling (tau_net relaxation: T0=wt, T2=1/(1+T0^2), T3=T0*T2).
 
-**Source:** `src/core/ac.cpp:112-161`, `src/devices/device.hpp` (ac_stamp_freq)
+**Source:** `src/core/ac.cpp:149-167`, `src/devices/device.hpp` (ac_stamp_freq)
 
 ---
 
@@ -124,7 +124,7 @@ numeric factorization per frequency.
 is asymmetric for active devices). Pre-building avoids runtime transpose and
 enables separate symbolic factorization tuned to each pattern.
 
-**Source:** `src/core/noise.cpp:180-203`
+**Source:** `src/core/noise.cpp:209-219`
 
 ---
 
@@ -146,7 +146,7 @@ If any device reports non-convergence, Newton continues iterating.
 currents are still oscillating due to the model's internal feedback loops.
 The device-level check prevents premature declaration of convergence.
 
-**Source:** `src/core/newton.cpp:146-159`
+**Source:** `src/core/newton.cpp:193-206`
 
 ---
 

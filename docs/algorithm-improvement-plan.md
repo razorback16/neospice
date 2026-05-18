@@ -241,7 +241,7 @@ are unaffected. Passes ngspice comparison within 5% tolerance.
 | 6 | Trap ringing detection | **Done** | `362d744` |
 | 7 | NQS AC fallback | **Done** | `bb98bda` |
 
-All 817 tests pass after implementation.
+All 978 tests pass after implementation.
 
 ---
 

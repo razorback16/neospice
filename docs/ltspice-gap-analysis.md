@@ -105,7 +105,7 @@ Features where neospice is ahead or differentiated:
 4. **Clean C++ API** — `Simulator`, `Circuit` with typed device methods, handle-based result accessors
 5. **Circuit introspection** — `node_names()`, `device_names()`, `device_info()`, `set_param()`
 6. **1.5–6x faster** than ngspice (direct in-process, no subprocess overhead)
-7. **NeoSolver** — custom dense + sparse column-LU with AMD ordering
+7. **NeoSolver** — custom dense + sparse column-LU with AMD ordering, Markowitz pivoting, Gilbert-Peierls reach
 8. **Advanced convergence** — 4-stage fallback (Newton → GMIN → source stepping → pseudo-transient)
 9. **Trap ringing detection** — automatic Gear-2 fallback
 10. **3 LTE reference modes** — per-node, max-all, max-per-signal (Xyce-inspired)

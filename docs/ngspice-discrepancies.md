@@ -1,8 +1,9 @@
 # neospice vs ngspice Discrepancies
 
-Collected 2026-04-28 on commit `9ea5868` (926/926 tests passing).
+Collected 2026-04-28 on commit `9ea5868` (926/926 tests passing at that time).
 Rechecked 2026-04-28 after comparator fixes for near-identical time-grid snapping
-and edge-metric margin reporting (928/928 tests passing).
+and edge-metric margin reporting (928/928 tests passing at that time).
+Current test count as of 2026-05-17: 978 tests.
 
 Margins measured with `NEOSPICE_DEBUG_COMPARE=ON`. Margin = tolerance / worst_error.
 Tests with margin < 5x are listed. Synthetic comparator self-tests are excluded

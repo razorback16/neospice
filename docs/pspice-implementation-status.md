@@ -143,7 +143,7 @@
 | `.STEP LIN param start stop step`            | **DONE**             | Linear sweep only                                                          |
 | `.STEP DEC\|OCT param start stop pts`        | **NOT IMPL**         | Log step sweep                                                             |
 | `.STEP param LIST val1 val2...`              | **NOT IMPL**         | List step sweep                                                            |
-| `.STEP TEMP`                                 | **NOT IMPL**         | Temperature stepping                                                       |
+| `.STEP TEMP start stop step`                 | **DONE**             | Temperature stepping (linear)                                              |
 | `.TEMP val1 val2...`                         | **NOT IMPL**         | Multi-temperature analysis                                                 |
 | `.MC` Monte Carlo                            | **NOT IMPL**         |                                                                            |
 | `.WCASE` worst-case                          | **NOT IMPL**         |                                                                            |
@@ -254,7 +254,7 @@ These are features where **no corresponding capability** exists:
 | **Devices**           | IGBT (Z/NIGBT), LPNP BJT type, MOS2/EKV/BSIM1 levels, S_ST/W_ST switch models, nonlinear magnetic core (K), T-line coupling (K with Lm/Cm)  |
 | **Device params**     | TCE on R, IL1/IL2 on L, winding form on L, BETATCE on J                                                                                     |
 | **DC sweep**          | DEC/OCT/LIST modes, model parameter sweep, temperature sweep, global parameter sweep                                                        |
-| **Step**              | DEC/OCT/LIST modes, temperature step                                                                                                        |
+| **Step**              | DEC/OCT/LIST modes                                                                                                                          |
 | **Monte Carlo**       | `.MC`, `.WCASE`, `.DISTRIBUTION`                                                                                                            |
 | **Source extensions** | PWL REPEAT/ENDREPEAT, PWL FILE, TIME/VALUE_SCALE_FACTOR                                                                                     |
 | **Output/control**    | `.PROBE`, `.WATCH`, `.VECTOR`, `.SAVEBIAS`, `.LOADBIAS`, `.CHKPT`, `.RESTART`                                                               |
