@@ -12,4 +12,4 @@ add_library(bsim4v7_obj OBJECT
     bsim4v7_model_card.cpp
     bsim4v7_factory.cpp
 )
-target_include_directories(bsim4v7_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(bsim4v7_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)

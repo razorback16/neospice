@@ -13,4 +13,4 @@ add_library(hisimhv_obj OBJECT
     hisimhv_model_card.cpp
     hisimhv_factory.cpp
 )
-target_include_directories(hisimhv_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(hisimhv_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)

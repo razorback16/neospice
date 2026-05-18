@@ -10,4 +10,4 @@ add_library(mos3_obj OBJECT
     mos3_model_card.cpp
     mos3_factory.cpp
 )
-target_include_directories(mos3_obj PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(mos3_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)

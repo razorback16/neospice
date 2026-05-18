@@ -4,6 +4,6 @@ add_library(asrc_obj OBJECT
 )
 
 target_include_directories(asrc_obj PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/include
 )
