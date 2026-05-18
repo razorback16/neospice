@@ -1,0 +1,9 @@
+* Open-loop TLV3201 test
+.include ../../examples/tlv3201.txt
+Vcc vcc 0 5
+Vinp inp 0 3
+Vinm inm 0 2.5
+Xu1 inp inm vcc 0 out TLV3201
+Rload out 0 10k
+.tran 1u 1m
+.end
