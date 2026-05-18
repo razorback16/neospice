@@ -858,7 +858,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             } else if (first == ".options") {
                 for (size_t i = 1; i < tokens.size(); ++i) {
                     auto eq_pos = tokens[i].find('=');
-                    if (eq_pos == std::string::npos) continue;
+                    if (eq_pos == std::string::npos) {
+                        // Bare flag options (no '=' sign)
+                        std::string flag = to_lower(tokens[i]);
+                        if (flag == "interp") ckt.options.interp = true;
+                        continue;
+                    }
                     std::string key = to_lower(tokens[i].substr(0, eq_pos));
                     std::string val_str = tokens[i].substr(eq_pos + 1);
                     // method is a string option; all others are numeric

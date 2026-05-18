@@ -36,7 +36,7 @@ TEST_F(NgspiceCompareTest, NMOS_DC_IV) {
     // on drain current).  The only "error" is on gate current i(v2) which is
     // ~1e-12 A (noise floor) --- the 1e-9 abstol prevents that from inflating
     // the relative metric.  Measured worst: i(v2) error < 1e-3 (abstol-limited).
-    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-9});
+    auto cmp = compare_dc(ng_result, cs_result, {2e-13, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -186,6 +186,7 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
@@ -212,6 +213,7 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter_resistance.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
@@ -253,10 +255,11 @@ TEST_F(NgspiceCompareTest, RingOscillator5Stage) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/ring_osc_5stage.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     OscillatorTolerance tol{
-        /*period_relative=*/1e-3,
+        /*period_relative=*/2e-4,
         /*amplitude_relative=*/1e-3,
         /*dc_absolute=*/5e-2,
         /*mid_absolute=*/5e-2,

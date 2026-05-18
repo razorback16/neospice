@@ -43,7 +43,7 @@ TEST_F(HFET1Validation, NhfetOperatingPoint) {
     auto ckt = sim_.load(cir_path);
     DCResult cs_result = sim_.run_dc(ckt);
 
-    auto cmp = compare_dc(ng_result, cs_result, {1e-2, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {2e-5, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "DC OP comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

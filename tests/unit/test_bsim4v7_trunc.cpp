@@ -63,6 +63,7 @@ M5n n5 n4 0 0 NMOD W=1u L=100n
 )";
     NetlistParser parser;
     auto ckt = parser.parse(netlist);
+    ckt.options.interp = true;
     auto result = solve_transient(ckt, 1e-12, 5e-9);
 
     // Should produce output timepoints

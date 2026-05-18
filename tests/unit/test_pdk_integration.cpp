@@ -549,9 +549,12 @@ X1 inp outp rc_lpf r=1k c=1u
 
     // tau = R*C = 1k * 1u = 1ms
     // At t=1ms, V(out) ~ 5*(1-e^-1) ~ 3.16V
+    // Find nearest sample to 1ms (adaptive steps may not land exactly on grid)
     int idx_1ms = 0;
+    double min_dist = std::numeric_limits<double>::max();
     for (size_t i = 0; i < result.time.size(); ++i) {
-        if (result.time[i] >= 1e-3) { idx_1ms = i; break; }
+        double dist = std::abs(result.time[i] - 1e-3);
+        if (dist < min_dist) { min_dist = dist; idx_1ms = static_cast<int>(i); }
     }
     double expected_1tau = 5.0 * (1.0 - std::exp(-1.0));
     EXPECT_NEAR(result.voltage("outp")[idx_1ms], expected_1tau, 0.15);

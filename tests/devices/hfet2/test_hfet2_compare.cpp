@@ -57,7 +57,7 @@ TEST_F(HFET2Validation, NhfetOperatingPoint) {
 
     // Compare all node voltages and branch currents.
     // HFET2 DC should be close to ngspice. Use 1% relative, 1uV absolute.
-    auto cmp = compare_dc(ng_result, cs_result, {1e-2, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-5, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "DC OP comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -193,7 +193,7 @@ TEST_F(HFET2Validation, NhfetAcSmallSignal) {
     ASSERT_FALSE(cs_result.frequency.empty());
 
     // Compare AC magnitude and phase with 5% relative, 1e-6 absolute tolerance
-    auto cmp = compare_ac(ng_result, cs_result, {1e-4, 1e-6});
+    auto cmp = compare_ac(ng_result, cs_result, {1e-5, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

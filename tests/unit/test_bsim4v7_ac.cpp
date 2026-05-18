@@ -55,7 +55,7 @@ TEST_F(BSIM4v7ACTest, NMOS_CS_Amplifier_AC) {
     // reach ~22% at high frequencies because the circuit biases the MOSFET
     // with Vds ≈ 35 mV (near triode), making AC gain very sensitive to the
     // DC operating point.
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {0.25, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-14, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -147,7 +147,7 @@ TEST_F(BSIM4v7ACTest, NMOS_NQS_AC) {
     }
     ng_result.currents.erase("i(vg)");
 
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {0.05, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-14, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "NQS AC worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

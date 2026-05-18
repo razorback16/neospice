@@ -40,6 +40,7 @@ struct SimOptions {
     bool verbose  = false;
     double restart_step_scale = 0.1; // dt reduction factor after crossing a source breakpoint
     bool no_throw = false;           // if true, return partial result on non-convergence instead of throwing
+    bool interp = false;  // .option interp: output on uniform tstep grid (default: raw adaptive steps)
 };
 
 /// Populated by the transient/DC driver before each Newton load, read by

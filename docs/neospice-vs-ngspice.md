@@ -5,28 +5,15 @@ Each entry documents what neospice does differently, why, and the measured impac
 
 ---
 
-## 1. Integration order at source breakpoints
+## 1. ~~Integration order at source breakpoints~~ (RESOLVED)
 
-**ngspice** resets integration order to 1 (backward Euler) at every breakpoint
-crossing (`dctran.c:548`). This is the conservative choice: history before the
-breakpoint is stale, and order-2 methods can ring when fed a stale predictor.
+**Status:** Aligned with ngspice as of commit `53244e7`.
 
-**neospice** keeps order 2 through breakpoints (`transient.cpp:510-512`).
-The dt is still reduced to 0.1x (matching ngspice), but the integration
-coefficients stay at Trap or Gear-2.
+neospice now resets integration order to 1 at breakpoint crossings, matching
+ngspice `dctran.c:548`. Order is re-promoted via speculative LTE check (see
+item 4).
 
-**Why:** Dropping to order 1 triples the voltage error in BSIM4v7 charge
-integration near switching edges. The 0.1x dt reduction is sufficient to
-control accuracy without falling back to first-order.
-
-**Impact:** On a CMOS inverter (42ps rise, 46ps fall), this produces a 1-3%
-difference in 10%-90% rise/fall time vs ngspice at default tolerances. Both
-converge to the same answer at tight tolerances (0.03% agreement at
-reltol=1e-5). Neither normal-tolerance result is more accurate than the
-other: ngspice is 2.2%/3.3% off on fall/rise, neospice is 3.1%/2.3% off.
-The errors are complementary, not systematic.
-
-**Source:** `src/core/transient.cpp:508-518`
+**Source:** `src/core/transient.cpp:937`
 
 ---
 
@@ -61,50 +48,28 @@ item 1.
 
 ---
 
-## 3. Output interpolation
+## 3. ~~Output interpolation~~ (RESOLVED)
 
-**ngspice** dumps the raw solution at every accepted internal timestep. The
-output grid is the adaptive timestep grid itself (irregular spacing, denser
-during fast transitions). For a 20ns simulation with 10ps tstep, ngspice
-typically produces ~2000 points with non-uniform spacing.
-
-**neospice** outputs at uniform tstep intervals. When an internal step
-overshoots an output point, the solution is interpolated:
-- First 2 steps: linear interpolation
-- After 2 steps: quadratic Lagrange interpolation using 3 history points
-
-**Why:** Uniform output grid is expected by downstream tools and makes
-waveform comparison straightforward. Quadratic interpolation matches the
-order of the integration method (order 2), so the interpolation error is
-bounded by the integration error.
-
-**Impact:** Output quality depends on the ratio of tstep to transition time.
-When the internal adaptive step is much finer than tstep (common during fast
-edges), the quadratic interpolation accurately reconstructs the waveform.
-When comparing against ngspice, the different output grids are a major source
-of apparent error in point-wise comparison.
+**Status:** Aligned with ngspice. neospice now outputs raw adaptive timesteps
+by default, matching ngspice's default behavior. `.option interp` enables
+uniform tstep grid output with quadratic Lagrange interpolation (matching
+ngspice's `.option interp` with linear interpolation). Both Spectre
+(`strobeperiod`) and Xyce offer similar interpolated output modes.
 
 **Source:** `src/core/transient.cpp:547-579`
 
 ---
 
-## 4. Order promotion strategy
+## 4. ~~Order promotion strategy~~ (RESOLVED)
 
-**ngspice** promotes from order 1 to order 2 speculatively: after a step
-passes at order 1, it re-evaluates `CKTtrunc` at order 2 and keeps the
-higher order only if order 2 produces a tighter (smaller) dt bound
-(`dctran.c:863-873`). This means ngspice may stay at order 1 for several
-steps if order 2 doesn't help.
+**Status:** Aligned with ngspice as of commit `53244e7`.
 
-**neospice** promotes unconditionally to order 2 after 2 accepted steps
-(`transient.cpp:521-523`).
+neospice now uses speculative LTE-conditioned promotion: after a step passes
+at order 1, it re-evaluates device `compute_trunc` at order 2 and only
+promotes if the order-2 dt bound exceeds the current dt by 5%, matching
+ngspice `dctran.c:863-873`.
 
-**Why:** Simplicity. The speculative approach adds complexity and in practice
-the unconditional promotion works because the 0.1x dt reduction at
-breakpoints already ensures the first few post-breakpoint steps are small
-enough for order 2 to be stable.
-
-**Source:** `src/core/transient.cpp:520-523`, ngspice `dctran.c:863-873`
+**Source:** `src/core/transient.cpp:948-959`
 
 ---
 
@@ -185,21 +150,12 @@ The device-level check prevents premature declaration of convergence.
 
 ---
 
-## 8. Source stepping
+## 8. ~~Source stepping~~ (RESOLVED)
 
-**ngspice** implements true source stepping: scales all independent source
-values from 0 to 1 in stages, solving the DC operating point at each stage.
+**Status:** Aligned with ngspice. True source stepping with adaptive
+backtracking.
 
-**neospice** also implements true source stepping with the same approach:
-collects all independent sources, saves their original DC values, scales
-from 0 to 1 through {0.1, 0.2, ..., 1.0}, and uses each converged
-solution as the initial guess for the next step. If any step fails, the
-fraction increment is halved and retried.
-
-**Impact:** Matches ngspice's convergence behavior on high-gain feedback
-circuits. No longer a divergence.
-
-**Source:** `src/core/convergence.cpp:37-80`
+**Source:** `src/core/convergence.cpp:174-278`
 
 ---
 

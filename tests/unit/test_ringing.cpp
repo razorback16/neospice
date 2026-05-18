@@ -200,10 +200,12 @@ C1 out 0 1u
     auto ckt = parser.parse(netlist);
     auto result = solve_transient(ckt, 10e-6, 5e-3);
 
-    // Find index closest to t=1ms (1 tau)
+    // Find index nearest to t=1ms (1 tau)
     int idx_1ms = 0;
+    double best_1ms = 1e30;
     for (size_t i = 0; i < result.time.size(); ++i) {
-        if (result.time[i] >= 1e-3) { idx_1ms = i; break; }
+        double d = std::abs(result.time[i] - 1e-3);
+        if (d < best_1ms) { best_1ms = d; idx_1ms = static_cast<int>(i); }
     }
     double expected_1tau = 5.0 * (1.0 - std::exp(-1.0));
     EXPECT_NEAR(result.voltage("out")[idx_1ms], expected_1tau, 0.1);

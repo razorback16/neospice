@@ -57,7 +57,7 @@ TEST_F(MOS9Validation, NmosOperatingPoint) {
     // Compare all node voltages and branch currents.
     // MOS9 DC should be very close to ngspice since both use the same
     // Modified Level 3 equations.  Use 1% relative, 1uV absolute.
-    auto cmp = compare_dc(ng_result, cs_result, {1e-2, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-11, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "DC OP comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -121,7 +121,7 @@ TEST_F(MOS9Validation, NmosAcResponse) {
 
     // Compare AC results. MOS9 AC should be close since both use the same
     // linearized model. Use 5% relative tolerance, 1e-9 absolute.
-    auto cmp = compare_ac(ng_result, cs_result, {1e-6, 1e-9});
+    auto cmp = compare_ac(ng_result, cs_result, {2e-12, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

@@ -784,8 +784,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     ctrl.init(tstep, tstop);
     collect_breakpoints(ckt, ctrl, tstop);
 
-    // Add output times as breakpoints so we land exactly on them
-    {
+    const bool interp = ckt.options.interp;
+    if (interp) {
         int num_output = static_cast<int>(std::round(tstop / tstep));
         for (int i = 1; i <= num_output; ++i) {
             ctrl.add_breakpoint(i * tstep);
@@ -793,7 +793,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     }
 
     const double dt_min = tstep * kMinTimeStepRatio;
-    const double dt_max = std::min(tstep, tstop / 50.0);
+    const double dt_max = interp ? std::min(tstep, tstop / 50.0) : tstop / 50.0;
 
     // History for LTE — ring buffer of 3 vectors (pointer rotation instead of 3 copies)
     std::vector<double> hist_buf0 = solution;
@@ -802,7 +802,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     std::vector<double>* sol_prev  = &hist_buf0;
     std::vector<double>* sol_prev2 = &hist_buf1;
     std::vector<double>* sol_prev3 = &hist_buf2;
-    double next_output_time = tstep;
+    double next_output_time = tstep;  // only used in interp mode
     int step_count = 0;
 
     // ---------------------------------------------------------------
@@ -962,10 +962,15 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         ckt.rotate_state();
         accept_step_on_devices(cached, ctrl.current_time(), solution);
 
-        // Store output at tstep intervals (interpolate if we overshot)
-        interpolate_and_store_outputs(ctrl, dt, prev_prev_dt, tstep, tstop,
-                                      step_count, n, solution, *sol_prev,
-                                      *sol_prev2, next_output_time, store_point);
+        if (interp) {
+            // Interpolated uniform grid output (.option interp)
+            interpolate_and_store_outputs(ctrl, dt, prev_prev_dt, tstep, tstop,
+                                          step_count, n, solution, *sol_prev,
+                                          *sol_prev2, next_output_time, store_point);
+        } else {
+            // Raw adaptive timestep output (default)
+            store_point(ctrl.current_time(), solution);
+        }
 
         // Rotate ring buffer: oldest buffer gets current solution (1 copy instead of 3)
         {

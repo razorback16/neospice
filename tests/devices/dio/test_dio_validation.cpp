@@ -168,7 +168,7 @@ TEST_F(DiodeValidation, ACResponseNgspice) {
     ASSERT_EQ(ng_result.frequency.size(), cs_result.frequency.size())
         << "Frequency point count mismatch";
 
-    auto cmp = compare_ac(ng_result, cs_result, {2e-2, 1e-9});
+    auto cmp = compare_ac(ng_result, cs_result, {1e-4, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

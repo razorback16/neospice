@@ -55,7 +55,7 @@ TEST_F(JFET2Validation, NjfDcOperatingPoint) {
 
     strip_internal_dc(ng_result);
 
-    auto cmp = compare_dc(ng_result, cs_result, {1e-3, 1e-9});
+    auto cmp = compare_dc(ng_result, cs_result, {2e-12, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -76,7 +76,7 @@ TEST_F(JFET2Validation, NjfAcSmallSignal) {
     strip_internal(ng_result.voltages);
     strip_internal(ng_result.currents);
 
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-6, 1e-9});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-13, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -92,6 +92,7 @@ TEST_F(JFET2Validation, NjfSwitchingTransient) {
 
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 

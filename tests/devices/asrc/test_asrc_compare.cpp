@@ -286,7 +286,7 @@ TEST_F(ASRCValidation, ACGain) {
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis)) << "neospice should produce AC result";
 
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-15, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 

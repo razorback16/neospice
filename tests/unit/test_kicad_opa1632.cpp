@@ -100,7 +100,7 @@ TEST_F(KiCad_OPA1632_Test, NgspiceDCComparison) {
     ng_ext.branch_currents = ng_result.branch_currents;
     neo_ext.branch_currents = neo_result.branch_currents;
 
-    auto cmp = compare_dc(ng_ext, neo_ext, {1e-2, 1e-6});
+    auto cmp = compare_dc(ng_ext, neo_ext, {3e-7, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "DC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -137,7 +137,7 @@ TEST_F(KiCad_OPA1632_Test, NgspiceACComparison) {
             neo_ext.voltages[name] = data;
     }
 
-    auto cmp = compare_ac(ng_ext, neo_ext, {1e-2, 1e-6});
+    auto cmp = compare_ac(ng_ext, neo_ext, {1.5e-4, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

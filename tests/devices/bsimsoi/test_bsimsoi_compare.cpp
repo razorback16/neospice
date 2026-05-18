@@ -49,7 +49,7 @@ TEST_F(BsimsoiValidation, NmosOperatingPoint) {
     auto ckt = sim_.load(cir_path);
     DCResult cs_result = sim_.run_dc(ckt);
 
-    auto cmp = compare_dc(ng_result, cs_result, {1e-2, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-12, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "DC OP comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -84,7 +84,7 @@ TEST_F(BsimsoiValidation, PmosOperatingPoint) {
     auto ckt = sim_.load(cir_path);
     DCResult cs_result = sim_.run_dc(ckt);
 
-    auto cmp = compare_dc(ng_result, cs_result, {1e-2, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-14, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "DC OP comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -132,7 +132,7 @@ TEST_F(BsimsoiValidation, NmosAcResponse) {
             ++it;
     }
 
-    auto cmp = compare_ac(ng_result, cs_result, {1e-6, 1e-9});
+    auto cmp = compare_ac(ng_result, cs_result, {2e-14, 1e-9});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

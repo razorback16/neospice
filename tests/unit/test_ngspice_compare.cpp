@@ -60,7 +60,7 @@ TEST_F(NgspiceCompareTest, RCACAnalysis) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis));
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {2e-14, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -71,7 +71,7 @@ TEST_F(NgspiceCompareTest, IsrcACAnalysis) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis));
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {2e-14, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -88,9 +88,10 @@ TEST_F(NgspiceCompareTest, RCLowpassTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/rc_lowpass.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2e-4, 2e-4});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {3e-5, 3e-5});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -99,6 +100,7 @@ TEST_F(NgspiceCompareTest, RLCSeriesTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/rlc_series.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-3, 1e-3});
@@ -110,6 +112,7 @@ TEST_F(NgspiceCompareTest, RLCUnderdampedTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/rlc_underdamped.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2e-5, 2e-5});
@@ -152,6 +155,7 @@ TEST_F(NgspiceCompareTest, SwitchHysteresisTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/switch_hysteresis.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
@@ -232,6 +236,7 @@ TEST_F(NgspiceCompareTest, TlineIC) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/tline_ic.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-2, 1e-3});
@@ -253,7 +258,7 @@ TEST_F(NgspiceCompareTest, TlineAC) {
         else
             ++it;
     }
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {5e-15, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -262,6 +267,7 @@ TEST_F(NgspiceCompareTest, PulseDefaultsTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/pulse_defaults.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-7, 1e-7});
@@ -273,9 +279,10 @@ TEST_F(NgspiceCompareTest, PwlSourceTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/pwl_source.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-7, 1e-7});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-14, 5e-14});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -284,6 +291,7 @@ TEST_F(NgspiceCompareTest, ExpSourceTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/exp_source.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     // Drop currents — capacitive spike through voltage source at EXP edges
@@ -302,6 +310,7 @@ TEST_F(NgspiceCompareTest, SffmSourceTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/sffm_source.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2e-3, 5e-4});
@@ -313,6 +322,7 @@ TEST_F(NgspiceCompareTest, AmSourceTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/am_source.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-4, 1e-4});
@@ -398,9 +408,10 @@ TEST_F(NgspiceCompareTest, AsrcDdtTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/asrc_ddt.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
+    ckt.options.interp = true;
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-7, 1e-7});
+    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-14, 5e-14});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -456,7 +467,7 @@ TEST_F(NgspiceCompareTest, InductorModelCard) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<ACResult>(cs_result.analysis));
-    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-10, 1e-15});
+    auto cmp = compare_ac(ng_result, std::get<ACResult>(cs_result.analysis), {1e-14, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

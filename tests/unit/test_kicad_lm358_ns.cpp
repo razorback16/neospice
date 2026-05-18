@@ -73,7 +73,7 @@ EXPECT_LT(gain_high, gain_low - 3.0)
         auto ckt = sim_.load(cir_path_);
         auto neo_result = sim_.run_dc(ckt);
 
-        auto cmp = compare_dc(ng_result, neo_result, {1e-2, 1e-6});
+        auto cmp = compare_dc(ng_result, neo_result, {4e-3, 1e-6});
         EXPECT_TRUE(cmp.passed)
             << "DC comparison failed. Worst: " << cmp.worst_signal
             << " error: " << cmp.worst_error;
@@ -102,7 +102,7 @@ EXPECT_LT(gain_high, gain_low - 3.0)
         for (const auto& [name, data] : ng_result.voltages) {
             ng_filtered.voltages[name] = data;
         }
-        auto cmp = compare_ac(ng_filtered, neo_result, {1e-2, 1e-6});
+        auto cmp = compare_ac(ng_filtered, neo_result, {1e-3, 1e-6});
         EXPECT_TRUE(cmp.passed)
             << "AC comparison failed. Worst: " << cmp.worst_signal
             << " error: " << cmp.worst_error;

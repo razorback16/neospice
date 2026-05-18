@@ -386,7 +386,7 @@ TEST_F(BJTJFETNoiseNgspiceTest, BJTCENoise) {
     // BJT noise includes shot noise, thermal (Rc, Rb), and base noise.
     // Allow 10% relative tolerance to account for slightly different
     // temperature-adjusted Rb vs static model value.
-    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-1, 1e-15});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-3, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }
@@ -403,7 +403,7 @@ TEST_F(BJTJFETNoiseNgspiceTest, JFETSourceFollowerNoise) {
     ASSERT_EQ(ng_result.frequency.size(), std::get<NoiseResult>(cs_result.analysis).frequency.size());
     // JFET noise: channel thermal noise + resistor thermal noise.
     // Allow 10% relative tolerance.
-    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {1e-1, 1e-15});
+    auto cmp = compare_noise(ng_result, std::get<NoiseResult>(cs_result.analysis), {5e-5, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

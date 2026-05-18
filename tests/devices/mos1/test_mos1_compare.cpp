@@ -60,7 +60,7 @@ TEST_F(MOS1Validation, NmosOperatingPoint) {
     // Compare all node voltages and branch currents.
     // MOS1 DC should be very close to ngspice since both use the same
     // Shichman-Hodges equations.  Use 1% relative, 1uV absolute.
-    auto cmp = compare_dc(ng_result, cs_result, {1e-2, 1e-6});
+    auto cmp = compare_dc(ng_result, cs_result, {1e-14, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "DC OP comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -309,7 +309,7 @@ TEST_F(MOS1Validation, NmosAcResponse) {
 
     // Compare AC results. MOS1 AC should be close since both use the same
     // linearized model. Use 5% relative tolerance, 1e-9 absolute.
-    auto cmp = compare_ac(ng_result, cs_result, {1e-10, 1e-15});
+    auto cmp = compare_ac(ng_result, cs_result, {2e-14, 1e-15});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
@@ -365,6 +365,7 @@ TEST_F(MOS1Validation, NmosTransientPulse) {
 
     // Run neospice
     auto ckt = sim_.load(cir_path);
+    ckt.options.interp = true;
     TransientResult cs_result = sim_.run_transient(ckt, 50e-9, 15e-6);
 
     ASSERT_FALSE(cs_result.time.empty());

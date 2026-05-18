@@ -149,7 +149,7 @@ TEST_F(THS4131Test, NgspiceACComparison) {
     for (const auto& [name, data] : ng_result.voltages) {
         ng_filtered.voltages[name] = data;
     }
-    auto cmp = compare_ac(ng_filtered, cs_result, {1e-2, 1e-6});
+    auto cmp = compare_ac(ng_filtered, cs_result, {2.5e-4, 1e-6});
     EXPECT_TRUE(cmp.passed)
         << "AC comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;
