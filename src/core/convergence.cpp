@@ -211,13 +211,19 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
 
     // Source stepping with adaptive refinement and backtracking.
     double fraction = 0.0;
-    double step = 0.05;
-    const double min_step = 1e-4;  // minimum step size before giving up
+    double step = 0.001;          // ngspice gillespie_src starts at 0.001
+    const double min_step = 1e-7;  // ngspice: raise >= 1e-7
     int total_iterations = 0;
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
 
     // Start with all sources at zero and solve
+    constexpr int MODEINITJCT_BIT   = 0x200;
+    constexpr int MODEINITFLOAT_BIT = 0x100;
+    constexpr int INITF_MASK        = 0x3F00;
+    int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
+    ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
+
     scale_sources(0.0);
     solution.assign(solution.size(), 0.0);
     clear_state(ckt);
@@ -225,14 +231,41 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
     try {
         result = newton_solve(ckt, solver, solution, opts);
     } catch (const std::runtime_error&) {
-        return {false, 0, 0.0, -1};
+        result.converged = false;
     }
     if (!result.converged) {
-        return {false, 0, result.residual, result.worst_node_idx};
+        // ngspice gillespie_src: if zero-source solve fails, try gmin
+        // stepping at zero sources before giving up (cktop.c:510-548).
+        double zg = std::max(opts.gmin, opts.gshunt);
+        if (zg == 0.0) zg = opts.gmin;
+        double diag = zg;
+        for (int i = 0; i < 10; ++i) diag *= 10.0;
+        solution.assign(solution.size(), 0.0);
+        clear_state(ckt);
+        ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
+        SimOptions zg_opts = opts;
+        bool zg_ok = false;
+        for (int i = 0; i <= 10; ++i) {
+            zg_opts.diag_gmin = diag;
+            NewtonResult zr;
+            try { zr = newton_solve(ckt, solver, solution, zg_opts); }
+            catch (const std::runtime_error&) { zr.converged = false; }
+            if (!zr.converged) break;
+            total_iterations += zr.iterations;
+            diag /= 10.0;
+            ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
+            if (i == 10) zg_ok = true;
+        }
+        if (!zg_ok) {
+            return {false, total_iterations, result.residual, result.worst_node_idx};
+        }
     }
     total_iterations += result.iterations;
     std::vector<double> accepted_solution = solution;
     StateCheckpoint accepted_state = save_state(ckt);
+
+    // Use continuation mode (MODEINITFLOAT) during the ramp steps
+    ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
 
     while (fraction < 1.0) {
         double next_frac = fraction + step;
@@ -261,10 +294,13 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
                 step = std::max(min_step, step * 0.5);
             }
         } else {
+            if (step * (1.0 - fraction) < 1e-8)
+                break;
             solution = accepted_solution;
             restore_state(ckt, accepted_state);
             scale_sources(fraction);
             step *= 0.1;
+            if (step > 0.01) step = 0.01;
             if (step < min_step) {
                 return {false, total_iterations, last_residual, last_worst_idx};
             }

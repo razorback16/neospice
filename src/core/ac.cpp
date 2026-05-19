@@ -26,7 +26,7 @@ static std::string make_branch_key(const std::string& dname) {
 
 static SimOptions direct_attempt_options(const SimOptions& opts) {
     SimOptions direct_opts = opts;
-    direct_opts.max_iter = std::min(opts.max_iter, 25);
+    direct_opts.max_iter = opts.itl1;
     return direct_opts;
 }
 

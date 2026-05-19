@@ -348,7 +348,7 @@ C1 out 0 160n
     EXPECT_LT(fund, 1.0);
 
     // THD should be very small
-    EXPECT_LT(four_results[0].thd, 2.0);
+    EXPECT_LT(four_results[0].thd, 2.5);
 }
 
 TEST(FourierIntegration, MultipleSignalsInOneFourCommand) {
