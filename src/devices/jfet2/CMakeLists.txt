@@ -11,4 +11,3 @@ add_library(jfet2_obj OBJECT
     jfet2_model_card.cpp
     jfet2_factory.cpp
 )
-target_include_directories(jfet2_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)

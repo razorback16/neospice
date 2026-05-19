@@ -10,4 +10,3 @@ add_library(mes_obj OBJECT
     mes_model_card.cpp
     mes_factory.cpp
 )
-target_include_directories(mes_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)

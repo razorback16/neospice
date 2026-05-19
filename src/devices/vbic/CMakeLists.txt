@@ -10,4 +10,3 @@ add_library(vbic_obj OBJECT
     vbic_model_card.cpp
     vbic_factory.cpp
 )
-target_include_directories(vbic_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)

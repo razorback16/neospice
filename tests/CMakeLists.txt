@@ -15,8 +15,6 @@ FetchContent_MakeAvailable(googletest)
 
 include(GoogleTest)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(NGSPICE REQUIRED ngspice)
 
 add_executable(neospice_tests
     unit/test_matrix.cpp

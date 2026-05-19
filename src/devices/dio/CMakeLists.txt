@@ -11,4 +11,3 @@ add_library(dio_obj OBJECT
     dio_factory.cpp
     dio_parser.cpp
 )
-target_include_directories(dio_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)

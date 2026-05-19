@@ -10,4 +10,3 @@ add_library(mos1_obj OBJECT
     mos1_model_card.cpp
     mos1_factory.cpp
 )
-target_include_directories(mos1_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)

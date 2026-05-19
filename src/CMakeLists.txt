@@ -1,21 +1,19 @@
-add_subdirectory(devices/bsim4v7)
-add_subdirectory(devices/bsim3)
-add_subdirectory(devices/bjt)
-add_subdirectory(devices/jfet)
-add_subdirectory(devices/jfet2)
-add_subdirectory(devices/dio)
-add_subdirectory(devices/mos1)
-add_subdirectory(devices/mos3)
-add_subdirectory(devices/mos9)
-add_subdirectory(devices/vbic)
-add_subdirectory(devices/asrc)
-add_subdirectory(devices/hfet1)
-add_subdirectory(devices/hfet2)
-add_subdirectory(devices/bsim3v32)
-add_subdirectory(devices/hisim2)
-add_subdirectory(devices/hisimhv)
-add_subdirectory(devices/bsimsoi)
-add_subdirectory(devices/mes)
+# Auto-discover device subdirectories (each must define <dirname>_obj OBJECT library)
+file(GLOB _device_dirs RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/devices
+     ${CMAKE_CURRENT_SOURCE_DIR}/devices/*/CMakeLists.txt)
+set(NEOSPICE_DEVICE_OBJECTS "")
+set(NEOSPICE_DEVICE_NAMES "")
+foreach(_cmake_file IN LISTS _device_dirs)
+    get_filename_component(_dev_dir ${_cmake_file} DIRECTORY)
+    add_subdirectory(devices/${_dev_dir})
+    target_include_directories(${_dev_dir}_obj PUBLIC
+        ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/include
+    )
+    list(APPEND NEOSPICE_DEVICE_OBJECTS $<TARGET_OBJECTS:${_dev_dir}_obj>)
+    list(APPEND NEOSPICE_DEVICE_NAMES ${_dev_dir})
+endforeach()
+set(NEOSPICE_DEVICE_NAMES "${NEOSPICE_DEVICE_NAMES}" PARENT_SCOPE)
 
 add_library(neospice_lib
     core/types.cpp
@@ -71,24 +69,7 @@ add_library(neospice_lib
     api/measure_utils.cpp
     output/raw_writer.cpp
     output/output.cpp
-    $<TARGET_OBJECTS:bsim4v7_obj>
-    $<TARGET_OBJECTS:bsim3_obj>
-    $<TARGET_OBJECTS:bjt_obj>
-    $<TARGET_OBJECTS:jfet_obj>
-    $<TARGET_OBJECTS:jfet2_obj>
-    $<TARGET_OBJECTS:dio_obj>
-    $<TARGET_OBJECTS:mos1_obj>
-    $<TARGET_OBJECTS:mos3_obj>
-    $<TARGET_OBJECTS:mos9_obj>
-    $<TARGET_OBJECTS:vbic_obj>
-    $<TARGET_OBJECTS:asrc_obj>
-    $<TARGET_OBJECTS:hfet1_obj>
-    $<TARGET_OBJECTS:hfet2_obj>
-    $<TARGET_OBJECTS:bsim3v32_obj>
-    $<TARGET_OBJECTS:hisim2_obj>
-    $<TARGET_OBJECTS:hisimhv_obj>
-    $<TARGET_OBJECTS:bsimsoi_obj>
-    $<TARGET_OBJECTS:mes_obj>
+    ${NEOSPICE_DEVICE_OBJECTS}
 )
 
 target_include_directories(neospice_lib PUBLIC

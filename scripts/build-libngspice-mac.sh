@@ -50,6 +50,10 @@ make -j"${JOBS}"
 echo "==> Installing to ${PREFIX}..."
 make install
 
+# Use @rpath so the dylib works regardless of repo location
+echo "==> Fixing install name to @rpath..."
+install_name_tool -id "@rpath/libngspice.0.dylib" "${PREFIX}/lib/libngspice.0.dylib"
+
 echo ""
 echo "==> Done. libngspice ${NGSPICE_VERSION} installed to ${PREFIX}"
 echo ""

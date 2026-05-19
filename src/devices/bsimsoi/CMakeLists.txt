@@ -11,4 +11,3 @@ add_library(bsimsoi_obj OBJECT
     bsimsoi_model_card.cpp
     bsimsoi_factory.cpp
 )
-target_include_directories(bsimsoi_obj PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)
