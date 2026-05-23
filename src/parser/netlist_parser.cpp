@@ -147,7 +147,8 @@ std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
     std::istringstream iss(content);
     std::string tok;
     while (iss >> tok) {
-        values.push_back(parse_spice_number(tok));
+        try { values.push_back(parse_spice_number(tok)); }
+        catch (...) { values.push_back(0); }
     }
     return values;
 }
@@ -202,13 +203,15 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
         if (lower == "dc") {
             ++i;
             if (i < tokens.size()) {
-                spec.dc_val = parse_spice_number(tokens[i]);
+                try { spec.dc_val = parse_spice_number(tokens[i]); }
+                catch (...) { spec.dc_val = 0; }
                 ++i;
             }
         } else if (lower == "ac") {
             ++i;
             if (i < tokens.size()) {
-                spec.ac_mag = parse_spice_number(tokens[i]);
+                try { spec.ac_mag = parse_spice_number(tokens[i]); }
+                catch (...) { spec.ac_mag = 0; }
                 ++i;
             }
             if (i < tokens.size()) {
@@ -498,7 +501,7 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
 
                 depth++;
 
-            } else if (first == ".ends" || (first.size() > 5 && first.substr(0, 5) == ".ends" && first[5] == '*')) {
+            } else if (first == ".ends" || (first.size() > 4 && first.substr(0, 5) == ".ends")) {
                 if (depth == 0) {
                     // Stray .ends without matching .subckt — silently skip
                     continue;
@@ -606,7 +609,19 @@ void NetlistParser::pass025_resolve_funcs_params(ParseState& state) {
                     if (eq_pos != std::string::npos) {
                         std::string key = to_lower(line.tokens[i].substr(0, eq_pos));
                         std::string val_str = line.tokens[i].substr(eq_pos + 1);
+                        if (val_str.empty() && i + 1 < line.tokens.size()) {
+                            val_str = line.tokens[++i];
+                        }
+                        if (!key.empty()) {
+                            pre_raw_params.emplace_back(key, val_str);
+                        }
+                    } else if (line.tokens[i] != "=" &&
+                               i + 1 < line.tokens.size() && line.tokens[i + 1] == "=" &&
+                               i + 2 < line.tokens.size()) {
+                        std::string key = to_lower(line.tokens[i]);
+                        std::string val_str = line.tokens[i + 2];
                         pre_raw_params.emplace_back(key, val_str);
+                        i += 2;
                     }
                 }
             }
@@ -683,14 +698,26 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
                 state.ind_models[to_lower(card.name)] = to_inductor_model(card);
             }
         } else if (first == ".param") {
-            // .param key=value  or  .param key={expr}
+            // .param key=value  or  .param key={expr}  or  .param key = value
             // Collect raw (name, expression) pairs; resolve later in dependency order.
             for (size_t i = 1; i < line.tokens.size(); ++i) {
                 auto eq_pos = line.tokens[i].find('=');
                 if (eq_pos != std::string::npos) {
                     std::string key = line.tokens[i].substr(0, eq_pos);
                     std::string val_str = line.tokens[i].substr(eq_pos + 1);
+                    if (val_str.empty() && i + 1 < line.tokens.size()) {
+                        val_str = line.tokens[++i];
+                    }
+                    if (!key.empty()) {
+                        raw_params.emplace_back(key, val_str);
+                    }
+                } else if (line.tokens[i] != "=" &&
+                           i + 1 < line.tokens.size() && line.tokens[i + 1] == "=" &&
+                           i + 2 < line.tokens.size()) {
+                    std::string key = line.tokens[i];
+                    std::string val_str = line.tokens[i + 2];
                     raw_params.emplace_back(key, val_str);
+                    i += 2;
                 }
             }
         }
@@ -1737,20 +1764,25 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 std::vector<TablePoint> pts;
                 size_t pos = 0;
                 while (pos < joined.size()) {
-                    // Skip whitespace
-                    while (pos < joined.size() && std::isspace(static_cast<unsigned char>(joined[pos]))) ++pos;
+                    // Skip whitespace and extra parentheses
+                    while (pos < joined.size() && (std::isspace(static_cast<unsigned char>(joined[pos])) ||
+                           joined[pos] == ')')) ++pos;
                     if (pos >= joined.size()) break;
                     if (joined[pos] != '(') { ++pos; continue; }
                     ++pos;  // skip '('
+                    // Skip any additional opening parens (double-paren wrapping)
+                    while (pos < joined.size() && joined[pos] == '(') ++pos;
                     size_t close = joined.find(')', pos);
                     if (close == std::string::npos) break;
                     std::string pair_str = joined.substr(pos, close - pos);
                     pos = close + 1;
                     size_t comma = pair_str.find(',');
                     if (comma == std::string::npos) continue;
-                    double px = parse_spice_number(pair_str.substr(0, comma));
-                    double py = parse_spice_number(pair_str.substr(comma + 1));
-                    pts.push_back({px, py});
+                    try {
+                        double px = parse_spice_number(pair_str.substr(0, comma));
+                        double py = parse_spice_number(pair_str.substr(comma + 1));
+                        pts.push_back({px, py});
+                    } catch (...) {}
                 }
                 if (pts.empty()) {
                     fprintf(stderr, "Warning: Line %d: TABLE VCVS: no table points found — skipping\n", line.line_number);
@@ -2024,19 +2056,23 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 std::vector<TablePoint> pts;
                 size_t pos = 0;
                 while (pos < joined.size()) {
-                    while (pos < joined.size() && std::isspace(static_cast<unsigned char>(joined[pos]))) ++pos;
+                    while (pos < joined.size() && (std::isspace(static_cast<unsigned char>(joined[pos])) ||
+                           joined[pos] == ')')) ++pos;
                     if (pos >= joined.size()) break;
                     if (joined[pos] != '(') { ++pos; continue; }
                     ++pos;
+                    while (pos < joined.size() && joined[pos] == '(') ++pos;
                     size_t close = joined.find(')', pos);
                     if (close == std::string::npos) break;
                     std::string pair_str = joined.substr(pos, close - pos);
                     pos = close + 1;
                     size_t comma = pair_str.find(',');
                     if (comma == std::string::npos) continue;
-                    double px = parse_spice_number(pair_str.substr(0, comma));
-                    double py = parse_spice_number(pair_str.substr(comma + 1));
-                    pts.push_back({px, py});
+                    try {
+                        double px = parse_spice_number(pair_str.substr(0, comma));
+                        double py = parse_spice_number(pair_str.substr(comma + 1));
+                        pts.push_back({px, py});
+                    } catch (...) {}
                 }
                 if (pts.empty()) {
                     fprintf(stderr, "Warning: Line %d: TABLE VCCS: no table points found — skipping\n", line.line_number);
@@ -3103,6 +3139,33 @@ std::string NetlistParser::resolve_includes(const std::string& content,
                 std::string included_base_dir = canonical_path.parent_path().string();
                 std::string expanded = resolve_includes(file_content, included_base_dir, include_stack);
                 include_stack.erase(canonical_str);
+
+                // Auto-close unbalanced .subckt/.ends in included files
+                {
+                    int sub_depth = 0;
+                    std::istringstream scan(expanded);
+                    std::string scan_line;
+                    while (std::getline(scan, scan_line)) {
+                        std::string sl = scan_line;
+                        // Strip leading whitespace
+                        size_t sp = sl.find_first_not_of(" \t");
+                        if (sp != std::string::npos) sl = sl.substr(sp);
+                        // Case-insensitive check
+                        std::string sl_lower = sl;
+                        std::transform(sl_lower.begin(), sl_lower.end(), sl_lower.begin(), ::tolower);
+                        if (sl_lower.substr(0, 7) == ".subckt" &&
+                            (sl_lower.size() == 7 || sl_lower[7] == ' ' || sl_lower[7] == '\t'))
+                            sub_depth++;
+                        else if (sl_lower.substr(0, 5) == ".ends")
+                            sub_depth = std::max(0, sub_depth - 1);
+                    }
+                    if (sub_depth > 0) {
+                        for (int k = 0; k < sub_depth; ++k) {
+                            expanded += "\n.ends";
+                        }
+                        expanded += '\n';
+                    }
+                }
 
                 result << expanded;
                 if (!expanded.empty() && expanded.back() != '\n') result << '\n';
