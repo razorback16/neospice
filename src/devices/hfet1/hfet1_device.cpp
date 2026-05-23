@@ -181,7 +181,7 @@ void HFETADevice::evaluate(const std::vector<double>& voltages,
     SimOptions fallback;
     if (!sim_opts) sim_opts = &fallback;
     ckt.CKTtemp    = sim_opts->temp;
-    ckt.CKTnomTemp = sim_opts->temp;
+    ckt.CKTnomTemp = sim_opts->tnom;
     ckt.CKTgmin    = sim_opts->gmin;
     ckt.CKTreltol  = sim_opts->reltol;
     ckt.CKTabstol  = sim_opts->abstol;

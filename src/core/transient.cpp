@@ -668,7 +668,7 @@ static void detect_and_handle_ringing(
 // Main entry point: solve_transient
 // ===================================================================
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
-                                bool uic) {
+                                bool uic, double tstart) {
     auto t_start = std::chrono::steady_clock::now();
     int total_newton_iters = 0;
     const int32_t n = ckt.num_vars();
@@ -731,6 +731,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     tran_result.currents_dense.resize(ckt.devices().size());
 
     auto store_point = [&](double t, const std::vector<double>& sol) {
+        if (t < tstart - 1e-18) return;  // skip points before tstart
         tran_result.time.push_back(t);
         for (std::size_t k = 0; k < slots.v_slots.size(); ++k)
             v_ptrs[k]->push_back(sol[slots.v_slots[k].idx]);
@@ -1025,7 +1026,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             }
         }
     }
-    return solve_transient(ckt, tstep, tstop, opts.uic);
+    return solve_transient(ckt, tstep, tstop, opts.uic, opts.tstart);
 }
 
 } // namespace neospice

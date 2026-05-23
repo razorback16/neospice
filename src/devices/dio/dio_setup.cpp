@@ -168,6 +168,15 @@ DIOsetup(Shim::Matrix *matrix, DIOModel *inModel, Shim::Ckt *ckt, int *states)
         if(!model->DIObv_maxGiven) {
             model->DIObv_max = 1e99;
         }
+        if(!model->DIOrecSatCurGiven) {
+            model->DIOrecSatCur = 1e-14;
+        }
+        if(!model->DIOrecEmissionCoeffGiven) {
+            model->DIOrecEmissionCoeff = 2;
+        }
+        if(!model->DIOtikfGiven) {
+            model->DIOtikf = 0.0;
+        }
 
         /* loop through all the instances of the model */
         for (here = model->DIOinstances; here != NULL ;

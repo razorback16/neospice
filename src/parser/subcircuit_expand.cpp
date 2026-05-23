@@ -38,12 +38,16 @@ int node_count_for_element(char elem_type) {
         case 'm':
         case 'e': case 'g':
             return 4;
+        case 'b':
+            return 2;
         case 'h': case 'f':
             return 2;
         case 'q':
             return 4;  // Q has 4 node tokens (C B E S) — substrate should be explicit in subcircuits
         case 'j':
             return 3;  // J has 3 node tokens (D G S)
+        case 'z':
+            return 3;  // Z (MESFET/HFET) has 3 node tokens (D G S)
         case 't': case 'o':
             return 4;  // T (transmission line) and O (LTRA) have 4 node tokens
         case 's':
@@ -55,6 +59,39 @@ int node_count_for_element(char elem_type) {
         default:
             return 0;
     }
+}
+
+/// Replace every {expr} in a string with its evaluated numeric value,
+/// preserving all surrounding text (parens, punctuation, etc.).
+std::string subst_brace_params(
+    const std::string& token,
+    const std::unordered_map<std::string, double>& params) {
+    std::string result;
+    result.reserve(token.size());
+    size_t i = 0;
+    while (i < token.size()) {
+        if (token[i] == '{') {
+            size_t close = token.find('}', i + 1);
+            if (close == std::string::npos) {
+                result += token.substr(i);
+                break;
+            }
+            std::string expr = token.substr(i, close - i + 1); // includes braces
+            try {
+                double val = eval_expression(expr, params);
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%.15g", val);
+                result += buf;
+            } catch (...) {
+                result += expr;
+            }
+            i = close + 1;
+        } else {
+            result += token[i];
+            ++i;
+        }
+    }
+    return result;
 }
 
 /// Check if a token looks like a parameter expression (contains braces or
@@ -516,9 +553,22 @@ std::vector<TokenizedLine> expand_instance(
             continue;
         }
 
-        // Pass through .model lines as-is (model names are global)
+        // .model lines: prefix name with instance hierarchy to avoid
+        // collisions between different instances, and evaluate {param}
+        // expressions in the model parameters.
         if (first == ".model") {
-            result.push_back(line);
+            TokenizedLine new_line;
+            new_line.line_number = line.line_number;
+            new_line.tokens.push_back(line.tokens[0]);  // ".model"
+            if (line.tokens.size() >= 2) {
+                new_line.tokens.push_back(instance_prefix + "." + to_lower(line.tokens[1]));
+            }
+            // Remaining tokens: substitute {param} references in-place,
+            // preserving surrounding syntax like parens: D(IS={KAIS} ...)
+            for (size_t i = 2; i < line.tokens.size(); ++i) {
+                new_line.tokens.push_back(subst_brace_params(line.tokens[i], params));
+            }
+            result.push_back(new_line);
             continue;
         }
 
@@ -563,6 +613,8 @@ std::vector<TokenizedLine> expand_instance(
             // Param overrides from this X line
             std::unordered_map<std::string, double> sub_params;
             for (size_t i = subckt_pos + 1; i < line.tokens.size(); ++i) {
+                // Skip PSpice PARAMS: keyword separator
+                if (to_lower(line.tokens[i]) == "params:") continue;
                 auto eq_pos = line.tokens[i].find('=');
                 if (eq_pos != std::string::npos) {
                     std::string key = to_lower(line.tokens[i].substr(0, eq_pos));
@@ -746,8 +798,14 @@ std::vector<TokenizedLine> expand_instance(
                     std::string eval_val = eval_value_token(val_str, params);
                     new_line.tokens.push_back(key + "=" + eval_val);
                 } else {
-                    // Could be a value or a model name — try param evaluation
-                    new_line.tokens.push_back(eval_value_token(tok, params));
+                    // Check if this token is a local model name — prefix it
+                    std::string tok_lower = to_lower(tok);
+                    if (local_model_names.count(tok_lower)) {
+                        new_line.tokens.push_back(instance_prefix + "." + tok_lower);
+                    } else {
+                        // Could be a value or a model name — try param evaluation
+                        new_line.tokens.push_back(eval_value_token(tok, params));
+                    }
                 }
             }
 

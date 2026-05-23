@@ -11,13 +11,14 @@
 namespace neospice {
 
 /// Format a .print command as tabular ASCII output.
-/// analysis_type determines which result is used (tran/ac/dc/noise).
+/// analysis_type determines which result is used (tran/ac/dc/noise/op).
 /// Returns the formatted table as a string.
 std::string format_print(const PrintCommand& cmd,
                           const TransientResult* tran,
                           const ACResult* ac,
                           const DCSweepResult* dc_sweep,
-                          const NoiseResult* noise);
+                          const NoiseResult* noise,
+                          const DCResult* dc_op = nullptr);
 
 /// Format a .plot command as ASCII waveform plot.
 /// One plot per signal is generated; all are concatenated.
@@ -26,7 +27,8 @@ std::string format_plot(const PrintCommand& cmd,
                          const TransientResult* tran,
                          const ACResult* ac,
                          const DCSweepResult* dc_sweep,
-                         const NoiseResult* noise);
+                         const NoiseResult* noise,
+                         const DCResult* dc_op = nullptr);
 
 /// Format Fourier results (from compute_fourier) as ngspice-style ASCII text.
 /// Each FourierResult produces one block; all blocks are concatenated.

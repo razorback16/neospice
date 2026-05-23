@@ -81,6 +81,8 @@ struct OpCmd {};
 struct TranCmd {
     double tstep = 0;
     double tstop = 0;
+    double tstart = 0;
+    double tmax = 0;
     bool uic = false;   // Use Initial Conditions
 };
 
@@ -317,6 +319,12 @@ public:
     std::vector<FourierCommand>         fourier_commands;  // .four
     std::vector<StepCommand>            step_commands;     // .step
 
+    // Source text / path for re-parsing (needed by .step param)
+    void set_source_text(const std::string& s) { source_text_ = s; }
+    void set_source_path(const std::string& s) { source_path_ = s; }
+    const std::string& source_text() const { return source_text_; }
+    const std::string& source_path() const { return source_path_; }
+
     IntegratorCtx integrator_ctx;
 
     // Default construct / destruct / move defined in .cpp so that
@@ -376,6 +384,8 @@ private:
     std::vector<double> operating_point_;
     std::unique_ptr<SparsityPattern> pattern_;
     bool finalized_ = false;
+    std::string source_text_;
+    std::string source_path_;
 
     // Opaque store for definitions loaded via include().
     // Defined in circuit_include.cpp where DefinitionSet is complete.

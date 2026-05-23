@@ -61,6 +61,9 @@ DIOload(DIOModel *inModel, Shim::Ckt *ckt)
     double vt;      /* K t / Q */
     double vte, vtesw, vtetun;
     double vtebrk;
+    double vterec;
+    double evd_rec, cdb_rec, gdb_rec;
+    double gen_fac, gen_fac_vd, t1;
     int Check;
     int error;
     double diffcharge, diffchargeSW, deplcharge, deplchargeSW, diffcap, diffcapSW, deplcap, deplcapSW;
@@ -89,6 +92,7 @@ DIOload(DIOModel *inModel, Shim::Ckt *ckt)
             vt = CONSTKoverQ * here->DIOtemp;
             vte = model->DIOemissionCoeff * vt;
             vtebrk = model->DIObrkdEmissionCoeff * vt;
+            vterec = model->DIOrecEmissionCoeff * vt;
             /*
              *   initialization
              */
@@ -208,6 +212,19 @@ DIOload(DIOModel *inModel, Shim::Ckt *ckt)
                 evd = exp(vd/vte);
                 cdb = csat*(evd-1);
                 gdb = csat*evd/vte;
+                if (model->DIOrecSatCurGiven) {
+                    evd_rec = exp(vd/vterec);
+                    cdb_rec = here->DIOtRecSatCur*(evd_rec-1);
+                    gdb_rec = here->DIOtRecSatCur*evd_rec/vterec;
+                    t1 = pow((1-vd/here->DIOtJctPot), 2) + 0.005;
+                    gen_fac = pow(t1, here->DIOtGradingCoeff/2);
+                    gen_fac_vd = -here->DIOtGradingCoeff * (1-vd/here->DIOtJctPot)
+                                 / here->DIOtJctPot * pow(t1, (here->DIOtGradingCoeff/2-1));
+                    cdb_rec = cdb_rec * gen_fac;
+                    gdb_rec = gdb_rec * gen_fac + cdb_rec * gen_fac_vd;
+                    cdb = cdb + cdb_rec;
+                    gdb = gdb + gdb_rec;
+                }
 
             } else if((!(model->DIObreakdownVoltageGiven)) ||
                     vd >= -here->DIOtBrkdwnV) { /* reverse */
@@ -216,11 +233,26 @@ DIOload(DIOModel *inModel, Shim::Ckt *ckt)
                 arg = arg * arg * arg;
                 cdb = -csat*(1+arg);
                 gdb = csat*3*arg/vd;
+                if (model->DIOrecSatCurGiven) {
+                    evd_rec = exp((-3*vte)/vterec);
+                    cdb_rec = here->DIOtRecSatCur*(evd_rec-1);
+                    t1 = pow((1-(-3*vte)/here->DIOtJctPot), 2) + 0.005;
+                    gen_fac = pow(t1, here->DIOtGradingCoeff/2);
+                    cdb = cdb + gen_fac*cdb_rec;
+                }
 
             } else {                            /* breakdown */
 
                 evrev = exp(-(here->DIOtBrkdwnV+vd)/vtebrk);
-                cdb = -csat*evrev;
+                if (model->DIOrecSatCurGiven) {
+                    evd_rec = exp((-3*vte)/vterec);
+                    cdb_rec = here->DIOtRecSatCur*(evd_rec-1);
+                    t1 = pow((1-(-3*vte)/here->DIOtJctPot), 2) + 0.005;
+                    gen_fac = pow(t1, here->DIOtGradingCoeff/2);
+                    cdb = -csat*evrev + gen_fac*cdb_rec;
+                } else {
+                    cdb = -csat*evrev;
+                }
                 gdb = csat*evrev/vtebrk;
 
             }

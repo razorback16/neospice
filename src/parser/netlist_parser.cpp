@@ -752,6 +752,18 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
     using DeferredLTRA = ParseState::DeferredLTRA;
     using DeferredASRC = ParseState::DeferredASRC;
 
+    // Helper: parse a component value that may be a plain number, {expr}, or 'expr'
+    auto parse_value = [&](const std::string& token) -> double {
+        if (token.size() >= 2 && token.front() == '{' && token.back() == '}') {
+            return eval_expression(token, state.params);
+        }
+        if (token.size() >= 2 && token.front() == '\'' && token.back() == '\'') {
+            std::string expr = token.substr(1, token.size() - 2);
+            return eval_expression(expr, state.params);
+        }
+        return parse_spice_number(token);
+    };
+
     for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
         const auto& tokens = line.tokens;
@@ -769,10 +781,19 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 TranCmd tran;
                 tran.tstep = parse_spice_number(tokens[1]);
                 tran.tstop = parse_spice_number(tokens[2]);
-                // Check remaining tokens for UIC keyword
+                // Parse optional: tstart, tmax, uic
+                // .tran tstep tstop [tstart [tmax]] [uic]
                 for (size_t k = 3; k < tokens.size(); ++k) {
                     if (to_lower(tokens[k]) == "uic") {
                         tran.uic = true;
+                    } else {
+                        try {
+                            double val = parse_spice_number(tokens[k]);
+                            if (k == 3) tran.tstart = val;
+                            else if (k == 4) tran.tmax = val;
+                        } catch (const ParseError&) {
+                            // Not a number and not "uic" — ignore
+                        }
                     }
                 }
                 ckt.analyses.push_back(tran);
@@ -893,6 +914,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         }
                         // Silently ignore unrecognised option keys
                     }
+                }
+            } else if (first == ".temp") {
+                if (tokens.size() >= 2) {
+                    ckt.options.temp = parse_spice_number(tokens[1]) + 273.15;
                 }
             } else if (first == ".ic") {
                 // .ic V(node)=value ...
@@ -1246,7 +1271,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             std::string name = tokens[0];
             int32_t np = node_raw(tokens[1]);
             int32_t nn = node_raw(tokens[2]);
-            double val = parse_spice_number(tokens[3]);
+            double val = parse_value(tokens[3]);
             auto r = std::make_unique<Resistor>(name, np, nn, val);
 
             // First pass: apply model defaults (if model reference present)
@@ -1294,7 +1319,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             std::string name = tokens[0];
             int32_t np = node_raw(tokens[1]);
             int32_t nn = node_raw(tokens[2]);
-            double val = parse_spice_number(tokens[3]);
+            double val = parse_value(tokens[3]);
             auto c = std::make_unique<Capacitor>(name, np, nn, val);
 
             // First pass: apply model defaults (if model reference present)
@@ -1355,10 +1380,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     throw ParseError("Line " + std::to_string(line.line_number) +
                                      ": Inductor with model requires a value");
                 }
-                val = parse_spice_number(tokens[4]);
+                val = parse_value(tokens[4]);
                 param_start = 5;
             } else {
-                val = parse_spice_number(tokens[3]);
+                val = parse_value(tokens[3]);
                 param_start = 4;
             }
             auto l = std::make_unique<Inductor>(name, np, nn, val);

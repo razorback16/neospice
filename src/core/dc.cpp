@@ -3,6 +3,7 @@
 #include "core/convergence.hpp"
 #include "core/neo_solver.hpp"
 #include "devices/vsource.hpp"
+#include "devices/isource.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -217,36 +218,50 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     const int32_t n         = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
-    // Find source pointers by name
+    // Find source pointers by name (VSource or ISource)
     // We support up to 2 sweep sources (outer = params[0], inner = params[1])
-    auto find_vsource = [&](const std::string& name) -> VSource* {
+    auto find_source = [&](const std::string& name) -> Device* {
         std::string lname = to_lower(name);
         for (auto& dev : ckt.devices()) {
             if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
                 if (to_lower(vs->name()) == lname) return vs;
             }
+            if (auto* is = dynamic_cast<ISource*>(dev.get())) {
+                if (to_lower(is->name()) == lname) return is;
+            }
         }
         return nullptr;
     };
 
-    VSource* src0 = find_vsource(params[0].source_name);
+    auto get_dc_value = [](Device* dev) -> double {
+        if (auto* vs = dynamic_cast<VSource*>(dev)) return vs->dc_value();
+        if (auto* is = dynamic_cast<ISource*>(dev)) return is->dc_value();
+        return 0.0;
+    };
+
+    auto set_dc_value = [](Device* dev, double v) {
+        if (auto* vs = dynamic_cast<VSource*>(dev)) vs->set_dc_value(v);
+        else if (auto* is = dynamic_cast<ISource*>(dev)) is->set_dc_value(v);
+    };
+
+    Device* src0 = find_source(params[0].source_name);
     if (!src0) {
-        throw std::invalid_argument("DC sweep: voltage source '" +
+        throw std::invalid_argument("DC sweep: source '" +
                                     params[0].source_name + "' not found");
     }
 
-    VSource* src1 = nullptr;
+    Device* src1 = nullptr;
     if (params.size() >= 2) {
-        src1 = find_vsource(params[1].source_name);
+        src1 = find_source(params[1].source_name);
         if (!src1) {
-            throw std::invalid_argument("DC sweep: voltage source '" +
+            throw std::invalid_argument("DC sweep: source '" +
                                         params[1].source_name + "' not found");
         }
     }
 
     // Save original DC values so we can restore them after sweep
-    const double orig_val0 = src0->dc_value();
-    const double orig_val1 = src1 ? src1->dc_value() : 0.0;
+    const double orig_val0 = get_dc_value(src0);
+    const double orig_val1 = src1 ? get_dc_value(src1) : 0.0;
 
     // Build sweep point lists
     std::vector<double> outer_vals = make_sweep_values(params[0].start,
@@ -384,16 +399,16 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     if (!src1) {
         // Single-variable sweep
         for (double v : inner_vals) {
-            src0->set_dc_value(v);
+            set_dc_value(src0, v);
             run_newton();
             collect_point(v);
         }
     } else {
         // Nested sweep: outer = params[0], inner = params[1]
         for (double vout : outer_vals) {
-            src0->set_dc_value(vout);
+            set_dc_value(src0, vout);
             for (double vin : inner_vals) {
-                src1->set_dc_value(vin);
+                set_dc_value(src1, vin);
                 run_newton();
                 collect_point(vin);
             }
@@ -401,8 +416,8 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     }
 
     // Restore original source values
-    src0->set_dc_value(orig_val0);
-    if (src1) src1->set_dc_value(orig_val1);
+    set_dc_value(src0, orig_val0);
+    if (src1) set_dc_value(src1, orig_val1);
 
     // Persist diag_gmin baseline after DC sweep convergence
     ckt.options.diag_gmin = ckt.options.gshunt;

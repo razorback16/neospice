@@ -93,6 +93,7 @@ struct DIOInstance {
     double DIOtSatSWCur;  /* temperature adjusted side wall saturation current */
     double DIOtTunSatCur;        /* tunneling saturation current */
     double DIOtTunSatSWCur;      /* sidewall tunneling saturation current */
+    double DIOtRecSatCur;        /* temperature adjusted recombination saturation current */
 
     double DIOtVcrit;   /* temperature adjusted V crit */
     double DIOtF1;      /* temperature adjusted f1 */
@@ -229,6 +230,9 @@ struct DIOModel {       /* model structure for a diode */
     unsigned DIOtunEGcorrectionFactorGiven : 1;
     unsigned DIOfv_maxGiven : 1;
     unsigned DIObv_maxGiven : 1;
+    unsigned DIOrecSatCurGiven : 1;
+    unsigned DIOrecEmissionCoeffGiven : 1;
+    unsigned DIOtikfGiven : 1;
 
     int    DIOlevel;   /* level selector */
     double DIOsatCur;   /* saturation current */
@@ -283,6 +287,9 @@ struct DIOModel {       /* model structure for a diode */
     double DIOtunEGcorrectionFactor; /* EG correction factor for tunneling (KEG) */
     double DIOfv_max; /* maximum voltage in forward direction */
     double DIObv_max; /* maximum voltage in reverse direction */
+    double DIOrecSatCur;        /* recombination saturation current (ISR) */
+    double DIOrecEmissionCoeff; /* recombination emission coefficient (NR) */
+    double DIOtikf;             /* IKF temperature coefficient (TIKF) */
 
 };
 
@@ -362,6 +369,9 @@ struct DIOModel {       /* model structure for a diode */
 #define DIO_MOD_EF 147
 #define DIO_MOD_FV_MAX 148
 #define DIO_MOD_BV_MAX 149
+#define DIO_MOD_ISR 150
+#define DIO_MOD_NR 151
+#define DIO_MOD_TIKF 152
 
 // --- Parameter tables and dispatchers (defined in devsup/mpar) ------
 namespace Shim { struct IfParm; struct IfValue; }

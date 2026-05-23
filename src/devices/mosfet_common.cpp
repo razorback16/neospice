@@ -236,7 +236,7 @@ void resolve_mosfets(
                             m.ic_vbs, m.ic_vbs_given);
             }
             ckt.add_device(std::move(dev));
-        } else if (level == 8 || level == 49) {
+        } else if (level == 7 || level == 8 || level == 49) {
             // BSIM3 — dispatch to v3.2x or v3.3 based on VERSION param.
             // VERSION < 3.3 -> BSIM3v32, otherwise -> BSIM3 v3.3.
             auto ver_it = it->second.params.find("version");

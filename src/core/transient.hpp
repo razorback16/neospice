@@ -92,10 +92,11 @@ struct TransientResult {
 struct TransientOptions {
     const DCResult* ic_from = nullptr;
     bool uic = false;
+    double tstart = 0;  // output start time (simulation still runs from t=0)
 };
 
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
-                                bool uic = false);
+                                bool uic = false, double tstart = 0);
 TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                                 const TransientOptions& opts);
 

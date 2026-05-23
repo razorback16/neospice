@@ -177,6 +177,12 @@ DIOtemp(DIOModel *inModel, Shim::Ckt *ckt)
                     model->DIOtunSaturationCurrentExp *
                     log(here->DIOtemp/model->DIOnomTemp) );
 
+            here->DIOtRecSatCur = model->DIOrecSatCur * here->DIOarea * here->DIOm * exp(
+                    ((here->DIOtemp/model->DIOnomTemp)-1) *
+                    model->DIOactivationEnergy/(model->DIOrecEmissionCoeff*vt) +
+                    model->DIOsaturationCurrentExp/model->DIOrecEmissionCoeff *
+                    log(here->DIOtemp/model->DIOnomTemp) );
+
             /* the defintion of f1, just recompute after temperature adjusting
              * all the variables used in it */
             here->DIOtF1=here->DIOtJctPot*
@@ -261,6 +267,11 @@ DIOtemp(DIOModel *inModel, Shim::Ckt *ckt)
                 factor = 1.0 + (model->DIOresistTemp1) * dt
                          + (model->DIOresistTemp2 * dt * dt);
                 here->DIOtConductance = model->DIOconductance / factor;
+            }
+
+            /* IKF temperature adjust (PSpice TIKF) */
+            if(model->DIOtikfGiven && here->DIOforwardKneeCurrent > 0.0) {
+                here->DIOforwardKneeCurrent *= (1.0 + model->DIOtikf * dt);
             }
 
             here->DIOtF2=exp((1+here->DIOtGradingCoeff)*xfc);

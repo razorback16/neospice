@@ -37,9 +37,21 @@ int main(int argc, char* argv[]) {
         auto result = sim.run(ckt);
         auto t_sim = Clock::now();
 
-        if (std::holds_alternative<std::monostate>(result.analysis)) {
+        if (std::holds_alternative<std::monostate>(result.analysis) && !result.step) {
             std::cerr << "No analysis commands found in netlist\n";
             return 1;
+        }
+
+        for (const auto& po : result.print_output) {
+            std::cout << po;
+        }
+        // Print output from .step sub-results
+        if (result.step) {
+            for (size_t i = 0; i < result.step->results.size(); ++i) {
+                for (const auto& po : result.step->results[i].print_output) {
+                    std::cout << po;
+                }
+            }
         }
 
         if (split) {

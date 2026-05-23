@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <algorithm>
 #include <cctype>
+#include <fstream>
+#include <sstream>
 
 namespace neospice {
 
@@ -48,12 +50,23 @@ static void apply_save_filter(Result& r, const std::vector<std::string>& sigs) {
 
 Circuit Simulator::load(const std::string& filepath) {
     NetlistParser parser;
-    return parser.parse_file(filepath);
+    auto ckt = parser.parse_file(filepath);
+    ckt.set_source_path(filepath);
+    // Read file contents for potential re-parsing (.step param)
+    std::ifstream ifs(filepath);
+    if (ifs) {
+        std::ostringstream ss;
+        ss << ifs.rdbuf();
+        ckt.set_source_text(ss.str());
+    }
+    return ckt;
 }
 
 Circuit Simulator::parse(const std::string& netlist_text) {
     NetlistParser parser;
-    return parser.parse(netlist_text);
+    auto ckt = parser.parse(netlist_text);
+    ckt.set_source_text(netlist_text);
+    return ckt;
 }
 
 DCResult Simulator::run_dc(Circuit& ckt) {
@@ -136,7 +149,10 @@ SimulationResult Simulator::run(Circuit& ckt) {
                 result.analysis = std::move(dc);
             },
             [&](const TranCmd& c) {
-                auto tran = solve_transient(ckt, c.tstep, c.tstop, c.uic);
+                TransientOptions topts;
+                topts.uic = c.uic;
+                topts.tstart = c.tstart;
+                auto tran = solve_transient(ckt, c.tstep, c.tstop, topts);
                 apply_save_filter(tran, ckt.save_signals);
                 result.analysis = std::move(tran);
             },
@@ -183,12 +199,13 @@ SimulationResult Simulator::run(Circuit& ckt) {
         const auto* ac_ptr = std::get_if<ACResult>(&result.analysis);
         const auto* dc_sweep_ptr = std::get_if<DCSweepResult>(&result.analysis);
         const auto* noise_ptr = std::get_if<NoiseResult>(&result.analysis);
+        const auto* dc_op_ptr = std::get_if<DCResult>(&result.analysis);
         for (const auto& pcmd : ckt.prints) {
             std::string formatted;
             if (pcmd.is_plot) {
-                formatted = format_plot(pcmd, tran_ptr, ac_ptr, dc_sweep_ptr, noise_ptr);
+                formatted = format_plot(pcmd, tran_ptr, ac_ptr, dc_sweep_ptr, noise_ptr, dc_op_ptr);
             } else {
-                formatted = format_print(pcmd, tran_ptr, ac_ptr, dc_sweep_ptr, noise_ptr);
+                formatted = format_print(pcmd, tran_ptr, ac_ptr, dc_sweep_ptr, noise_ptr, dc_op_ptr);
             }
             result.print_output.push_back(std::move(formatted));
         }
@@ -238,8 +255,67 @@ SimulationResult Simulator::run_step_sweep(Circuit& ckt) {
         case StepCommand::TEMP:
             ckt.options.temp = val + 273.15;
             break;
-        case StepCommand::PARAM:
-            break;
+        case StepCommand::PARAM: {
+            std::string source = ckt.source_text();
+            if (source.empty() && !ckt.source_path().empty()) {
+                std::ifstream f(ckt.source_path());
+                if (f) {
+                    std::ostringstream ss;
+                    ss << f.rdbuf();
+                    source = ss.str();
+                }
+            }
+            if (!source.empty()) {
+                // Replace or append .param override.
+                // We search for existing .param <name> lines and replace
+                // them. If none found, inject after the title line.
+                std::string val_str = std::to_string(val);
+                std::string name_lower = lower(sc.name);
+                std::string modified;
+                bool replaced = false;
+                std::istringstream iss(source);
+                std::string line;
+                while (std::getline(iss, line)) {
+                    // Check if this line is a .param defining our variable
+                    std::string line_lower = lower(line);
+                    // Match lines like ".param RVAL=..." or ".param RVAL =..."
+                    auto pos = line_lower.find(".param");
+                    if (pos != std::string::npos) {
+                        // Find the param name after .param
+                        auto npos = pos + 6;
+                        while (npos < line_lower.size() && std::isspace(static_cast<unsigned char>(line_lower[npos])))
+                            ++npos;
+                        auto nstart = npos;
+                        while (npos < line_lower.size() &&
+                               (std::isalnum(static_cast<unsigned char>(line_lower[npos])) || line_lower[npos] == '_'))
+                            ++npos;
+                        std::string pname = line_lower.substr(nstart, npos - nstart);
+                        if (pname == name_lower) {
+                            modified += ".param " + sc.name + "=" + val_str + "\n";
+                            replaced = true;
+                            continue;
+                        }
+                    }
+                    modified += line + "\n";
+                }
+                if (!replaced) {
+                    // Inject after title line
+                    auto nl = modified.find('\n');
+                    std::string override_line = ".param " + sc.name + "=" + val_str + "\n";
+                    if (nl != std::string::npos) {
+                        modified.insert(nl + 1, override_line);
+                    } else {
+                        modified += "\n" + override_line;
+                    }
+                }
+                Circuit new_ckt = parse(modified);
+                new_ckt.step_commands.clear();
+                auto inner = run(new_ckt);
+                step_result.results.push_back(std::move(inner));
+            }
+            val += sc.step;
+            continue;  // skip the shared run(ckt) below
+        }
         }
 
         ckt.reset_state();

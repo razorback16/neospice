@@ -165,6 +165,7 @@ double parse_spice_number(const std::string& str) {
     if (lsuffix[0] == 'n') return val * 1e-9;
     if (lsuffix[0] == 'p') return val * 1e-12;
     if (lsuffix[0] == 'f') return val * 1e-15;
+    if (lsuffix[0] == 'a') return val * 1e-18;
 
     return val;
 }

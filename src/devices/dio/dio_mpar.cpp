@@ -218,6 +218,18 @@ DIOmParam(int param, Shim::IfValue *value, DIOModel *inModel)
             model->DIObv_max = value->rValue;
             model->DIObv_maxGiven = TRUE;
             break;
+        case DIO_MOD_ISR:
+            model->DIOrecSatCur = value->rValue;
+            model->DIOrecSatCurGiven = TRUE;
+            break;
+        case DIO_MOD_NR:
+            model->DIOrecEmissionCoeff = value->rValue;
+            model->DIOrecEmissionCoeffGiven = TRUE;
+            break;
+        case DIO_MOD_TIKF:
+            model->DIOtikf = value->rValue;
+            model->DIOtikfGiven = TRUE;
+            break;
         case DIO_MOD_D:
             /* no action - we already know we are a diode, but this */
             /* makes life easier for spice-2 like parsers */

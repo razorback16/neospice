@@ -264,14 +264,24 @@ void write_raw(const std::string& filepath, const SimulationResult& result,
 
     std::string t = title.empty() ? "neospice" : title;
 
-    if (auto* p = std::get_if<ACResult>(&result.analysis))
-        write_plot_ac(fp, *p, t);
-    if (auto* p = std::get_if<TransientResult>(&result.analysis))
-        write_plot_transient(fp, *p, t);
-    if (auto* p = std::get_if<DCSweepResult>(&result.analysis))
-        write_plot_dc_sweep(fp, *p, t);
-    if (auto* p = std::get_if<DCResult>(&result.analysis))
-        write_plot_dc(fp, *p, t);
+    auto write_analysis = [&](const AnalysisResult& analysis) {
+        if (auto* p = std::get_if<ACResult>(&analysis))
+            write_plot_ac(fp, *p, t);
+        if (auto* p = std::get_if<TransientResult>(&analysis))
+            write_plot_transient(fp, *p, t);
+        if (auto* p = std::get_if<DCSweepResult>(&analysis))
+            write_plot_dc_sweep(fp, *p, t);
+        if (auto* p = std::get_if<DCResult>(&analysis))
+            write_plot_dc(fp, *p, t);
+    };
+
+    if (result.step) {
+        for (const auto& sub : result.step->results) {
+            write_analysis(sub.analysis);
+        }
+    } else {
+        write_analysis(result.analysis);
+    }
 
     std::fclose(fp);
 }

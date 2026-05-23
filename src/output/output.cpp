@@ -28,6 +28,8 @@ struct SigSpec {
     bool is_current = false;      // I(...) vs V(...)
     ACSigFunc ac_func = ACSigFunc::MAG;
     std::string base_name;        // node/source name inside parens
+    std::string ref_node;         // reference node for differential V(a,b)
+    bool is_differential = false; // true when V(a,b) syntax is used
     std::string original;         // original token (for header)
 };
 
@@ -45,6 +47,14 @@ static SigSpec parse_signal(const std::string& sig) {
     }
     std::string func = sig.substr(0, open);
     s.base_name = sig.substr(open + 1, close - open - 1);
+
+    // Check for differential syntax: V(a,b) -> base_name="a", ref_node="b"
+    auto comma = s.base_name.find(',');
+    if (comma != std::string::npos) {
+        s.ref_node = s.base_name.substr(comma + 1);
+        s.base_name = s.base_name.substr(0, comma);
+        s.is_differential = true;
+    }
 
     if (func == "i") {
         s.is_current = true;
@@ -86,6 +96,19 @@ static std::vector<double> get_tran_values(const SigSpec& s, const TransientResu
     if (s.is_current) {
         auto it = tran->currents.find(s.original);
         if (it != tran->currents.end()) return it->second;
+    } else if (s.is_differential) {
+        std::string key_p = "v(" + s.base_name + ")";
+        std::string key_n = "v(" + s.ref_node + ")";
+        auto it_p = tran->voltages.find(key_p);
+        auto it_n = tran->voltages.find(key_n);
+        if (it_p != tran->voltages.end() && it_n != tran->voltages.end()) {
+            const auto& vp = it_p->second;
+            const auto& vn = it_n->second;
+            size_t len = std::min(vp.size(), vn.size());
+            std::vector<double> diff(len);
+            for (size_t i = 0; i < len; ++i) diff[i] = vp[i] - vn[i];
+            return diff;
+        }
     } else {
         auto it = tran->voltages.find(s.original);
         if (it != tran->voltages.end()) return it->second;
@@ -98,6 +121,19 @@ static std::vector<double> get_dc_values(const SigSpec& s, const DCSweepResult* 
     if (s.is_current) {
         auto it = dc->currents.find(s.original);
         if (it != dc->currents.end()) return it->second;
+    } else if (s.is_differential) {
+        std::string key_p = "v(" + s.base_name + ")";
+        std::string key_n = "v(" + s.ref_node + ")";
+        auto it_p = dc->voltages.find(key_p);
+        auto it_n = dc->voltages.find(key_n);
+        if (it_p != dc->voltages.end() && it_n != dc->voltages.end()) {
+            const auto& vp = it_p->second;
+            const auto& vn = it_n->second;
+            size_t len = std::min(vp.size(), vn.size());
+            std::vector<double> diff(len);
+            for (size_t i = 0; i < len; ++i) diff[i] = vp[i] - vn[i];
+            return diff;
+        }
     } else {
         auto it = dc->voltages.find(s.original);
         if (it != dc->voltages.end()) return it->second;
@@ -114,6 +150,18 @@ static std::vector<double> get_ac_values(const SigSpec& s, const ACResult* ac) {
     if (s.is_current) {
         auto it = ac->currents.find(lookup_key);
         if (it != ac->currents.end()) raw = it->second;
+    } else if (s.is_differential) {
+        std::string key_p = "v(" + s.base_name + ")";
+        std::string key_n = "v(" + s.ref_node + ")";
+        auto it_p = ac->voltages.find(key_p);
+        auto it_n = ac->voltages.find(key_n);
+        if (it_p != ac->voltages.end() && it_n != ac->voltages.end()) {
+            const auto& vp = it_p->second;
+            const auto& vn = it_n->second;
+            size_t len = std::min(vp.size(), vn.size());
+            raw.resize(len);
+            for (size_t i = 0; i < len; ++i) raw[i] = vp[i] - vn[i];
+        }
     } else {
         auto it = ac->voltages.find(lookup_key);
         if (it != ac->voltages.end()) raw = it->second;
@@ -167,9 +215,47 @@ std::string format_print(const PrintCommand& cmd,
                           const TransientResult* tran,
                           const ACResult* ac,
                           const DCSweepResult* dc_sweep,
-                          const NoiseResult* noise) {
+                          const NoiseResult* noise,
+                          const DCResult* dc_op) {
     std::ostringstream out;
     const std::string& atype = cmd.analysis_type;
+
+    // Handle .print op — single-row output from DC operating point
+    if (atype == "op" && dc_op) {
+        const int COL_W = 16;
+        // Header
+        std::vector<SigSpec> specs;
+        for (const auto& sig : cmd.signals) {
+            specs.push_back(parse_signal(sig));
+        }
+        for (const auto& s : specs) {
+            out << std::left << std::setw(COL_W) << s.original;
+        }
+        out << "\n";
+        // Single data row
+        for (const auto& s : specs) {
+            double val = 0.0;
+            if (s.is_current) {
+                std::string key = "i(" + s.base_name + ")";
+                auto it = dc_op->branch_currents.find(key);
+                if (it != dc_op->branch_currents.end()) val = it->second;
+            } else if (s.is_differential) {
+                std::string key_p = "v(" + s.base_name + ")";
+                std::string key_n = "v(" + s.ref_node + ")";
+                auto it_p = dc_op->node_voltages.find(key_p);
+                auto it_n = dc_op->node_voltages.find(key_n);
+                if (it_p != dc_op->node_voltages.end() && it_n != dc_op->node_voltages.end())
+                    val = it_p->second - it_n->second;
+            } else {
+                std::string key = "v(" + s.base_name + ")";
+                auto it = dc_op->node_voltages.find(key);
+                if (it != dc_op->node_voltages.end()) val = it->second;
+            }
+            out << std::left << std::setw(COL_W) << std::scientific << std::setprecision(6) << val;
+        }
+        out << "\n";
+        return out.str();
+    }
 
     // Determine x-axis values and name
     std::vector<double> x_vals;
@@ -312,7 +398,8 @@ std::string format_plot(const PrintCommand& cmd,
                          const TransientResult* tran,
                          const ACResult* ac,
                          const DCSweepResult* dc_sweep,
-                         const NoiseResult* noise) {
+                         const NoiseResult* noise,
+                         const DCResult* dc_op) {
     const std::string& atype = cmd.analysis_type;
 
     // Determine x-axis
