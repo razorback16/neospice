@@ -94,14 +94,14 @@ TEST(JFETParser, PjfModel) {
     EXPECT_EQ(1, jfet_count);
 }
 
-TEST(JFETParser, UnknownModelThrows) {
+TEST(JFETParser, UnknownModelSkipsWithWarning) {
     const std::string netlist =
         "* Unknown model\n"
         "J1 d g 0 BOGUS\n"
         ".end\n";
 
     NetlistParser p;
-    EXPECT_THROW(p.parse(netlist), ParseError);
+    EXPECT_NO_THROW(p.parse(netlist));
 }
 
 TEST(JFETParser, BareAreaNumber) {

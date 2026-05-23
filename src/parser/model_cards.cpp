@@ -126,7 +126,14 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
             std::string key = to_lower(ptokens[i]);
             if (i + 2 < ptokens.size() && ptokens[i + 1] == "=") {
                 // key = value triplet
-                double val = parse_spice_number(ptokens[i + 2]);
+                double val;
+                try {
+                    val = parse_spice_number(ptokens[i + 2]);
+                } catch (const ParseError&) {
+                    // Non-numeric value (e.g., mfg=USSR) — skip this parameter
+                    i += 3;
+                    continue;
+                }
                 card.params[key] = val;
                 i += 3;
 
@@ -167,7 +174,12 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
                         is_pct = true;
                         val_tok.pop_back();
                     }
-                    double tol_val = parse_spice_number(val_tok);
+                    double tol_val;
+                    try {
+                        tol_val = parse_spice_number(val_tok);
+                    } catch (const ParseError&) {
+                        break; // non-numeric tolerance value, stop parsing tolerances
+                    }
                     ++i; // consume the value token
 
                     ToleranceAnnotation ta;

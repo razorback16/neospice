@@ -8,6 +8,7 @@
 #include "parser/model_cards.hpp"
 #include "parser/tokenizer.hpp"
 #include <algorithm>
+#include <cstdio>
 
 namespace neospice {
 
@@ -91,16 +92,18 @@ void resolve_hfets(
         if (it == models.end()) {
             auto it2 = models.find(to_lower(z.model_name));
             if (it2 == models.end()) {
-                throw ParseError("Line " + std::to_string(z.line_number) +
-                                 ": Unknown model '" + z.model_name + "'");
+                fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping HFET '%s'\n",
+                        z.line_number, z.model_name.c_str(), z.name.c_str());
+                continue;
             }
             it = it2;
         }
         std::string model_type = to_lower(it->second.type);
         if (model_type != "nhfet" && model_type != "phfet" &&
             model_type != "nmf" && model_type != "pmf") {
-            throw ParseError("Line " + std::to_string(z.line_number) +
-                             ": Z card references unknown model type '" + it->second.type + "'");
+            fprintf(stderr, "Warning: Line %d: Z card references unknown model type '%s' — skipping\n",
+                    z.line_number, it->second.type.c_str());
+            continue;
         }
         int level = 5; // default: HFET1
         auto lvl_it = it->second.params.find("level");
@@ -118,8 +121,9 @@ void resolve_hfets(
                     card_it = mes_cards.emplace(z.model_name,
                                                 to_mes_card(it->second)).first;
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(z.line_number) +
-                                     ": " + e.what());
+                    fprintf(stderr, "Warning: Line %d: %s — skipping HFET '%s'\n",
+                            z.line_number, e.what(), z.name.c_str());
+                    continue;
                 }
             }
             MESDevice::Geom geom;
@@ -138,8 +142,9 @@ void resolve_hfets(
                     card_it = hfet2_cards.emplace(z.model_name,
                                                   to_hfet2_card(it->second)).first;
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(z.line_number) +
-                                     ": " + e.what());
+                    fprintf(stderr, "Warning: Line %d: %s — skipping HFET '%s'\n",
+                            z.line_number, e.what(), z.name.c_str());
+                    continue;
                 }
             }
             HFET2Device::Geom geom;
@@ -158,8 +163,9 @@ void resolve_hfets(
                     card_it = hfet1_cards.emplace(z.model_name,
                                                   to_hfet1_card(it->second)).first;
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(z.line_number) +
-                                     ": " + e.what());
+                    fprintf(stderr, "Warning: Line %d: %s — skipping HFET '%s'\n",
+                            z.line_number, e.what(), z.name.c_str());
+                    continue;
                 }
             }
             HFETADevice::Geom geom;

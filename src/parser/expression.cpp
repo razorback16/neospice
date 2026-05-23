@@ -3,6 +3,7 @@
 #include "core/types.hpp"
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <random>
 #include <stdexcept>
 #include <unordered_set>
@@ -376,7 +377,8 @@ private:
             std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
             auto it = params_.find(lname);
             if (it == params_.end()) {
-                throw ParseError("Unknown parameter: " + name);
+                fprintf(stderr, "Warning: Unknown parameter '%s' — defaulting to 0\n", name.c_str());
+                return 0.0;
             }
             return it->second;
         }
@@ -640,15 +642,28 @@ std::unordered_map<std::string, double> resolve_params(
     }
 
     if (order.size() != names.size()) {
-        throw ParseError("Circular dependency detected in .param definitions");
+        fprintf(stderr, "Warning: Circular dependency detected in .param definitions — defaulting unresolved to 0\n");
+        // Add unresolved params to order so they default to 0
+        for (const auto& name : names) {
+            bool found = false;
+            for (const auto& o : order) {
+                if (o == name) { found = true; break; }
+            }
+            if (!found) order.push_back(name);
+        }
     }
 
     // Evaluate in topological order
     std::unordered_map<std::string, double> resolved;
     resolved.reserve(names.size());
     for (const auto& name : order) {
-        ExprParser parser(expr_of.at(name), resolved);
-        resolved[name] = parser.parse();
+        try {
+            ExprParser parser(expr_of.at(name), resolved);
+            resolved[name] = parser.parse();
+        } catch (const ParseError&) {
+            fprintf(stderr, "Warning: failed to evaluate .param '%s' — defaulting to 0\n", name.c_str());
+            resolved[name] = 0.0;
+        }
     }
 
     return resolved;

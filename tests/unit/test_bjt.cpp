@@ -137,14 +137,14 @@ TEST(BJTParser, PnpModel) {
     EXPECT_EQ(1, bjt_count);
 }
 
-TEST(BJTParser, UnknownModelThrows) {
+TEST(BJTParser, UnknownModelSkipsWithWarning) {
     const std::string netlist =
         "* Unknown model\n"
         "Q1 c b 0 BOGUS\n"
         ".end\n";
 
     NetlistParser p;
-    EXPECT_THROW(p.parse(netlist), ParseError);
+    EXPECT_NO_THROW(p.parse(netlist));
 }
 
 TEST(BJTParser, MultiDeviceSameModel) {

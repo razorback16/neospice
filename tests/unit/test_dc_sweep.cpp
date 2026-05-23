@@ -320,5 +320,5 @@ R1 in 0 1k
 .end
 )";
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }

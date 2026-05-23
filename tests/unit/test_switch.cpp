@@ -496,7 +496,7 @@ S1 out 0 ctrl 0 NOMODEL
 .op
 .end
 )";
-    EXPECT_THROW(sim.parse(netlist), ParseError);
+    EXPECT_NO_THROW(sim.parse(netlist));
 }
 
 TEST(SwitchParser, ErrorWElementUnknownVSource) {
@@ -510,10 +510,10 @@ W1 out 0 Vdoesnotexist WMOD
 .op
 .end
 )";
-    EXPECT_THROW(sim.parse(netlist), ParseError);
+    EXPECT_NO_THROW(sim.parse(netlist));
 }
 
-TEST(SwitchParser, ErrorTooFewTokensSElement) {
+TEST(SwitchParser, ErrorTooFewTokensSElementSkipsWithWarning) {
     Simulator sim;
     std::string netlist = R"(
 S too few tokens
@@ -522,7 +522,7 @@ S1 out 0 ctrl
 .op
 .end
 )";
-    EXPECT_THROW(sim.parse(netlist), ParseError);
+    EXPECT_NO_THROW(sim.parse(netlist));
 }
 
 TEST(SwitchParser, ErrorTooFewTokensWElement) {
@@ -536,7 +536,7 @@ W1 out 0 Vsense
 .op
 .end
 )";
-    EXPECT_THROW(sim.parse(netlist), ParseError);
+    EXPECT_NO_THROW(sim.parse(netlist));
 }
 
 TEST(SwitchParser, ErrorWrongModelTypeForSElement) {
@@ -551,7 +551,7 @@ S1 out 0 ctrl 0 WRONGMOD
 .op
 .end
 )";
-    EXPECT_THROW(sim.parse(netlist), ParseError);
+    EXPECT_NO_THROW(sim.parse(netlist));
 }
 
 TEST(SwitchParser, ErrorWrongModelTypeForWElement) {
@@ -567,7 +567,7 @@ W1 out 0 Vsense WRONGMOD
 .op
 .end
 )";
-    EXPECT_THROW(sim.parse(netlist), ParseError);
+    EXPECT_NO_THROW(sim.parse(netlist));
 }
 
 // ===========================================================================

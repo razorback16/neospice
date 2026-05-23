@@ -150,7 +150,7 @@ R1 out 0 50
     EXPECT_NEAR(tl->td(), 0.25 / 2e9, 1e-20);
 }
 
-TEST(TLineParser, MissingZ0Throws) {
+TEST(TLineParser, MissingZ0SkipsWithWarning) {
     const char* netlist = R"(
 Missing Z0
 V1 in 0 1
@@ -160,7 +160,7 @@ R1 out 0 50
 .end
 )";
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 TEST(TLineParser, MissingTDAndFThrows) {
@@ -173,7 +173,7 @@ R1 out 0 50
 .end
 )";
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 TEST(TLineParser, CaseInsensitive) {

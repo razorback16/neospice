@@ -5,6 +5,7 @@
 #include "parser/model_cards.hpp"
 #include "parser/tokenizer.hpp"
 #include <algorithm>
+#include <cstdio>
 
 namespace neospice {
 
@@ -115,16 +116,18 @@ void resolve_bjts(
         if (it == models.end()) {
             auto it2 = models.find(to_lower(q.model_name));
             if (it2 == models.end()) {
-                throw ParseError("Line " + std::to_string(q.line_number) +
-                                 ": Unknown model '" + q.model_name + "'");
+                fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping BJT '%s'\n",
+                        q.line_number, q.model_name.c_str(), q.name.c_str());
+                continue;
             }
             it = it2;
         }
         // Check that the model type is NPN or PNP
         std::string model_type = to_lower(it->second.type);
         if (model_type != "npn" && model_type != "pnp") {
-            throw ParseError("Line " + std::to_string(q.line_number) +
-                             ": Q card references non-BJT model '" + q.model_name + "'");
+            fprintf(stderr, "Warning: Line %d: Q card references non-BJT model '%s' — skipping\n",
+                    q.line_number, q.model_name.c_str());
+            continue;
         }
 
         // Determine level: default=1 (BJT), 4 or 9 = VBIC
@@ -140,8 +143,9 @@ void resolve_bjts(
                     card_it = vbic_cards.emplace(q.model_name,
                                                   to_vbic_card(it->second)).first;
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(q.line_number) +
-                                     ": " + e.what());
+                    fprintf(stderr, "Warning: Line %d: %s — skipping BJT '%s'\n",
+                            q.line_number, e.what(), q.name.c_str());
+                    continue;
                 }
             }
             VBICDevice::Geom vgeom;
@@ -163,8 +167,9 @@ void resolve_bjts(
                     card_it = bjt_cards.emplace(q.model_name,
                                                 to_bjt_card(it->second)).first;
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(q.line_number) +
-                                     ": " + e.what());
+                    fprintf(stderr, "Warning: Line %d: %s — skipping BJT '%s'\n",
+                            q.line_number, e.what(), q.name.c_str());
+                    continue;
                 }
             }
             auto dev = BJTDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,

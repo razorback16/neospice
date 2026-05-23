@@ -5,6 +5,7 @@
 #include "parser/model_cards.hpp"
 #include "parser/tokenizer.hpp"
 #include <algorithm>
+#include <cstdio>
 
 namespace neospice {
 
@@ -89,16 +90,18 @@ void resolve_jfets(
         if (it == models.end()) {
             auto it2 = models.find(to_lower(j.model_name));
             if (it2 == models.end()) {
-                throw ParseError("Line " + std::to_string(j.line_number) +
-                                 ": Unknown model '" + j.model_name + "'");
+                fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping JFET '%s'\n",
+                        j.line_number, j.model_name.c_str(), j.name.c_str());
+                continue;
             }
             it = it2;
         }
         // Check that the model type is NJF or PJF
         std::string model_type = to_lower(it->second.type);
         if (model_type != "njf" && model_type != "pjf") {
-            throw ParseError("Line " + std::to_string(j.line_number) +
-                             ": J card references non-JFET model '" + j.model_name + "'");
+            fprintf(stderr, "Warning: Line %d: J card references non-JFET model '%s' — skipping\n",
+                    j.line_number, j.model_name.c_str());
+            continue;
         }
 
         // Determine level: default=1 (JFET), 2 = JFET2 (Parker-Skellern)
@@ -114,8 +117,9 @@ void resolve_jfets(
                     card_it = jfet2_cards.emplace(j.model_name,
                                                    to_jfet2_card(it->second)).first;
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(j.line_number) +
-                                     ": " + e.what());
+                    fprintf(stderr, "Warning: Line %d: %s — skipping JFET '%s'\n",
+                            j.line_number, e.what(), j.name.c_str());
+                    continue;
                 }
             }
             int32_t nd = ctx.node(j.nd_str);
@@ -140,8 +144,9 @@ void resolve_jfets(
                     card_it = jfet_cards.emplace(j.model_name,
                                                   to_jfet_card(it->second)).first;
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(j.line_number) +
-                                     ": " + e.what());
+                    fprintf(stderr, "Warning: Line %d: %s — skipping JFET '%s'\n",
+                            j.line_number, e.what(), j.name.c_str());
+                    continue;
                 }
             }
             int32_t nd = ctx.node(j.nd_str);

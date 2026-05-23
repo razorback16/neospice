@@ -168,29 +168,29 @@ Xinv2 inv mid out
 }
 
 // -----------------------------------------------------------------------
-// 6. Unmatched .subckt (missing .ends) => ParseError
+// 6. Unmatched .subckt (missing .ends) => implicitly closed with warning
 // -----------------------------------------------------------------------
-TEST(Subcircuit, UnmatchedSubckt) {
+TEST(Subcircuit, UnmatchedSubcktSkipsWithWarning) {
     std::string netlist = wrap(R"(
 .subckt orphan a b
 R1 a b 1k
 )");
 
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 // -----------------------------------------------------------------------
-// 7. Unmatched .ends (no .subckt) => ParseError
+// 7. Unmatched .ends (no .subckt) => skipped with warning
 // -----------------------------------------------------------------------
-TEST(Subcircuit, UnmatchedEnds) {
+TEST(Subcircuit, UnmatchedEndsSkipsWithWarning) {
     std::string netlist = wrap(R"(
 R1 a b 1k
 .ends
 )");
 
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 // -----------------------------------------------------------------------
@@ -262,8 +262,7 @@ R1 a k rleak
 // 11. X element referencing unknown subcircuit throws ParseError
 // -----------------------------------------------------------------------
 TEST(Subcircuit, XElementUnknownSubcircuitThrows) {
-    // X element referencing a subcircuit that doesn't exist should throw
-    // a ParseError now that expansion is implemented.
+    // X element referencing a subcircuit that doesn't exist is skipped with warning
     std::string netlist = wrap(R"(
 R1 a b 1k
 Xinv inv a b
@@ -271,7 +270,7 @@ Xinv inv a b
 )");
 
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 // -----------------------------------------------------------------------
@@ -320,10 +319,10 @@ R1 A B 1k
 }
 
 // -----------------------------------------------------------------------
-// 13. Port after parameter default in header => ParseError
+// 13. Port after parameter default in header => skipped with warning
 // -----------------------------------------------------------------------
-TEST(Subcircuit, PortAfterParamThrows) {
-    // "out" appears after "wp=2u" — invalid per SPICE standard
+TEST(Subcircuit, PortAfterParamSkipsWithWarning) {
+    // "out" appears after "wp=2u" — invalid per SPICE standard, treated as param
     std::string netlist = wrap(R"(
 .subckt bad_order in wp=2u out
 R1 in out 1k
@@ -331,7 +330,7 @@ R1 in out 1k
 )");
 
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 // -----------------------------------------------------------------------

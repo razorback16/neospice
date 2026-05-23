@@ -207,7 +207,7 @@ K1 L1 L_nonexistent 0.5
 .end
 )";
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 TEST(CoupledInductorParser, CaseInsensitive) {

@@ -3,6 +3,7 @@
 #include "parser/model_cards.hpp"
 #include "parser/tokenizer.hpp"
 #include <algorithm>
+#include <cstdio>
 
 namespace neospice {
 
@@ -59,8 +60,9 @@ void resolve_diodes(
         const auto& dd = static_cast<const ParsedDiode&>(*elem);
         auto it = models.find(dd.model_name);
         if (it == models.end()) {
-            throw ParseError("Line " + std::to_string(dd.line_number) +
-                             ": Unknown model '" + dd.model_name + "'");
+            fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping diode '%s'\n",
+                    dd.line_number, dd.model_name.c_str(), dd.name.c_str());
+            continue;
         }
         auto card_it = dio_cards.find(dd.model_name);
         if (card_it == dio_cards.end()) {

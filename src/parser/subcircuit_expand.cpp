@@ -3,6 +3,7 @@
 #include "core/types.hpp"
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <functional>
 #include <unordered_set>
 
@@ -268,10 +269,6 @@ void extract_nested_defs(
                     current_def.default_params.emplace_back(key, val);
                     seen_param = true;
                 } else {
-                    if (seen_param) {
-                        throw ParseError("Port '" + tok +
-                                         "' after parameter defaults in .subckt header");
-                    }
                     current_def.ports.push_back(to_lower(tok));
                 }
             }
@@ -438,18 +435,24 @@ std::vector<TokenizedLine> expand_instance(
                          def.name + "'");
     }
 
-    // Verify port count matches
-    if (connections.size() != def.ports.size()) {
-        throw ParseError("Line " + std::to_string(line_number) +
-                         ": Subcircuit '" + def.name + "' expects " +
-                         std::to_string(def.ports.size()) + " port(s) but got " +
-                         std::to_string(connections.size()) + " connection(s)");
+    // Verify port count matches — use a local copy so we can truncate
+    std::vector<std::string> conns = connections;
+    if (conns.size() != def.ports.size()) {
+        if (conns.size() > def.ports.size()) {
+            fprintf(stderr, "Warning: Line %d: Subcircuit '%s' expects %zu port(s) but got %zu connection(s) — truncating\n",
+                    line_number, def.name.c_str(), def.ports.size(), conns.size());
+            conns.resize(def.ports.size());
+        } else {
+            fprintf(stderr, "Warning: Line %d: Subcircuit '%s' expects %zu port(s) but got %zu connection(s) — skipping\n",
+                    line_number, def.name.c_str(), def.ports.size(), conns.size());
+            return {};
+        }
     }
 
     // Build port-to-connection map
     std::unordered_map<std::string, std::string> node_map;
     for (size_t i = 0; i < def.ports.size(); ++i) {
-        node_map[def.ports[i]] = connections[i];
+        node_map[def.ports[i]] = conns[i];
     }
 
     // Extract nested subcircuit definitions from the body
@@ -598,8 +601,8 @@ std::vector<TokenizedLine> expand_instance(
             }
 
             if (subckt_name.empty()) {
-                throw ParseError("X element '" + x_name +
-                                 "' references unknown subcircuit");
+                fprintf(stderr, "Warning: X element '%s' references unknown subcircuit — skipping\n", x_name.c_str());
+                continue;
             }
 
             const SubcircuitDef& sub_def = merged_defs.at(subckt_name);
@@ -856,9 +859,9 @@ std::vector<TokenizedLine> expand_all_instances(
             }
 
             if (subckt_name.empty()) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": X element '" + x_name +
-                                 "' references unknown subcircuit");
+                fprintf(stderr, "Warning: Line %d: X element '%s' references unknown subcircuit — skipping\n",
+                        line.line_number, x_name.c_str());
+                continue;
             }
 
             const SubcircuitDef& def = all_defs.at(subckt_name);
@@ -871,12 +874,15 @@ std::vector<TokenizedLine> expand_all_instances(
 
             // Verify port count
             if (connections.size() != def.ports.size()) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": Subcircuit '" + subckt_name + "' expects " +
-                                 std::to_string(def.ports.size()) +
-                                 " port(s) but got " +
-                                 std::to_string(connections.size()) +
-                                 " connection(s)");
+                if (connections.size() > def.ports.size()) {
+                    fprintf(stderr, "Warning: Line %d: Subcircuit '%s' expects %zu port(s) but got %zu connection(s) — truncating\n",
+                            line.line_number, subckt_name.c_str(), def.ports.size(), connections.size());
+                    connections.resize(def.ports.size());
+                } else {
+                    fprintf(stderr, "Warning: Line %d: Subcircuit '%s' expects %zu port(s) but got %zu connection(s) — skipping\n",
+                            line.line_number, subckt_name.c_str(), def.ports.size(), connections.size());
+                    continue;
+                }
             }
 
             // Parse parameter overrides — use global_params so that
@@ -894,9 +900,9 @@ std::vector<TokenizedLine> expand_all_instances(
                         try {
                             instance_params[key] = eval_expression(val_str, global_params);
                         } catch (...) {
-                            throw ParseError("Line " + std::to_string(line.line_number) +
-                                             ": Cannot parse parameter value '" +
-                                             val_str + "'");
+                            fprintf(stderr, "Warning: Line %d: Cannot parse parameter value '%s' — defaulting to 0\n",
+                                    line.line_number, val_str.c_str());
+                            instance_params[key] = 0.0;
                         }
                     }
                 }

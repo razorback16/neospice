@@ -28,6 +28,7 @@
 #include "devices/asrc/asrc_device.hpp"
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -126,7 +127,8 @@ std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
     size_t open = joined.find('(');
     size_t close = joined.find(')');
     if (open == std::string::npos || close == std::string::npos || close <= open) {
-        throw ParseError("Missing parentheses in source specification");
+        fprintf(stderr, "Warning: Missing parentheses in source specification\n");
+        return {};
     }
 
     std::string content = joined.substr(open + 1, close - open - 1);
@@ -163,6 +165,32 @@ struct ParsedSourceSpec {
     SffmParams sffm;
     AmParams am;
 };
+
+// Parse POLY coefficients from tokens starting at idx.
+// Handles both space-separated values and PSpice "(val,val,...)" form.
+static void parse_poly_coeffs(const std::vector<std::string>& tokens, size_t& idx,
+                               std::vector<double>& coeffs) {
+    for (; idx < tokens.size(); ++idx) {
+        const auto& tok = tokens[idx];
+        if (tok.empty()) continue;
+        if (tok.front() == '(' || (tok.size() > 1 && tok.front() == '(' && tok.back() == ')')) {
+            // Parenthesized comma-separated coefficients: (v1,v2,v3)
+            std::string inner = tok;
+            // Strip leading '(' and trailing ')'
+            if (inner.front() == '(') inner = inner.substr(1);
+            if (!inner.empty() && inner.back() == ')') inner.pop_back();
+            // Split by comma
+            std::istringstream ss(inner);
+            std::string part;
+            while (std::getline(ss, part, ',')) {
+                if (part.empty()) continue;
+                try { coeffs.push_back(parse_spice_number(part)); } catch (...) {}
+            }
+        } else {
+            try { coeffs.push_back(parse_spice_number(tok)); } catch (...) { break; }
+        }
+    }
+}
 
 ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t start_idx) {
     ParsedSourceSpec spec;
@@ -429,8 +457,8 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
 
             if (first == ".subckt") {
                 if (line.tokens.size() < 2) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .subckt requires a subcircuit name");
+                    fprintf(stderr, "Warning: Line %d: .subckt requires a subcircuit name — skipping\n", line.line_number);
+                    continue;
                 }
 
                 if (depth > 0) {
@@ -463,22 +491,17 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
                         current_def.default_params.emplace_back(key, val);
                         seen_param = true;
                     } else {
-                        // No '=' => port name; error if params already seen
-                        if (seen_param) {
-                            throw ParseError("Line " + std::to_string(line.line_number) +
-                                             ": port '" + tok +
-                                             "' appears after parameter defaults in .subckt header");
-                        }
+                        // No '=' => port name (some dialects mix ports and params freely)
                         current_def.ports.push_back(to_lower(tok));
                     }
                 }
 
                 depth++;
 
-            } else if (first == ".ends") {
+            } else if (first == ".ends" || (first.size() > 5 && first.substr(0, 5) == ".ends" && first[5] == '*')) {
                 if (depth == 0) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .ends without matching .subckt");
+                    // Stray .ends without matching .subckt — silently skip
+                    continue;
                 }
 
                 depth--;
@@ -529,8 +552,17 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
             }
         }
 
-        if (depth > 0) {
-            throw ParseError("Unterminated .subckt '" + current_def.name + "': missing .ends");
+        while (depth > 0) {
+            fprintf(stderr, "Warning: implicitly closing unterminated .subckt '%s'\n",
+                    current_def.name.c_str());
+            if (depth == 1) {
+                state.subcircuit_defs[current_def.name] = std::move(current_def);
+                current_def = SubcircuitDef{};
+            } else if (!def_stack.empty()) {
+                current_def = std::move(def_stack.back());
+                def_stack.pop_back();
+            }
+            depth--;
         }
 
         state.lines = std::move(remaining_lines);
@@ -677,8 +709,11 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
                 if (card.ako_base.empty()) continue;
                 auto base_it = state.models.find(card.ako_base);
                 if (base_it == state.models.end()) {
-                    throw ParseError(".model " + name + " AKO: base model '"
-                                     + card.ako_base + "' not found");
+                    fprintf(stderr, "Warning: .model %s AKO: base model '%s' not found — skipping inheritance\n",
+                            name.c_str(), card.ako_base.c_str());
+                    card.ako_base.clear(); // stop trying to resolve
+                    changed = true;
+                    continue;
                 }
                 const auto& base = base_it->second;
                 // If base itself has unresolved AKO, defer to next pass
@@ -706,10 +741,10 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
                 }
             }
         }
-        // If any AKO still unresolved after max passes, there's a cycle
-        for (const auto& [name, card] : state.models) {
+        for (auto& [name, card] : state.models) {
             if (!card.ako_base.empty()) {
-                throw ParseError(".model " + name + " AKO: circular inheritance detected");
+                fprintf(stderr, "Warning: .model %s AKO: circular inheritance detected — ignoring\n", name.c_str());
+                card.ako_base.clear();
             }
         }
     }
@@ -775,8 +810,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 ckt.analyses.push_back(OpCmd{});
             } else if (first == ".tran") {
                 if (tokens.size() < 3) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .tran requires tstep and tstop");
+                    fprintf(stderr, "Warning: Line %d: .tran requires tstep and tstop — skipping\n", line.line_number);
+                    continue;
                 }
                 TranCmd tran;
                 tran.tstep = parse_spice_number(tokens[1]);
@@ -799,47 +834,47 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 ckt.analyses.push_back(tran);
             } else if (first == ".ac") {
                 if (tokens.size() < 5) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .ac requires mode npoints fstart fstop");
+                    fprintf(stderr, "Warning: Line %d: .ac requires mode npoints fstart fstop — skipping\n", line.line_number);
+                    continue;
                 }
-                ACCmd ac;
-                std::string mode = to_lower(tokens[1]);
-                if (mode == "dec") ac.mode = ACMode::DEC;
-                else if (mode == "oct") ac.mode = ACMode::OCT;
-                else if (mode == "lin") ac.mode = ACMode::LIN;
-                else throw ParseError("Unknown AC mode: " + tokens[1]);
-                ac.npoints = static_cast<int>(parse_spice_number(tokens[2]));
-                ac.fstart = parse_spice_number(tokens[3]);
-                ac.fstop = parse_spice_number(tokens[4]);
-                ckt.analyses.push_back(ac);
+                try {
+                    ACCmd ac;
+                    std::string mode = to_lower(tokens[1]);
+                    if (mode == "dec") ac.mode = ACMode::DEC;
+                    else if (mode == "oct") ac.mode = ACMode::OCT;
+                    else if (mode == "lin") ac.mode = ACMode::LIN;
+                    else { fprintf(stderr, "Warning: Line %d: Unknown AC mode '%s' — skipping\n", line.line_number, tokens[1].c_str()); continue; }
+                    ac.npoints = static_cast<int>(parse_spice_number(tokens[2]));
+                    ac.fstart = parse_spice_number(tokens[3]);
+                    ac.fstop = parse_spice_number(tokens[4]);
+                    ckt.analyses.push_back(ac);
+                } catch (...) {
+                    fprintf(stderr, "Warning: Line %d: .ac has invalid parameters — skipping\n", line.line_number);
+                }
             } else if (first == ".noise") {
                 // .noise V(out) Vin dec 10 1 1e9
                 if (tokens.size() < 7) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .noise requires V(output) input_source mode npoints fstart fstop");
+                    fprintf(stderr, "Warning: Line %d: .noise requires V(output) input_source mode npoints fstart fstop — skipping\n", line.line_number);
+                    continue;
                 }
                 NoiseCmd ncmd;
 
-                // Parse output spec: V(node) or v(node)
                 std::string out_spec = tokens[1];
                 std::string out_lower = to_lower(out_spec);
                 if (out_lower.size() > 3 && out_lower.substr(0, 2) == "v(" && out_lower.back() == ')') {
                     ncmd.output = out_lower.substr(2, out_lower.size() - 3);
                 } else {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .noise output must be V(node)");
+                    fprintf(stderr, "Warning: Line %d: .noise output must be V(node) — skipping\n", line.line_number);
+                    continue;
                 }
 
-                // Input source name
                 ncmd.input_src = tokens[2];
 
-                // Frequency sweep parameters
                 std::string mode = to_lower(tokens[3]);
                 if (mode == "dec") ncmd.mode = ACMode::DEC;
                 else if (mode == "oct") ncmd.mode = ACMode::OCT;
                 else if (mode == "lin") ncmd.mode = ACMode::LIN;
-                else throw ParseError("Line " + std::to_string(line.line_number) +
-                                      ": Unknown noise sweep mode: " + tokens[3]);
+                else { fprintf(stderr, "Warning: Line %d: Unknown noise sweep mode '%s' — skipping\n", line.line_number, tokens[3].c_str()); continue; }
                 ncmd.npoints = static_cast<int>(parse_spice_number(tokens[4]));
                 ncmd.fstart = parse_spice_number(tokens[5]);
                 ncmd.fstop = parse_spice_number(tokens[6]);
@@ -848,8 +883,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 // .dc Vsrc1 start1 stop1 step1 [Vsrc2 start2 stop2 step2]
                 // Each sweep group is 4 tokens: source_name start stop step
                 if (tokens.size() < 5) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .dc requires source start stop step");
+                    fprintf(stderr, "Warning: Line %d: .dc requires source start stop step — skipping\n", line.line_number);
+                    continue;
                 }
                 DCSweepCmd dcmd;
                 size_t i = 1;
@@ -864,16 +899,16 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         sp.stop  = parse_spice_number(tokens[i + 2]);
                         sp.step  = parse_spice_number(tokens[i + 3]);
                     } catch (...) {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": .dc sweep parameters must be numbers");
+                        fprintf(stderr, "Warning: Line %d: .dc sweep parameters must be numbers — skipping\n", line.line_number);
+                        break;
                     }
                     dcmd.params.push_back(sp);
                     i += 4;
                     if (dcmd.params.size() >= 2) break; // support at most 2 sweeps
                 }
                 if (dcmd.params.empty()) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .dc requires at least one sweep group");
+                    fprintf(stderr, "Warning: Line %d: .dc requires at least one sweep group — skipping\n", line.line_number);
+                    continue;
                 }
                 ckt.analyses.push_back(dcmd);
             } else if (first == ".options") {
@@ -891,44 +926,50 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     if (key == "method") {
                         ckt.options.method = to_lower(val_str);
                     } else {
-                        double val = parse_spice_number(val_str);
-                        if      (key == "reltol") ckt.options.reltol = val;
-                        else if (key == "abstol") ckt.options.abstol = val;
-                        else if (key == "vntol")  ckt.options.vntol  = val;
-                        else if (key == "gmin")   ckt.options.gmin   = val;
-                        else if (key == "trtol")  ckt.options.trtol  = val;
-                        else if (key == "chgtol") ckt.options.chgtol = val;
-                        else if (key == "temp") {
-                            ckt.options.temp = val + 273.15;
-                        } else if (key == "tnom") {
-                            ckt.options.tnom = val + 273.15;
-                        } else if (key == "itl1") {
-                            ckt.options.itl1 = static_cast<int>(val);
-                            ckt.options.max_iter = ckt.options.itl1;
-                        } else if (key == "itl4") {
-                            ckt.options.itl4 = static_cast<int>(val);
-                        } else if (key == "lte_ref_mode") {
-                            ckt.options.lte_ref_mode = static_cast<int>(val);
-                        } else if (key == "restart_step_scale") {
-                            ckt.options.restart_step_scale = val;
+                        try {
+                            double val = parse_spice_number(val_str);
+                            if      (key == "reltol") ckt.options.reltol = val;
+                            else if (key == "abstol") ckt.options.abstol = val;
+                            else if (key == "vntol")  ckt.options.vntol  = val;
+                            else if (key == "gmin")   ckt.options.gmin   = val;
+                            else if (key == "trtol")  ckt.options.trtol  = val;
+                            else if (key == "chgtol") ckt.options.chgtol = val;
+                            else if (key == "temp") {
+                                ckt.options.temp = val + 273.15;
+                            } else if (key == "tnom") {
+                                ckt.options.tnom = val + 273.15;
+                            } else if (key == "itl1") {
+                                ckt.options.itl1 = static_cast<int>(val);
+                                ckt.options.max_iter = ckt.options.itl1;
+                            } else if (key == "itl4") {
+                                ckt.options.itl4 = static_cast<int>(val);
+                            } else if (key == "lte_ref_mode") {
+                                ckt.options.lte_ref_mode = static_cast<int>(val);
+                            } else if (key == "restart_step_scale") {
+                                ckt.options.restart_step_scale = val;
+                            }
+                        } catch (...) {
+                            // Silently ignore non-numeric option values
                         }
-                        // Silently ignore unrecognised option keys
                     }
                 }
             } else if (first == ".temp") {
                 if (tokens.size() >= 2) {
-                    ckt.options.temp = parse_spice_number(tokens[1]) + 273.15;
+                    try {
+                        ckt.options.temp = parse_spice_number(tokens[1]) + 273.15;
+                    } catch (...) {}
                 }
             } else if (first == ".ic") {
                 // .ic V(node)=value ...
                 for (size_t i = 1; i < tokens.size(); ++i) {
                     std::string tok = tokens[i];
-                    // Format: V(nodename)=value
                     auto eq_pos = tok.find('=');
                     if (eq_pos == std::string::npos) continue;
                     std::string lhs = tok.substr(0, eq_pos);
-                    double val = parse_spice_number(tok.substr(eq_pos + 1));
-                    // Extract node name from V(name)
+                    double val;
+                    try {
+                        val = parse_spice_number(tok.substr(eq_pos + 1));
+                    } catch (...) { continue; }
                     std::string llhs = to_lower(lhs);
                     if (llhs.size() > 3 && llhs.substr(0, 2) == "v(" && llhs.back() == ')') {
                         std::string node_name = lhs.substr(2, lhs.size() - 3);
@@ -942,7 +983,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     auto eq_pos = tok.find('=');
                     if (eq_pos == std::string::npos) continue;
                     std::string lhs = tok.substr(0, eq_pos);
-                    double val = parse_spice_number(tok.substr(eq_pos + 1));
+                    double val;
+                    try {
+                        val = parse_spice_number(tok.substr(eq_pos + 1));
+                    } catch (...) { continue; }
                     std::string llhs = to_lower(lhs);
                     if (llhs.size() > 3 && llhs.substr(0, 2) == "v(" && llhs.back() == ')') {
                         std::string node_name = lhs.substr(2, lhs.size() - 3);
@@ -973,9 +1017,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             } else if (first == ".meas" || first == ".measure") {
                 // .meas analysis_type name measure_spec...
                 if (tokens.size() < 4) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .meas requires analysis_type, name, and measure specification");
+                    fprintf(stderr, "Warning: Line %d: .meas requires analysis_type, name, and measure specification — skipping\n", line.line_number);
+                    continue;
                 }
+                try {
                 MeasureCommand mcmd;
                 mcmd.analysis_type = to_lower(tokens[1]);
                 mcmd.name = to_lower(tokens[2]);
@@ -1135,10 +1180,13 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                     mcmd.param_expr = expr;
                 } else {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": Unknown .meas type: " + tokens[3]);
+                    fprintf(stderr, "Warning: Line %d: Unknown .meas type: %s — skipping\n", line.line_number, tokens[3].c_str());
+                    continue;
                 }
                 ckt.measures.push_back(std::move(mcmd));
+                } catch (const ParseError&) {
+                    fprintf(stderr, "Warning: Line %d: .meas parse error — skipping\n", line.line_number);
+                }
             } else if (first == ".print" || first == ".plot") {
                 // .print tran V(out) V(in) I(V1)
                 // .plot  tran V(out) I(V1)
@@ -1153,31 +1201,26 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     ckt.prints.push_back(std::move(pcmd));
                 }
             } else if (first == ".tf") {
-                // .tf output_var input_src
-                // e.g., .tf V(out) V1  or  .tf I(Vout) V1
                 if (tokens.size() < 3) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .tf requires output variable and input source");
+                    fprintf(stderr, "Warning: Line %d: .tf requires output variable and input source — skipping\n", line.line_number);
+                    continue;
                 }
                 TFCmd tf;
                 tf.output = to_lower(tokens[1]);
                 tf.input_src = to_lower(tokens[2]);
                 ckt.analyses.push_back(tf);
             } else if (first == ".sens") {
-                // .sens output_var
-                // e.g., .sens V(out)
                 if (tokens.size() < 2) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .sens requires output variable");
+                    fprintf(stderr, "Warning: Line %d: .sens requires output variable — skipping\n", line.line_number);
+                    continue;
                 }
                 SensCmd sens;
                 sens.output = to_lower(tokens[1]);
                 ckt.analyses.push_back(sens);
             } else if (first == ".pz") {
-                // .pz node1 node2 node3 node4 VOL|CUR POL|ZER|PZ
                 if (tokens.size() < 7) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .pz requires 6 arguments: n1 n2 n3 n4 VOL|CUR POL|ZER|PZ");
+                    fprintf(stderr, "Warning: Line %d: .pz requires 6 arguments — skipping\n", line.line_number);
+                    continue;
                 }
                 PZCmd pzcmd;
                 pzcmd.in_pos  = to_lower(tokens[1]);
@@ -1189,16 +1232,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     pzcmd.transfer = PZTransferType::VOLTAGE;
                 else if (transfer == "cur")
                     pzcmd.transfer = PZTransferType::CURRENT;
-                else
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .pz transfer type must be VOL or CUR");
+                else { fprintf(stderr, "Warning: Line %d: .pz transfer type must be VOL or CUR — skipping\n", line.line_number); continue; }
                 std::string pz = to_lower(tokens[6]);
                 if (pz == "pol")      pzcmd.type = PZType::POLES;
                 else if (pz == "zer") pzcmd.type = PZType::ZEROS;
                 else if (pz == "pz")  pzcmd.type = PZType::BOTH;
-                else
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .pz type must be POL, ZER, or PZ");
+                else { fprintf(stderr, "Warning: Line %d: .pz type must be POL, ZER, or PZ — skipping\n", line.line_number); continue; }
                 ckt.analyses.push_back(pzcmd);
             } else if (first == ".four" || first == ".fourier") {
                 // .four freq signal1 [signal2 ...]
@@ -1213,37 +1252,62 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 }
             } else if (first == ".step") {
                 // .step param <name> <start> <stop> <step>
+                // .step param <name> LIST <v1> <v2> ...
                 // .step <Vsource> <start> <stop> <step>
                 // .step temp <start> <stop> <step>
-                if (tokens.size() < 5) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": .step requires at least 4 arguments");
+                if (tokens.size() < 3) {
+                    fprintf(stderr, "Warning: Line %d: .step requires arguments — skipping\n", line.line_number);
+                    continue;
                 }
-                StepCommand sc;
-                std::string kind_or_name = to_lower(tokens[1]);
-                if (kind_or_name == "param") {
-                    sc.kind = StepCommand::PARAM;
-                    if (tokens.size() < 6) {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": .step param requires name start stop step");
+                try {
+                    StepCommand sc;
+                    std::string kind_or_name = to_lower(tokens[1]);
+                    if (kind_or_name == "param") {
+                        sc.kind = StepCommand::PARAM;
+                        if (tokens.size() < 4) {
+                            fprintf(stderr, "Warning: Line %d: .step param requires more arguments — skipping\n", line.line_number);
+                            continue;
+                        }
+                        sc.name = to_lower(tokens[2]);
+                        if (tokens.size() >= 4 && to_lower(tokens[3]) == "list") {
+                            // LIST form: just use the first value as start, ignored for now
+                            if (tokens.size() >= 5) {
+                                sc.start = parse_spice_number(tokens[4]);
+                                sc.stop = sc.start;
+                                sc.step = 1.0;
+                            }
+                        } else if (tokens.size() >= 6) {
+                            sc.start = parse_spice_number(tokens[3]);
+                            sc.stop  = parse_spice_number(tokens[4]);
+                            sc.step  = parse_spice_number(tokens[5]);
+                        } else {
+                            fprintf(stderr, "Warning: Line %d: .step param requires name start stop step — skipping\n", line.line_number);
+                            continue;
+                        }
+                    } else if (kind_or_name == "temp") {
+                        if (tokens.size() < 5) {
+                            fprintf(stderr, "Warning: Line %d: .step temp requires start stop step — skipping\n", line.line_number);
+                            continue;
+                        }
+                        sc.kind  = StepCommand::TEMP;
+                        sc.start = parse_spice_number(tokens[2]);
+                        sc.stop  = parse_spice_number(tokens[3]);
+                        sc.step  = parse_spice_number(tokens[4]);
+                    } else {
+                        if (tokens.size() < 5) {
+                            fprintf(stderr, "Warning: Line %d: .step source requires start stop step — skipping\n", line.line_number);
+                            continue;
+                        }
+                        sc.kind = StepCommand::SOURCE;
+                        sc.name  = to_lower(tokens[1]);
+                        sc.start = parse_spice_number(tokens[2]);
+                        sc.stop  = parse_spice_number(tokens[3]);
+                        sc.step  = parse_spice_number(tokens[4]);
                     }
-                    sc.name  = to_lower(tokens[2]);
-                    sc.start = parse_spice_number(tokens[3]);
-                    sc.stop  = parse_spice_number(tokens[4]);
-                    sc.step  = parse_spice_number(tokens[5]);
-                } else if (kind_or_name == "temp") {
-                    sc.kind  = StepCommand::TEMP;
-                    sc.start = parse_spice_number(tokens[2]);
-                    sc.stop  = parse_spice_number(tokens[3]);
-                    sc.step  = parse_spice_number(tokens[4]);
-                } else {
-                    sc.kind = StepCommand::SOURCE;
-                    sc.name  = to_lower(tokens[1]);
-                    sc.start = parse_spice_number(tokens[2]);
-                    sc.stop  = parse_spice_number(tokens[3]);
-                    sc.step  = parse_spice_number(tokens[4]);
+                    ckt.step_commands.push_back(sc);
+                } catch (...) {
+                    fprintf(stderr, "Warning: Line %d: .step has invalid numeric parameters — skipping\n", line.line_number);
                 }
-                ckt.step_commands.push_back(sc);
             }
             // Skip .model, .param (already handled), .include, .lib, .endl, etc.
             continue;
@@ -1262,20 +1326,51 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             }
         }
 
+        // Filter out lines that don't look like valid SPICE elements.
+        // Valid element names: letter + alphanumeric/underscore/dot chars.
+        // Comment continuation lines (e.g., "Inc.", "These", "International")
+        // often contain periods at the end or are just words.
+        {
+            static const std::string valid_prefixes = "rvlcdikmqjzxefghbostw";
+            if (valid_prefixes.find(elem_type) == std::string::npos) {
+                continue; // not a known element type
+            }
+            // Skip bare words that ended with punctuation (comment text)
+            if (!first.empty() && (first.back() == '.' || first.back() == ',' ||
+                                    first.back() == ':' || first.back() == ';')) {
+                continue;
+            }
+        }
+
         if (elem_type == 'r') {
             // R name n+ n- value [model] [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
             if (tokens.size() < 4) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": Resistor requires name, n+, n-, value");
+                fprintf(stderr, "Warning: Line %d: Resistor requires name, n+, n-, value — skipping\n", line.line_number);
+                continue;
             }
             std::string name = tokens[0];
             int32_t np = node_raw(tokens[1]);
             int32_t nn = node_raw(tokens[2]);
-            double val = parse_value(tokens[3]);
+            double val = 0.0;
+            size_t model_start = 4;
+            try {
+                val = parse_value(tokens[3]);
+            } catch (const ParseError&) {
+                // tokens[3] is not a number — treat as model name
+                auto mit = res_models.find(to_lower(tokens[3]));
+                if (mit != res_models.end()) {
+                    val = 0.0; // model-only resistor, value from model
+                } else {
+                    fprintf(stderr, "Warning: Line %d: Resistor '%s' has unrecognized value/model '%s' — skipping\n",
+                            line.line_number, name.c_str(), tokens[3].c_str());
+                    continue;
+                }
+                model_start = 4;
+            }
             auto r = std::make_unique<Resistor>(name, np, nn, val);
 
             // First pass: apply model defaults (if model reference present)
-            for (size_t k = 4; k < tokens.size(); ++k) {
+            for (size_t k = 3; k < tokens.size(); ++k) {
                 std::string tok_lower = to_lower(tokens[k]);
                 if (tok_lower.find('=') == std::string::npos) {
                     auto mit = res_models.find(tok_lower);
@@ -1313,13 +1408,20 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
         } else if (elem_type == 'c') {
             // C name n+ n- value [model] [TC1=val] [TC2=val] [SCALE=val] [TEMP=val] [DTEMP=val]
             if (tokens.size() < 4) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": Capacitor requires name, n+, n-, value");
+                fprintf(stderr, "Warning: Line %d: Capacitor requires name, n+, n-, value — skipping\n", line.line_number);
+                continue;
             }
             std::string name = tokens[0];
             int32_t np = node_raw(tokens[1]);
             int32_t nn = node_raw(tokens[2]);
-            double val = parse_value(tokens[3]);
+            double val;
+            try {
+                val = parse_value(tokens[3]);
+            } catch (const ParseError&) {
+                fprintf(stderr, "Warning: Line %d: Capacitor '%s' has unrecognized value '%s' — skipping\n",
+                        line.line_number, name.c_str(), tokens[3].c_str());
+                continue;
+            }
             auto c = std::make_unique<Capacitor>(name, np, nn, val);
 
             // First pass: apply model defaults (if model reference present)
@@ -1360,30 +1462,38 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             // ngspice allows:  L name n+ n- model value   (model before value)
             //                  L name n+ n- value          (no model)
             if (tokens.size() < 4) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": Inductor requires name, n+, n-, value");
+                fprintf(stderr, "Warning: Line %d: Inductor requires name, n+, n-, value — skipping\n", line.line_number);
+                continue;
             }
             std::string name = tokens[0];
             int32_t np = node_raw(tokens[1]);
             int32_t nn = node_raw(tokens[2]);
 
-            // Detect whether tokens[3] is a model name or a numeric value.
-            // If it looks like a model name (found in ind_models), the value
-            // is the next token; otherwise tokens[3] is the value.
             double val;
             size_t param_start;
             std::string tok3_lower = to_lower(tokens[3]);
             auto model_it = ind_models.find(tok3_lower);
             if (model_it != ind_models.end()) {
-                // tokens[3] is a model name
                 if (tokens.size() < 5) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": Inductor with model requires a value");
+                    fprintf(stderr, "Warning: Line %d: Inductor with model requires a value — skipping\n", line.line_number);
+                    continue;
                 }
-                val = parse_value(tokens[4]);
+                try {
+                    val = parse_value(tokens[4]);
+                } catch (const ParseError&) {
+                    fprintf(stderr, "Warning: Line %d: Inductor '%s' has unrecognized value '%s' — skipping\n",
+                            line.line_number, name.c_str(), tokens[4].c_str());
+                    continue;
+                }
                 param_start = 5;
             } else {
-                val = parse_value(tokens[3]);
+                try {
+                    val = parse_value(tokens[3]);
+                } catch (const ParseError&) {
+                    fprintf(stderr, "Warning: Line %d: Inductor '%s' has unrecognized value '%s' — skipping\n",
+                            line.line_number, name.c_str(), tokens[3].c_str());
+                    continue;
+                }
                 param_start = 4;
             }
             auto l = std::make_unique<Inductor>(name, np, nn, val);
@@ -1431,8 +1541,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
         } else if (elem_type == 'v') {
             // V name n+ n- [DC val] [AC mag [phase]] [PULSE(...)] [SIN(...)]
             if (tokens.size() < 3) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": VSource requires name, n+, n-");
+                fprintf(stderr, "Warning: Line %d: VSource requires name, n+, n- — skipping\n", line.line_number);
+                continue;
             }
             std::string name = tokens[0];
             int32_t np = node_raw(tokens[1]);
@@ -1453,8 +1563,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
         } else if (elem_type == 'i') {
             if (tokens.size() < 3) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": ISource requires name, n+, n-");
+                fprintf(stderr, "Warning: Line %d: ISource requires name, n+, n- — skipping\n", line.line_number);
+                continue;
             }
             std::string name = tokens[0];
             int32_t np = node_raw(tokens[1]);
@@ -1483,24 +1593,47 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     throw ParseError("Line " + std::to_string(line.line_number) + ": " + msg);
                 };
                 ParseContext parse_ctx{ckt, node_raw, models, line.line_number, error_fn};
-                auto elem = handler->parse(tokens, parse_ctx);
-                if (elem) {
-                    parsed_elements[elem_type].push_back(std::move(elem));
+                try {
+                    auto elem = handler->parse(tokens, parse_ctx);
+                    if (elem) {
+                        parsed_elements[elem_type].push_back(std::move(elem));
+                    }
+                } catch (const ParseError& e) {
+                    fprintf(stderr, "Warning: %s — skipping\n", e.what());
+                    continue;
                 }
             }
 
         } else if (elem_type == 'e') {
             // E name np nn [POLY(N) cp1 cn1 ... coeffs | TABLE {V(in)} = (x,y)... | nc+ nc- gain]
             if (tokens.size() < 4) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": VCVS requires name, np, nn, and source specification");
+                fprintf(stderr, "Warning: Line %d: VCVS requires name, np, nn, and source specification — skipping\n", line.line_number);
+                continue;
             }
             std::string name = tokens[0];
-            int32_t np  = node_raw(tokens[1]);
-            int32_t nn  = node_raw(tokens[2]);
 
-            // Detect POLY or TABLE keyword at token[3]
-            std::string tok3 = to_lower(tokens[3]);
+            // Support parenthesized output nodes: E name (np,nn) ...
+            size_t e_tok_offset = 0;
+            int32_t np, nn;
+            {
+                std::string t1 = tokens[1];
+                if (t1.size() > 1 && t1[0] == '(' && t1.find(',') != std::string::npos) {
+                    // Parse (np,nn)
+                    std::string inner = t1;
+                    if (inner.front() == '(') inner.erase(0, 1);
+                    if (inner.back() == ')') inner.pop_back();
+                    auto comma = inner.find(',');
+                    np = node_raw(inner.substr(0, comma));
+                    nn = node_raw(inner.substr(comma + 1));
+                    e_tok_offset = 1;  // tokens shifted by 1
+                } else {
+                    np = node_raw(tokens[1]);
+                    nn = node_raw(tokens[2]);
+                }
+            }
+
+            // Detect POLY or TABLE keyword at token[3] (adjusted for parenthesized nodes)
+            std::string tok3 = to_lower(tokens[3 - e_tok_offset]);
 
             if (tok3.substr(0, 4) == "poly") {
                 // POLY(N) form
@@ -1513,9 +1646,9 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     if (close != std::string::npos && close > paren_pos) {
                         poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
                     }
-                } else if (tokens.size() > 4) {
+                } else if (tokens.size() > 4 - e_tok_offset) {
                     // "POLY (N)" — dimension in separate token
-                    std::string next = tokens[4];
+                    std::string next = tokens[4 - e_tok_offset];
                     if (!next.empty() && next.front() == '(') {
                         size_t close = next.find(')');
                         if (close != std::string::npos) {
@@ -1524,27 +1657,28 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                 }
                 // Now parse 2*poly_dim control node pairs, then coefficients
-                size_t idx = 4;
+                size_t idx = 4 - e_tok_offset;
                 // Skip past any "(N)" token we haven't consumed yet
                 if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
 
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
+                bool poly_ok = true;
                 for (int k = 0; k < poly_dim; ++k) {
                     if (idx + 1 >= tokens.size()) {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": POLY VCVS: not enough control node pairs");
+                        fprintf(stderr, "Warning: Line %d: POLY VCVS: not enough control node pairs — skipping\n", line.line_number);
+                        poly_ok = false;
+                        break;
                     }
                     int32_t cp = node_raw(tokens[idx]);
                     int32_t cn = node_raw(tokens[idx + 1]);
                     ctrl_pairs.push_back({cp, cn});
                     idx += 2;
                 }
+                if (!poly_ok) continue;
                 // Remaining tokens are polynomial coefficients
                 std::vector<double> coeffs;
-                for (; idx < tokens.size(); ++idx) {
-                    coeffs.push_back(parse_spice_number(tokens[idx]));
-                }
+                parse_poly_coeffs(tokens, idx, coeffs);
                 ckt.add_device(std::make_unique<NonlinearVCVS>(
                     name, np, nn, std::move(ctrl_pairs), std::move(coeffs)));
 
@@ -1556,15 +1690,15 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 size_t table_data_start;
                 if (tok3.substr(0, 6) == "table{") {
                     // No space: tok3 = "table{v(in)}" — extract from tok3 after "table"
-                    table_ctrl_token = tokens[3].substr(5);  // use original case
-                    table_data_start = 4;
+                    table_ctrl_token = tokens[3 - e_tok_offset].substr(5);  // use original case
+                    table_data_start = 4 - e_tok_offset;
                 } else {
-                    if (tokens.size() < 6) {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": TABLE VCVS requires control expression and table points");
+                    if (tokens.size() < 6 - e_tok_offset) {
+                        fprintf(stderr, "Warning: Line %d: TABLE VCVS requires control expression and table points — skipping\n", line.line_number);
+                        continue;
                     }
-                    table_ctrl_token = tokens[4];
-                    table_data_start = 5;
+                    table_ctrl_token = tokens[4 - e_tok_offset];
+                    table_data_start = 5 - e_tok_offset;
                 }
                 // Extract node name from {V(node)}
                 std::string ctrl_expr = table_ctrl_token;
@@ -1619,8 +1753,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     pts.push_back({px, py});
                 }
                 if (pts.empty()) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": TABLE VCVS: no table points found");
+                    fprintf(stderr, "Warning: Line %d: TABLE VCVS: no table points found — skipping\n", line.line_number);
+                    continue;
                 }
                 ckt.add_device(std::make_unique<TableVCVS>(
                     name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
@@ -1632,14 +1766,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 if (tok3.substr(0, 6) == "value=") {
                     // VALUE={expr} as single token or VALUE=... — existing path
                     std::string rest;
-                    for (size_t i = 3; i < tokens.size(); ++i) {
+                    for (size_t i = 3 - e_tok_offset; i < tokens.size(); ++i) {
                         if (!rest.empty()) rest += ' ';
                         rest += tokens[i];
                     }
                     expr_str = rest.substr(rest.find('=') + 1);
                 } else {
                     // tok3 == "value", look for = in next tokens
-                    size_t expr_start = 4;
+                    size_t expr_start = 4 - e_tok_offset;
                     if (expr_start < tokens.size() && tokens[expr_start][0] == '=') {
                         if (tokens[expr_start].size() > 1) {
                             // "={expr}" — expression starts after =
@@ -1656,8 +1790,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                             }
                         }
                     } else {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": E element VALUE form requires VALUE={expr}");
+                        fprintf(stderr, "Warning: Line %d: E element VALUE form requires VALUE={expr} — skipping\n", line.line_number);
+                        continue;
                     }
                 }
                 // Strip surrounding whitespace
@@ -1675,8 +1809,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     expr_str.pop_back();
 
                 if (expr_str.empty()) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": E element VALUE form has empty expression");
+                    fprintf(stderr, "Warning: Line %d: E element VALUE form has empty expression — skipping\n", line.line_number);
+                    continue;
                 }
 
                 // Expand .func calls
@@ -1687,8 +1821,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 try {
                     compiled = asrc::CompiledExpression::compile(expr_str);
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": E element VALUE expression error: " + e.what());
+                    fprintf(stderr, "Warning: Line %d: E element VALUE expression error: %s — skipping\n", line.line_number, e.what());
+                    continue;
                 }
 
                 // Resolve variable references (same as B-source)
@@ -1758,27 +1892,50 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
             } else {
                 // Linear form: E name np nn nc+ nc- gain
-                if (tokens.size() < 6) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": VCVS requires name, np, nn, nc+, nc-, gain");
+                if (tokens.size() < 6 - e_tok_offset) {
+                    fprintf(stderr, "Warning: Line %d: VCVS requires name, np, nn, nc+, nc-, gain — skipping\n", line.line_number);
+                    continue;
                 }
-                int32_t ncp = node_raw(tokens[3]);
-                int32_t ncn = node_raw(tokens[4]);
-                double  gain = parse_spice_number(tokens[5]);
+                int32_t ncp = node_raw(tokens[3 - e_tok_offset]);
+                int32_t ncn = node_raw(tokens[4 - e_tok_offset]);
+                double gain;
+                try {
+                    gain = parse_spice_number(tokens[5 - e_tok_offset]);
+                } catch (...) {
+                    fprintf(stderr, "Warning: Line %d: VCVS '%s' has invalid gain — skipping\n", line.line_number, name.c_str());
+                    continue;
+                }
                 ckt.add_device(std::make_unique<VCVS>(name, np, nn, ncp, ncn, gain));
             }
 
         } else if (elem_type == 'g') {
             // G name np nn [POLY(N) cp1 cn1 ... coeffs | TABLE {V(in)} = (x,y)... | nc+ nc- gm]
             if (tokens.size() < 4) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": VCCS requires name, np, nn, and source specification");
+                fprintf(stderr, "Warning: Line %d: VCCS requires name, np, nn, and source specification — skipping\n", line.line_number);
+                continue;
             }
             std::string name = tokens[0];
-            int32_t np  = node_raw(tokens[1]);
-            int32_t nn  = node_raw(tokens[2]);
 
-            std::string tok3g = to_lower(tokens[3]);
+            // Support parenthesized output nodes: G name (np,nn) ...
+            size_t g_tok_offset = 0;
+            int32_t np, nn;
+            {
+                std::string t1 = tokens[1];
+                if (t1.size() > 1 && t1[0] == '(' && t1.find(',') != std::string::npos) {
+                    std::string inner = t1;
+                    if (inner.front() == '(') inner.erase(0, 1);
+                    if (inner.back() == ')') inner.pop_back();
+                    auto comma = inner.find(',');
+                    np = node_raw(inner.substr(0, comma));
+                    nn = node_raw(inner.substr(comma + 1));
+                    g_tok_offset = 1;
+                } else {
+                    np = node_raw(tokens[1]);
+                    nn = node_raw(tokens[2]);
+                }
+            }
+
+            std::string tok3g = to_lower(tokens[3 - g_tok_offset]);
 
             if (tok3g.substr(0, 4) == "poly") {
                 // POLY(N) form for VCCS
@@ -1790,8 +1947,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     if (close != std::string::npos && close > paren_pos) {
                         poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
                     }
-                } else if (tokens.size() > 4) {
-                    std::string next = tokens[4];
+                } else if (tokens.size() > 4 - g_tok_offset) {
+                    std::string next = tokens[4 - g_tok_offset];
                     if (!next.empty() && next.front() == '(') {
                         size_t close = next.find(')');
                         if (close != std::string::npos) {
@@ -1799,25 +1956,26 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         }
                     }
                 }
-                size_t idx = 4;
+                size_t idx = 4 - g_tok_offset;
                 if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
 
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
+                bool poly_ok = true;
                 for (int k = 0; k < poly_dim; ++k) {
                     if (idx + 1 >= tokens.size()) {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": POLY VCCS: not enough control node pairs");
+                        fprintf(stderr, "Warning: Line %d: POLY VCCS: not enough control node pairs — skipping\n", line.line_number);
+                        poly_ok = false;
+                        break;
                     }
                     int32_t cp = node_raw(tokens[idx]);
                     int32_t cn = node_raw(tokens[idx + 1]);
                     ctrl_pairs.push_back({cp, cn});
                     idx += 2;
                 }
+                if (!poly_ok) continue;
                 std::vector<double> coeffs;
-                for (; idx < tokens.size(); ++idx) {
-                    coeffs.push_back(parse_spice_number(tokens[idx]));
-                }
+                parse_poly_coeffs(tokens, idx, coeffs);
                 ckt.add_device(std::make_unique<NonlinearVCCS>(
                     name, np, nn, std::move(ctrl_pairs), std::move(coeffs)));
 
@@ -1827,15 +1985,15 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 std::string table_ctrl_token;
                 size_t table_data_start;
                 if (tok3g.substr(0, 6) == "table{") {
-                    table_ctrl_token = tokens[3].substr(5);
-                    table_data_start = 4;
+                    table_ctrl_token = tokens[3 - g_tok_offset].substr(5);
+                    table_data_start = 4 - g_tok_offset;
                 } else {
-                    if (tokens.size() < 6) {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": TABLE VCCS requires control expression and table points");
+                    if (tokens.size() < 6 - g_tok_offset) {
+                        fprintf(stderr, "Warning: Line %d: TABLE VCCS requires control expression and table points — skipping\n", line.line_number);
+                        continue;
                     }
-                    table_ctrl_token = tokens[4];
-                    table_data_start = 5;
+                    table_ctrl_token = tokens[4 - g_tok_offset];
+                    table_data_start = 5 - g_tok_offset;
                 }
                 std::string ctrl_expr = table_ctrl_token;
                 if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
@@ -1881,8 +2039,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     pts.push_back({px, py});
                 }
                 if (pts.empty()) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": TABLE VCCS: no table points found");
+                    fprintf(stderr, "Warning: Line %d: TABLE VCCS: no table points found — skipping\n", line.line_number);
+                    continue;
                 }
                 ckt.add_device(std::make_unique<TableVCCS>(
                     name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
@@ -1894,14 +2052,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 if (tok3g.substr(0, 6) == "value=") {
                     // VALUE={expr} as single token or VALUE=... — existing path
                     std::string rest;
-                    for (size_t i = 3; i < tokens.size(); ++i) {
+                    for (size_t i = 3 - g_tok_offset; i < tokens.size(); ++i) {
                         if (!rest.empty()) rest += ' ';
                         rest += tokens[i];
                     }
                     expr_str = rest.substr(rest.find('=') + 1);
                 } else {
                     // tok3g == "value", look for = in next tokens
-                    size_t expr_start = 4;
+                    size_t expr_start = 4 - g_tok_offset;
                     if (expr_start < tokens.size() && tokens[expr_start][0] == '=') {
                         if (tokens[expr_start].size() > 1) {
                             // "={expr}" — expression starts after =
@@ -1918,8 +2076,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                             }
                         }
                     } else {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": G element VALUE form requires VALUE={expr}");
+                        fprintf(stderr, "Warning: Line %d: G element VALUE form requires VALUE={expr} — skipping\n", line.line_number);
+                        continue;
                     }
                 }
                 while (!expr_str.empty() && std::isspace(static_cast<unsigned char>(expr_str.front())))
@@ -1934,8 +2092,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     expr_str.pop_back();
 
                 if (expr_str.empty()) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": G element VALUE form has empty expression");
+                    fprintf(stderr, "Warning: Line %d: G element VALUE form has empty expression — skipping\n", line.line_number);
+                    continue;
                 }
 
                 expr_str = expand_funcs(expr_str, func_defs);
@@ -1944,8 +2102,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 try {
                     compiled = asrc::CompiledExpression::compile(expr_str);
                 } catch (const ParseError& e) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": G element VALUE expression error: " + e.what());
+                    fprintf(stderr, "Warning: Line %d: G element VALUE expression error: %s — skipping\n", line.line_number, e.what());
+                    continue;
                 }
 
                 const auto& refs = compiled.var_refs();
@@ -2014,15 +2172,21 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
             } else {
                 // Linear form: G name np nn nc+ nc- gm
-                if (tokens.size() < 6) {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": VCCS requires name, np, nn, nc+, nc-, gm");
+                if (tokens.size() < 6 - g_tok_offset) {
+                    fprintf(stderr, "Warning: Line %d: VCCS requires name, np, nn, nc+, nc-, gm — skipping\n", line.line_number);
+                    continue;
                 }
-                int32_t ncp = node_raw(tokens[3]);
-                int32_t ncn = node_raw(tokens[4]);
-                double  gm  = parse_spice_number(tokens[5]);
+                int32_t ncp = node_raw(tokens[3 - g_tok_offset]);
+                int32_t ncn = node_raw(tokens[4 - g_tok_offset]);
+                double gm;
+                try {
+                    gm = parse_spice_number(tokens[5 - g_tok_offset]);
+                } catch (...) {
+                    fprintf(stderr, "Warning: Line %d: VCCS '%s' has invalid gm — skipping\n", line.line_number, name.c_str());
+                    continue;
+                }
                 auto vccs = std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm);
-                for (size_t k = 6; k < tokens.size(); ++k) {
+                for (size_t k = 6 - g_tok_offset; k < tokens.size(); ++k) {
                     std::string tok = to_lower(tokens[k]);
                     if (tok.starts_with("m="))
                         vccs->set_multiplier(parse_spice_number(tok.substr(2)));
@@ -2033,8 +2197,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
         } else if (elem_type == 'h') {
             // H name np nn [POLY(N) Vs1 ... coeffs | Vsense transresistance]
             if (tokens.size() < 5) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": CCVS requires name, np, nn, Vsense, transresistance");
+                fprintf(stderr, "Warning: Line %d: CCVS requires name, np, nn, Vsense, transresistance — skipping\n", line.line_number);
+                continue;
             }
             std::string tok3h = to_lower(tokens[3]);
             if (tok3h.substr(0, 4) == "poly") {
@@ -2064,16 +2228,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 vsense_names.reserve(poly_dim);
                 for (int k = 0; k < poly_dim; ++k) {
                     if (idx >= tokens.size()) {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": POLY CCVS: not enough sensing VSource names");
+                        fprintf(stderr, "Warning: Line %d: POLY CCVS: not enough sensing VSource names — skipping\n", line.line_number);
+                        break;
                     }
                     vsense_names.push_back(tokens[idx++]);
                 }
-                // Remaining tokens are polynomial coefficients
+                if ((int)vsense_names.size() < poly_dim) continue;
                 std::vector<double> coeffs;
-                for (; idx < tokens.size(); ++idx) {
-                    coeffs.push_back(parse_spice_number(tokens[idx]));
-                }
+                parse_poly_coeffs(tokens, idx, coeffs);
                 DeferredPolyCCVS hpd;
                 hpd.name = tokens[0];
                 hpd.np = node_raw(tokens[1]);
@@ -2084,21 +2246,25 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 deferred_poly_ccvs.push_back(std::move(hpd));
             } else {
                 // Linear form: H name np nn Vsense transresistance
-                DeferredCCVS hd;
-                hd.name        = tokens[0];
-                hd.np          = node_raw(tokens[1]);
-                hd.nn          = node_raw(tokens[2]);
-                hd.vsense_name = tokens[3];
-                hd.rm          = parse_spice_number(tokens[4]);
-                hd.line_number = line.line_number;
-                deferred_ccvs.push_back(std::move(hd));
+                try {
+                    DeferredCCVS hd;
+                    hd.name        = tokens[0];
+                    hd.np          = node_raw(tokens[1]);
+                    hd.nn          = node_raw(tokens[2]);
+                    hd.vsense_name = tokens[3];
+                    hd.rm          = parse_spice_number(tokens[4]);
+                    hd.line_number = line.line_number;
+                    deferred_ccvs.push_back(std::move(hd));
+                } catch (...) {
+                    fprintf(stderr, "Warning: Line %d: CCVS '%s' has invalid transresistance — skipping\n", line.line_number, tokens[0].c_str());
+                }
             }
 
         } else if (elem_type == 'f') {
             // F name np nn [POLY(N) Vs1 ... coeffs | Vsense gain]
             if (tokens.size() < 5) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": CCCS requires name, np, nn, Vsense, gain");
+                fprintf(stderr, "Warning: Line %d: CCCS requires name, np, nn, Vsense, gain — skipping\n", line.line_number);
+                continue;
             }
             std::string tok3f = to_lower(tokens[3]);
             if (tok3f.substr(0, 4) == "poly") {
@@ -2128,16 +2294,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 vsense_names.reserve(poly_dim);
                 for (int k = 0; k < poly_dim; ++k) {
                     if (idx >= tokens.size()) {
-                        throw ParseError("Line " + std::to_string(line.line_number) +
-                                         ": POLY CCCS: not enough sensing VSource names");
+                        fprintf(stderr, "Warning: Line %d: POLY CCCS: not enough sensing VSource names — skipping\n", line.line_number);
+                        break;
                     }
                     vsense_names.push_back(tokens[idx++]);
                 }
-                // Remaining tokens are polynomial coefficients
+                if ((int)vsense_names.size() < poly_dim) continue;
                 std::vector<double> coeffs;
-                for (; idx < tokens.size(); ++idx) {
-                    coeffs.push_back(parse_spice_number(tokens[idx]));
-                }
+                parse_poly_coeffs(tokens, idx, coeffs);
                 DeferredPolyCCCS fpd;
                 fpd.name = tokens[0];
                 fpd.np = node_raw(tokens[1]);
@@ -2148,44 +2312,63 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 deferred_poly_cccs.push_back(std::move(fpd));
             } else {
                 // Linear form: F name np nn Vsense gain
-                DeferredCCCS fd;
-                fd.name        = tokens[0];
-                fd.np          = node_raw(tokens[1]);
-                fd.nn          = node_raw(tokens[2]);
-                fd.vsense_name = tokens[3];
-                fd.gain        = parse_spice_number(tokens[4]);
-                fd.line_number = line.line_number;
-                for (size_t k = 5; k < tokens.size(); ++k) {
-                    std::string tok = to_lower(tokens[k]);
-                    if (tok.starts_with("m="))
-                        fd.m = parse_spice_number(tok.substr(2));
+                try {
+                    DeferredCCCS fd;
+                    fd.name        = tokens[0];
+                    fd.np          = node_raw(tokens[1]);
+                    fd.nn          = node_raw(tokens[2]);
+                    fd.vsense_name = tokens[3];
+                    fd.gain        = parse_spice_number(tokens[4]);
+                    fd.line_number = line.line_number;
+                    for (size_t k = 5; k < tokens.size(); ++k) {
+                        std::string tok = to_lower(tokens[k]);
+                        if (tok.starts_with("m="))
+                            fd.m = parse_spice_number(tok.substr(2));
+                    }
+                    deferred_cccs.push_back(std::move(fd));
+                } catch (...) {
+                    fprintf(stderr, "Warning: Line %d: CCCS '%s' has invalid gain — skipping\n", line.line_number, tokens[0].c_str());
                 }
-                deferred_cccs.push_back(std::move(fd));
             }
 
         } else if (elem_type == 'k') {
-            // K name L1 L2 coupling_coefficient
+            // K name L1 L2 [L3 ...] coupling_coefficient
             if (tokens.size() < 4) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": K element requires name, L1, L2, coupling_coefficient");
+                fprintf(stderr, "Warning: Line %d: K element requires name, L1, L2, coupling_coefficient — skipping\n", line.line_number);
+                continue;
             }
-            DeferredCoupledInductor kd;
-            kd.name = tokens[0];
-            kd.l1_name = tokens[1];
-            kd.l2_name = tokens[2];
-            kd.coupling = parse_spice_number(tokens[3]);
-            kd.line_number = line.line_number;
-            if (to_lower(kd.l1_name) == to_lower(kd.l2_name)) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": K element cannot couple an inductor to itself");
+            // Last token is the coupling coefficient; everything between
+            // tokens[1] and the last token are inductor names.
+            double coupling = 0.0;
+            try {
+                coupling = parse_spice_number(tokens.back());
+            } catch (...) {
+                fprintf(stderr, "Warning: Line %d: K element '%s' has invalid coupling coefficient '%s' — skipping\n",
+                        line.line_number, tokens[0].c_str(), tokens.back().c_str());
+                continue;
             }
-            deferred_coupled_inductors.push_back(std::move(kd));
+            std::vector<std::string> ind_names;
+            for (size_t k = 1; k + 1 < tokens.size(); ++k) {
+                ind_names.push_back(tokens[k]);
+            }
+            // Generate pairwise coupling entries
+            for (size_t a = 0; a < ind_names.size(); ++a) {
+                for (size_t b = a + 1; b < ind_names.size(); ++b) {
+                    DeferredCoupledInductor kd;
+                    kd.name = tokens[0];
+                    kd.l1_name = ind_names[a];
+                    kd.l2_name = ind_names[b];
+                    kd.coupling = coupling;
+                    kd.line_number = line.line_number;
+                    deferred_coupled_inductors.push_back(std::move(kd));
+                }
+            }
 
         } else if (elem_type == 't') {
             // T name p1+ p1- p2+ p2- Z0=val TD=val
             if (tokens.size() < 6) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": T element requires name, p1+, p1-, p2+, p2-, Z0=val TD=val");
+                fprintf(stderr, "Warning: Line %d: T element requires name, p1+, p1-, p2+, p2-, Z0=... TD=... — skipping\n", line.line_number);
+                continue;
             }
             std::string tname = tokens[0];
             int32_t tp1p = node_raw(tokens[1]);
@@ -2222,12 +2405,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 }
             }
             if (!z0_given) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": T element '" + tname + "' missing Z0=");
+                fprintf(stderr, "Warning: Line %d: T element '%s' missing Z0= — skipping\n", line.line_number, tname.c_str());
+                continue;
             }
             if (tz0 <= 0.0) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": T element '" + tname + "' Z0 must be positive");
+                fprintf(stderr, "Warning: Line %d: T element '%s' Z0 must be positive — skipping\n", line.line_number, tname.c_str());
+                continue;
             }
             if (ttd < 0.0) {
                 if (tf > 0.0 && tnl > 0.0) {
@@ -2235,8 +2418,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 } else if (tf > 0.0 && tnl < 0.0) {
                     ttd = 0.25 / tf;
                 } else {
-                    throw ParseError("Line " + std::to_string(line.line_number) +
-                                     ": T element '" + tname + "' requires TD= or F= (with optional NL=)");
+                    fprintf(stderr, "Warning: Line %d: T element '%s' requires TD= or F= — skipping\n", line.line_number, tname.c_str());
+                    continue;
                 }
             }
             auto tl = std::make_unique<TransmissionLine>(tname, tp1p, tp1n, tp2p, tp2n, tz0, ttd);
@@ -2247,8 +2430,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
         } else if (elem_type == 'o') {
             // O name p1+ p1- p2+ p2- modelname [IC=v1,i1,v2,i2]
             if (tokens.size() < 6) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": O element requires name, p1+, p1-, p2+, p2-, modelname");
+                fprintf(stderr, "Warning: Line %d: O element requires name, p1+, p1-, p2+, p2-, modelname — skipping\n", line.line_number);
+                continue;
             }
             DeferredLTRA ol;
             ol.name       = tokens[0];
@@ -2297,8 +2480,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
         } else if (elem_type == 's') {
             // S name n+ n- nc+ nc- modelname
             if (tokens.size() < 6) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": S element requires name, n+, n-, nc+, nc-, modelname");
+                fprintf(stderr, "Warning: Line %d: S element requires name, n+, n-, nc+, nc-, modelname — skipping\n", line.line_number);
+                continue;
             }
             DeferredVSwitch sd;
             sd.name       = tokens[0];
@@ -2313,8 +2496,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
         } else if (elem_type == 'w') {
             // W name n+ n- Vsense modelname
             if (tokens.size() < 5) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": W element requires name, n+, n-, Vsense, modelname");
+                fprintf(stderr, "Warning: Line %d: W element requires name, n+, n-, Vsense, modelname — skipping\n", line.line_number);
+                continue;
             }
             DeferredCSwitch wd;
             wd.name        = tokens[0];
@@ -2329,8 +2512,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             // B name np nn V={expression} or I={expression} [tc1=val] [tc2=val] [temp=val] [dtemp=val]
             // Syntax: Bname node+ node- V={expr} | I={expr}
             if (tokens.size() < 4) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": B element requires name, np, nn, V={expr} or I={expr}");
+                fprintf(stderr, "Warning: Line %d: B element requires name, np, nn, V={expr} or I={expr} — skipping\n", line.line_number);
+                continue;
             }
             std::string name = tokens[0];
             int32_t np = node_raw(tokens[1]);
@@ -2374,8 +2557,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 mode = ASRCDevice::Mode::CURRENT;
                 expr_str = rest.substr(2);
             } else {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": B element requires V={expr} or I={expr}, got '" + rest + "'");
+                fprintf(stderr, "Warning: Line %d: B element requires V={expr} or I={expr}, got '%s' — skipping\n", line.line_number, rest.c_str());
+                continue;
             }
 
             // Strip optional surrounding braces from expression
@@ -2393,8 +2576,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             try {
                 compiled = asrc::CompiledExpression::compile(expr_str);
             } catch (const ParseError& e) {
-                throw ParseError("Line " + std::to_string(line.line_number) +
-                                 ": B element expression error: " + e.what());
+                fprintf(stderr, "Warning: Line %d: B element expression error: %s — skipping\n", line.line_number, e.what());
+                continue;
             }
 
             // Resolve variable references: V() refs use node_raw(), I() refs deferred
@@ -2499,9 +2682,9 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
             }
         }
         if (!vs) {
-            throw ParseError("Line " + std::to_string(hd.line_number) +
-                             ": CCVS '" + hd.name + "' references unknown voltage source '" +
-                             hd.vsense_name + "'");
+            fprintf(stderr, "Warning: Line %d: CCVS '%s' references unknown voltage source '%s' — skipping\n",
+                    hd.line_number, hd.name.c_str(), hd.vsense_name.c_str());
+            continue;
         }
         ckt.add_device(std::make_unique<CCVS>(hd.name, hd.np, hd.nn, hd.rm, vs));
     }
@@ -2518,9 +2701,9 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
             }
         }
         if (!vs) {
-            throw ParseError("Line " + std::to_string(fd.line_number) +
-                             ": CCCS '" + fd.name + "' references unknown voltage source '" +
-                             fd.vsense_name + "'");
+            fprintf(stderr, "Warning: Line %d: CCCS '%s' references unknown voltage source '%s' — skipping\n",
+                    fd.line_number, fd.name.c_str(), fd.vsense_name.c_str());
+            continue;
         }
         auto cccs = std::make_unique<CCCS>(fd.name, fd.np, fd.nn, fd.gain, vs);
         if (fd.m != 1.0) cccs->set_multiplier(fd.m);
@@ -2531,6 +2714,7 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
     for (const auto& hpd : deferred_poly_ccvs) {
         std::vector<const VSource*> vsenses;
         vsenses.reserve(hpd.vsense_names.size());
+        bool poly_ccvs_ok = true;
         for (const auto& vsname : hpd.vsense_names) {
             const VSource* vs = nullptr;
             for (const auto& dev : ckt.devices()) {
@@ -2542,12 +2726,14 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
                 }
             }
             if (!vs) {
-                throw ParseError("Line " + std::to_string(hpd.line_number) +
-                                 ": POLY CCVS '" + hpd.name +
-                                 "' references unknown voltage source '" + vsname + "'");
+                fprintf(stderr, "Warning: Line %d: POLY CCVS '%s' references unknown voltage source '%s' — skipping\n",
+                        hpd.line_number, hpd.name.c_str(), vsname.c_str());
+                poly_ccvs_ok = false;
+                break;
             }
             vsenses.push_back(vs);
         }
+        if (!poly_ccvs_ok) continue;
         ckt.add_device(std::make_unique<NonlinearCCVS>(
             hpd.name, hpd.np, hpd.nn, std::move(vsenses), hpd.coeffs));
     }
@@ -2556,6 +2742,7 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
     for (const auto& fpd : deferred_poly_cccs) {
         std::vector<const VSource*> vsenses;
         vsenses.reserve(fpd.vsense_names.size());
+        bool poly_cccs_ok = true;
         for (const auto& vsname : fpd.vsense_names) {
             const VSource* vs = nullptr;
             for (const auto& dev : ckt.devices()) {
@@ -2567,12 +2754,14 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
                 }
             }
             if (!vs) {
-                throw ParseError("Line " + std::to_string(fpd.line_number) +
-                                 ": POLY CCCS '" + fpd.name +
-                                 "' references unknown voltage source '" + vsname + "'");
+                fprintf(stderr, "Warning: Line %d: POLY CCCS '%s' references unknown voltage source '%s' — skipping\n",
+                        fpd.line_number, fpd.name.c_str(), vsname.c_str());
+                poly_cccs_ok = false;
+                break;
             }
             vsenses.push_back(vs);
         }
+        if (!poly_cccs_ok) continue;
         ckt.add_device(std::make_unique<NonlinearCCCS>(
             fpd.name, fpd.np, fpd.nn, std::move(vsenses), fpd.coeffs));
     }
@@ -2587,7 +2776,11 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
             auto pe_it = parsed_elements.find(prefix);
             if (pe_it != parsed_elements.end() && !pe_it->second.empty()) {
                 ParseContext resolve_ctx{ckt, node_raw, models, 0, error_fn};
-                handler_entry.resolve(pe_it->second, models, ckt, resolve_ctx);
+                try {
+                    handler_entry.resolve(pe_it->second, models, ckt, resolve_ctx);
+                } catch (const ParseError& e) {
+                    fprintf(stderr, "Warning: %s — skipping device resolution\n", e.what());
+                }
             }
         }
     }
@@ -2607,14 +2800,14 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
             }
         }
         if (!l1) {
-            throw ParseError("Line " + std::to_string(kd.line_number) +
-                             ": K element '" + kd.name + "' references unknown inductor '" +
-                             kd.l1_name + "'");
+            fprintf(stderr, "Warning: Line %d: K element '%s' references unknown inductor '%s' — skipping\n",
+                    kd.line_number, kd.name.c_str(), kd.l1_name.c_str());
+            continue;
         }
         if (!l2) {
-            throw ParseError("Line " + std::to_string(kd.line_number) +
-                             ": K element '" + kd.name + "' references unknown inductor '" +
-                             kd.l2_name + "'");
+            fprintf(stderr, "Warning: Line %d: K element '%s' references unknown inductor '%s' — skipping\n",
+                    kd.line_number, kd.name.c_str(), kd.l2_name.c_str());
+            continue;
         }
         ckt.add_device(std::make_unique<CoupledInductor>(kd.name, l1, l2, kd.coupling));
     }
@@ -2625,15 +2818,17 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         if (it == models.end()) {
             auto it2 = models.find(to_lower(sd.model_name));
             if (it2 == models.end()) {
-                throw ParseError("Line " + std::to_string(sd.line_number) +
-                                 ": Unknown model '" + sd.model_name + "'");
+                fprintf(stderr, "Warning: Line %d: S element references unknown model '%s' — skipping\n",
+                        sd.line_number, sd.model_name.c_str());
+                continue;
             }
             it = it2;
         }
         std::string model_type = to_lower(it->second.type);
         if (model_type != "sw") {
-            throw ParseError("Line " + std::to_string(sd.line_number) +
-                             ": S element references non-SW model '" + sd.model_name + "'");
+            fprintf(stderr, "Warning: Line %d: S element references non-SW model '%s' — skipping\n",
+                    sd.line_number, sd.model_name.c_str());
+            continue;
         }
         SwitchModel sm = to_switch_model(it->second);
         ckt.add_device(std::make_unique<VSwitch>(
@@ -2642,24 +2837,24 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
 
     // Resolve deferred CSwitch (W elements)
     for (const auto& wd : deferred_cswitches) {
-        // Look up the model card
         auto it = models.find(wd.model_name);
         if (it == models.end()) {
             auto it2 = models.find(to_lower(wd.model_name));
             if (it2 == models.end()) {
-                throw ParseError("Line " + std::to_string(wd.line_number) +
-                                 ": Unknown model '" + wd.model_name + "'");
+                fprintf(stderr, "Warning: Line %d: W element references unknown model '%s' — skipping\n",
+                        wd.line_number, wd.model_name.c_str());
+                continue;
             }
             it = it2;
         }
         std::string model_type = to_lower(it->second.type);
         if (model_type != "csw") {
-            throw ParseError("Line " + std::to_string(wd.line_number) +
-                             ": W element references non-CSW model '" + wd.model_name + "'");
+            fprintf(stderr, "Warning: Line %d: W element references non-CSW model '%s' — skipping\n",
+                    wd.line_number, wd.model_name.c_str());
+            continue;
         }
         SwitchModel sm = to_switch_model(it->second);
 
-        // Look up the sensing VSource by name
         const VSource* vs = nullptr;
         for (const auto& dev : ckt.devices()) {
             if (auto* v = dynamic_cast<const VSource*>(dev.get())) {
@@ -2670,9 +2865,9 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
             }
         }
         if (!vs) {
-            throw ParseError("Line " + std::to_string(wd.line_number) +
-                             ": W element '" + wd.name +
-                             "' references unknown voltage source '" + wd.vsense_name + "'");
+            fprintf(stderr, "Warning: Line %d: W element '%s' references unknown voltage source '%s' — skipping\n",
+                    wd.line_number, wd.name.c_str(), wd.vsense_name.c_str());
+            continue;
         }
         ckt.add_device(std::make_unique<CSwitch>(wd.name, wd.np, wd.nn, vs, sm));
     }
@@ -2684,15 +2879,17 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         if (it == models.end()) {
             auto it2 = models.find(to_lower(ol.model_name));
             if (it2 == models.end()) {
-                throw ParseError("Line " + std::to_string(ol.line_number) +
-                                 ": Unknown model '" + ol.model_name + "'");
+                fprintf(stderr, "Warning: Line %d: O element references unknown model '%s' — skipping\n",
+                        ol.line_number, ol.model_name.c_str());
+                continue;
             }
             it = it2;
         }
         std::string model_type = to_lower(it->second.type);
         if (model_type != "ltra") {
-            throw ParseError("Line " + std::to_string(ol.line_number) +
-                             ": O element references non-LTRA model '" + ol.model_name + "'");
+            fprintf(stderr, "Warning: Line %d: O element references non-LTRA model '%s' — skipping\n",
+                    ol.line_number, ol.model_name.c_str());
+            continue;
         }
 
         // Get or create the shared LTRA model
@@ -2724,8 +2921,9 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
                 else if (key == "truncdontcut") { lmodel->truncDontCut = true; }
             }
             if (!lmodel->setup(1e-3, 1e-12)) {
-                throw ParseError("Line " + std::to_string(ol.line_number) +
-                                 ": Invalid LTRA model parameters for '" + ol.model_name + "'");
+                fprintf(stderr, "Warning: Line %d: Invalid LTRA model parameters for '%s' — skipping\n",
+                        ol.line_number, ol.model_name.c_str());
+                continue;
             }
         }
 
@@ -2747,6 +2945,7 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         int nv = bd.expr.num_vars();
         std::vector<const VSource*> vsource_ptrs(nv, nullptr);
 
+        bool asrc_ok = true;
         for (int i = 0; i < nv; ++i) {
             if (refs[i].kind == asrc::VarKind::BRANCH_CURRENT &&
                 !bd.vsrc_names[i].empty()) {
@@ -2760,14 +2959,15 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
                     }
                 }
                 if (!vs) {
-                    throw ParseError("Line " + std::to_string(bd.line_number) +
-                                     ": B element '" + bd.name +
-                                     "' references unknown voltage source '" +
-                                     bd.vsrc_names[i] + "' in I()");
+                    fprintf(stderr, "Warning: Line %d: B element '%s' references unknown voltage source '%s' in I() — skipping\n",
+                            bd.line_number, bd.name.c_str(), bd.vsrc_names[i].c_str());
+                    asrc_ok = false;
+                    break;
                 }
                 vsource_ptrs[i] = vs;
             }
         }
+        if (!asrc_ok) continue;
 
         auto asrc_dev = std::make_unique<ASRCDevice>(
             bd.name, bd.np, bd.nn, bd.mode,
@@ -2797,7 +2997,7 @@ static std::string parse_filename_token(const std::string& line, size_t& pos) {
         ++pos;
         size_t end = line.find(quote_char, pos);
         if (end == std::string::npos) {
-            throw ParseError("Unterminated quoted filename");
+            end = line.size();
         }
         filename = line.substr(pos, end - pos);
         pos = end + 1;
@@ -2878,27 +3078,37 @@ std::string NetlistParser::resolve_includes(const std::string& content,
                 ++pos;
 
             if (pos >= line.size()) {
-                throw ParseError(".include directive missing filename");
+                fprintf(stderr, "Warning: .include directive missing filename — skipping\n");
+                result << '\n';
+                continue;
             }
 
             std::string filename = parse_filename_token(line, pos);
             if (filename.empty()) {
-                throw ParseError(".include directive has empty filename");
+                fprintf(stderr, "Warning: .include directive has empty filename — skipping\n");
+                result << '\n';
+                continue;
             }
 
-            auto [canonical_path, file_content] = open_lib_file(filename, base_dir, ".include");
-            std::string canonical_str = canonical_path.string();
-            if (include_stack.count(canonical_str)) {
-                throw ParseError(".include: circular include detected for file: " + canonical_str);
+            try {
+                auto [canonical_path, file_content] = open_lib_file(filename, base_dir, ".include");
+                std::string canonical_str = canonical_path.string();
+                if (include_stack.count(canonical_str)) {
+                    fprintf(stderr, "Warning: .include: circular include detected for file: %s — skipping\n",
+                            canonical_str.c_str());
+                    continue;
+                }
+
+                include_stack.insert(canonical_str);
+                std::string included_base_dir = canonical_path.parent_path().string();
+                std::string expanded = resolve_includes(file_content, included_base_dir, include_stack);
+                include_stack.erase(canonical_str);
+
+                result << expanded;
+                if (!expanded.empty() && expanded.back() != '\n') result << '\n';
+            } catch (const ParseError& e) {
+                fprintf(stderr, "Warning: %s — skipping\n", e.what());
             }
-
-            include_stack.insert(canonical_str);
-            std::string included_base_dir = canonical_path.parent_path().string();
-            std::string expanded = resolve_includes(file_content, included_base_dir, include_stack);
-            include_stack.erase(canonical_str);
-
-            result << expanded;
-            if (!expanded.empty() && expanded.back() != '\n') result << '\n';
             continue;
         }
 
@@ -2955,23 +3165,25 @@ std::string NetlistParser::resolve_includes(const std::string& content,
                 }
 
                 // Resolve the library file
-                auto [canonical_path, file_content] = open_lib_file(filename, base_dir, ".lib");
-                std::string canonical_str = canonical_path.string();
-                if (include_stack.count(canonical_str)) {
-                    throw ParseError(".lib: circular include detected for file: " + canonical_str);
+                try {
+                    auto [canonical_path, file_content] = open_lib_file(filename, base_dir, ".lib");
+                    std::string canonical_str = canonical_path.string();
+                    if (include_stack.count(canonical_str)) {
+                        fprintf(stderr, "Warning: .lib: circular include detected for file: %s — skipping\n",
+                                canonical_str.c_str());
+                    } else {
+                        std::string section_content = extract_lib_section(file_content, section);
+                        include_stack.insert(canonical_str);
+                        std::string lib_base_dir = canonical_path.parent_path().string();
+                        std::string expanded = resolve_includes(section_content, lib_base_dir, include_stack);
+                        include_stack.erase(canonical_str);
+
+                        result << expanded;
+                        if (!expanded.empty() && expanded.back() != '\n') result << '\n';
+                    }
+                } catch (const ParseError& e) {
+                    fprintf(stderr, "Warning: %s — skipping\n", e.what());
                 }
-
-                // Extract the named section from the library file
-                std::string section_content = extract_lib_section(file_content, section);
-
-                // Recursively resolve includes/libs within the extracted section
-                include_stack.insert(canonical_str);
-                std::string lib_base_dir = canonical_path.parent_path().string();
-                std::string expanded = resolve_includes(section_content, lib_base_dir, include_stack);
-                include_stack.erase(canonical_str);
-
-                result << expanded;
-                if (!expanded.empty() && expanded.back() != '\n') result << '\n';
             }
             // 0 or 1 tokens after .lib => bare ".lib" or ".lib section_name" delimiter — skip
             continue;

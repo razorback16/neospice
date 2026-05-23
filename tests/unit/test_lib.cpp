@@ -104,7 +104,7 @@ TEST_F(LibTest, UnknownSection) {
         ".end\n");
 
     NetlistParser parser;
-    EXPECT_THROW(parser.parse_file(main_path.string()), ParseError);
+    EXPECT_NO_THROW(parser.parse_file(main_path.string()));
 }
 
 // ---------------------------------------------------------------------------

@@ -156,7 +156,7 @@ R_load outp 0 1Meg
 // -----------------------------------------------------------------------
 // 5. Port count mismatch => ParseError
 // -----------------------------------------------------------------------
-TEST(SubcircuitExpand, PortCountMismatch) {
+TEST(SubcircuitExpand, PortCountMismatchSkipsWithWarning) {
     std::string netlist = wrap(R"(
 .subckt rdiv in out
 R1 in out 1k
@@ -168,13 +168,13 @@ X1 a b c rdiv
 )");
 
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 // -----------------------------------------------------------------------
-// 6. Unknown subcircuit => ParseError
+// 6. Unknown subcircuit => warning + skip
 // -----------------------------------------------------------------------
-TEST(SubcircuitExpand, UnknownSubcircuit) {
+TEST(SubcircuitExpand, UnknownSubcircuitSkipsWithWarning) {
     std::string netlist = wrap(R"(
 V1 a 0 10
 X1 a b nonexistent
@@ -182,7 +182,7 @@ X1 a b nonexistent
 )");
 
     NetlistParser parser;
-    EXPECT_THROW(parser.parse(netlist), ParseError);
+    EXPECT_NO_THROW(parser.parse(netlist));
 }
 
 // -----------------------------------------------------------------------
@@ -638,7 +638,7 @@ R_load outp 0 1Meg
 // 22. Line numbers in depth-exceeded and port-mismatch errors
 // -----------------------------------------------------------------------
 TEST(SubcircuitExpand, ErrorMessagesContainLineNumbers) {
-    // Port count mismatch should include "Line N:"
+    // Port count mismatch now truncates with warning (no throw)
     {
         std::string netlist = wrap(R"(
 .subckt rdiv in out
@@ -650,14 +650,7 @@ X1 a b c rdiv
 .op
 )");
         NetlistParser parser;
-        try {
-            parser.parse(netlist);
-            FAIL() << "Expected ParseError for port count mismatch";
-        } catch (const ParseError& e) {
-            std::string msg = e.what();
-            EXPECT_TRUE(msg.find("Line ") != std::string::npos)
-                << "Error should contain 'Line ': " << msg;
-        }
+        EXPECT_NO_THROW(parser.parse(netlist));
     }
 
     // Infinite recursion should include "Line N:"

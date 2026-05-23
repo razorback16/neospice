@@ -248,7 +248,7 @@ R3 outn 0 1k
 // ---------------------------------------------------------------------------
 // Error test: referencing a non-existent voltage source
 // ---------------------------------------------------------------------------
-TEST(CCVS, ParseErrorUnknownVSource) {
+TEST(CCVS, ParseErrorUnknownVSourceSkipsWithWarning) {
     Simulator sim;
     std::string netlist = R"(
 Bad CCVS reference
@@ -258,7 +258,7 @@ R1 out 0 1k
 .op
 .end
 )";
-    EXPECT_THROW(sim.parse(netlist), ParseError);
+    EXPECT_NO_THROW(sim.parse(netlist));
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ H1 out 0 Vsense
 .op
 .end
 )";
-    EXPECT_THROW(sim.parse(netlist), ParseError);
+    EXPECT_NO_THROW(sim.parse(netlist));
 }
 
 // ---------------------------------------------------------------------------

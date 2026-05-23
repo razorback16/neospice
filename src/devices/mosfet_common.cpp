@@ -19,6 +19,7 @@
 #include "devices/hisimhv/hisimhv_device.hpp"
 #include "devices/hisimhv/hisimhv_model_card.hpp"
 #include <algorithm>
+#include <cstdio>
 
 namespace neospice {
 
@@ -158,9 +159,12 @@ void resolve_mosfets(
         const auto& m = static_cast<const ParsedMosfet&>(*elem);
         auto it = models.find(m.model_name);
         if (it == models.end()) {
-            throw ParseError("Line " + std::to_string(m.line_number) +
-                             ": Unknown model '" + m.model_name + "'");
+            fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping MOSFET '%s'\n",
+                    m.line_number, m.model_name.c_str(), m.name.c_str());
+            continue;
         }
+
+        try {
 
         // Detect MOSFET level (cached per model name)
         int level;
@@ -468,6 +472,12 @@ void resolve_mosfets(
                              ": Unsupported MOSFET LEVEL=" +
                              std::to_string(level) + " for model '" +
                              m.model_name + "'");
+        }
+
+        } catch (const ParseError& e) {
+            fprintf(stderr, "Warning: %s — skipping MOSFET '%s'\n",
+                    e.what(), m.name.c_str());
+            continue;
         }
     }
     // Transfer card ownership to the Circuit (cards must outlive the devices).

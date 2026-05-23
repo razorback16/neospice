@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -444,7 +445,11 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
             return parse_function(lname);
         }
 
-        throw ParseError("ASRC expression: unknown identifier '" + name + "'");
+        fprintf(stderr, "Warning: ASRC expression: unknown identifier '%s' — defaulting to 0\n", name.c_str());
+        auto node = std::make_unique<ASTNode>();
+        node->type = NodeType::CONSTANT;
+        node->value = 0.0;
+        return node;
     }
 
     throw ParseError("ASRC expression: unexpected character '" +

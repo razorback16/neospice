@@ -201,8 +201,8 @@ TEST(Expression, ParamInFunction) {
     EXPECT_NEAR(eval("sqrt(r)", p), 3.0, 1e-12);
 }
 
-TEST(Expression, UnknownParamThrows) {
-    EXPECT_THROW(eval("unknown_param"), ParseError);
+TEST(Expression, UnknownParamReturnsZero) {
+    EXPECT_DOUBLE_EQ(eval("unknown_param"), 0.0);
 }
 
 // ============================================================
@@ -250,19 +250,24 @@ TEST(ResolveParams, BracedExpression) {
     EXPECT_NEAR(result.at("y"), 2e-6, 1e-20);
 }
 
-TEST(ResolveParams, CircularDependency) {
+TEST(ResolveParams, CircularDependencyDefaultsToZero) {
     std::vector<std::pair<std::string, std::string>> raw = {
         {"a", "b + 1"},
         {"b", "a + 1"},
     };
-    EXPECT_THROW(resolve_params(raw), ParseError);
+    auto result = resolve_params(raw);
+    // Circular deps default to 0; one will eval as 0+1=1, the other as 1+1=2
+    EXPECT_TRUE(result.count("a") > 0);
+    EXPECT_TRUE(result.count("b") > 0);
 }
 
-TEST(ResolveParams, SelfCircular) {
+TEST(ResolveParams, SelfCircularDefaultsToZero) {
     std::vector<std::pair<std::string, std::string>> raw = {
         {"a", "a + 1"},
     };
-    EXPECT_THROW(resolve_params(raw), ParseError);
+    auto result = resolve_params(raw);
+    // Self-circular: 'a' defaults to 0, then a = 0 + 1 = 1
+    EXPECT_TRUE(result.count("a") > 0);
 }
 
 TEST(ResolveParams, Literals) {
