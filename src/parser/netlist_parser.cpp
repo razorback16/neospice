@@ -491,8 +491,22 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
                         // key=value => parameter default
                         std::string key = to_lower(tok.substr(0, eq_pos));
                         std::string val = tok.substr(eq_pos + 1);
+                        // Handle "key= value" (space after =)
+                        if (val.empty() && i + 1 < line.tokens.size() &&
+                            line.tokens[i + 1].find('=') == std::string::npos &&
+                            to_lower(line.tokens[i + 1]) != "params:" &&
+                            to_lower(line.tokens[i + 1]) != "optional:") {
+                            val = line.tokens[++i];
+                        }
                         current_def.default_params.emplace_back(key, val);
                         seen_param = true;
+                    } else if (seen_param && i + 1 < line.tokens.size() &&
+                               line.tokens[i + 1] == "=" && i + 2 < line.tokens.size()) {
+                        // Handle "key = value" (spaces around =)
+                        std::string key = to_lower(tok);
+                        std::string val = line.tokens[i + 2];
+                        current_def.default_params.emplace_back(key, val);
+                        i += 2;
                     } else {
                         // No '=' => port name (some dialects mix ports and params freely)
                         current_def.ports.push_back(to_lower(tok));

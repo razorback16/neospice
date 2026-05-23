@@ -266,8 +266,20 @@ void extract_nested_defs(
                 if (eq_pos != std::string::npos) {
                     std::string key = to_lower(tok.substr(0, eq_pos));
                     std::string val = tok.substr(eq_pos + 1);
+                    if (val.empty() && i + 1 < line.tokens.size() &&
+                        line.tokens[i + 1].find('=') == std::string::npos &&
+                        to_lower(line.tokens[i + 1]) != "params:" &&
+                        to_lower(line.tokens[i + 1]) != "optional:") {
+                        val = line.tokens[++i];
+                    }
                     current_def.default_params.emplace_back(key, val);
                     seen_param = true;
+                } else if (seen_param && i + 1 < line.tokens.size() &&
+                           line.tokens[i + 1] == "=" && i + 2 < line.tokens.size()) {
+                    std::string key = to_lower(tok);
+                    std::string val = line.tokens[i + 2];
+                    current_def.default_params.emplace_back(key, val);
+                    i += 2;
                 } else {
                     current_def.ports.push_back(to_lower(tok));
                 }
@@ -546,11 +558,29 @@ std::vector<TokenizedLine> expand_instance(
                 if (eq_pos != std::string::npos) {
                     std::string key = to_lower(line.tokens[i].substr(0, eq_pos));
                     std::string val_str = line.tokens[i].substr(eq_pos + 1);
-                    try {
-                        params[key] = eval_expression(val_str, params);
-                    } catch (...) {
-                        // Ignore param evaluation failures during body processing
+                    if (val_str.empty() && i + 1 < line.tokens.size()) {
+                        val_str = line.tokens[++i];
                     }
+                    if (!key.empty() && !val_str.empty()) {
+                        try {
+                            params[key] = eval_expression(val_str, params);
+                        } catch (...) {
+                            try { params[key] = parse_spice_number(val_str); } catch (...) {}
+                        }
+                    }
+                } else if (line.tokens[i] != "=" &&
+                           i + 1 < line.tokens.size() && line.tokens[i + 1] == "=" &&
+                           i + 2 < line.tokens.size()) {
+                    std::string key = to_lower(line.tokens[i]);
+                    std::string val_str = line.tokens[i + 2];
+                    if (!key.empty() && !val_str.empty()) {
+                        try {
+                            params[key] = eval_expression(val_str, params);
+                        } catch (...) {
+                            try { params[key] = parse_spice_number(val_str); } catch (...) {}
+                        }
+                    }
+                    i += 2;
                 }
             }
             continue;
@@ -617,16 +647,35 @@ std::vector<TokenizedLine> expand_instance(
             std::unordered_map<std::string, double> sub_params;
             for (size_t i = subckt_pos + 1; i < line.tokens.size(); ++i) {
                 // Skip PSpice PARAMS: keyword separator
-                if (to_lower(line.tokens[i]) == "params:") continue;
+                std::string lower_ti = to_lower(line.tokens[i]);
+                if (lower_ti == "params:" || lower_ti == "optional:") continue;
                 auto eq_pos = line.tokens[i].find('=');
                 if (eq_pos != std::string::npos) {
                     std::string key = to_lower(line.tokens[i].substr(0, eq_pos));
                     std::string val_str = line.tokens[i].substr(eq_pos + 1);
-                    try {
-                        sub_params[key] = eval_expression(val_str, params);
-                    } catch (...) {
-                        sub_params[key] = parse_spice_number(val_str);
+                    if (val_str.empty() && i + 1 < line.tokens.size()) {
+                        val_str = line.tokens[++i];
                     }
+                    if (!key.empty() && !val_str.empty()) {
+                        try {
+                            sub_params[key] = eval_expression(val_str, params);
+                        } catch (...) {
+                            try { sub_params[key] = parse_spice_number(val_str); } catch (...) {}
+                        }
+                    }
+                } else if (line.tokens[i] != "=" &&
+                           i + 1 < line.tokens.size() && line.tokens[i + 1] == "=" &&
+                           i + 2 < line.tokens.size()) {
+                    std::string key = to_lower(line.tokens[i]);
+                    std::string val_str = line.tokens[i + 2];
+                    if (!key.empty() && !val_str.empty()) {
+                        try {
+                            sub_params[key] = eval_expression(val_str, params);
+                        } catch (...) {
+                            try { sub_params[key] = parse_spice_number(val_str); } catch (...) {}
+                        }
+                    }
+                    i += 2;
                 }
             }
 
