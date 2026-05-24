@@ -258,3 +258,27 @@ R1 out 0 1k
     auto ckt = parser.parse(netlist);
     EXPECT_EQ(ckt.devices().size(), 3u);
 }
+
+TEST(Parser, AKOCrossScopeResolution) {
+    std::string netlist = R"(
+AKO cross-scope test
+.subckt mybjt C B E
+.model QON NPN(BF=100 IS=1e-14)
+.model QP AKO:QON NPN(BF=200)
+Q1 C B E QP
+.ends
+X1 col base 0 mybjt
+VCC col 0 5
+VBB base 0 0.7
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    bool has_bjt = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dev->name().find("q1") != std::string::npos)
+            has_bjt = true;
+    }
+    EXPECT_TRUE(has_bjt);
+}

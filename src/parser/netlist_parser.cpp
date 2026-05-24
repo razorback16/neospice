@@ -748,13 +748,29 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
             ++pass;
             for (auto& [name, card] : state.models) {
                 if (card.ako_base.empty()) continue;
+                // Normalize ako_base to lowercase so it matches the lowercased
+                // model keys produced by subcircuit expansion (e.g. "QON" -> "qon").
+                std::transform(card.ako_base.begin(), card.ako_base.end(),
+                               card.ako_base.begin(), ::tolower);
                 auto base_it = state.models.find(card.ako_base);
                 if (base_it == state.models.end()) {
-                    fprintf(stderr, "Warning: .model %s AKO: base model '%s' not found — skipping inheritance\n",
-                            name.c_str(), card.ako_base.c_str());
-                    card.ako_base.clear(); // stop trying to resolve
-                    changed = true;
-                    continue;
+                    // Try instance-prefixed variant: if this model is "x1.qp"
+                    // and ako_base is "qon", try "x1.qon"
+                    auto dot_pos = name.rfind('.');
+                    if (dot_pos != std::string::npos) {
+                        std::string prefixed = name.substr(0, dot_pos + 1) + card.ako_base;
+                        base_it = state.models.find(prefixed);
+                        if (base_it != state.models.end()) {
+                            card.ako_base = prefixed;
+                        }
+                    }
+                    if (base_it == state.models.end()) {
+                        fprintf(stderr, "Warning: .model %s AKO: base model '%s' not found — skipping inheritance\n",
+                                name.c_str(), card.ako_base.c_str());
+                        card.ako_base.clear(); // stop trying to resolve
+                        changed = true;
+                        continue;
+                    }
                 }
                 const auto& base = base_it->second;
                 // If base itself has unresolved AKO, defer to next pass
