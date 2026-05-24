@@ -230,3 +230,31 @@ V1 1 0 1
     ASSERT_EQ(ckt.step_commands.size(), 1u);
     EXPECT_EQ(ckt.step_commands[0].kind, StepCommand::TEMP);
 }
+
+TEST(Parser, EElementValueWithoutEquals) {
+    std::string netlist = R"(
+E VALUE without equals
+V1 in 0 DC 1
+E1 out 0 VALUE {V(in)*2}
+R1 out 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_EQ(ckt.devices().size(), 3u);
+}
+
+TEST(Parser, GElementValueWithoutEquals) {
+    std::string netlist = R"(
+G VALUE without equals
+V1 in 0 DC 1
+G1 out 0 VALUE {V(in)*0.001}
+R1 out 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_EQ(ckt.devices().size(), 3u);
+}

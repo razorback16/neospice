@@ -1818,7 +1818,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                     expr_str = rest.substr(rest.find('=') + 1);
                 } else {
-                    // tok3 == "value", look for = in next tokens
+                    // tok3 == "value", look for = or { in next tokens
                     size_t expr_start = 4 - e_tok_offset;
                     if (expr_start < tokens.size() && tokens[expr_start][0] == '=') {
                         if (tokens[expr_start].size() > 1) {
@@ -1834,6 +1834,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                                 if (!expr_str.empty()) expr_str += ' ';
                                 expr_str += tokens[i];
                             }
+                        }
+                    } else if (expr_start < tokens.size()) {
+                        // PSpice: VALUE {expr} — no equals sign, expression follows directly
+                        for (size_t i = expr_start; i < tokens.size(); ++i) {
+                            if (!expr_str.empty()) expr_str += ' ';
+                            expr_str += tokens[i];
                         }
                     } else {
                         fprintf(stderr, "Warning: Line %d: E element VALUE form requires VALUE={expr} — skipping\n", line.line_number);
@@ -2108,7 +2114,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                     expr_str = rest.substr(rest.find('=') + 1);
                 } else {
-                    // tok3g == "value", look for = in next tokens
+                    // tok3g == "value", look for = or { in next tokens
                     size_t expr_start = 4 - g_tok_offset;
                     if (expr_start < tokens.size() && tokens[expr_start][0] == '=') {
                         if (tokens[expr_start].size() > 1) {
@@ -2124,6 +2130,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                                 if (!expr_str.empty()) expr_str += ' ';
                                 expr_str += tokens[i];
                             }
+                        }
+                    } else if (expr_start < tokens.size()) {
+                        // PSpice: VALUE {expr} — no equals sign
+                        for (size_t i = expr_start; i < tokens.size(); ++i) {
+                            if (!expr_str.empty()) expr_str += ' ';
+                            expr_str += tokens[i];
                         }
                     } else {
                         fprintf(stderr, "Warning: Line %d: G element VALUE form requires VALUE={expr} — skipping\n", line.line_number);
