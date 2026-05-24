@@ -74,11 +74,218 @@ def extract_models(filepath):
     return models
 
 
+def classify_pin_role(description):
+    """Classify a pin description string into a role for test circuit generation.
+
+    Returns one of: 'vcc', 'vee', 'inp', 'inm', 'out', 'gnd', 'generic'.
+    """
+    d = description.strip().lower()
+
+    # Check for standalone single-character tokens
+    if d in ('+',):
+        return 'inp'
+    if d in ('-',):
+        return 'inm'
+    if d in ('o',):
+        return 'out'
+
+    # VCC patterns (positive supply)
+    for kw in ('positive power supply', 'positive supply', 'positive power-supply',
+               '+vcc', '+v', '+vsupply', 'vcc', 'vdd', 'v+'):
+        if kw in d:
+            return 'vcc'
+
+    # VEE patterns (negative supply)
+    for kw in ('negative power supply', 'negative supply', 'negative power-supply',
+               '-vee', '-v', '-vsupply', 'vee', 'vss', 'v-'):
+        if kw in d:
+            return 'vee'
+
+    # Non-inverting input (MUST check before inverting)
+    for kw in ('non-inverting', 'non inverting', 'noninverting',
+               '+in', '+input', 'in+'):
+        if kw in d:
+            return 'inp'
+    # 'inp' as standalone word (avoid matching inside "inverting input")
+    if re.search(r'\binp\b', d):
+        return 'inp'
+
+    # Inverting input (after non-inverting check)
+    for kw in ('inverting input', 'inverting',
+               '-in', '-input', 'in-'):
+        if kw in d:
+            return 'inm'
+    # 'inm' as standalone word
+    if re.search(r'\binm\b', d):
+        return 'inm'
+
+    # Output
+    for kw in ('output', 'out', 'vout'):
+        if kw in d:
+            return 'out'
+
+    # Ground
+    for kw in ('ground', 'gnd', 'common'):
+        if kw in d:
+            return 'gnd'
+
+    return 'generic'
+
+
+def parse_pin_comments(lines, subckt_line_idx, num_ports):
+    """Parse pin-mapping comments above a .SUBCKT definition.
+
+    Tries three patterns (pipe-tree, inline tabular, compact inline).
+    Returns a list of role strings (length = num_ports), or None.
+    """
+    # Determine how far back to look (up to 20 lines)
+    start = max(0, subckt_line_idx - 20)
+    preceding = lines[start:subckt_line_idx]
+
+    # --- Pattern A: Pipe-tree ---
+    # Look for consecutive comment lines containing '|'
+    # In the pipe-tree format, each line's pipe count indicates which pin
+    # the description belongs to:
+    #   * connections:      non-inverting input   <- pin 0 (no pipes)
+    #   *                   |   inverting input   <- pin 1 (1 pipe)
+    #   *                   |   |   positive ...  <- pin 2 (2 pipes)
+    # Lines with pipes but no description (only '|' chars) are just
+    # continuation markers and are skipped.
+    pipe_lines = []
+    header_line = None  # The "connections:" line above the pipes (pin 0)
+    for i in range(len(preceding) - 1, -1, -1):
+        line = preceding[i]
+        stripped = line.strip()
+        if stripped.startswith('*') and '|' in stripped:
+            pipe_lines.insert(0, (start + i, stripped))
+        elif pipe_lines:
+            # Check if this is the header line (e.g., "* connections: non-inverting input")
+            if stripped.startswith('*'):
+                # Look for a description on this header line
+                m_hdr = re.match(r'\*\s*(?:[Cc]onnections:\s*)?(.+)', stripped)
+                if m_hdr and header_line is None:
+                    candidate = m_hdr.group(1).strip()
+                    # Only treat as pin-0 header if it looks like a pin description
+                    # (not a section separator like "///" or "***")
+                    if candidate and not re.match(r'^[/\*=\-]+$', candidate):
+                        header_line = candidate
+                continue
+            break
+
+    if pipe_lines:
+        roles = [None] * num_ports
+
+        # If we found a header line, it describes pin 0
+        if header_line:
+            # Extract description: if it has "connections:" prefix, take what follows
+            hdr_match = re.match(r'(?:[Cc]onnections:\s*)(.*)', header_line)
+            desc = hdr_match.group(1).strip() if hdr_match else header_line
+            if desc:
+                roles[0] = classify_pin_role(desc)
+
+        for _, pline in pipe_lines:
+            # Remove the leading '*'
+            content = pline[1:] if pline.startswith('*') else pline
+            # Count pipes and find description
+            pipe_count = content.count('|')
+            # Extract text after last pipe
+            last_pipe_idx = content.rfind('|')
+            desc = content[last_pipe_idx + 1:].strip()
+            if desc and pipe_count > 0:
+                pin_idx = pipe_count  # pipe_count = pin index (0-based)
+                if pin_idx < num_ports:
+                    roles[pin_idx] = classify_pin_role(desc)
+
+        # Only return if we got at least some roles
+        if any(r is not None for r in roles):
+            # Fill any None entries with 'generic'
+            return [r if r is not None else 'generic' for r in roles]
+
+    # --- Pattern C: Inline tabular header ---
+    # Look for a comment line 1-3 lines above .SUBCKT where token count matches num_ports
+    for offset in range(1, min(4, len(preceding) + 1)):
+        idx = len(preceding) - offset
+        if idx < 0:
+            break
+        line = preceding[idx].strip()
+        if not line.startswith('*'):
+            continue
+        content = line[1:].strip()  # remove '*'
+        tokens = content.split()
+        if len(tokens) == num_ports and all(t == t.upper() and t.isalpha() or
+                                              re.match(r'^[A-Z][A-Z0-9]*[+\-]?$', t) or
+                                              t in ('+', '-', 'O')
+                                              for t in tokens):
+            roles = [classify_pin_role(t) for t in tokens]
+            return roles
+
+    # --- Pattern B: Compact inline ---
+    # Match "Connections:" in a comment line 1-5 lines above
+    for offset in range(1, min(6, len(preceding) + 1)):
+        idx = len(preceding) - offset
+        if idx < 0:
+            break
+        line = preceding[idx].strip()
+        if not line.startswith('*'):
+            continue
+        m = re.match(r'\*\s*[Cc]onnections:\s*(.*)', line)
+        if m:
+            raw = m.group(1).strip()
+            if not raw:
+                continue
+            # Split glued tokens like V+V-O
+            # Split on boundaries between known role keywords
+            tokens = re.findall(r'V[+\-]|IN[+\-]|OUT|GND|LE|[+\-]|O|[A-Za-z][A-Za-z0-9]*', raw)
+            if len(tokens) == num_ports:
+                roles = [classify_pin_role(t) for t in tokens]
+                return roles
+
+    return None
+
+
+def detect_file_convention(lines):
+    """Detect a file-level pin convention header.
+
+    Scans the first ~100 lines for a CONNECTIONS: line that does NOT
+    immediately precede a .SUBCKT (within 5 lines). Returns a list of
+    roles, or None.
+    """
+    scan_end = min(len(lines), 100)
+    for i in range(scan_end):
+        line = lines[i].strip()
+        if not line.startswith('*'):
+            continue
+        m = re.match(r'\*\s*CONNECTIONS:\s+(.*)', line, re.IGNORECASE)
+        if not m:
+            continue
+        raw = m.group(1).strip()
+        if not raw:
+            continue
+
+        # Check that this does NOT immediately precede a .SUBCKT (within 5 lines)
+        near_subckt = False
+        for j in range(i + 1, min(i + 6, len(lines))):
+            if lines[j].strip().lower().startswith('.subckt'):
+                near_subckt = True
+                break
+        if near_subckt:
+            continue
+
+        # Parse tokens (handle glued like V+V-O)
+        tokens = re.findall(r'V[+\-]|IN[+\-]|OUT|GND|LE|CA|CB|[+\-]|O|[A-Za-z][A-Za-z0-9]*', raw)
+        if tokens:
+            roles = [classify_pin_role(t) for t in tokens]
+            return roles
+
+    return None
+
+
 def extract_subcircuits(filepath):
     """Extract top-level .subckt definitions from a SPICE file.
 
     Nested subcircuits (defined inside another .subckt/.ends block)
     are internal and cannot be instantiated standalone, so we skip them.
+    Returns list of (name, ports, filepath, roles) tuples.
     """
     subcircuits = []
     if is_binary_file(filepath):
@@ -88,11 +295,16 @@ def extract_subcircuits(filepath):
     except Exception:
         return subcircuits
 
+    lines = text.splitlines()
+
+    # Detect file-level pin convention (e.g., LinearTech.lib header)
+    file_convention = detect_file_convention(lines)
+
     # Build a set of line numbers that are inside .subckt/.ends blocks.
     # depth tracks nesting; we want only depth==0 definitions.
     depth = 0
     inside_subckt = set()
-    for lineno, raw_line in enumerate(text.splitlines(), start=1):
+    for lineno, raw_line in enumerate(lines, start=1):
         stripped = raw_line.strip().lower()
         # Mark lines at depth > 0 BEFORE incrementing on .subckt
         if stripped.startswith('.subckt'):
@@ -119,7 +331,20 @@ def extract_subcircuits(filepath):
             if '=' in tok or tok.upper() == 'PARAMS:':
                 break
             ports.append(tok)
-        subcircuits.append((name, ports, str(filepath.resolve())))
+
+        # Try to determine pin roles from comments
+        subckt_line_idx = match_lineno - 1  # 0-based index into lines list
+        roles = parse_pin_comments(lines, subckt_line_idx, len(ports))
+
+        # Fall back to file convention if pin comments didn't match
+        if roles is None and file_convention is not None and len(ports) == len(file_convention):
+            roles = file_convention
+
+        # Fall back to default 5-pin op-amp convention
+        if roles is None and len(ports) == 5:
+            roles = ['inp', 'inm', 'vcc', 'vee', 'out']
+
+        subcircuits.append((name, ports, str(filepath.resolve()), roles))
     return subcircuits
 
 
@@ -195,7 +420,7 @@ Z1 drain gg 0 {model_name}
         return None
 
 
-def make_subcircuit_test(name, ports, filepath):
+def make_subcircuit_test(name, ports, filepath, roles=None):
     """Generate a test circuit for a subcircuit based on port count."""
     n = len(ports)
     if n < 2:
@@ -207,11 +432,16 @@ def make_subcircuit_test(name, ports, filepath):
     lines = [f"* Test subcircuit {name}"]
     lines.append(f'.include "{filepath}"')
 
-    # Supply voltages
+    # Supply voltages — check both named ports and roles
     has_vcc = any(p in ('VCC', 'VDD', 'V+', 'VP', 'VS+', 'AVDD', 'VCC+',
                         'V_SUPPLY', 'VCC_IN', 'PWR') for p in port_names_upper)
     has_vee = any(p in ('VEE', 'VSS', 'V-', 'VN', 'VS-', 'AVSS', 'VCC-',
                         'GND', 'DGND', 'AGND') for p in port_names_upper)
+
+    if not has_vcc and roles:
+        has_vcc = 'vcc' in roles
+    if not has_vee and roles:
+        has_vee = 'vee' in roles
 
     if has_vcc:
         lines.append("VCC vcc_net 0 5")
@@ -220,7 +450,7 @@ def make_subcircuit_test(name, ports, filepath):
 
     # Build instance call: connect each port
     inst_ports = []
-    for p in ports:
+    for i, p in enumerate(ports):
         pu = p.upper()
         if pu in ('VCC', 'VDD', 'V+', 'VP', 'VS+', 'AVDD', 'VCC+',
                    'V_SUPPLY', 'VCC_IN', 'PWR'):
@@ -238,9 +468,29 @@ def make_subcircuit_test(name, ports, filepath):
         elif pu in ('IN-', 'INM', 'INB', 'INVERTING', 'B'):
             inst_ports.append("in_m")
         else:
-            # Generic: connect to a unique net with a resistor to ground
-            net = f"net_{p.lower()}"
-            inst_ports.append(net)
+            # Port name didn't match any keyword — try role-based assignment
+            if roles and i < len(roles):
+                role = roles[i]
+                if role == 'vcc':
+                    inst_ports.append("vcc_net")
+                elif role == 'vee':
+                    inst_ports.append("vee_net")
+                elif role == 'inp':
+                    inst_ports.append("in_p")
+                elif role == 'inm':
+                    inst_ports.append("in_m")
+                elif role == 'out':
+                    inst_ports.append("out_net")
+                elif role == 'gnd':
+                    inst_ports.append("0")
+                else:
+                    # Generic: connect to a unique net with a resistor to ground
+                    net = f"net_{p.lower()}"
+                    inst_ports.append(net)
+            else:
+                # Generic: connect to a unique net with a resistor to ground
+                net = f"net_{p.lower()}"
+                inst_ports.append(net)
 
     # Create the instance line
     port_str = " ".join(inst_ports)
@@ -351,8 +601,8 @@ def main():
                 rel_path = mf.relative_to(KICAD_LIB)
                 all_tests.append(('model', name, mtype, netlist, str(rel_path)))
 
-        for name, ports, fpath in extract_subcircuits(mf):
-            netlist = make_subcircuit_test(name, ports, fpath)
+        for name, ports, fpath, roles in extract_subcircuits(mf):
+            netlist = make_subcircuit_test(name, ports, fpath, roles)
             if netlist:
                 rel_path = mf.relative_to(KICAD_LIB)
                 all_tests.append(('subckt', name, f'{len(ports)}-port', netlist, str(rel_path)))
