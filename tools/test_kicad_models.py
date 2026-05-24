@@ -449,10 +449,31 @@ def make_subcircuit_test(name, ports, filepath, roles=None):
         lines.append("VEE vee_net 0 -5")
 
     # Build instance call: connect each port
+    # When roles are available from comment parsing, they take priority over
+    # the named-port heuristic (port names like 'VP' are ambiguous — could
+    # mean V+ supply or non-inverting input depending on the model).
     inst_ports = []
     for i, p in enumerate(ports):
         pu = p.upper()
-        if pu in ('VCC', 'VDD', 'V+', 'VP', 'VS+', 'AVDD', 'VCC+',
+        role = roles[i] if roles and i < len(roles) else None
+
+        if role and role != 'generic':
+            if role == 'vcc':
+                inst_ports.append("vcc_net")
+            elif role == 'vee':
+                inst_ports.append("vee_net")
+            elif role == 'inp':
+                inst_ports.append("in_p")
+            elif role == 'inm':
+                inst_ports.append("in_m")
+            elif role == 'out':
+                inst_ports.append("out_net")
+            elif role == 'gnd':
+                inst_ports.append("0")
+            else:
+                net = f"net_{p.lower()}"
+                inst_ports.append(net)
+        elif pu in ('VCC', 'VDD', 'V+', 'VP', 'VS+', 'AVDD', 'VCC+',
                    'V_SUPPLY', 'VCC_IN', 'PWR'):
             inst_ports.append("vcc_net")
         elif pu in ('VEE', 'VSS', 'V-', 'VN', 'VS-', 'AVSS', 'VCC-'):
@@ -468,29 +489,8 @@ def make_subcircuit_test(name, ports, filepath, roles=None):
         elif pu in ('IN-', 'INM', 'INB', 'INVERTING', 'B'):
             inst_ports.append("in_m")
         else:
-            # Port name didn't match any keyword — try role-based assignment
-            if roles and i < len(roles):
-                role = roles[i]
-                if role == 'vcc':
-                    inst_ports.append("vcc_net")
-                elif role == 'vee':
-                    inst_ports.append("vee_net")
-                elif role == 'inp':
-                    inst_ports.append("in_p")
-                elif role == 'inm':
-                    inst_ports.append("in_m")
-                elif role == 'out':
-                    inst_ports.append("out_net")
-                elif role == 'gnd':
-                    inst_ports.append("0")
-                else:
-                    # Generic: connect to a unique net with a resistor to ground
-                    net = f"net_{p.lower()}"
-                    inst_ports.append(net)
-            else:
-                # Generic: connect to a unique net with a resistor to ground
-                net = f"net_{p.lower()}"
-                inst_ports.append(net)
+            net = f"net_{p.lower()}"
+            inst_ports.append(net)
 
     # Create the instance line
     port_str = " ".join(inst_ports)
