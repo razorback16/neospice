@@ -314,6 +314,16 @@ def main():
                         help='Only show failures')
     parser.add_argument('--max', type=int, default=0,
                         help='Max models to test (0=all)')
+    parser.add_argument('--save', default=None,
+                        help='Save full results to JSON file')
+    parser.add_argument('--error-type', default=None,
+                        help='Only show specific error type (PARSE_ERROR, SIM_ERROR, ERROR, TIMEOUT)')
+    parser.add_argument('--file', default=None,
+                        help='Only test models from files matching this substring')
+    parser.add_argument('--show-stderr', action='store_true',
+                        help='Show full stderr output for failures (not just first line)')
+    parser.add_argument('--dump-netlist', action='store_true',
+                        help='Print the generated test netlist for failing tests')
     args = parser.parse_args()
 
     if not os.path.exists(args.neospice):
@@ -347,6 +357,9 @@ def main():
                 rel_path = mf.relative_to(KICAD_LIB)
                 all_tests.append(('subckt', name, f'{len(ports)}-port', netlist, str(rel_path)))
 
+    if args.file:
+        all_tests = [t for t in all_tests if args.file.lower() in t[4].lower()]
+
     if args.max > 0:
         all_tests = all_tests[:args.max]
 
@@ -357,13 +370,29 @@ def main():
     stats = defaultdict(int)
     errors_by_type = defaultdict(list)
     total = len(all_tests)
+    all_results = []
 
     for i, (kind, name, info, netlist, rel_path) in enumerate(all_tests):
         status, output = run_neospice(netlist, args.neospice)
         stats[status] += 1
 
+        all_results.append({
+            'name': name,
+            'kind': kind,
+            'info': info,
+            'status': status,
+            'output': output,
+            'file': rel_path,
+            'netlist': netlist,
+        })
+
         if status not in ('OK', 'WARNING') or args.verbose:
-            if not args.errors_only or status not in ('OK', 'WARNING'):
+            show = True
+            if args.errors_only and status in ('OK', 'WARNING'):
+                show = False
+            if args.error_type and status != args.error_type:
+                show = False
+            if show:
                 # Extract first meaningful error line
                 err_line = ''
                 for line in output.split('\n'):
@@ -374,8 +403,15 @@ def main():
                     err_line = output.split('\n')[0][:120]
 
                 print(f"[{status:12s}] {kind:7s} {name:30s} ({rel_path})")
-                if err_line and args.verbose:
+                if args.show_stderr and output:
+                    for line_text in output.split('\n')[:20]:
+                        print(f"              {line_text.strip()[:140]}")
+                elif err_line and args.verbose:
                     print(f"              {err_line}")
+                if args.dump_netlist:
+                    print("--- NETLIST ---")
+                    print(netlist)
+                    print("--- END ---")
 
         if status not in ('OK', 'WARNING'):
             # Categorize error
@@ -412,9 +448,31 @@ def main():
                 for name, path in instances[:3]:
                     print(f"         - {name} ({path})")
 
+        # Per-file summary
+        file_errors = defaultdict(int)
+        for pattern, instances in errors_by_type.items():
+            for name, path in instances:
+                file_errors[path] += 1
+        if file_errors:
+            print()
+            print("FAILURES BY FILE (top 20):")
+            print("-" * 70)
+            for path, count in sorted(file_errors.items(), key=lambda x: -x[1])[:20]:
+                print(f"  [{count:3d}x] {path}")
+
     print()
     pass_rate = 100.0 * (stats['OK'] + stats['WARNING']) / total if total else 0
     print(f"Pass rate: {pass_rate:.1f}% ({stats['OK'] + stats['WARNING']}/{total})")
+
+    if args.save:
+        import json
+        with open(args.save, 'w') as f:
+            json.dump({
+                'total': total,
+                'stats': dict(stats),
+                'results': [r for r in all_results if r['status'] not in ('OK', 'WARNING')],
+            }, f, indent=2)
+        print(f"Results saved to {args.save}")
 
 
 if __name__ == '__main__':
