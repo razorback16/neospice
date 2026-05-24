@@ -95,6 +95,47 @@ std::string subst_brace_params(
     return result;
 }
 
+/// Substitute bare parameter identifiers in an expression string with their
+/// numeric values.  Identifiers followed by '(' are treated as function calls
+/// (V, I, IF, MIN, MAX, etc.) and are left alone.
+std::string subst_param_names(
+    const std::string& expr,
+    const std::unordered_map<std::string, double>& params) {
+    std::string result;
+    result.reserve(expr.size());
+    size_t i = 0;
+    while (i < expr.size()) {
+        if (std::isalpha(static_cast<unsigned char>(expr[i])) || expr[i] == '_') {
+            size_t start = i;
+            while (i < expr.size() &&
+                   (std::isalnum(static_cast<unsigned char>(expr[i])) || expr[i] == '_'))
+                ++i;
+            std::string name = expr.substr(start, i - start);
+            // Check if followed by '(' — if so, it's a function call, not a param
+            size_t tmp = i;
+            while (tmp < expr.size() && std::isspace(static_cast<unsigned char>(expr[tmp]))) ++tmp;
+            if (tmp < expr.size() && expr[tmp] == '(') {
+                result += name;
+                continue;
+            }
+            // Check if it's a known parameter
+            std::string lname = to_lower(name);
+            auto it = params.find(lname);
+            if (it != params.end()) {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%.15g", it->second);
+                result += buf;
+            } else {
+                result += name;
+            }
+        } else {
+            result += expr[i];
+            ++i;
+        }
+    }
+    return result;
+}
+
 /// Check if a token looks like a parameter expression (contains braces or
 /// references a known parameter name).
 /// Substitute node references inside an ABM expression string.
@@ -774,13 +815,12 @@ std::vector<TokenizedLine> expand_instance(
             // inside the expression, then pass through.
             if (eg_abm) {
                 for (size_t i = value_start; i < line.tokens.size(); ++i) {
-                    const std::string& tok = line.tokens[i];
+                    std::string tok = line.tokens[i];
                     if (tok.find('(') != std::string::npos) {
-                        std::string subst = subst_expr_nodes(tok, subst_node, instance_prefix);
-                        new_line.tokens.push_back(subst);
-                    } else {
-                        new_line.tokens.push_back(tok);
+                        tok = subst_expr_nodes(tok, subst_node, instance_prefix);
                     }
+                    tok = subst_param_names(tok, params);
+                    new_line.tokens.push_back(tok);
                 }
                 result.push_back(new_line);
                 continue;  // skip the normal value-evaluation loop below

@@ -815,7 +815,32 @@ R5 b 0 1k
 }
 
 // -----------------------------------------------------------------------
-// 27. .global in nested subcircuit hierarchy
+// 27. VALUE expression parameter substitution
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, ValueExpressionParamSubstitution) {
+    // Subcircuit with a VALUE expression referencing a parameter by name.
+    // After expansion, bare param name 'gain' must be replaced with its
+    // numeric value so the expression compiler can evaluate it.
+    std::string netlist = wrap(R"(
+.subckt myamp in out params: gain=2
+E1 out 0 VALUE {V(in)*gain}
+.ends
+X1 inp outp myamp gain=3
+VIN inp 0 DC 1
+RLOAD outp 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+
+    // V(in) = 1V, gain = 3 => V(out) = 3V
+    EXPECT_NEAR(result.voltage("outp"), 3.0, 0.01);
+}
+
+// -----------------------------------------------------------------------
+// 28. .global in nested subcircuit hierarchy
 // -----------------------------------------------------------------------
 TEST(SubcircuitExpand, GlobalNodeNestedHierarchy) {
     // vdd should remain unprefixed even in nested subcircuit expansion
