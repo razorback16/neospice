@@ -129,6 +129,7 @@ DCResult solve_dc(Circuit& ckt) {
                 } else {
                     // 7. All failed
                     sim_status.converged = false;
+                    sim_status.iterations = result.iterations;
                     sim_status.residual = result.residual;
                     sim_status.worst_node_idx = result.worst_node_idx;
                     if (!ckt.options.no_throw) {
