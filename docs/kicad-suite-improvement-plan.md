@@ -1,10 +1,14 @@
-# DC Convergence Improvement Plan
+# KiCad Suite Improvement Plan
+
+This document tracks all known failures in the KiCad SPICE Library test suite and
+the planned simulator improvements needed to close them. It covers DC convergence,
+solver hardening, parser gaps, and structural issues.
 
 ## Current State
 
 **Pass rate:** 98.4% (34,345/34,911) on KiCad SPICE Library test suite.
 
-**Remaining failures:** 566 total, of which 419 are DC convergence (`SIM_ERROR`).
+**Remaining failures:** 566 total across all categories.
 
 **Current convergence flow** (matches ngspice `CKTop` in `cktop.c`):
 
@@ -13,14 +17,20 @@
 3. Source stepping (Gillespie variant with adaptive ramp)
 4. Pseudo-transient continuation (fictitious capacitor decay)
 
-**Failure breakdown** (419 SIM_ERROR):
+**Full failure breakdown:**
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Convergence | 319 | Newton fails across all 4 methods |
-| Residual-zero | 77 | Solver reports residual=0 but not converged |
-| Channel length | 22 | MOSFET L=1u below model minimum |
-| Activation energy | 1 | Model parameter edge case |
+| **SIM_ERROR** | **419** | DC convergence failures |
+| — Convergence | 319 | Newton fails across all 4 methods |
+| — Residual-zero | 77 | Solver reports residual=0 but not converged |
+| — Channel length | 22 | MOSFET L=1u below model minimum |
+| — Activation energy | 1 | Model parameter edge case |
+| **ERROR** | **80** | Structurally broken library files |
+| — smps_cb.lib | 50 | Uncommented text parsed as elements |
+| — tube.lib | 30 | Same issue — malformed library syntax |
+| **TIMEOUT** | **65** | Complex subcircuits exceeding 10s limit |
+| **PARSE_ERROR** | **2** | Recursive subcircuit definitions (MOV-07D.lib) |
 
 ---
 
@@ -176,7 +186,10 @@ if no decrease found:
 
 **Where:** New function in `circuit.cpp` called before `solve_dc()`.
 
-**Expected impact:** Convert cryptic "singular matrix" or "failed to converge" errors into actionable diagnostics. Many of the 80 ERROR cases are structural.
+**Expected impact:** Convert cryptic "singular matrix" or "failed to converge" errors into
+actionable diagnostics. The 80 ERROR cases (`smps_cb.lib` ×50, `tube.lib` ×30) are
+structurally broken files that would also fail in ngspice — the topology checker would
+identify them as unfixable and surface a clear message rather than attempting simulation.
 
 #### 2D. Adaptive Pseudo-Transient Time Step
 
@@ -286,6 +299,55 @@ for λ = 0 to 1:
 
 ### Aspirational Target
 With all improvements: **99.5%+ pass rate** (~35,000 models, <175 failures), with remaining failures being genuinely broken library files and recursive subcircuits.
+
+---
+
+## Remaining Parser and Structural Issues
+
+These failures are not convergence bugs — they require targeted parser or engine fixes.
+Tracked here because they contribute to the overall KiCad suite pass rate.
+
+### P1. Expression Evaluator Edge Cases (~5 cases)
+
+Certain ASRC/B-source expressions fail to parse:
+- `missing '...' for function if` (3 cases) — deeply nested `IF()` expressions
+- `expected '...' in function if` (2 cases) — unusual `IF(cond, a, b)` syntax variants
+
+**Fix:** Extend the expression parser in `src/parser/expression.cpp` to handle nested
+`IF()` with missing separators and non-standard whitespace placement.
+
+### P2. Recursive Subcircuit Nesting (2 cases)
+
+Two MOV models in `MOV-07D.lib` hit the 100-level subcircuit recursion limit.
+These are genuinely recursive `.subckt` definitions (not a circular reference from
+a bug — the model is intentionally self-referential).
+
+**Fix:** Either raise the recursion limit (low value — these are degenerate models)
+or detect and report the recursion loop with a clear error message rather than
+hitting the hard limit silently.
+
+**Files:** `src/parser/subcircuit_expand.hpp`
+
+### P3. TABLE VCVS Missing Table Points (2 cases)
+
+`E` elements using `TABLE` syntax with fewer than 2 data points fail during
+element parsing. The table interpolation requires at least 2 points.
+
+**Fix:** Emit a diagnostic ("TABLE requires at least 2 points") rather than a
+parse failure. Optionally treat a 1-point table as a constant.
+
+**Files:** `src/parser/netlist_parser.cpp`
+
+### P4. POLY CCCS Unknown Voltage Source (3 cases)
+
+`F` element POLY forms reference a voltage source that cannot be resolved after
+subcircuit expansion. The controlling source name is either in a different scope
+or uses a naming convention the expander doesn't flatten correctly.
+
+**Fix:** Extend cross-scope resolution in the subcircuit expander (same mechanism
+used for AKO cross-scope resolution) to cover `F` element controlling source names.
+
+**Files:** `src/parser/subcircuit_expand.cpp`
 
 ---
 
