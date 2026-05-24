@@ -381,6 +381,153 @@ Inference:
 
 ---
 
+## Training Pipeline — Three Phases
+
+Supervised training alone is insufficient because its objective is misaligned
+with what we actually care about. The supervised loss minimises the distance
+between predicted and true voltages, but the true objective is Newton-Raphson
+convergence speed and success rate. A prediction 0.5 V off the true answer
+might converge in 3 Newton iterations because it lands in a wide, smooth basin;
+a prediction only 0.1 V off might land near a saddle point and take 50
+iterations. The MSE loss cannot distinguish these.
+
+This is the same misalignment that motivated RLHF for LLMs: supervised
+pretraining gives a plausible model, RL fine-tuning aligns it to the actual
+objective. The three phases below follow the same logic.
+
+### Phase 1 — Supervised Pretraining
+
+```
+Loss = MSE(V_predicted, V_true)
+```
+
+Trains the GNN to accurately predict DC node voltages from circuit structure.
+Fast, stable, and data-efficient. Gives the model a good initialisation for the
+subsequent phases. Runs on the full 34K KiCad corpus + supplementary datasets.
+
+### Phase 2 — Residual Fine-Tuning (Differentiable, No RL Needed)
+
+Before running Newton, compute how well the predicted voltages satisfy KCL —
+the **initial residual norm**:
+
+```
+R(x₀) = || F(x₀) ||    ← sum of KCL violations at all nodes
+```
+
+For a resistor: `I = (V₁ − V₂) / R`. For a MOSFET: use its MODEINITJCT
+current model. The residual is **differentiable with respect to predicted
+voltages** — we can backpropagate through device evaluations (or use finite
+differences for highly nonlinear devices).
+
+```
+Loss_phase2 = MSE(V_pred, V_true) + λ · || F(V_pred) ||
+```
+
+λ is increased progressively over training until the physics constraint
+dominates. The model is pushed toward predictions that are not just close to
+the true voltages numerically, but are also physically self-consistent with the
+circuit's KCL equations — which is what determines whether Newton converges.
+This phase does not require running Newton-Raphson at all.
+
+### Phase 3 — REINFORCE on Actual Newton Convergence (True RL)
+
+The simulator itself becomes the reward oracle. This is a **contextual bandit**
+problem (one-step RL), not a multi-step MDP: each circuit is a context, the
+action is the initial voltage guess, and the reward is the Newton convergence
+quality. There is no temporal credit assignment and no discount factor.
+
+```
+Policy:   π_θ(circuit) = GNN_θ(circuit) + ε,   ε ~ N(0, σ²I)
+Reward:   r = −log(iterations)      if Newton converges
+          r = −50                    if Newton fails
+Update:   θ ← θ + α · ∇_θ log π_θ(a) · (r − b)
+```
+
+where `b` is a **baseline** (running average of recent rewards) that reduces
+variance. The Gaussian noise `ε` provides exploration — without it the
+deterministic GNN always produces the same voltage and the policy gradient is
+zero. Start with `σ = 0.5 V` (wide exploration), decay to `σ = 0.05 V` over
+training.
+
+To prevent catastrophic forgetting of the supervised pretraining, add a KL
+penalty keeping the RL policy close to the supervised policy — exactly like
+PPO's clipping or RLHF's KL regularisation:
+
+```
+Loss_RL = −E[r] + β · KL(π_θ || π_supervised)
+```
+
+#### Training Loop
+
+```python
+for circuit in curriculum:            # start with the 419 currently failing circuits
+    V_base = GNN(circuit)             # deterministic base prediction
+
+    rewards, log_probs = [], []
+    for _ in range(N_samples):        # N = 10–20 for variance reduction
+        eps    = torch.randn_like(V_base) * sigma
+        V_init = V_base + eps
+
+        result = neospice.solve_dc(circuit, initial_guess=V_init)
+        r      = -log(result.iterations) if result.converged else -50
+
+        rewards.append(r)
+        log_probs.append(normal_log_prob(eps, mean=0, std=sigma))
+
+    advantage = tensor(rewards) - mean(rewards)           # baseline subtraction
+    kl        = kl_divergence(V_base, V_supervised)       # catastrophic forgetting guard
+
+    loss = -(log_probs * advantage).mean() + beta * kl
+    loss.backward()
+    optimizer.step()
+
+sigma *= decay_rate                   # anneal exploration noise
+```
+
+**Curriculum:** Begin RL fine-tuning exclusively on the 419 currently failing
+circuits. These are where the reward signal is most informative and the
+improvement headroom is largest. Once these converge reliably, expand to the
+full 34K dataset.
+
+#### Algorithm Comparison
+
+| Algorithm | Variance | Complexity | Recommended |
+|-----------|----------|------------|-------------|
+| **REINFORCE + baseline** | High | Low | Yes — start here |
+| **PPO** | Medium | Medium | Upgrade if REINFORCE is too noisy |
+| **SAC (Soft Actor-Critic)** | Low | High | Overkill for a one-step bandit |
+| **Differentiable residual** (Phase 2) | Zero | Low | Always do before Phase 3 |
+
+Start with Phase 2 (differentiable residual), measure improvement on the 419
+failing circuits, then add REINFORCE only if Phase 2 leaves a significant gap.
+REINFORCE on a one-step bandit with a good baseline requires ~100 lines of
+PyTorch and will likely close most of the remaining gap.
+
+### What Each Phase Learns
+
+| Phase | Optimises | Misses |
+|-------|-----------|--------|
+| 1 — Supervised | Accurate voltage values | Whether those values are good Newton starting points |
+| 2 — Residual | Physically consistent predictions | Whether "consistent" means "easy to converge from" |
+| 3 — REINFORCE | Actual Newton convergence speed | Nothing — this is the true objective |
+
+Each phase narrows the gap between the model's training signal and what we
+actually care about. The full pipeline is directly analogous to LLM training:
+pretraining → SFT → RLHF, with Newton-Raphson convergence as the reward signal
+instead of human preference.
+
+### RL-Specific Risks and Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| High variance in REINFORCE | Baseline subtraction; 10–20 samples per circuit; shaped reward `−log(iterations)` instead of binary |
+| Exploration in ℝⁿ (100+ dimensions) | Gaussian noise on all nodes; optionally perturb only high-uncertainty nodes from an ensemble |
+| Newton is non-differentiable for Phase 3 | REINFORCE handles this via log-probability trick; Phase 2 covers the differentiable case |
+| Catastrophic forgetting of pretraining | KL penalty keeping RL policy close to supervised policy |
+| Bistable circuits: RL locks to one basin | Track which basin was found; flag circuits where predicted and converged voltages differ by >1 V |
+
+---
+
 ## Generalisation — What to Expect
 
 "Generalised" means different things at different ambition levels:
@@ -605,18 +752,41 @@ dependencies. Baseline for measuring ML improvement.
 
 Measure: convergence rate improvement on the 419 failing circuits.
 
-### Phase 3 — GNN Model (2–4 weeks)
+### Phase 3 — GNN Supervised Training (2–4 weeks)
 
 1. Build bipartite graph exporter from `Circuit` object to PyTorch Geometric
    `HeteroData`
 2. Implement GATv2-based heterogeneous GNN using CktGNN as starting point
-3. Add KCL regularisation loss following KCLNet [7]
+3. Add KCL regularisation loss following KCLNet [7] (Training Pipeline Phase 2)
 4. Pretrain on symbench + Masala-CHAI; fine-tune on neospice KiCad corpus
-5. Export to ONNX (PyG supports ONNX export for inference graphs)
-6. Replace MLP inference in neospice; run full comparison
+5. Validate: measure convergence rate improvement on the 419 failing circuits
 
-Measure: convergence rate, average Newton iterations, wall-clock time on the
-419 failing circuits and the full 34K suite.
+### Phase 4 — Residual Fine-Tuning (3–5 days)
+
+Strengthen the KCL physics constraint progressively:
+
+1. Implement a `compute_residual(circuit, V_predicted)` function that evaluates
+   device models in MODEINITJCT mode and returns `|| F(x₀) ||`
+2. Add it as a loss term with increasing λ schedule
+3. Verify predictions become more physically consistent without regressing MSE
+4. Re-measure convergence on the 419 failing circuits
+
+### Phase 5 — REINFORCE Fine-Tuning (1–2 weeks)
+
+1. Add a Python binding to neospice that accepts an initial voltage vector and
+   returns `(converged: bool, iterations: int)` — the RL environment step
+2. Implement the REINFORCE training loop with baseline subtraction and
+   Gaussian exploration noise
+3. Curriculum: train on the 419 failing circuits first, then expand to full 34K
+4. Monitor: reward curve, convergence rate, average iterations on held-out set
+5. Apply KL penalty to prevent catastrophic forgetting of Phase 3 pretraining
+6. Anneal exploration noise σ from 0.5 V → 0.05 V over training
+
+### Phase 6 — Export and Integration (2–3 days)
+
+1. Export final trained model to ONNX (PyG supports ONNX export for inference)
+2. Load via `onnxruntime-c` in neospice at startup
+3. Replace MLP inference path with GNN; run full 34K suite regression
 
 ### Integration Architecture
 
@@ -672,3 +842,8 @@ exactly.
 13. [Data-driven approach for Newton-Raphson power flow](https://arxiv.org/pdf/2504.11650) — 2025
 14. [RF-Informed GNNs for Circuit Performance Prediction](https://arxiv.org/pdf/2508.16403) — 2025
 15. [Transfer of Performance Models Across Analog Circuit Topologies with GNNs](https://www.researchgate.net/publication/364043593_Transfer_of_Performance_Models_Across_Analog_Circuit_Topologies_with_Graph_Neural_Networks) — 2022
+16. [GNN + PPO for warm-starting interior point solvers (power flow)](https://par.nsf.gov/servlets/purl/10576377) — 2023
+17. [Learning Warm-Start Points for AC Optimal Power Flow](https://www.researchgate.net/publication/337790860_Learning_Warm-Start_Points_For_Ac_Optimal_Power_Flow) — RL warm-start for Newton-Raphson
+18. [End-to-End Learning to Warm-Start for Real-Time Quadratic Optimization](https://proceedings.mlr.press/v211/sambharya23a/sambharya23a.pdf) — REINFORCE warm-start framework
+19. [Leveraging Reward Gradients in Differentiable Physics Simulations](https://arxiv.org/pdf/2203.02857) — differentiable reward for physics simulators
+20. [REINFORCE++: Stabilizing Critic-Free Policy Optimization](https://arxiv.org/html/2501.03262v9) — 2025
