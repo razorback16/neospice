@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
 #include "parser/netlist_parser.hpp"
 #include "api/neospice.hpp"
+#include "devices/vcvs.hpp"
+#include "devices/vccs.hpp"
+#include "devices/vcvs_nonlinear.hpp"
+#include "devices/vccs_nonlinear.hpp"
 
 using namespace neospice;
 
@@ -281,4 +285,78 @@ VBB base 0 0.7
             has_bjt = true;
     }
     EXPECT_TRUE(has_bjt);
+}
+
+// ============================================================
+// Parenthesized control node pairs in E and G elements
+// ============================================================
+
+TEST(Parser, EElementParenthesizedControlNodes) {
+    // E1 2 0 (3,4) 2.0 — linear VCVS with parenthesized control pair
+    std::string netlist = R"(
+VCVS paren control nodes
+V1 3 0 DC 1
+E1 2 0 (3,4) 2.0
+R1 2 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    // V1, E1, R1 = 3 devices
+    EXPECT_EQ(ckt.devices().size(), 3u);
+    bool found_vcvs = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dynamic_cast<const VCVS*>(dev.get()) != nullptr) {
+            found_vcvs = true;
+        }
+    }
+    EXPECT_TRUE(found_vcvs) << "Expected VCVS device to be parsed correctly";
+}
+
+TEST(Parser, GElementParenthesizedControlNodes) {
+    // G1 2 0 (3,4) 1e-3 — linear VCCS with parenthesized control pair
+    std::string netlist = R"(
+VCCS paren control nodes
+V1 3 0 DC 1
+G1 2 0 (3,4) 1e-3
+R1 2 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    // V1, G1, R1 = 3 devices
+    EXPECT_EQ(ckt.devices().size(), 3u);
+    bool found_vccs = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dynamic_cast<const VCCS*>(dev.get()) != nullptr) {
+            found_vccs = true;
+        }
+    }
+    EXPECT_TRUE(found_vccs) << "Expected VCCS device to be parsed correctly";
+}
+
+TEST(Parser, EElementPolyParenthesizedNodes) {
+    // EREF 98 0 POLY(2) (99,0) (50,0) 0 0.5 0.5 — POLY VCVS with parenthesized pairs
+    std::string netlist = R"(
+VCVS POLY paren control nodes
+V1 99 0 DC 1
+V2 50 0 DC 1
+EREF 98 0 POLY(2) (99,0) (50,0) 0 0.5 0.5
+R1 98 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    // V1, V2, EREF, R1 = 4 devices
+    EXPECT_EQ(ckt.devices().size(), 4u);
+    bool found_poly_vcvs = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dynamic_cast<const NonlinearVCVS*>(dev.get()) != nullptr) {
+            found_poly_vcvs = true;
+        }
+    }
+    EXPECT_TRUE(found_poly_vcvs) << "Expected NonlinearVCVS device to be parsed correctly";
 }

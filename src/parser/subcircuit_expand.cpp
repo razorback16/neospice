@@ -435,8 +435,49 @@ std::unordered_set<std::string> collect_internal_nodes(
                 size_t ctrl_start = 4;
                 if (ctrl_start < line.tokens.size() && line.tokens[ctrl_start].front() == '(')
                     ctrl_start++;  // skip split "(N)" token
-                for (int k = 0; k < 2 * pdim; ++k) {
-                    node_positions.push_back(ctrl_start + k);
+                size_t ctrl_pos = ctrl_start;
+                for (int k = 0; k < pdim && ctrl_pos < line.tokens.size(); ++k) {
+                    const std::string& ctrl_tok = line.tokens[ctrl_pos];
+                    if (ctrl_tok.size() > 1 && ctrl_tok[0] == '(' &&
+                        ctrl_tok.find(',') != std::string::npos) {
+                        // Parenthesized pair (cp,cn) — extract both node names
+                        std::string inner = ctrl_tok.substr(1);
+                        if (!inner.empty() && inner.back() == ')') inner.pop_back();
+                        auto comma = inner.find(',');
+                        std::string cp = to_lower(inner.substr(0, comma));
+                        std::string cn = to_lower(inner.substr(comma + 1));
+                        if (!is_global_node(cp, global_nodes) && port_set.find(cp) == port_set.end())
+                            internal_nodes.insert(cp);
+                        if (!is_global_node(cn, global_nodes) && port_set.find(cn) == port_set.end())
+                            internal_nodes.insert(cn);
+                        ctrl_pos += 1;
+                    } else {
+                        // Two separate node tokens
+                        node_positions.push_back(ctrl_pos);
+                        if (ctrl_pos + 1 < line.tokens.size())
+                            node_positions.push_back(ctrl_pos + 1);
+                        ctrl_pos += 2;
+                    }
+                }
+            }
+
+            // E/G linear form with parenthesized control nodes: (nc+,nc-)
+            if ((elem_type == 'e' || elem_type == 'g') &&
+                line.tokens.size() > 3 &&
+                to_lower(line.tokens[3]).substr(0, 4) != "poly") {
+                const std::string& t3 = line.tokens[3];
+                if (t3.size() > 1 && t3[0] == '(' && t3.find(',') != std::string::npos) {
+                    ncount = 2;  // only np, nn are output nodes
+                    // Extract node names from (nc+,nc-)
+                    std::string inner = t3.substr(1);
+                    if (!inner.empty() && inner.back() == ')') inner.pop_back();
+                    auto comma = inner.find(',');
+                    std::string cp = to_lower(inner.substr(0, comma));
+                    std::string cn = to_lower(inner.substr(comma + 1));
+                    if (!is_global_node(cp, global_nodes) && port_set.find(cp) == port_set.end())
+                        internal_nodes.insert(cp);
+                    if (!is_global_node(cn, global_nodes) && port_set.find(cn) == port_set.end())
+                        internal_nodes.insert(cn);
                 }
             }
 
@@ -774,6 +815,19 @@ std::vector<TokenizedLine> expand_instance(
                 }
             }
 
+            // E/G linear form with parenthesized control nodes:
+            // E name np nn (nc+,nc-) gain  /  G name np nn (nc+,nc-) gm
+            // token[3] is a single token containing (nc+,nc-) — only 2 output nodes.
+            bool eg_paren_ctrl = false;
+            if ((elem_type == 'e' || elem_type == 'g') && !eg_poly && !eg_abm &&
+                line.tokens.size() > 3) {
+                const std::string& t3 = line.tokens[3];
+                if (t3.size() > 1 && t3[0] == '(' && t3.find(',') != std::string::npos) {
+                    eg_paren_ctrl = true;
+                    ncount = 2;  // only np, nn are output nodes
+                }
+            }
+
             TokenizedLine new_line;
             new_line.line_number = line.line_number;
 
@@ -803,12 +857,43 @@ std::vector<TokenizedLine> expand_instance(
                     new_line.tokens.push_back(line.tokens[value_start]);
                     value_start++;
                 }
-                // Substitute 2*N control node names
-                int ctrl_nodes = 2 * eg_poly_dim;
-                for (int k = 0; k < ctrl_nodes && value_start < line.tokens.size(); ++k) {
-                    new_line.tokens.push_back(subst_node(line.tokens[value_start]));
-                    value_start++;
+                // Substitute control node pairs — each may be (cp,cn) or two separate tokens
+                for (int k = 0; k < eg_poly_dim && value_start < line.tokens.size(); ++k) {
+                    const std::string& ctrl_tok = line.tokens[value_start];
+                    if (ctrl_tok.size() > 1 && ctrl_tok[0] == '(' &&
+                        ctrl_tok.find(',') != std::string::npos) {
+                        // Parenthesized pair (cp,cn) — substitute each node inside
+                        std::string inner = ctrl_tok.substr(1);
+                        if (!inner.empty() && inner.back() == ')') inner.pop_back();
+                        auto comma = inner.find(',');
+                        std::string cp_sub = subst_node(inner.substr(0, comma));
+                        std::string cn_sub = subst_node(inner.substr(comma + 1));
+                        new_line.tokens.push_back("(" + cp_sub + "," + cn_sub + ")");
+                        value_start++;
+                    } else {
+                        // Two separate node tokens
+                        if (value_start < line.tokens.size()) {
+                            new_line.tokens.push_back(subst_node(line.tokens[value_start]));
+                            value_start++;
+                        }
+                        if (value_start < line.tokens.size()) {
+                            new_line.tokens.push_back(subst_node(line.tokens[value_start]));
+                            value_start++;
+                        }
+                    }
                 }
+            }
+
+            // E/G linear form with parenthesized control nodes: substitute nodes inside (nc+,nc-)
+            if (eg_paren_ctrl && value_start < line.tokens.size()) {
+                const std::string& ctrl_tok = line.tokens[value_start];
+                std::string inner = ctrl_tok.substr(1);
+                if (!inner.empty() && inner.back() == ')') inner.pop_back();
+                auto comma = inner.find(',');
+                std::string cp_sub = subst_node(inner.substr(0, comma));
+                std::string cn_sub = subst_node(inner.substr(comma + 1));
+                new_line.tokens.push_back("(" + cp_sub + "," + cn_sub + ")");
+                value_start++;
             }
 
             // E/G ABM (VALUE=/TABLE) form: substitute node references

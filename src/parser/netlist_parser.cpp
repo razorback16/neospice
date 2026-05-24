@@ -1722,15 +1722,33 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 ctrl_pairs.reserve(poly_dim);
                 bool poly_ok = true;
                 for (int k = 0; k < poly_dim; ++k) {
-                    if (idx + 1 >= tokens.size()) {
+                    if (idx >= tokens.size()) {
                         fprintf(stderr, "Warning: Line %d: POLY VCVS: not enough control node pairs — skipping\n", line.line_number);
                         poly_ok = false;
                         break;
                     }
-                    int32_t cp = node_raw(tokens[idx]);
-                    int32_t cn = node_raw(tokens[idx + 1]);
-                    ctrl_pairs.push_back({cp, cn});
-                    idx += 2;
+                    // Support parenthesized control node pair: (cp,cn)
+                    if (tokens[idx].size() > 1 && tokens[idx][0] == '(' &&
+                        tokens[idx].find(',') != std::string::npos) {
+                        std::string inner = tokens[idx];
+                        if (inner.front() == '(') inner.erase(0, 1);
+                        if (inner.back() == ')') inner.pop_back();
+                        auto comma = inner.find(',');
+                        int32_t cp = node_raw(inner.substr(0, comma));
+                        int32_t cn = node_raw(inner.substr(comma + 1));
+                        ctrl_pairs.push_back({cp, cn});
+                        idx += 1;
+                    } else {
+                        if (idx + 1 >= tokens.size()) {
+                            fprintf(stderr, "Warning: Line %d: POLY VCVS: not enough control node pairs — skipping\n", line.line_number);
+                            poly_ok = false;
+                            break;
+                        }
+                        int32_t cp = node_raw(tokens[idx]);
+                        int32_t cn = node_raw(tokens[idx + 1]);
+                        ctrl_pairs.push_back({cp, cn});
+                        idx += 2;
+                    }
                 }
                 if (!poly_ok) continue;
                 // Remaining tokens are polynomial coefficients
@@ -1959,16 +1977,36 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 deferred_asrcs.push_back(std::move(bd));
 
             } else {
-                // Linear form: E name np nn nc+ nc- gain
-                if (tokens.size() < 6 - e_tok_offset) {
-                    fprintf(stderr, "Warning: Line %d: VCVS requires name, np, nn, nc+, nc-, gain — skipping\n", line.line_number);
+                // Linear form: E name np nn nc+ nc- gain  OR  E name np nn (nc+,nc-) gain
+                int32_t ncp, ncn;
+                double gain;
+                size_t gain_idx;
+
+                if (tok3.size() > 1 && tok3[0] == '(' && tok3.find(',') != std::string::npos) {
+                    // Parenthesized control nodes: (nc+,nc-)
+                    std::string inner = tok3;
+                    if (inner.front() == '(') inner.erase(0, 1);
+                    if (inner.back() == ')') inner.pop_back();
+                    auto comma = inner.find(',');
+                    ncp = node_raw(inner.substr(0, comma));
+                    ncn = node_raw(inner.substr(comma + 1));
+                    gain_idx = 4 - e_tok_offset;
+                } else {
+                    if (tokens.size() < 6 - e_tok_offset) {
+                        fprintf(stderr, "Warning: Line %d: VCVS requires name, np, nn, nc+, nc-, gain — skipping\n", line.line_number);
+                        continue;
+                    }
+                    ncp = node_raw(tokens[3 - e_tok_offset]);
+                    ncn = node_raw(tokens[4 - e_tok_offset]);
+                    gain_idx = 5 - e_tok_offset;
+                }
+
+                if (gain_idx >= tokens.size()) {
+                    fprintf(stderr, "Warning: Line %d: VCVS requires gain value — skipping\n", line.line_number);
                     continue;
                 }
-                int32_t ncp = node_raw(tokens[3 - e_tok_offset]);
-                int32_t ncn = node_raw(tokens[4 - e_tok_offset]);
-                double gain;
                 try {
-                    gain = parse_spice_number(tokens[5 - e_tok_offset]);
+                    gain = parse_spice_number(tokens[gain_idx]);
                 } catch (...) {
                     fprintf(stderr, "Warning: Line %d: VCVS '%s' has invalid gain — skipping\n", line.line_number, name.c_str());
                     continue;
@@ -2031,6 +2069,24 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 ctrl_pairs.reserve(poly_dim);
                 bool poly_ok = true;
                 for (int k = 0; k < poly_dim; ++k) {
+                    if (idx >= tokens.size()) {
+                        fprintf(stderr, "Warning: Line %d: POLY VCCS: not enough control node pairs — skipping\n", line.line_number);
+                        poly_ok = false;
+                        break;
+                    }
+                    // Support parenthesized control node pair: (cp,cn)
+                    if (tokens[idx].size() > 1 && tokens[idx][0] == '(' &&
+                        tokens[idx].find(',') != std::string::npos) {
+                        std::string inner = tokens[idx];
+                        if (inner.front() == '(') inner.erase(0, 1);
+                        if (inner.back() == ')') inner.pop_back();
+                        auto comma = inner.find(',');
+                        int32_t cp = node_raw(inner.substr(0, comma));
+                        int32_t cn = node_raw(inner.substr(comma + 1));
+                        ctrl_pairs.push_back({cp, cn});
+                        idx += 1;
+                        continue;
+                    }
                     if (idx + 1 >= tokens.size()) {
                         fprintf(stderr, "Warning: Line %d: POLY VCCS: not enough control node pairs — skipping\n", line.line_number);
                         poly_ok = false;
@@ -2249,22 +2305,42 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 deferred_asrcs.push_back(std::move(bd));
 
             } else {
-                // Linear form: G name np nn nc+ nc- gm
-                if (tokens.size() < 6 - g_tok_offset) {
-                    fprintf(stderr, "Warning: Line %d: VCCS requires name, np, nn, nc+, nc-, gm — skipping\n", line.line_number);
+                // Linear form: G name np nn nc+ nc- gm  OR  G name np nn (nc+,nc-) gm
+                int32_t ncp, ncn;
+                double gm;
+                size_t gm_idx;
+
+                if (tok3g.size() > 1 && tok3g[0] == '(' && tok3g.find(',') != std::string::npos) {
+                    // Parenthesized control nodes: (nc+,nc-)
+                    std::string inner = tok3g;
+                    if (inner.front() == '(') inner.erase(0, 1);
+                    if (inner.back() == ')') inner.pop_back();
+                    auto comma = inner.find(',');
+                    ncp = node_raw(inner.substr(0, comma));
+                    ncn = node_raw(inner.substr(comma + 1));
+                    gm_idx = 4 - g_tok_offset;
+                } else {
+                    if (tokens.size() < 6 - g_tok_offset) {
+                        fprintf(stderr, "Warning: Line %d: VCCS requires name, np, nn, nc+, nc-, gm — skipping\n", line.line_number);
+                        continue;
+                    }
+                    ncp = node_raw(tokens[3 - g_tok_offset]);
+                    ncn = node_raw(tokens[4 - g_tok_offset]);
+                    gm_idx = 5 - g_tok_offset;
+                }
+
+                if (gm_idx >= tokens.size()) {
+                    fprintf(stderr, "Warning: Line %d: VCCS requires gm value — skipping\n", line.line_number);
                     continue;
                 }
-                int32_t ncp = node_raw(tokens[3 - g_tok_offset]);
-                int32_t ncn = node_raw(tokens[4 - g_tok_offset]);
-                double gm;
                 try {
-                    gm = parse_spice_number(tokens[5 - g_tok_offset]);
+                    gm = parse_spice_number(tokens[gm_idx]);
                 } catch (...) {
                     fprintf(stderr, "Warning: Line %d: VCCS '%s' has invalid gm — skipping\n", line.line_number, name.c_str());
                     continue;
                 }
                 auto vccs = std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm);
-                for (size_t k = 6 - g_tok_offset; k < tokens.size(); ++k) {
+                for (size_t k = gm_idx + 1; k < tokens.size(); ++k) {
                     std::string tok = to_lower(tokens[k]);
                     if (tok.starts_with("m="))
                         vccs->set_multiplier(parse_spice_number(tok.substr(2)));
