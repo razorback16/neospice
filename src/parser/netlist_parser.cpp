@@ -2475,7 +2475,19 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     if (ic_vals.size() >= 4) ic_i2 = ic_vals[3];
                     ic_given = true;
                 } else {
-                    double val = parse_spice_number(tokens[i].substr(eq + 1));
+                    std::string val_str = tokens[i].substr(eq + 1);
+                    double val;
+                    try {
+                        val = parse_spice_number(val_str);
+                    } catch (...) {
+                        try {
+                            val = eval_expression(val_str, state.params);
+                        } catch (...) {
+                            fprintf(stderr, "Warning: Line %d: T element '%s' cannot evaluate '%s=%s' — skipping\n",
+                                    line.line_number, tname.c_str(), key.c_str(), val_str.c_str());
+                            continue;
+                        }
+                    }
                     if      (key == "z0") { tz0 = val; z0_given = true; }
                     else if (key == "td") { ttd = val; }
                     else if (key == "f")  { tf  = val; }

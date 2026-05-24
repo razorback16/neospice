@@ -348,6 +348,27 @@ T1 in 0 out 0 Z0=50 TD=10n
     EXPECT_NEAR(v_out_late, 1.0, 0.2);
 }
 
+TEST(TLineParser, Z0BraceExpression) {
+    std::string netlist = R"(
+T line Z0 expression
+.param ZCHAR=50
+V1 p1 0 PULSE(0 1 0 1n 1n 5n 10n)
+T1 p1 0 p2 0 Z0={ZCHAR} TD=1n
+R1 p2 0 50
+.tran 0.1n 20n
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    bool has_tline = false;
+    for (const auto& dev : ckt.devices()) {
+        std::string dname = dev->name();
+        for (auto& c : dname) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (dname == "t1") has_tline = true;
+    }
+    EXPECT_TRUE(has_tline);
+}
+
 TEST(TLineTransient, ShortTDMatchedLineSettles) {
     // With a very short TD relative to tstep, the TL should behave like two
     // resistors in parallel (both ports at the same effective potential after
