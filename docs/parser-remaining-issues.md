@@ -1,67 +1,97 @@
 # Parser Remaining Issues
 
-Status: 98.1% pass rate (34,254/34,911) on KiCad SPICE Library test suite.
-Previous: 96.5% (33,703/34,911). Improved by fixing 6 parser/compatibility gaps.
+Status: 98.4% pass rate (34,345/34,911) on KiCad SPICE Library test suite.
+Previous: 96.5% (33,703/34,911). Improved by fixing 8 parser/compatibility gaps
+and enhancing the test harness with pin-mapping comment parsing.
 
-Remaining 657 failures break down into simulation errors (not parser bugs),
-broken library files, timeouts, and a small number of remaining parser gaps.
+Remaining 566 failures break down into simulation errors (not parser bugs),
+broken library files, timeouts, and a small number of edge cases.
 
-## Not Parser Bugs
+## Failure Breakdown
 
-### SIM_ERROR: DC Operating Point Convergence (~510 cases)
+| Category | Count | Notes |
+|----------|-------|-------|
+| SIM_ERROR (DC convergence) | 419 | Genuine convergence failures |
+| ERROR (broken libraries) | 80 | Malformed syntax, missing sources |
+| TIMEOUT (>10s) | 65 | Complex subcircuits stressing solver |
+| PARSE_ERROR | 2 | Recursive subcircuit definitions |
+
+## SIM_ERROR Analysis (419 cases)
+
+### Convergence Failures (~319 cases)
 
 Complex subcircuits (voltage regulators, comparators with positive feedback,
 op-amps with internal protection diodes) fail to find a DC operating point.
-This is a simulation engine issue, not a parser issue. Most of these models
-also require GMIN stepping or source stepping in ngspice.
+Most of these models also require GMIN stepping or source stepping in ngspice.
 
-### TIMEOUT (~65 cases)
+### Residual-Zero Failures (~77 cases)
 
-Models that take >10s to simulate. Likely complex subcircuits with many
-internal nodes that stress the solver. Not a parser issue.
+Models that report residual=0 but still fail. Most are MOSFET test circuits
+where the test harness uses `W=10u L=1u` but the model's minimum channel
+length is larger than 1u, causing "effective channel length less than zero"
+errors (22 cases). The remaining ~55 are circuits where the solver converges
+to a degenerate solution.
 
-### Broken Library Files (~80 cases)
+### Channel Length Errors (~22 cases)
 
-Files with uncommented datasheet text or malformed syntax. The parser
-correctly interprets stray text as element definitions. These files would
-also fail in ngspice.
+MOSFET models where the test harness default `L=1u` is below the model's
+minimum. These are test harness limitations, not solver bugs.
+
+### Activation Energy (~1 case)
+
+One model triggers "activation energy too small, limited to 0.1".
+
+## ERROR (80 cases)
+
+- **smps_cb.lib** (50x): Broken library with uncommented text parsed as elements
+- **tube.lib** (30x): Same issue — malformed library syntax
+
+These files would also fail in ngspice.
+
+## TIMEOUT (65 cases)
+
+Models that take >10s to simulate. Complex subcircuits with many internal
+nodes that stress the solver.
+
+## PARSE_ERROR (2 cases)
+
+Two MOV models in `MOV-07D.lib` hit the 100-level subcircuit recursion limit.
+These are genuinely recursive subcircuit definitions.
 
 ---
 
-## Fixed Parser/Engine Gaps (2026-05-23)
+## Fixed Parser/Engine Gaps
 
-### 1. E/G Element VALUE Without Equals Sign (fixed ~219 cases)
+### Phase 1 (2025-05-23): Parser Compatibility
 
-PSpice uses `E name np nn VALUE { expr }` without `=` between VALUE and
-the expression. Parser now accepts both `VALUE={expr}` and `VALUE {expr}`.
+1. **E/G Element VALUE Without Equals Sign** (fixed ~219 cases)
+   PSpice `VALUE { expr }` without `=`. Parser accepts both forms.
 
-### 2. ASRC Parameter Substitution in Expressions (fixed ~175 cases)
+2. **ASRC Parameter Substitution** (fixed ~175 cases)
+   Subcircuit expansion now substitutes parameters in ASRC/VALUE/B expressions.
 
-Subcircuit expansion now substitutes parameter values in ASRC/VALUE/B
-element expressions. Previously, bare parameter names like `{VTHRESH}`
-inside behavioral source expressions were passed through unresolved.
+3. **AKO Cross-Scope Resolution** (fixed ~10 cases)
+   `.model QP AKO:QON` resolves instance-prefixed names.
 
-### 3. AKO Cross-Scope Resolution (fixed ~10 cases)
+4. **T Element Z0 Expression Evaluation** (fixed ~10 cases)
+   T element parameters evaluate brace expressions like `Z0={ZCHAR}`.
 
-`.model QP AKO:QON` now resolves when QON is in the same subcircuit
-instance scope. The resolver tries instance-prefixed names when the
-unprefixed lookup fails.
+5. **Parenthesized Control Node Pairs** (fixed ~24 cases)
+   E/G elements accept `(nc+,nc-)` syntax in linear and POLY forms.
 
-### 4. T Element Z0 Expression Evaluation (fixed ~10 cases)
+6. **B Element I() Cross-Scope Resolution** (fixed as side effect of #2)
 
-T element parameters (`Z0=`, `TD=`, `F=`, `NL=`) now evaluate brace
-expressions like `Z0={ZCHAR}` using `eval_expression()` instead of
-requiring literal numeric values.
+### Phase 2 (2025-05-24): Test Harness & Engine
 
-### 5. Parenthesized Control Node Pairs (fixed ~24 errors)
+7. **Pin-Mapping Comment Parsing** (fixed ~90+ cases)
+   Test harness now parses pin-mapping comments above `.SUBCKT` definitions
+   to generate proper bias circuits with VCC/VEE/input/output connections
+   instead of generic 100k-to-ground for all ports. Supports 3 comment
+   patterns: pipe-tree, inline tabular, and compact inline. Also detects
+   file-level convention headers (e.g., LinearTech.lib).
 
-E/G elements now accept `(nc+,nc-)` parenthesized control node syntax
-in both linear and POLY forms. Also fixed subcircuit expansion to
-correctly handle these tokens during hierarchical name prefixing.
-
-### 6. B Element I() Cross-Scope Resolution (verified fixed)
-
-Resolved as a side effect of fix #2 (parameter substitution).
+8. **DC Solver Iteration Reporting** (fix)
+   `sim_status.iterations` now set on the all-failed path in dc.cpp.
 
 ---
 
@@ -75,24 +105,15 @@ A few ASRC expressions still fail:
 
 ### 2. Maximum Subcircuit Nesting Depth (2 cases)
 
-Two models hit the 100-level recursion limit. These are likely genuinely
-recursive subcircuit definitions.
+Two MOV models hit the 100-level recursion limit. Genuinely recursive.
 
-### 3. TABLE VCVS Format (3 cases)
+### 3. TABLE VCVS Format (2 cases)
 
-A few E element TABLE forms fail: missing table points (2x) or missing
-control expression (1x).
+TABLE VCVS with missing table points.
 
 ### 4. POLY CCCS Unknown Voltage Source (3 cases)
 
-F element POLY forms reference voltage sources that aren't found after
-subcircuit expansion.
-
-### 5. Subcircuit Port Count Mismatch (~10 warnings, not failures)
-
-The test harness guesses pin counts from subcircuit port names. When it
-guesses wrong, the parser truncates connections with a warning but still
-simulates. These are test harness issues, not parser bugs.
+F element POLY forms reference voltage sources not found after expansion.
 
 ---
 
