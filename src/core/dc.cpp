@@ -100,9 +100,13 @@ DCResult solve_dc(Circuit& ckt) {
     }
     if (!result.converged) {
         // 4. Try gmin stepping
-        result = gmin_stepping(ckt, *solver, solution, ckt.options,
-                               MODEDCOP_BIT | MODEINITJCT_BIT,
-                               MODEDCOP_BIT | MODEINITFLOAT_BIT);
+        try {
+            result = gmin_stepping(ckt, *solver, solution, ckt.options,
+                                   MODEDCOP_BIT | MODEINITJCT_BIT,
+                                   MODEDCOP_BIT | MODEINITFLOAT_BIT);
+        } catch (const std::runtime_error&) {
+            result.converged = false;
+        }
         if (result.converged) {
             sim_status.iterations = result.iterations;
             sim_status.convergence_method = ConvergenceMethod::GMIN_STEPPING;
@@ -113,9 +117,13 @@ DCResult solve_dc(Circuit& ckt) {
         }
         if (!result.converged) {
             // 4b. Try true gmin stepping (modifies device-level gmin)
-            result = true_gmin_stepping(ckt, *solver, solution, ckt.options,
-                                        MODEDCOP_BIT | MODEINITJCT_BIT,
-                                        MODEDCOP_BIT | MODEINITFLOAT_BIT);
+            try {
+                result = true_gmin_stepping(ckt, *solver, solution, ckt.options,
+                                            MODEDCOP_BIT | MODEINITJCT_BIT,
+                                            MODEDCOP_BIT | MODEINITFLOAT_BIT);
+            } catch (const std::runtime_error&) {
+                result.converged = false;
+            }
             if (result.converged) {
                 sim_status.iterations = result.iterations;
                 sim_status.convergence_method = ConvergenceMethod::GMIN_STEPPING;
@@ -128,7 +136,11 @@ DCResult solve_dc(Circuit& ckt) {
         if (!result.converged) {
             // 5. Try source stepping
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-            result = source_stepping(ckt, *solver, solution, ckt.options);
+            try {
+                result = source_stepping(ckt, *solver, solution, ckt.options);
+            } catch (const std::runtime_error&) {
+                result.converged = false;
+            }
             if (result.converged) {
                 sim_status.iterations = result.iterations;
                 sim_status.convergence_method = ConvergenceMethod::SOURCE_STEPPING;
@@ -141,7 +153,11 @@ DCResult solve_dc(Circuit& ckt) {
         if (!result.converged) {
             // 6. Try pseudo-transient continuation
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-            result = pseudo_transient(ckt, *solver, solution, ckt.options);
+            try {
+                result = pseudo_transient(ckt, *solver, solution, ckt.options);
+            } catch (const std::runtime_error&) {
+                result.converged = false;
+            }
             if (result.converged) {
                 sim_status.iterations = result.iterations;
                 sim_status.convergence_method = ConvergenceMethod::PSEUDO_TRANSIENT;

@@ -529,8 +529,10 @@ def run_neospice(netlist_text, neospice_bin, timeout=10):
     try:
         result = subprocess.run(
             [neospice_bin, tmp_path],
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True, timeout=timeout
         )
+        result.stdout = result.stdout.decode('utf-8', errors='replace')
+        result.stderr = result.stderr.decode('utf-8', errors='replace')
         combined = result.stdout + result.stderr
         if result.returncode != 0:
             # Check if it's a parse error or sim error
