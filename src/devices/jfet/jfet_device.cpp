@@ -36,6 +36,7 @@ JFETDevice::make(std::string name,
         const Geom& geom, JFETModelCard& shared_card) {
     std::unique_ptr<JFETDevice> dev(new JFETDevice(std::move(name)));
     dev->model_ = &shared_card.ucb;
+    dev->ext_nodes_ = {n_drain, n_gate, n_source};
 
     auto& inst = dev->inst_;
     inst.JFETname = dev->name().c_str();

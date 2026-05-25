@@ -37,6 +37,7 @@ HFET2Device::make(std::string name,
         const Geom& geom, HFET2ModelCard& shared_card) {
     std::unique_ptr<HFET2Device> dev(new HFET2Device(std::move(name)));
     dev->model_ = &shared_card.ucb;
+    dev->ext_nodes_ = {n_drain, n_gate, n_source};
 
     auto& inst = dev->inst_;
     inst.HFET2name = dev->name().c_str();

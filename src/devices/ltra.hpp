@@ -152,6 +152,7 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
     int32_t extra_vars() const override { return 2; }  // two branch currents
+    std::vector<int32_t> external_nodes() const override { return {p1p_, p1n_, p2p_, p2n_}; }
     void assign_branch_index(int32_t& next) override;
     std::vector<std::string> output_currents() const override;
 

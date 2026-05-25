@@ -45,6 +45,12 @@ public:
     }
     std::vector<std::string> output_currents() const override;
 
+    std::vector<int32_t> external_nodes() const override {
+        std::vector<int32_t> nodes = {np_, nn_};
+        for (auto& cp : ctrl_pairs_) { nodes.push_back(cp.pos); nodes.push_back(cp.neg); }
+        return nodes;
+    }
+
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
@@ -113,6 +119,8 @@ public:
         set_branch_index(next); next += extra_vars();
     }
     std::vector<std::string> output_currents() const override;
+
+    std::vector<int32_t> external_nodes() const override { return {np_, nn_, ncp_, ncn_}; }
 
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;

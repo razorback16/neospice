@@ -43,6 +43,7 @@ B4SOIDevice::make(std::string name,
         int32_t n_d, int32_t n_g, int32_t n_s, int32_t n_e, int32_t n_p, int32_t n_b,
         const Geom& geom, B4SOIModelCard& shared_card) {
     std::unique_ptr<B4SOIDevice> dev(new B4SOIDevice(std::move(name)));
+    dev->ext_nodes_ = {n_d, n_g, n_s, n_e, n_p, n_b};
     dev->model_ = &shared_card.ucb;
 
     if (!shared_card.ucb.B4SOIversionGiven) {

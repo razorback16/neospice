@@ -37,6 +37,7 @@ MOS9Device::make(std::string name,
         const Geom& geom, MOS9ModelCard& shared_card) {
     std::unique_ptr<MOS9Device> dev(new MOS9Device(std::move(name)));
     dev->model_ = &shared_card.ucb;
+    dev->ext_nodes_ = {n_d, n_g, n_s, n_b};
 
     auto& inst = dev->inst_;
     inst.MOS9name = dev->name().c_str();

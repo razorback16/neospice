@@ -1,4 +1,5 @@
 #include "devices/bjt_common.hpp"
+#include "core/types.hpp"
 #include "devices/bjt/bjt_model_card.hpp"
 #include "devices/vbic/vbic_device.hpp"
 #include "devices/vbic/vbic_model_card.hpp"
@@ -116,9 +117,8 @@ void resolve_bjts(
         if (it == models.end()) {
             auto it2 = models.find(to_lower(q.model_name));
             if (it2 == models.end()) {
-                fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping BJT '%s'\n",
-                        q.line_number, q.model_name.c_str(), q.name.c_str());
-                continue;
+                throw ParseError("Line " + std::to_string(q.line_number) +
+                    ": Unknown model '" + q.model_name + "' for BJT '" + q.name + "'");
             }
             it = it2;
         }

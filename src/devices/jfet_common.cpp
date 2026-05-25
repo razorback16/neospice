@@ -1,4 +1,5 @@
 #include "devices/jfet_common.hpp"
+#include "core/types.hpp"
 #include "devices/jfet/jfet_model_card.hpp"
 #include "devices/jfet2/jfet2_device.hpp"
 #include "devices/jfet2/jfet2_model_card.hpp"
@@ -90,9 +91,8 @@ void resolve_jfets(
         if (it == models.end()) {
             auto it2 = models.find(to_lower(j.model_name));
             if (it2 == models.end()) {
-                fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping JFET '%s'\n",
-                        j.line_number, j.model_name.c_str(), j.name.c_str());
-                continue;
+                throw ParseError("Line " + std::to_string(j.line_number) +
+                    ": Unknown model '" + j.model_name + "' for JFET '" + j.name + "'");
             }
             it = it2;
         }

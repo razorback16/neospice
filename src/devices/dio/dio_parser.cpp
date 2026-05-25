@@ -1,5 +1,6 @@
 #include "devices/dio/dio_parser.hpp"
 #include "devices/dio/dio_model_card.hpp"
+#include "core/types.hpp"
 #include "parser/model_cards.hpp"
 #include "parser/tokenizer.hpp"
 #include <algorithm>
@@ -60,9 +61,8 @@ void resolve_diodes(
         const auto& dd = static_cast<const ParsedDiode&>(*elem);
         auto it = models.find(dd.model_name);
         if (it == models.end()) {
-            fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping diode '%s'\n",
-                    dd.line_number, dd.model_name.c_str(), dd.name.c_str());
-            continue;
+            throw ParseError("Line " + std::to_string(dd.line_number) +
+                ": Unknown model '" + dd.model_name + "' for diode '" + dd.name + "'");
         }
         auto card_it = dio_cards.find(dd.model_name);
         if (card_it == dio_cards.end()) {

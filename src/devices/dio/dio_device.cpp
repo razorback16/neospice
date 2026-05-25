@@ -33,6 +33,7 @@ DIODevice::make(std::string name,
         int32_t n_pos, int32_t n_neg,
         const Geom& geom, DIOModelCard& shared_card) {
     std::unique_ptr<DIODevice> dev(new DIODevice(std::move(name)));
+    dev->ext_nodes_ = {n_pos, n_neg};
     dev->model_ = &shared_card.ucb;
 
     auto& inst = dev->inst_;

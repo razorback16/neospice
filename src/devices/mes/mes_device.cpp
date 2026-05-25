@@ -35,6 +35,7 @@ MESDevice::make(std::string name,
         const Geom& geom, MESModelCard& shared_card) {
     std::unique_ptr<MESDevice> dev(new MESDevice(std::move(name)));
     dev->model_ = &shared_card.ucb;
+    dev->ext_nodes_ = {n_drain, n_gate, n_source};
 
     auto& inst = dev->inst_;
     inst.MESname = dev->name().c_str();

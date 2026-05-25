@@ -37,6 +37,7 @@ HFETADevice::make(std::string name,
         const Geom& geom, HFETAModelCard& shared_card) {
     std::unique_ptr<HFETADevice> dev(new HFETADevice(std::move(name)));
     dev->model_ = &shared_card.ucb;
+    dev->ext_nodes_ = {n_drain, n_gate, n_source};
 
     auto& inst = dev->inst_;
     inst.HFETAname = dev->name().c_str();

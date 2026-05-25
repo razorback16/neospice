@@ -1,4 +1,5 @@
 #include "devices/mosfet_common.hpp"
+#include "core/types.hpp"
 #include "parser/model_cards.hpp"
 #include "parser/tokenizer.hpp"
 #include "devices/mos1/mos1_device.hpp"
@@ -159,9 +160,8 @@ void resolve_mosfets(
         const auto& m = static_cast<const ParsedMosfet&>(*elem);
         auto it = models.find(m.model_name);
         if (it == models.end()) {
-            fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping MOSFET '%s'\n",
-                    m.line_number, m.model_name.c_str(), m.name.c_str());
-            continue;
+            throw ParseError("Line " + std::to_string(m.line_number) +
+                ": Unknown model '" + m.model_name + "' for MOSFET '" + m.name + "'");
         }
 
         try {
@@ -474,10 +474,8 @@ void resolve_mosfets(
                              m.model_name + "'");
         }
 
-        } catch (const ParseError& e) {
-            fprintf(stderr, "Warning: %s — skipping MOSFET '%s'\n",
-                    e.what(), m.name.c_str());
-            continue;
+        } catch (const ParseError&) {
+            throw;
         }
     }
     // Transfer card ownership to the Circuit (cards must outlive the devices).

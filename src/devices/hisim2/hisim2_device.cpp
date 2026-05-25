@@ -37,6 +37,7 @@ HSM2Device::make(std::string name,
         const Geom& geom, HSM2ModelCard& shared_card) {
     std::unique_ptr<HSM2Device> dev(new HSM2Device(std::move(name)));
     dev->model_ = &shared_card.ucb;
+    dev->ext_nodes_ = {n_d, n_g, n_s, n_b};
 
     auto& inst = dev->inst_;
     inst.HSM2name = dev->name().c_str();

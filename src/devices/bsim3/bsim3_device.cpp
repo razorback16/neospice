@@ -45,6 +45,7 @@ BSIM3Device::make(std::string name,
         const Geom& geom, BSIM3ModelCard& shared_card) {
     std::unique_ptr<BSIM3Device> dev(new BSIM3Device(std::move(name)));
     dev->model_ = &shared_card.ucb;
+    dev->ext_nodes_ = {n_d, n_g, n_s, n_b};
 
     if (!shared_card.ucb.BSIM3versionGiven) {
         shared_card.ucb.BSIM3version = "3.3.0";

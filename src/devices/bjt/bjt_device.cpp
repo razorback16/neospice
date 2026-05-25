@@ -39,6 +39,8 @@ BJTDevice::make(std::string name,
     inst.BJTname = dev->name().c_str();
     inst.BJTmodPtr = dev->model_;
 
+    dev->ext_nodes_ = {n_col, n_base, n_emit, n_subst};
+
     // Node wiring (UCB convention).
     inst.BJTcolNode = neo_to_ucb(n_col);
     inst.BJTbaseNode = neo_to_ucb(n_base);

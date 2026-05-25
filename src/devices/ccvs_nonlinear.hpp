@@ -43,6 +43,8 @@ public:
     }
     std::vector<std::string> output_currents() const override;
 
+    std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
+
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,

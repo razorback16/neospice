@@ -285,7 +285,7 @@ def extract_subcircuits(filepath):
 
     Nested subcircuits (defined inside another .subckt/.ends block)
     are internal and cannot be instantiated standalone, so we skip them.
-    Returns list of (name, ports, filepath, roles) tuples.
+    Returns list of (name, ports, filepath, roles, params) tuples.
     """
     subcircuits = []
     if is_binary_file(filepath):
@@ -325,12 +325,24 @@ def extract_subcircuits(filepath):
             continue  # skip nested subcircuits
         name = m.group(1)
         ports_line = m.group(2).strip()
+        # Strip inline comments (;...) before parsing
+        if ';' in ports_line:
+            ports_line = ports_line[:ports_line.index(';')].strip()
         # Ports are space-separated until we hit params: or key=val
         ports = []
+        params = {}  # key=val default parameters
+        in_params = False
         for tok in ports_line.split():
-            if '=' in tok or tok.upper() == 'PARAMS:':
-                break
-            ports.append(tok)
+            if tok.upper() == 'PARAMS:':
+                in_params = True
+                continue
+            if '=' in tok:
+                in_params = True
+                k, v = tok.split('=', 1)
+                params[k.strip()] = v.strip()
+                continue
+            if not in_params:
+                ports.append(tok)
 
         # Try to determine pin roles from comments
         subckt_line_idx = match_lineno - 1  # 0-based index into lines list
@@ -344,7 +356,7 @@ def extract_subcircuits(filepath):
         if roles is None and len(ports) == 5:
             roles = ['inp', 'inm', 'vcc', 'vee', 'out']
 
-        subcircuits.append((name, ports, str(filepath.resolve()), roles))
+        subcircuits.append((name, ports, str(filepath.resolve()), roles, params))
     return subcircuits
 
 
@@ -420,7 +432,7 @@ Z1 drain gg 0 {model_name}
         return None
 
 
-def make_subcircuit_test(name, ports, filepath, roles=None):
+def make_subcircuit_test(name, ports, filepath, roles=None, params=None):
     """Generate a test circuit for a subcircuit based on port count."""
     n = len(ports)
     if n < 2:
@@ -431,6 +443,25 @@ def make_subcircuit_test(name, ports, filepath, roles=None):
 
     lines = [f"* Test subcircuit {name}"]
     lines.append(f'.include "{filepath}"')
+
+    # Add .param defaults for common undefined parameters used by LTspice
+    # digital models (74HC, 74HCT, CD4000, etc.)
+    if params:
+        import re
+        needed_params = set()
+        for v in params.values():
+            for m in re.finditer(r'\{(\w+)\}', v):
+                needed_params.add(m.group(1))
+        PARAM_DEFAULTS = {
+            'vcc': '5', 'vcc2': '5', 'vcc3': '5', 'vcc4': '5',
+            'vdd': '5', 'vdd1': '5', 'vdd2': '5',
+            'speed': '1', 'speed1': '1', 'speed2': '1', 'speed3': '1', 'speed4': '1',
+            'tripdt': '1e-9', 'tripdt1': '1e-9', 'tripdt1a': '1e-9',
+            'tripdt2': '1e-9', 'tripdt3': '1e-9', 'tripdt4': '1e-9',
+        }
+        for p in sorted(needed_params):
+            if p.lower() in PARAM_DEFAULTS:
+                lines.append(f".param {p}={PARAM_DEFAULTS[p.lower()]}")
 
     # Supply voltages — check both named ports and roles
     has_vcc = any(p in ('VCC', 'VDD', 'V+', 'VP', 'VS+', 'AVDD', 'VCC+',
@@ -492,9 +523,13 @@ def make_subcircuit_test(name, ports, filepath, roles=None):
             net = f"net_{p.lower()}"
             inst_ports.append(net)
 
-    # Create the instance line
+    # Create the instance line (with params if any)
     port_str = " ".join(inst_ports)
-    lines.append(f"X1 {port_str} {name}")
+    inst_line = f"X1 {port_str} {name}"
+    if params:
+        param_str = " ".join(f"{k}={v}" for k, v in params.items())
+        inst_line += f" PARAMS: {param_str}"
+    lines.append(inst_line)
 
     # Input sources
     if 'in_p' in inst_ports:
@@ -605,8 +640,8 @@ def main():
                 rel_path = mf.relative_to(KICAD_LIB)
                 all_tests.append(('model', name, mtype, netlist, str(rel_path)))
 
-        for name, ports, fpath, roles in extract_subcircuits(mf):
-            netlist = make_subcircuit_test(name, ports, fpath, roles)
+        for name, ports, fpath, roles, params in extract_subcircuits(mf):
+            netlist = make_subcircuit_test(name, ports, fpath, roles, params)
             if netlist:
                 rel_path = mf.relative_to(KICAD_LIB)
                 all_tests.append(('subckt', name, f'{len(ports)}-port', netlist, str(rel_path)))

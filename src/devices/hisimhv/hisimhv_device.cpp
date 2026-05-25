@@ -35,6 +35,7 @@ HSMHVDevice::make(std::string name,
         const Geom& geom, HSMHVModelCard& shared_card) {
     std::unique_ptr<HSMHVDevice> dev(new HSMHVDevice(std::move(name)));
     dev->model_ = &shared_card.ucb;
+    dev->ext_nodes_ = {n_d, n_g, n_s, n_b, n_sub};
 
     auto& inst = dev->inst_;
     inst.HSMHVname = dev->name().c_str();

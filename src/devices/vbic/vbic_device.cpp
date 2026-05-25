@@ -35,6 +35,7 @@ VBICDevice::make(std::string name,
         int32_t n_coll, int32_t n_base, int32_t n_emit, int32_t n_subs,
         const Geom& geom, VBICModelCard& shared_card) {
     std::unique_ptr<VBICDevice> dev(new VBICDevice(std::move(name)));
+    dev->ext_nodes_ = {n_coll, n_base, n_emit, n_subs};
     dev->model_ = &shared_card.ucb;
 
     auto& inst = dev->inst_;

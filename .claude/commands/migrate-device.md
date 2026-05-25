@@ -407,6 +407,24 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 
 ---
 
+## Phase 11b: Topology Checker Support
+
+Set `ext_nodes_` in the device's `make()` function so the topology checker can build
+the circuit adjacency graph. This is a protected member of the `Device` base class.
+
+```cpp
+auto dev = <NS>Device::make(name, nd, ng, ns, nb, geom, card);
+dev->ext_nodes_ = {nd, ng, ns, nb};  // all external terminal nodes
+```
+
+Only include external (user-facing) terminal nodes, not internal nodes created by the
+device. The topology checker uses `external_nodes()` (which returns `ext_nodes_` by
+default) to detect floating and disconnected nodes.
+
+**References**: `bsim3_device.cpp`, `bjt_device.cpp`, `dio_device.cpp`
+
+---
+
 ## Phase 12: Integration Checklist
 
 - [ ] `cmake --build build` compiles cleanly **with zero warnings**
@@ -427,6 +445,8 @@ from `model_types` and uses `levels`/`spice_prefix` for correct LEVEL and elemen
 - [ ] `register_<ns>` forward-declared and called in `device_registry.cpp::register_all()`
 - [ ] Factory file added to device's `CMakeLists.txt`
 - [ ] No changes to `circuit_typed.cpp` or `netlist_parser.cpp`
+- [ ] `ext_nodes_` set in `make()` with all external terminal nodes (for topology checker)
+- [ ] Resolve functions throw `ParseError` on unknown models (never silently skip)
 
 ### Dual-path include verification
 

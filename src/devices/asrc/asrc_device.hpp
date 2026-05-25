@@ -62,6 +62,13 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 
+    std::vector<int32_t> external_nodes() const override {
+        std::vector<int32_t> nodes = {np_, nn_};
+        for (auto n : var_indices_) nodes.push_back(n);
+        for (auto n : var_indices2_) if (n >= 0) nodes.push_back(n);
+        return nodes;
+    }
+
     bool device_converged() const override;
 
     /// Set the simulation time for the next evaluate call.

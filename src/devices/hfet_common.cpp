@@ -1,4 +1,5 @@
 #include "devices/hfet_common.hpp"
+#include "core/types.hpp"
 #include "devices/hfet1/hfet1_device.hpp"
 #include "devices/hfet1/hfet1_model_card.hpp"
 #include "devices/hfet2/hfet2_device.hpp"
@@ -92,18 +93,16 @@ void resolve_hfets(
         if (it == models.end()) {
             auto it2 = models.find(to_lower(z.model_name));
             if (it2 == models.end()) {
-                fprintf(stderr, "Warning: Line %d: Unknown model '%s' — skipping HFET '%s'\n",
-                        z.line_number, z.model_name.c_str(), z.name.c_str());
-                continue;
+                throw ParseError("Line " + std::to_string(z.line_number) +
+                    ": Unknown model '" + z.model_name + "' for HFET/MES '" + z.name + "'");
             }
             it = it2;
         }
         std::string model_type = to_lower(it->second.type);
         if (model_type != "nhfet" && model_type != "phfet" &&
             model_type != "nmf" && model_type != "pmf") {
-            fprintf(stderr, "Warning: Line %d: Z card references unknown model type '%s' — skipping\n",
-                    z.line_number, it->second.type.c_str());
-            continue;
+            throw ParseError("Line " + std::to_string(z.line_number) +
+                ": Z card references unknown model type '" + it->second.type + "'");
         }
         int level = 5; // default: HFET1
         auto lvl_it = it->second.params.find("level");

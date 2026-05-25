@@ -34,7 +34,7 @@ public:
         }
     }
 
-    virtual std::vector<int32_t> external_nodes() const { return {}; }
+    virtual std::vector<int32_t> external_nodes() const { return ext_nodes_; }
 
     virtual std::optional<double> primary_value() const { return std::nullopt; }
 
@@ -182,6 +182,7 @@ public:
 
 protected:
     std::string name_;
+    std::vector<int32_t> ext_nodes_;
     double sim_temp_ = T_NOMINAL;  ///< simulation temperature for noise (K)
 
     // Helpers for ground-aware stamping
