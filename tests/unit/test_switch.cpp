@@ -496,7 +496,7 @@ S1 out 0 ctrl 0 NOMODEL
 .op
 .end
 )";
-    EXPECT_NO_THROW(sim.parse(netlist));
+    EXPECT_THROW(sim.parse(netlist), neospice::ParseError);
 }
 
 TEST(SwitchParser, ErrorWElementUnknownVSource) {

@@ -50,7 +50,7 @@ TEST(ParserMosfet, Level1NmosCardInstantiatesMOS1Device) {
     EXPECT_EQ(1, mos1_count);
 }
 
-TEST(ParserMosfet, UnsupportedLevelSkipsWithWarning) {
+TEST(ParserMosfet, UnsupportedLevelThrows) {
     const std::string netlist =
         "* Unsupported LEVEL=5 probe\n"
         "M1 d g s b M1MOD\n"
@@ -58,5 +58,5 @@ TEST(ParserMosfet, UnsupportedLevelSkipsWithWarning) {
         ".end\n";
 
     NetlistParser p;
-    EXPECT_NO_THROW(p.parse(netlist));
+    EXPECT_THROW(p.parse(netlist), neospice::ParseError);
 }
