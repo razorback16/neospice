@@ -270,24 +270,18 @@ for λ = 0 to 1:
 
 ## Implementation Roadmap
 
-### Phase 1: Quick Wins (1-2 days)
-- [ ] 1A: Node damping in Newton
-- [ ] 1B: Reorder-on-singular-pivot fix
-- [ ] 1C: True gmin stepping fallback
+### ~~Phase 1: Quick Wins~~ ✓ IMPLEMENTED
+- [x] 1A: Node damping in Newton
+- [x] 1B: Reorder-on-singular-pivot fix
+- [x] 1C: True gmin stepping fallback
 
-**Expected improvement:** 319 convergence failures → ~250-280 (10-20% reduction)
+### ~~Phase 2: Newton Hardening~~ ✓ IMPLEMENTED
+- [x] 2A: Backtracking line search
+- [x] 2B: CKTsrcFact-style source scaling
+- [x] 2D: Adaptive pseudo-transient time step
 
-### Phase 2: Newton Hardening (2-3 days)
-- [ ] 2A: Backtracking line search
-- [ ] 2B: CKTsrcFact-style source scaling
-- [ ] 2D: Adaptive pseudo-transient time step
-
-**Expected improvement:** ~250 → ~180-200 (25-30% reduction)
-
-### Phase 3: Diagnostics (1 day)
-- [ ] 2C: Topology checker with actionable warnings
-
-**Expected improvement:** Better error messages, may reclassify some SIM_ERROR as structural.
+### ~~Phase 3: Diagnostics~~ ✓ IMPLEMENTED
+- [x] 2C: Topology checker with actionable warnings
 
 ### Phase 4: Advanced Methods (1-2 weeks)
 - [ ] 3A: Full transient startup (OPtran)
@@ -298,7 +292,7 @@ for λ = 0 to 1:
 **Expected improvement:** ~180 → ~50-80 (further 50-60% reduction)
 
 ### Aspirational Target
-With all improvements: **99.5%+ pass rate** (~35,000 models, <175 failures), with remaining failures being genuinely broken library files and recursive subcircuits.
+With Phase 4: **99.5%+ pass rate** (~35,000 models, <175 failures), with remaining failures being genuinely broken library files and recursive subcircuits.
 
 ---
 
