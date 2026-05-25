@@ -1711,12 +1711,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 // POLY(N) form
                 // Extract dimension N from "poly(n)" or "poly" followed by "(n)"
                 int poly_dim = 1;
+                bool poly_dim_in_token = false;
                 std::string poly_tok = tok3;
                 size_t paren_pos = poly_tok.find('(');
                 if (paren_pos != std::string::npos) {
                     size_t close = poly_tok.find(')');
                     if (close != std::string::npos && close > paren_pos) {
                         poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
+                        poly_dim_in_token = true;
                     }
                 } else if (tokens.size() > 4 - e_tok_offset) {
                     // "POLY (N)" — dimension in separate token
@@ -1730,8 +1732,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 }
                 // Now parse 2*poly_dim control node pairs, then coefficients
                 size_t idx = 4 - e_tok_offset;
-                // Skip past any "(N)" token we haven't consumed yet
-                if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
+                // Skip past "(N)" token only when POLY and dimension were separate tokens
+                if (!poly_dim_in_token && idx < tokens.size() && tokens[idx].front() == '(') ++idx;
 
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
@@ -2061,12 +2063,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             if (tok3g.substr(0, 4) == "poly") {
                 // POLY(N) form for VCCS
                 int poly_dim = 1;
+                bool poly_dim_in_token = false;
                 std::string poly_tok = tok3g;
                 size_t paren_pos = poly_tok.find('(');
                 if (paren_pos != std::string::npos) {
                     size_t close = poly_tok.find(')');
                     if (close != std::string::npos && close > paren_pos) {
                         poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
+                        poly_dim_in_token = true;
                     }
                 } else if (tokens.size() > 4 - g_tok_offset) {
                     std::string next = tokens[4 - g_tok_offset];
@@ -2078,7 +2082,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                 }
                 size_t idx = 4 - g_tok_offset;
-                if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
+                if (!poly_dim_in_token && idx < tokens.size() && tokens[idx].front() == '(') ++idx;
 
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
@@ -2373,12 +2377,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             if (tok3h.substr(0, 4) == "poly") {
                 // POLY(N) form
                 int poly_dim = 1;
+                bool poly_dim_in_token = false;
                 std::string poly_tok = tok3h;
                 size_t paren_pos = poly_tok.find('(');
                 if (paren_pos != std::string::npos) {
                     size_t close = poly_tok.find(')');
                     if (close != std::string::npos && close > paren_pos) {
                         poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
+                        poly_dim_in_token = true;
                     }
                 } else if (tokens.size() > 4) {
                     std::string next = tokens[4];
@@ -2390,7 +2396,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                 }
                 size_t idx = 4;
-                if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
+                if (!poly_dim_in_token && idx < tokens.size() && tokens[idx].front() == '(') ++idx;
 
                 // Parse N VSource names
                 std::vector<std::string> vsense_names;
@@ -2439,12 +2445,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             if (tok3f.substr(0, 4) == "poly") {
                 // POLY(N) form
                 int poly_dim = 1;
+                bool poly_dim_in_token = false;
                 std::string poly_tok = tok3f;
                 size_t paren_pos = poly_tok.find('(');
                 if (paren_pos != std::string::npos) {
                     size_t close = poly_tok.find(')');
                     if (close != std::string::npos && close > paren_pos) {
                         poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
+                        poly_dim_in_token = true;
                     }
                 } else if (tokens.size() > 4) {
                     std::string next = tokens[4];
@@ -2456,7 +2464,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                 }
                 size_t idx = 4;
-                if (idx < tokens.size() && tokens[idx].front() == '(') ++idx;
+                if (!poly_dim_in_token && idx < tokens.size() && tokens[idx].front() == '(') ++idx;
 
                 // Parse N VSource names
                 std::vector<std::string> vsense_names;
@@ -2957,11 +2965,7 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
             auto pe_it = parsed_elements.find(prefix);
             if (pe_it != parsed_elements.end() && !pe_it->second.empty()) {
                 ParseContext resolve_ctx{ckt, node_raw, models, 0, error_fn};
-                try {
-                    handler_entry.resolve(pe_it->second, models, ckt, resolve_ctx);
-                } catch (const ParseError& e) {
-                    fprintf(stderr, "Warning: %s — skipping device resolution\n", e.what());
-                }
+                handler_entry.resolve(pe_it->second, models, ckt, resolve_ctx);
             }
         }
     }
@@ -2999,9 +3003,8 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         if (it == models.end()) {
             auto it2 = models.find(to_lower(sd.model_name));
             if (it2 == models.end()) {
-                fprintf(stderr, "Warning: Line %d: S element references unknown model '%s' — skipping\n",
-                        sd.line_number, sd.model_name.c_str());
-                continue;
+                throw ParseError("Line " + std::to_string(sd.line_number) +
+                    ": S element references unknown model '" + sd.model_name + "'");
             }
             it = it2;
         }
@@ -3022,9 +3025,8 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         if (it == models.end()) {
             auto it2 = models.find(to_lower(wd.model_name));
             if (it2 == models.end()) {
-                fprintf(stderr, "Warning: Line %d: W element references unknown model '%s' — skipping\n",
-                        wd.line_number, wd.model_name.c_str());
-                continue;
+                throw ParseError("Line " + std::to_string(wd.line_number) +
+                    ": W element references unknown model '" + wd.model_name + "'");
             }
             it = it2;
         }
@@ -3060,9 +3062,8 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         if (it == models.end()) {
             auto it2 = models.find(to_lower(ol.model_name));
             if (it2 == models.end()) {
-                fprintf(stderr, "Warning: Line %d: O element references unknown model '%s' — skipping\n",
-                        ol.line_number, ol.model_name.c_str());
-                continue;
+                throw ParseError("Line " + std::to_string(ol.line_number) +
+                    ": O element references unknown model '" + ol.model_name + "'");
             }
             it = it2;
         }
