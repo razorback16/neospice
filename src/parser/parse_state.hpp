@@ -8,6 +8,7 @@
 #include "devices/asrc/asrc_device.hpp"
 #include "devices/asrc/expression_ast.hpp"
 #include "devices/device_registry.hpp"
+#include "devices/vcvs_nonlinear.hpp"  // for TablePoint
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -137,6 +138,17 @@ struct ParseState {
         double dtemp = 0.0;   // Kelvin
     };
 
+    struct DeferredTableVCCS {
+        std::string name;
+        int32_t np, nn;
+        asrc::CompiledExpression expr;
+        std::vector<int32_t> node_indices;
+        std::vector<int32_t> node_indices2;
+        std::vector<std::string> vsrc_names;
+        std::vector<TablePoint> table_points;
+        int line_number;
+    };
+
     // Deferred element vectors
     std::vector<DeferredCCVS> deferred_ccvs;
     std::vector<DeferredCCCS> deferred_cccs;
@@ -147,6 +159,7 @@ struct ParseState {
     std::vector<DeferredCSwitch> deferred_cswitches;
     std::vector<DeferredLTRA> deferred_ltras;
     std::vector<DeferredASRC> deferred_asrcs;
+    std::vector<DeferredTableVCCS> deferred_table_vccs;
 
     // DeviceRegistry parsed elements
     std::unordered_map<char, std::vector<std::unique_ptr<ParsedElement>>> parsed_elements;

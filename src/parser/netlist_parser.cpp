@@ -848,6 +848,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
     auto& deferred_cswitches = state.deferred_cswitches;
     auto& deferred_ltras = state.deferred_ltras;
     auto& deferred_asrcs = state.deferred_asrcs;
+    auto& deferred_table_vccs = state.deferred_table_vccs;
 
     using DeferredCCVS = ParseState::DeferredCCVS;
     using DeferredCCCS = ParseState::DeferredCCCS;
@@ -2142,10 +2143,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
                 if (!ctrl_expr.empty() && ctrl_expr.back() == '}') ctrl_expr.pop_back();
                 std::string ctrl_lower = to_lower(ctrl_expr);
+
+                // Detect simple V(node) or V(n1,n2) vs complex expression
+                bool is_simple_v = false;
                 int32_t ctrl_pos = GROUND_INTERNAL, ctrl_neg = GROUND_INTERNAL;
                 if (ctrl_lower.size() > 3 && ctrl_lower[0] == 'v' && ctrl_lower[1] == '(') {
                     size_t close = ctrl_lower.find(')');
-                    if (close != std::string::npos) {
+                    if (close != std::string::npos && close == ctrl_lower.size() - 1) {
+                        is_simple_v = true;
                         std::string node_name = ctrl_expr.substr(2, close - 2);
                         size_t comma = node_name.find(',');
                         if (comma != std::string::npos) {
@@ -2156,6 +2161,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         }
                     }
                 }
+
+                // Parse table points
                 size_t idx = table_data_start;
                 if (idx < tokens.size() && tokens[idx] == "=") ++idx;
 
@@ -2189,8 +2196,61 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     fprintf(stderr, "Warning: Line %d: TABLE VCCS: no table points found — skipping\n", line.line_number);
                     continue;
                 }
-                ckt.add_device(std::make_unique<TableVCCS>(
-                    name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
+
+                if (is_simple_v) {
+                    ckt.add_device(std::make_unique<TableVCCS>(
+                        name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
+                } else {
+                    // Complex expression — compile and defer for I() resolution
+                    ctrl_expr = expand_funcs(ctrl_expr, func_defs);
+                    asrc::CompiledExpression compiled;
+                    try {
+                        compiled = asrc::CompiledExpression::compile(ctrl_expr);
+                    } catch (const ParseError& e) {
+                        fprintf(stderr, "Warning: Line %d: TABLE VCCS expression error: %s — skipping\n", line.line_number, e.what());
+                        continue;
+                    }
+                    const auto& refs = compiled.var_refs();
+                    int nv = compiled.num_vars();
+                    std::vector<int32_t> t_node_indices(nv, -1);
+                    std::vector<int32_t> t_node_indices2(nv, -1);
+                    std::vector<std::string> t_vsrc_names(nv);
+
+                    for (int i = 0; i < nv; ++i) {
+                        const auto& ref = refs[i];
+                        switch (ref.kind) {
+                        case asrc::VarKind::NODE_VOLTAGE: {
+                            std::string lname = ref.name1;
+                            t_node_indices[i] = (lname == "0" || lname == "gnd")
+                                ? GROUND_INTERNAL : node_raw(lname);
+                            break;
+                        }
+                        case asrc::VarKind::DIFF_VOLTAGE: {
+                            std::string ln1 = ref.name1, ln2 = ref.name2;
+                            t_node_indices[i]  = (ln1 == "0" || ln1 == "gnd")
+                                ? GROUND_INTERNAL : node_raw(ln1);
+                            t_node_indices2[i] = (ln2 == "0" || ln2 == "gnd")
+                                ? GROUND_INTERNAL : node_raw(ln2);
+                            break;
+                        }
+                        case asrc::VarKind::BRANCH_CURRENT:
+                            t_vsrc_names[i] = ref.name1;
+                            break;
+                        }
+                    }
+
+                    ParseState::DeferredTableVCCS td;
+                    td.name = name;
+                    td.np = np;
+                    td.nn = nn;
+                    td.expr = std::move(compiled);
+                    td.node_indices = std::move(t_node_indices);
+                    td.node_indices2 = std::move(t_node_indices2);
+                    td.vsrc_names = std::move(t_vsrc_names);
+                    td.table_points = std::move(pts);
+                    td.line_number = line.line_number;
+                    deferred_table_vccs.push_back(std::move(td));
+                }
 
             } else if (tok3g == "value" || tok3g.substr(0, 6) == "value=") {
                 // PSpice VALUE={expr} form — lower to ASRCDevice with CURRENT mode
@@ -2856,6 +2916,7 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
     auto& deferred_cswitches = state.deferred_cswitches;
     auto& deferred_ltras = state.deferred_ltras;
     auto& deferred_asrcs = state.deferred_asrcs;
+    auto& deferred_table_vccs = state.deferred_table_vccs;
     auto& parsed_elements = state.parsed_elements;
 
     // Resolve deferred CCVS (H elements) — find sensing VSource by name.
@@ -3165,6 +3226,45 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         asrc_dev->set_dtemp(bd.dtemp);
 
         ckt.add_device(std::move(asrc_dev));
+    }
+
+    // Resolve deferred TABLE VCCS (expression-controlled)
+    for (auto& td : deferred_table_vccs) {
+        const auto& refs = td.expr.var_refs();
+        int nv = td.expr.num_vars();
+        std::vector<const VSource*> vsource_ptrs(nv, nullptr);
+
+        bool table_ok = true;
+        for (int i = 0; i < nv; ++i) {
+            if (refs[i].kind == asrc::VarKind::BRANCH_CURRENT &&
+                !td.vsrc_names[i].empty()) {
+                const VSource* vs = nullptr;
+                for (const auto& dev : ckt.devices()) {
+                    if (auto* v = dynamic_cast<const VSource*>(dev.get())) {
+                        if (to_lower(v->name()) == to_lower(td.vsrc_names[i])) {
+                            vs = v;
+                            break;
+                        }
+                    }
+                }
+                if (!vs) {
+                    fprintf(stderr, "Warning: Line %d: TABLE VCCS '%s' references unknown voltage source '%s' in I() — skipping\n",
+                            td.line_number, td.name.c_str(), td.vsrc_names[i].c_str());
+                    table_ok = false;
+                    break;
+                }
+                vsource_ptrs[i] = vs;
+            }
+        }
+        if (!table_ok) continue;
+
+        ckt.add_device(std::make_unique<TableVCCS>(
+            td.name, td.np, td.nn,
+            std::move(td.expr),
+            std::move(td.node_indices),
+            std::move(td.node_indices2),
+            std::move(vsource_ptrs),
+            std::move(td.table_points)));
     }
 }
 
