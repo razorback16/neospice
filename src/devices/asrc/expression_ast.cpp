@@ -21,6 +21,10 @@ ExpressionParser::ExpressionParser(const std::string& expr,
                                    std::vector<VarRef>& var_refs)
     : expr_(expr), var_refs_(var_refs)
 {
+    // PSpice uses curly braces as expression delimiters interchangeably
+    // with parentheses (e.g. LIMIT{x,0,1}, PWR({param},2)).
+    std::replace(expr_.begin(), expr_.end(), '{', '(');
+    std::replace(expr_.begin(), expr_.end(), '}', ')');
     // Build initial var_map from any pre-existing var_refs
     for (size_t i = 0; i < var_refs_.size(); ++i) {
         var_map_[var_key(var_refs_[i])] = static_cast<int>(i);

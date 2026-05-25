@@ -91,8 +91,10 @@ DCResult solve_dc(Circuit& ckt) {
     NewtonResult result;
     try {
         result = newton_solve(ckt, *solver, solution, direct_attempt_options(ckt.options));
-    } catch (const std::runtime_error&) {
+    } catch (const std::runtime_error& e) {
         result.converged = false;
+        if (ckt.options.verbose)
+            std::cerr << "[dc] direct Newton threw: " << e.what() << "\n";
     }
     if (result.converged) {
         sim_status.iterations = result.iterations;

@@ -177,7 +177,7 @@ public:
     std::unique_ptr<ASTNode> parse();
 
 private:
-    const std::string& expr_;
+    std::string expr_;
     std::vector<VarRef>& var_refs_;
     size_t pos_ = 0;
 

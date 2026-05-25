@@ -127,8 +127,23 @@ std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
     size_t open = joined.find('(');
     size_t close = joined.find(')');
     if (open == std::string::npos || close == std::string::npos || close <= open) {
-        fprintf(stderr, "Warning: Missing parentheses in source specification\n");
-        return {};
+        // No parentheses — parse remaining tokens as bare values
+        // (e.g. PULSE -0.68 0.02 148NS 0.33US 0.33US 6US 6.66US)
+        // Skip the keyword token (PULSE/SIN/etc.) that idx currently points to
+        ++idx;
+        std::vector<double> values;
+        for (; idx < tokens.size(); ++idx) {
+            std::string t = tokens[idx];
+            // Lowercase for keyword detection
+            std::string tl = t;
+            std::transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
+            if (tl == "dc" || tl == "ac" || tl == "pulse" || tl == "sin" ||
+                tl == "pwl" || tl == "exp" || tl == "sffm" || tl == "am")
+                break;
+            try { values.push_back(parse_spice_number(t)); }
+            catch (...) { break; }
+        }
+        return values;
     }
 
     std::string content = joined.substr(open + 1, close - open - 1);
@@ -3295,6 +3310,49 @@ std::string NetlistParser::resolve_includes(const std::string& content,
                         }
                         expanded += '\n';
                     }
+                }
+
+                // Strip top-level analysis commands from included files.
+                // Library files sometimes contain .dc/.tran/.ac/.op etc.
+                // outside .subckt blocks; these are library-author test
+                // commands that must not override the main netlist's analysis.
+                {
+                    std::ostringstream filtered;
+                    std::istringstream flines(expanded);
+                    std::string fline;
+                    int subckt_depth = 0;
+                    while (std::getline(flines, fline)) {
+                        std::string fl = fline;
+                        size_t fp = fl.find_first_not_of(" \t");
+                        if (fp == std::string::npos) { filtered << fline << '\n'; continue; }
+                        std::string fl_lower = fl.substr(fp);
+                        std::transform(fl_lower.begin(), fl_lower.end(), fl_lower.begin(), ::tolower);
+                        if (fl_lower.substr(0, 7) == ".subckt" &&
+                            (fl_lower.size() == 7 || fl_lower[7] == ' ' || fl_lower[7] == '\t'))
+                            subckt_depth++;
+                        else if (fl_lower.substr(0, 5) == ".ends")
+                            subckt_depth = std::max(0, subckt_depth - 1);
+                        if (subckt_depth == 0) {
+                            bool is_analysis = false;
+                            for (const auto& cmd : std::vector<std::string>{
+                                    ".dc", ".tran", ".ac", ".op",
+                                    ".noise", ".tf", ".sens",
+                                    ".pz", ".fourier", ".four", ".meas",
+                                    ".measure", ".temp", ".step"}) {
+                                if (fl_lower.size() >= cmd.size() &&
+                                    fl_lower.compare(0, cmd.size(), cmd) == 0 &&
+                                    (fl_lower.size() == cmd.size() ||
+                                     fl_lower[cmd.size()] == ' ' ||
+                                     fl_lower[cmd.size()] == '\t' ||
+                                     fl_lower[cmd.size()] == '\r' ||
+                                     fl_lower[cmd.size()] == '\n'))
+                                    { is_analysis = true; break; }
+                            }
+                            if (is_analysis) continue;
+                        }
+                        filtered << fline << '\n';
+                    }
+                    expanded = filtered.str();
                 }
 
                 result << expanded;
