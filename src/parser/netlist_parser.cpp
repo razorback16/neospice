@@ -1792,6 +1792,15 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                     table_ctrl_token = tokens[4 - e_tok_offset];
                     table_data_start = 5 - e_tok_offset;
+                    // Multi-token expression: join tokens until closing '}'
+                    if (table_ctrl_token.find('{') != std::string::npos &&
+                        table_ctrl_token.find('}') == std::string::npos) {
+                        for (size_t ti = table_data_start; ti < tokens.size(); ++ti) {
+                            table_ctrl_token += tokens[ti];
+                            table_data_start = ti + 1;
+                            if (tokens[ti].find('}') != std::string::npos) break;
+                        }
+                    }
                 }
                 // Extract node name from {V(node)}
                 std::string ctrl_expr = table_ctrl_token;
@@ -2138,6 +2147,15 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                     table_ctrl_token = tokens[4 - g_tok_offset];
                     table_data_start = 5 - g_tok_offset;
+                    // Multi-token expression: join tokens until closing '}'
+                    if (table_ctrl_token.find('{') != std::string::npos &&
+                        table_ctrl_token.find('}') == std::string::npos) {
+                        for (size_t ti = table_data_start; ti < tokens.size(); ++ti) {
+                            table_ctrl_token += tokens[ti];
+                            table_data_start = ti + 1;
+                            if (tokens[ti].find('}') != std::string::npos) break;
+                        }
+                    }
                 }
                 std::string ctrl_expr = table_ctrl_token;
                 if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);

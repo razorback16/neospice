@@ -101,6 +101,33 @@ DCResult solve_dc(Circuit& ckt) {
         sim_status.residual = result.residual;
         sim_status.worst_node_idx = result.worst_node_idx;
     }
+    // 3a. Retry with diag_gmin = gmin to regularize singular matrices.
+    if (!result.converged) {
+        std::fill(solution.begin(), solution.end(), 0.0);
+        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+        SimOptions reg_opts = direct_attempt_options(ckt.options);
+        reg_opts.diag_gmin = ckt.options.gmin;
+        try {
+            result = newton_solve(ckt, *solver, solution, reg_opts);
+        } catch (const std::runtime_error&) {
+            result.converged = false;
+        }
+        if (result.converged) {
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFLOAT_BIT;
+            SimOptions verify_opts = direct_attempt_options(ckt.options);
+            try {
+                result = newton_solve(ckt, *solver, solution, verify_opts);
+            } catch (const std::runtime_error&) {
+                result.converged = false;
+            }
+        }
+        if (result.converged) {
+            sim_status.iterations = result.iterations;
+            sim_status.residual = result.residual;
+            sim_status.worst_node_idx = result.worst_node_idx;
+        }
+    }
+
     if (!result.converged) {
         if (ckt.options.verbose)
             std::cerr << "[dc] direct Newton failed (iters=" << result.iterations

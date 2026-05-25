@@ -173,6 +173,10 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         bool converged = true;
         for (int32_t i = 0; i < n; ++i) {
             double v_new = solution[i];
+            if (std::isnan(v_new) || std::isinf(v_new)) {
+                converged = false;
+                break;
+            }
             double v_old = old_solution[i];
             double diff = std::abs(v_new - v_old);
 
