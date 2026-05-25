@@ -207,6 +207,31 @@ DCResult solve_dc(Circuit& ckt) {
         }
         if (!result.converged) {
             if (ckt.options.verbose)
+                std::cerr << "[dc] trying gain stepping\n";
+            // 5b. Try gain stepping (scales dependent source gains from 0 to 1)
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+            try {
+                result = gain_stepping(ckt, *solver, solution, ckt.options);
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] gain stepping: converged=" << result.converged
+                              << " iters=" << result.iterations
+                              << " residual=" << result.residual << "\n";
+            } catch (const std::runtime_error& e) {
+                result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] gain stepping threw: " << e.what() << "\n";
+            }
+            if (result.converged) {
+                sim_status.iterations = result.iterations;
+                sim_status.convergence_method = ConvergenceMethod::SOURCE_STEPPING;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.source_steps = 1;
+                sim_status.warnings.push_back("gain stepping used");
+            }
+        }
+        if (!result.converged) {
+            if (ckt.options.verbose)
                 std::cerr << "[dc] trying pseudo-transient\n";
             // 6. Try pseudo-transient continuation
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
@@ -478,6 +503,12 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         }
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = source_stepping(ckt, *solver, solution, ckt.options);
+        if (res.converged) {
+            first_point = false;
+            return;
+        }
+        ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
+        res = gain_stepping(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             first_point = false;
             return;

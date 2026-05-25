@@ -1,4 +1,5 @@
 #include "devices/vccs_nonlinear.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx
 #include "devices/vsource.hpp"
 #include <cmath>
 #include <algorithm>
@@ -128,6 +129,13 @@ void NonlinearVCCS::evaluate(const std::vector<double>& voltages,
 
     std::vector<double> derivs;
     double f_val = eval_poly(ctrl_v, derivs);
+
+    // Scale by dep_src_fact for gain stepping convergence aid
+    double dsf = 1.0;
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        dsf = tls_integrator_ctx->options->dep_src_fact;
+    f_val *= dsf;
+    for (auto& d : derivs) d *= dsf;
 
     // SPICE convention: I = f(Vc) leaves N+ (np).
     // Jacobian: current leaving np = +df/dVk * V(cpk) - df/dVk * V(cnk)
@@ -346,6 +354,11 @@ void TableVCCS::assign_offsets(const SparsityPattern& pattern) {
 
 void TableVCCS::evaluate(const std::vector<double>& voltages,
                           NumericMatrix& mat, std::vector<double>& rhs) {
+    // Scale by dep_src_fact for gain stepping convergence aid
+    double dsf = 1.0;
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        dsf = tls_integrator_ctx->options->dep_src_fact;
+
     if (!has_expr_) {
         // Simple mode: V(ctrl_pos) - V(ctrl_neg)
         double vp = (ncp_ >= 0) ? voltages[ncp_] : 0.0;
@@ -354,6 +367,8 @@ void TableVCCS::evaluate(const std::vector<double>& voltages,
 
         double slope = 0.0;
         double f_val = interp(vc, slope);
+        f_val *= dsf;
+        slope *= dsf;
 
         add_if_valid(mat, off_np_ncp_,  slope);
         add_if_valid(mat, off_np_ncn_, -slope);
@@ -372,6 +387,8 @@ void TableVCCS::evaluate(const std::vector<double>& voltages,
 
     double table_slope = 0.0;
     double f_val = interp(ctrl_val, table_slope);
+    f_val *= dsf;
+    table_slope *= dsf;
 
     // Chain rule: dI/dv_i = table_slope * d(expr)/d(v_i)
     const auto& refs = expr_.var_refs();

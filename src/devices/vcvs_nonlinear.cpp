@@ -1,4 +1,5 @@
 #include "devices/vcvs_nonlinear.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
@@ -179,6 +180,13 @@ void NonlinearVCVS::evaluate(const std::vector<double>& voltages,
     std::vector<double> derivs;
     double f_val = eval_poly(ctrl_v, derivs);
 
+    // Scale by dep_src_fact for gain stepping convergence aid
+    double dsf = 1.0;
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        dsf = tls_integrator_ctx->options->dep_src_fact;
+    f_val *= dsf;
+    for (auto& d : derivs) d *= dsf;
+
     // KCL at output nodes: +I_branch into np, -I_branch out of nn
     add_if_valid(mat, off_np_branch_,  1.0);
     add_if_valid(mat, off_nn_branch_, -1.0);
@@ -328,6 +336,13 @@ void TableVCVS::evaluate(const std::vector<double>& voltages,
 
     double slope = 0.0;
     double f_val = interp(vc, slope);
+
+    // Scale by dep_src_fact for gain stepping convergence aid
+    double dsf = 1.0;
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        dsf = tls_integrator_ctx->options->dep_src_fact;
+    f_val *= dsf;
+    slope *= dsf;
 
     // KCL at output nodes
     add_if_valid(mat, off_np_branch_,  1.0);

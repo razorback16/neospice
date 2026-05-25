@@ -43,6 +43,7 @@ struct SimOptions {
     bool interp = false;  // .option interp: output on uniform tstep grid (default: raw adaptive steps)
     bool node_damping = false; // .option NODEDAMPING: damp large Newton voltage swings during DC
     double src_fact = 1.0;   // source scaling factor for CKTsrcFact-style source stepping
+    double dep_src_fact = 1.0; // dependent-source gain scaling for gain stepping convergence aid
 };
 
 /// Populated by the transient/DC driver before each Newton load, read by

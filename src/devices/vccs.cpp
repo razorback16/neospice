@@ -1,4 +1,5 @@
 #include "devices/vccs.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx
 
 namespace neospice {
 
@@ -35,7 +36,10 @@ void VCCS::evaluate(const std::vector<double>& /*voltages*/,
     // SPICE convention: I = gm * (V(ncp) - V(ncn)) leaves N+ (np).
     // Current leaving np = +gm*(V(ncp)-V(ncn))  → mat[np,ncp] += +gm
     // Current leaving nn = -gm*(V(ncp)-V(ncn))  → mat[nn,ncp] += -gm
-    const double gm = gm_ * m_;
+    double gm = gm_ * m_;
+    // Scale by dep_src_fact for gain stepping convergence aid
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        gm *= tls_integrator_ctx->options->dep_src_fact;
     add_if_valid(mat, off_np_ncp_,  gm);
     add_if_valid(mat, off_np_ncn_, -gm);
     add_if_valid(mat, off_nn_ncp_, -gm);

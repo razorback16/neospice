@@ -16,6 +16,10 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
                              std::vector<double>& solution,
                              const SimOptions& opts);
 
+NewtonResult gain_stepping(Circuit& ckt, NeoSolver& solver,
+                           std::vector<double>& solution,
+                           const SimOptions& opts);
+
 NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
                               std::vector<double>& solution,
                               const SimOptions& opts);

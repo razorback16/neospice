@@ -395,6 +395,120 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
     return result;
 }
 
+NewtonResult gain_stepping(Circuit& ckt, NeoSolver& solver,
+                           std::vector<double>& solution,
+                           const SimOptions& opts) {
+    const double original_dep_src_fact = ckt.options.dep_src_fact;
+
+    double fraction = 0.0;
+    double step = 0.001;
+    const double min_step = 1e-7;
+    int total_iterations = 0;
+    double last_residual = 0.0;
+    int32_t last_worst_idx = -1;
+
+    constexpr int MODEINITJCT_BIT   = 0x200;
+    constexpr int MODEINITFLOAT_BIT = 0x100;
+    constexpr int INITF_MASK        = 0x3F00;
+    int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
+    ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
+
+    // Start with all dependent source gains at zero
+    solution.assign(solution.size(), 0.0);
+    clear_state(ckt);
+
+    SimOptions step_opts = opts;
+    step_opts.dep_src_fact = 0.0;
+    ckt.options.dep_src_fact = 0.0;
+
+    NewtonResult result;
+    try {
+        result = newton_solve(ckt, solver, solution, step_opts);
+    } catch (const std::runtime_error&) {
+        result.converged = false;
+    }
+    if (!result.converged) {
+        // Try gmin stepping at zero gains
+        double zg = std::max(opts.gmin, opts.gshunt);
+        if (zg == 0.0) zg = opts.gmin;
+        double diag = zg;
+        for (int i = 0; i < 10; ++i) diag *= 10.0;
+        solution.assign(solution.size(), 0.0);
+        clear_state(ckt);
+        ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
+        SimOptions zg_opts = step_opts;
+        bool zg_ok = false;
+        for (int i = 0; i <= 10; ++i) {
+            zg_opts.diag_gmin = diag;
+            NewtonResult zr;
+            try { zr = newton_solve(ckt, solver, solution, zg_opts); }
+            catch (const std::runtime_error&) { zr.converged = false; }
+            if (!zr.converged) break;
+            total_iterations += zr.iterations;
+            diag /= 10.0;
+            ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
+            if (i == 10) zg_ok = true;
+        }
+        if (!zg_ok) {
+            ckt.options.dep_src_fact = original_dep_src_fact;
+            return {false, total_iterations, result.residual, result.worst_node_idx};
+        }
+    }
+    total_iterations += result.iterations;
+    std::vector<double> accepted_solution = solution;
+    StateCheckpoint accepted_state = save_state(ckt);
+
+    ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
+
+    while (fraction < 1.0) {
+        double next_frac = fraction + step;
+        if (next_frac > 1.0) next_frac = 1.0;
+
+        solution = accepted_solution;
+        restore_state(ckt, accepted_state);
+
+        step_opts.dep_src_fact = next_frac;
+        ckt.options.dep_src_fact = next_frac;
+        try {
+            result = newton_solve(ckt, solver, solution, step_opts);
+        } catch (const std::runtime_error&) {
+            result.converged = false;
+        }
+
+        last_residual = result.residual;
+        last_worst_idx = result.worst_node_idx;
+
+        if (result.converged) {
+            total_iterations += result.iterations;
+            fraction = next_frac;
+            accepted_solution = solution;
+            accepted_state = save_state(ckt);
+            if (result.iterations < opts.max_iter / 4) {
+                step = std::min(0.1, step * 1.5);
+            } else if (result.iterations > opts.max_iter / 2) {
+                step = std::max(min_step, step * 0.5);
+            }
+        } else {
+            if (step * (1.0 - fraction) < 1e-8)
+                break;
+            solution = accepted_solution;
+            restore_state(ckt, accepted_state);
+            step_opts.dep_src_fact = fraction;
+            ckt.options.dep_src_fact = fraction;
+            step *= 0.1;
+            if (step > 0.01) step = 0.01;
+            if (step < min_step) {
+                ckt.options.dep_src_fact = original_dep_src_fact;
+                return {false, total_iterations, last_residual, last_worst_idx};
+            }
+        }
+    }
+
+    ckt.options.dep_src_fact = original_dep_src_fact;
+    result.iterations = total_iterations;
+    return result;
+}
+
 NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
                               std::vector<double>& solution,
                               const SimOptions& opts) {

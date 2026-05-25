@@ -1,4 +1,5 @@
 #include "devices/vcvs.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx
 #include <stdexcept>
 
 namespace neospice {
@@ -49,6 +50,11 @@ void VCVS::assign_offsets(const SparsityPattern& pattern) {
 
 void VCVS::evaluate(const std::vector<double>& /*voltages*/,
                     NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+    // Scale gain by dep_src_fact for gain stepping convergence aid
+    double gain = gain_;
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        gain *= tls_integrator_ctx->options->dep_src_fact;
+
     // KCL at output nodes: +I_branch into np, -I_branch out of nn
     add_if_valid(mat, off_np_branch_,  1.0);
     add_if_valid(mat, off_nn_branch_, -1.0);
@@ -56,8 +62,8 @@ void VCVS::evaluate(const std::vector<double>& /*voltages*/,
     // Branch equation: V(np) - V(nn) - gain*(V(ncp) - V(ncn)) = 0
     add_if_valid(mat, off_branch_np_,   1.0);
     add_if_valid(mat, off_branch_nn_,  -1.0);
-    add_if_valid(mat, off_branch_ncp_, -gain_);
-    add_if_valid(mat, off_branch_ncn_,  gain_);
+    add_if_valid(mat, off_branch_ncp_, -gain);
+    add_if_valid(mat, off_branch_ncn_,  gain);
     // RHS = 0 (no independent voltage source term)
 }
 
