@@ -177,12 +177,13 @@ NewtonResult true_gmin_stepping(Circuit& ckt, NeoSolver& solver,
                                 int firstmode, int continuemode) {
     const std::vector<double> entry_solution = solution;
     const StateCheckpoint entry_state = save_state(ckt);
+    const double original_gmin = ckt.options.gmin;
 
     const double gmin_factor = 10.0;
     double factor = gmin_factor;
     double OldGmin = 1e-2;
     double current_gmin = OldGmin / factor;
-    const double gtarget = opts.gmin;
+    const double gtarget = original_gmin;
 
     int total_iterations = 0;
     double last_residual = 0.0;
@@ -202,6 +203,9 @@ NewtonResult true_gmin_stepping(Circuit& ckt, NeoSolver& solver,
     ckt.integrator_ctx.mode = firstmode;
 
     while (!success && !failed) {
+        // Publish the stepping gmin to ckt.options so devices see it
+        // via tls_integrator_ctx->options->gmin.
+        ckt.options.gmin = current_gmin;
         step_opts.gmin = current_gmin;
 
         NewtonResult result;
@@ -255,9 +259,12 @@ NewtonResult true_gmin_stepping(Circuit& ckt, NeoSolver& solver,
         }
     }
 
+    // Restore original gmin regardless of outcome
+    ckt.options.gmin = original_gmin;
+
     if (success) {
+        // Final verification at target gmin (already restored above)
         SimOptions final_opts = opts;
-        final_opts.gmin = gtarget;
         NewtonResult final_result;
         try {
             final_result = newton_solve(ckt, solver, solution, final_opts);
@@ -391,16 +398,32 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
 NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
                               std::vector<double>& solution,
                               const SimOptions& opts) {
+    const std::vector<double> entry_solution = solution;
+    const StateCheckpoint entry_state = save_state(ckt);
+
     const double C_pseudo = 1e-3;
     double dt_pseudo      = 1e-6;
     const int max_steps   = 200;
-    const double target_gmin = opts.diag_gmin;
+    const double target_gmin = std::max(opts.gshunt, 0.0);
     double final_probe_g = std::max(1e-6, target_gmin * 1e6);
 
     SimOptions step_opts = opts;
+    step_opts.max_iter = std::min(opts.max_iter, 100);
 
-    // Track residual for adaptive stepping (Kelley, SIAM 2004)
+    solution.assign(solution.size(), 0.0);
+    clear_state(ckt);
+
+    constexpr int INITF_MASK        = 0x3F00;
+    constexpr int MODEINITJCT_BIT   = 0x200;
+    constexpr int MODEINITFLOAT_BIT = 0x100;
+    int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
+    ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
+
+    int total_iterations = 0;
     double prev_residual = -1.0;
+
+    std::vector<double> accepted_solution = solution;
+    StateCheckpoint accepted_state = save_state(ckt);
 
     for (int step = 0; step < max_steps; ++step) {
         double G_pseudo = C_pseudo / dt_pseudo;
@@ -414,18 +437,20 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
         }
 
         if (result.converged) {
-            StateCheckpoint accepted_state = save_state(ckt);
+            total_iterations += result.iterations;
+            accepted_solution = solution;
+            accepted_state = save_state(ckt);
             double curr_residual = result.residual;
 
-            // Adaptive dt: dt_new = dt_old * (prev_residual / curr_residual)
-            // Clamped to 4x growth per step, floor 1e-15, ceiling 1e6
+            ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
+
             if (prev_residual > 0.0 && curr_residual > 0.0) {
                 double ratio = prev_residual / curr_residual;
-                ratio = std::min(ratio, 4.0);   // max 4x growth
-                ratio = std::max(ratio, 0.25);  // min 0.25x shrink
+                ratio = std::min(ratio, 4.0);
+                ratio = std::max(ratio, 0.25);
                 dt_pseudo *= ratio;
             } else {
-                dt_pseudo *= 2.0;  // fallback: double on first step
+                dt_pseudo *= 2.0;
             }
             dt_pseudo = std::max(dt_pseudo, 1e-15);
             dt_pseudo = std::min(dt_pseudo, 1e6);
@@ -433,7 +458,8 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
             prev_residual = curr_residual;
 
             if (G_pseudo <= final_probe_g) {
-                std::vector<double> accepted_solution = solution;
+                std::vector<double> probe_solution = solution;
+                StateCheckpoint probe_state = save_state(ckt);
                 step_opts.diag_gmin = target_gmin;
                 NewtonResult final_result;
                 try {
@@ -442,37 +468,42 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
                     final_result.converged = false;
                 }
                 if (final_result.converged) {
+                    total_iterations += final_result.iterations;
+                    final_result.iterations = total_iterations;
                     return final_result;
                 }
-                solution = accepted_solution;
-                restore_state(ckt, accepted_state);
+                solution = probe_solution;
+                restore_state(ckt, probe_state);
                 final_probe_g *= 1e-3;
             }
-
-            if (G_pseudo < target_gmin * 0.01) {
-                break;
-            }
         } else {
-            // More aggressive shrink than fixed 0.5x
+            solution = accepted_solution;
+            restore_state(ckt, accepted_state);
             dt_pseudo /= 4.0;
-            prev_residual = -1.0;  // reset residual tracking
+            prev_residual = -1.0;
             if (dt_pseudo < 1e-15) {
-                return {false, 0, result.residual, result.worst_node_idx};
+                break;
             }
         }
     }
 
+    // Final attempt at target gmin
     step_opts.diag_gmin = target_gmin;
     NewtonResult final_result;
     try {
         final_result = newton_solve(ckt, solver, solution, step_opts);
     } catch (const std::runtime_error&) {
-        return {false, 0, 0.0, -1};
+        final_result.converged = false;
     }
     if (final_result.converged) {
+        total_iterations += final_result.iterations;
+        final_result.iterations = total_iterations;
         return final_result;
     }
-    return {false, 0, final_result.residual, final_result.worst_node_idx};
+
+    solution = entry_solution;
+    restore_state(ckt, entry_state);
+    return {false, total_iterations, final_result.residual, final_result.worst_node_idx};
 }
 
 } // namespace neospice

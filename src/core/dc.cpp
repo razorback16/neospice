@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <iostream>
 #include <stdexcept>
 
 namespace neospice {
@@ -99,13 +100,22 @@ DCResult solve_dc(Circuit& ckt) {
         sim_status.worst_node_idx = result.worst_node_idx;
     }
     if (!result.converged) {
+        if (ckt.options.verbose)
+            std::cerr << "[dc] direct Newton failed (iters=" << result.iterations
+                      << " residual=" << result.residual << "), trying gmin stepping\n";
         // 4. Try gmin stepping
         try {
             result = gmin_stepping(ckt, *solver, solution, ckt.options,
                                    MODEDCOP_BIT | MODEINITJCT_BIT,
                                    MODEDCOP_BIT | MODEINITFLOAT_BIT);
-        } catch (const std::runtime_error&) {
+            if (ckt.options.verbose)
+                std::cerr << "[dc] gmin stepping: converged=" << result.converged
+                          << " iters=" << result.iterations
+                          << " residual=" << result.residual << "\n";
+        } catch (const std::runtime_error& e) {
             result.converged = false;
+            if (ckt.options.verbose)
+                std::cerr << "[dc] gmin stepping threw: " << e.what() << "\n";
         }
         if (result.converged) {
             sim_status.iterations = result.iterations;
@@ -116,13 +126,21 @@ DCResult solve_dc(Circuit& ckt) {
             sim_status.warnings.push_back("gmin stepping used");
         }
         if (!result.converged) {
+            if (ckt.options.verbose)
+                std::cerr << "[dc] trying true gmin stepping\n";
             // 4b. Try true gmin stepping (modifies device-level gmin)
             try {
                 result = true_gmin_stepping(ckt, *solver, solution, ckt.options,
                                             MODEDCOP_BIT | MODEINITJCT_BIT,
                                             MODEDCOP_BIT | MODEINITFLOAT_BIT);
-            } catch (const std::runtime_error&) {
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] true gmin stepping: converged=" << result.converged
+                              << " iters=" << result.iterations
+                              << " residual=" << result.residual << "\n";
+            } catch (const std::runtime_error& e) {
                 result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] true gmin stepping threw: " << e.what() << "\n";
             }
             if (result.converged) {
                 sim_status.iterations = result.iterations;
@@ -134,12 +152,20 @@ DCResult solve_dc(Circuit& ckt) {
             }
         }
         if (!result.converged) {
+            if (ckt.options.verbose)
+                std::cerr << "[dc] trying source stepping\n";
             // 5. Try source stepping
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             try {
                 result = source_stepping(ckt, *solver, solution, ckt.options);
-            } catch (const std::runtime_error&) {
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] source stepping: converged=" << result.converged
+                              << " iters=" << result.iterations
+                              << " residual=" << result.residual << "\n";
+            } catch (const std::runtime_error& e) {
                 result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] source stepping threw: " << e.what() << "\n";
             }
             if (result.converged) {
                 sim_status.iterations = result.iterations;
@@ -151,12 +177,20 @@ DCResult solve_dc(Circuit& ckt) {
             }
         }
         if (!result.converged) {
+            if (ckt.options.verbose)
+                std::cerr << "[dc] trying pseudo-transient\n";
             // 6. Try pseudo-transient continuation
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             try {
                 result = pseudo_transient(ckt, *solver, solution, ckt.options);
-            } catch (const std::runtime_error&) {
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] pseudo-transient: converged=" << result.converged
+                              << " iters=" << result.iterations
+                              << " residual=" << result.residual << "\n";
+            } catch (const std::runtime_error& e) {
                 result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] pseudo-transient threw: " << e.what() << "\n";
             }
             if (result.converged) {
                 sim_status.iterations = result.iterations;

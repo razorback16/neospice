@@ -82,7 +82,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         }
 
         if (opts.diag_gmin != 0.0) {
-            for (int32_t i = 0; i < n; ++i) {
+            for (int32_t i = 0; i < num_nodes; ++i) {
                 MatrixOffset off = pattern.offset(i, i);
                 mat.add(off, opts.diag_gmin);
             }
