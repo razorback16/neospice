@@ -1,4 +1,5 @@
 #include "devices/cccs_nonlinear.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx
 #include <cmath>
 #include <functional>
 
@@ -118,18 +119,23 @@ void NonlinearCCCS::evaluate(const std::vector<double>& voltages,
     std::vector<double> derivs;
     double f_val = eval_poly(ctrl_i, derivs);
 
+    // Scale by dep_src_fact for gain stepping convergence aid
+    double dsf = 1.0;
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        dsf = tls_integrator_ctx->options->dep_src_fact;
+
     // SPICE convention: I = f(Ic) leaves N+ (np).
     // Jacobian: mat[np, sense_branch_k] += df/dIk
     //           mat[nn, sense_branch_k] -= df/dIk
     for (size_t k = 0; k < vsenses_.size(); ++k) {
-        add_if_valid(mat, off_np_sense_[k],  derivs[k]);
-        add_if_valid(mat, off_nn_sense_[k], -derivs[k]);
+        add_if_valid(mat, off_np_sense_[k],  derivs[k] * dsf);
+        add_if_valid(mat, off_nn_sense_[k], -derivs[k] * dsf);
     }
 
     // Newton companion: rhs[np] = -(f(I0) - sum(df/dIk * Ik0))
-    double companion = f_val;
+    double companion = f_val * dsf;
     for (size_t k = 0; k < vsenses_.size(); ++k) {
-        companion -= derivs[k] * ctrl_i[k];
+        companion -= derivs[k] * dsf * ctrl_i[k];
     }
     add_rhs_if_valid(rhs, np_, -companion);
     add_rhs_if_valid(rhs, nn_,  companion);

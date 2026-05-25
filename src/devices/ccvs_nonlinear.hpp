@@ -37,6 +37,7 @@ public:
     void set_branch_index(int32_t idx);
     int32_t branch_index() const override { return branch_idx_; }
 
+    std::string device_type() const override { return "H"; }
     int32_t extra_vars() const override { return 1; }
     void assign_branch_index(int32_t& next) override {
         set_branch_index(next); next += extra_vars();

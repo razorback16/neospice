@@ -36,6 +36,8 @@ public:
                   std::vector<CtrlPair> ctrl_pairs,
                   std::vector<double> coefficients);
 
+    std::string device_type() const override { return "E"; }
+
     void set_branch_index(int32_t idx);
     int32_t branch_index() const override { return branch_idx_; }
 
@@ -110,6 +112,8 @@ public:
               int32_t node_pos, int32_t node_neg,
               int32_t ctrl_pos, int32_t ctrl_neg,
               std::vector<TablePoint> table_points);
+
+    std::string device_type() const override { return "E"; }
 
     void set_branch_index(int32_t idx);
     int32_t branch_index() const override { return branch_idx_; }

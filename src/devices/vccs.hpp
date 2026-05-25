@@ -29,6 +29,7 @@ public:
          double gm);
 
     // Device interface — no extra variable needed
+    std::string device_type() const override { return "G"; }
     int32_t extra_vars() const override { return 0; }
 
     void stamp_pattern(SparsityBuilder& builder) const override;

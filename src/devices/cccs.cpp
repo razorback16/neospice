@@ -1,4 +1,5 @@
 #include "devices/cccs.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx
 #include <stdexcept>
 
 namespace neospice {
@@ -40,7 +41,9 @@ void CCCS::evaluate(const std::vector<double>& /*voltages*/,
     // SPICE convention: I = gain * I(Vsense) leaves N+ (np).
     // Current leaving np = +gain*I_sense → mat[np, sense_branch] += +gain
     // Current leaving nn = -gain*I_sense → mat[nn, sense_branch] += -gain
-    const double gain = gain_ * m_;
+    double gain = gain_ * m_;
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        gain *= tls_integrator_ctx->options->dep_src_fact;
     add_if_valid(mat, off_np_sense_,  gain);
     add_if_valid(mat, off_nn_sense_, -gain);
 }

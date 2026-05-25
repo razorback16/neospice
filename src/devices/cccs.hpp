@@ -32,6 +32,7 @@ public:
          const VSource* vsense);
 
     // Device interface — no extra variable needed
+    std::string device_type() const override { return "F"; }
     int32_t extra_vars() const override { return 0; }
 
     void stamp_pattern(SparsityBuilder& builder) const override;

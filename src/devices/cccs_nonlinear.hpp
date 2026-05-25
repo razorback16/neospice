@@ -31,6 +31,7 @@ public:
                   std::vector<const VSource*> vsenses,
                   std::vector<double> coefficients);
 
+    std::string device_type() const override { return "F"; }
     int32_t extra_vars() const override { return 0; }
 
     std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }

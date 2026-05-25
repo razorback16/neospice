@@ -39,6 +39,7 @@ public:
                   std::vector<CtrlPair> ctrl_pairs,
                   std::vector<double> coefficients);
 
+    std::string device_type() const override { return "G"; }
     int32_t extra_vars() const override { return 0; }
 
     std::vector<int32_t> external_nodes() const override {
@@ -98,6 +99,7 @@ public:
               std::vector<const VSource*> vsource_ptrs,
               std::vector<TablePoint> table_points);
 
+    std::string device_type() const override { return "G"; }
     int32_t extra_vars() const override { return 0; }
 
     std::vector<int32_t> external_nodes() const override;

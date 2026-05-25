@@ -100,6 +100,66 @@ DCResult solve_dc(Circuit& ckt) {
         sim_status.iterations = result.iterations;
         sim_status.residual = result.residual;
         sim_status.worst_node_idx = result.worst_node_idx;
+
+        // 3+. Gain stepping verification: if direct Newton converged and the
+        // circuit has dependent sources (E/G), try gain stepping as well.
+        // Subcircuits with VCVS/VCCS feedback can create false equilibria
+        // where Newton converges to a non-physical fixed point.  Gain stepping
+        // avoids this by ramping gains from 0→1, building the solution
+        // incrementally.  Compare solutions and prefer the one with smaller
+        // total voltage magnitude.
+        bool has_dependent = false;
+        for (const auto& dev : ckt.devices()) {
+            const std::string& dt = dev->device_type();
+            if (dt == "E" || dt == "G" || dt == "F" || dt == "H") {
+                has_dependent = true;
+                break;
+            }
+        }
+        if (has_dependent) {
+            std::vector<double> direct_solution = solution;
+            std::vector<double> gs_solution(n, 0.0);
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+            NewtonResult gs_result;
+            try {
+                gs_result = gain_stepping(ckt, *solver, gs_solution, ckt.options);
+            } catch (const std::runtime_error&) {
+                gs_result.converged = false;
+            }
+            if (gs_result.converged) {
+                double sum_direct = 0.0, sum_gs = 0.0;
+                bool solutions_differ = false;
+                for (int32_t i = 0; i < num_nodes; ++i) {
+                    sum_direct += std::abs(direct_solution[i]);
+                    sum_gs     += std::abs(gs_solution[i]);
+                    double diff = std::abs(direct_solution[i] - gs_solution[i]);
+                    double tol  = ckt.options.reltol *
+                                  std::max(std::abs(direct_solution[i]),
+                                           std::abs(gs_solution[i])) +
+                                  ckt.options.vntol;
+                    if (diff > tol)
+                        solutions_differ = true;
+                }
+                if (solutions_differ && sum_gs < sum_direct) {
+                    solution = gs_solution;
+                    sim_status.convergence_method = ConvergenceMethod::SOURCE_STEPPING;
+                    sim_status.warnings.push_back("gain stepping preferred over direct Newton");
+                    if (ckt.options.verbose)
+                        std::cerr << "[dc] gain stepping preferred (sum_direct="
+                                  << sum_direct << " sum_gs=" << sum_gs << ")\n";
+                } else {
+                    solution = direct_solution;
+                    if (ckt.options.verbose && solutions_differ)
+                        std::cerr << "[dc] gain stepping NOT preferred (sum_direct="
+                                  << sum_direct << " sum_gs=" << sum_gs << ")\n";
+                }
+            } else {
+                solution = direct_solution;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] gain stepping verification: not converged\n";
+            }
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFLOAT_BIT;
+        }
     }
     // 3a. Retry with diag_gmin = gmin to regularize singular matrices.
     if (!result.converged) {

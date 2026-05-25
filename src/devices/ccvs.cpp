@@ -1,4 +1,5 @@
 #include "devices/ccvs.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx
 #include <stdexcept>
 
 namespace neospice {
@@ -61,9 +62,12 @@ void CCVS::evaluate(const std::vector<double>& /*voltages*/,
     add_if_valid(mat, off_nn_branch_, -1.0);
 
     // Branch equation: V(np) - V(nn) - R_m * I_sense = 0
+    double rm = rm_;
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        rm *= tls_integrator_ctx->options->dep_src_fact;
     add_if_valid(mat, off_branch_np_,      1.0);
     add_if_valid(mat, off_branch_nn_,     -1.0);
-    add_if_valid(mat, off_branch_sense_, -rm_);
+    add_if_valid(mat, off_branch_sense_, -rm);
     // RHS = 0 (no independent source term)
 }
 
