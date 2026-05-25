@@ -103,6 +103,12 @@ add_executable(neospice_tests
     unit/test_kicad_bc547a.cpp
     unit/test_kicad_opa1632.cpp
     unit/test_api_integration.cpp
+    unit/test_node_damping.cpp
+    unit/test_true_gmin.cpp
+    unit/test_reorder_pivot.cpp
+    unit/test_topology.cpp
+    unit/test_src_fact.cpp
+    unit/test_adaptive_ptc.cpp
     framework/ngspice_runner.cpp
     framework/comparator.cpp
 )

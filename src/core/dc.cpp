@@ -2,6 +2,7 @@
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/neo_solver.hpp"
+#include "core/topology.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include <algorithm>
@@ -68,6 +69,9 @@ DCResult solve_dc(Circuit& ckt) {
     // device) via the same integrator_ctx channel used for CKTmode/ag.
     ckt.integrator_ctx.options = &ckt.options;
 
+    // Run topology check and emit diagnostics
+    check_topology(ckt);
+
     // CKTmode bits (ngspice cktdefs.h; mirrored in devices/bsim4v7/bsim4v7_shim.hpp):
     //   MODEDC=0x70 (mask: DCOP|TRANOP|DCTRANCURVE), MODEDCOP=0x10,
     //   MODEINITJCT=0x200, MODEINITFIX=0x400.
@@ -93,7 +97,8 @@ DCResult solve_dc(Circuit& ckt) {
         sim_status.iterations = result.iterations;
         sim_status.residual = result.residual;
         sim_status.worst_node_idx = result.worst_node_idx;
-    } else {
+    }
+    if (!result.converged) {
         // 4. Try gmin stepping
         result = gmin_stepping(ckt, *solver, solution, ckt.options,
                                MODEDCOP_BIT | MODEINITJCT_BIT,
@@ -105,7 +110,22 @@ DCResult solve_dc(Circuit& ckt) {
             sim_status.worst_node_idx = result.worst_node_idx;
             sim_status.gmin_steps = 1;
             sim_status.warnings.push_back("gmin stepping used");
-        } else {
+        }
+        if (!result.converged) {
+            // 4b. Try true gmin stepping (modifies device-level gmin)
+            result = true_gmin_stepping(ckt, *solver, solution, ckt.options,
+                                        MODEDCOP_BIT | MODEINITJCT_BIT,
+                                        MODEDCOP_BIT | MODEINITFLOAT_BIT);
+            if (result.converged) {
+                sim_status.iterations = result.iterations;
+                sim_status.convergence_method = ConvergenceMethod::GMIN_STEPPING;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.gmin_steps = 1;
+                sim_status.warnings.push_back("true gmin stepping used");
+            }
+        }
+        if (!result.converged) {
             // 5. Try source stepping
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             result = source_stepping(ckt, *solver, solution, ckt.options);
@@ -116,28 +136,30 @@ DCResult solve_dc(Circuit& ckt) {
                 sim_status.worst_node_idx = result.worst_node_idx;
                 sim_status.source_steps = 1;
                 sim_status.warnings.push_back("source stepping used");
-            } else {
-                // 6. Try pseudo-transient continuation
-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-                result = pseudo_transient(ckt, *solver, solution, ckt.options);
-                if (result.converged) {
-                    sim_status.iterations = result.iterations;
-                    sim_status.convergence_method = ConvergenceMethod::PSEUDO_TRANSIENT;
-                    sim_status.residual = result.residual;
-                    sim_status.worst_node_idx = result.worst_node_idx;
-                    sim_status.warnings.push_back("pseudo-transient continuation used");
-                } else {
-                    // 7. All failed
-                    sim_status.converged = false;
-                    sim_status.iterations = result.iterations;
-                    sim_status.residual = result.residual;
-                    sim_status.worst_node_idx = result.worst_node_idx;
-                    if (!ckt.options.no_throw) {
-                        throw SimulationError("DC operating point failed to converge", sim_status);
-                    }
-                    // Fall through to build partial result with converged=false
-                }
             }
+        }
+        if (!result.converged) {
+            // 6. Try pseudo-transient continuation
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+            result = pseudo_transient(ckt, *solver, solution, ckt.options);
+            if (result.converged) {
+                sim_status.iterations = result.iterations;
+                sim_status.convergence_method = ConvergenceMethod::PSEUDO_TRANSIENT;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.warnings.push_back("pseudo-transient continuation used");
+            }
+        }
+        if (!result.converged) {
+            // 7. All failed
+            sim_status.converged = false;
+            sim_status.iterations = result.iterations;
+            sim_status.residual = result.residual;
+            sim_status.worst_node_idx = result.worst_node_idx;
+            if (!ckt.options.no_throw) {
+                throw SimulationError("DC operating point failed to converge", sim_status);
+            }
+            // Fall through to build partial result with converged=false
         }
     }
 

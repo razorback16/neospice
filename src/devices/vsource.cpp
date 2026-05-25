@@ -1,4 +1,5 @@
 #include "devices/vsource.hpp"
+#include "core/circuit.hpp"
 #include <cmath>
 #include <stdexcept>
 
@@ -190,8 +191,12 @@ void VSource::evaluate(const std::vector<double>& /*voltages*/,
     add_if_valid(mat, off_branch_np_,  1.0);
     add_if_valid(mat, off_branch_nn_, -1.0);
     // RHS for the branch equation row
-    if (branch_idx_ >= 0)
-        rhs[branch_idx_] += value_at(current_time_);
+    if (branch_idx_ >= 0) {
+        double val = value_at(current_time_);
+        if (tls_integrator_ctx && tls_integrator_ctx->options)
+            val *= tls_integrator_ctx->options->src_fact;
+        rhs[branch_idx_] += val;
+    }
 }
 
 void VSource::ac_stamp(const std::vector<double>& /*voltages*/,

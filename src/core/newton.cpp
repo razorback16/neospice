@@ -132,16 +132,41 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             }
         }
 
-        // Solve: rhs is overwritten with the delta or new solution
+        // Solve: rhs is overwritten with the new solution
         solver.solve(rhs);
 
-        // rhs now contains the new proposed solution
-        solution = rhs;
+        // rhs now contains the proposed new solution from the linear solve
+        std::vector<double> proposed = rhs;
 
-        // Apply per-device voltage limiting between old and proposed solutions
-        // to tame large Newton swings at nonlinear junctions.
+        // Apply per-device voltage limiting
         for (auto& dev : ckt.devices()) {
-            dev->limit_voltages(old_solution, solution);
+            dev->limit_voltages(old_solution, proposed);
+        }
+
+        solution = proposed;
+
+        // Node damping (ngspice niiter.c:296-323): when Newton updates
+        // produce large voltage swings, scale the update so the maximum
+        // change is bounded.  Only active during DC operating point
+        // (MODEDCOP/MODETRANOP), after the first iteration, and before
+        // convergence is reached.
+        constexpr int MODEDCOP_BIT   = 0x10;
+        constexpr int MODETRANOP_BIT = 0x20;
+        if (opts.node_damping && (saved_mode & (MODEDCOP_BIT | MODETRANOP_BIT)) && iter > 0) {
+            double max_diff = 0.0;
+            for (int32_t i = 0; i < num_nodes; ++i) {
+                double diff = solution[i] - old_solution[i];
+                if (diff > max_diff)
+                    max_diff = diff;
+            }
+            if (max_diff > 10.0) {
+                double damp_factor = 10.0 / max_diff;
+                if (damp_factor < 0.1)
+                    damp_factor = 0.1;
+                for (int32_t i = 0; i < num_nodes; ++i) {
+                    solution[i] = old_solution[i] + damp_factor * (solution[i] - old_solution[i]);
+                }
+            }
         }
 
         // Check convergence

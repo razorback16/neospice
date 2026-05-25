@@ -574,6 +574,8 @@ def main():
                         help='Show full stderr output for failures (not just first line)')
     parser.add_argument('--dump-netlist', action='store_true',
                         help='Print the generated test netlist for failing tests')
+    parser.add_argument('--save-all', default=None,
+                        help='Save ALL results (including passing) to JSON file')
     args = parser.parse_args()
 
     if not os.path.exists(args.neospice):
@@ -723,6 +725,16 @@ def main():
                 'results': [r for r in all_results if r['status'] not in ('OK', 'WARNING')],
             }, f, indent=2)
         print(f"Results saved to {args.save}")
+
+    if args.save_all:
+        import json
+        with open(args.save_all, 'w') as f:
+            json.dump({
+                'total': total,
+                'stats': dict(stats),
+                'results': all_results,
+            }, f, indent=2)
+        print(f"All results saved to {args.save_all}")
 
 
 if __name__ == '__main__':

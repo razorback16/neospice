@@ -1,4 +1,5 @@
 #include "devices/isource.hpp"
+#include "core/circuit.hpp"
 #include <cmath>
 
 namespace neospice {
@@ -159,6 +160,8 @@ void ISource::evaluate(const std::vector<double>& /*voltages*/,
     // KCL: current leaves np  -> -I at np
     //      current enters nn  -> +I at nn
     double I = value_at(current_time_);
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        I *= tls_integrator_ctx->options->src_fact;
     add_rhs_if_valid(rhs, np_, -I);
     add_rhs_if_valid(rhs, nn_,  I);
 }

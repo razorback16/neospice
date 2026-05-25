@@ -41,6 +41,8 @@ struct SimOptions {
     double restart_step_scale = 0.1; // dt reduction factor after crossing a source breakpoint
     bool no_throw = false;           // if true, return partial result on non-convergence instead of throwing
     bool interp = false;  // .option interp: output on uniform tstep grid (default: raw adaptive steps)
+    bool node_damping = false; // .option NODEDAMPING: damp large Newton voltage swings during DC
+    double src_fact = 1.0;   // source scaling factor for CKTsrcFact-style source stepping
 };
 
 /// Populated by the transient/DC driver before each Newton load, read by

@@ -171,71 +171,145 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
     return {false, total_iterations, last_residual, last_worst_idx};
 }
 
-NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
-                             std::vector<double>& solution,
-                             const SimOptions& opts) {
-    // Collect all independent sources and save their original DC values
-    struct SourceInfo {
-        VSource* vs = nullptr;
-        ISource* is = nullptr;
-        double   original_dc = 0.0;
-    };
-    std::vector<SourceInfo> sources;
+NewtonResult true_gmin_stepping(Circuit& ckt, NeoSolver& solver,
+                                std::vector<double>& solution,
+                                const SimOptions& opts,
+                                int firstmode, int continuemode) {
+    const std::vector<double> entry_solution = solution;
+    const StateCheckpoint entry_state = save_state(ckt);
 
-    for (auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-            sources.push_back({vs, nullptr, vs->dc_value()});
-        } else if (auto* is = dynamic_cast<ISource*>(dev.get())) {
-            sources.push_back({nullptr, is, is->dc_value()});
+    const double gmin_factor = 10.0;
+    double factor = gmin_factor;
+    double OldGmin = 1e-2;
+    double current_gmin = OldGmin / factor;
+    const double gtarget = opts.gmin;
+
+    int total_iterations = 0;
+    double last_residual = 0.0;
+    int32_t last_worst_idx = -1;
+    bool success = false;
+    bool failed = false;
+
+    SimOptions step_opts = opts;
+    step_opts.max_iter = std::min(opts.max_iter, 100);
+
+    solution.assign(solution.size(), 0.0);
+    clear_state(ckt);
+
+    std::vector<double> saved_solution = solution;
+    StateCheckpoint saved_state = save_state(ckt);
+
+    ckt.integrator_ctx.mode = firstmode;
+
+    while (!success && !failed) {
+        step_opts.gmin = current_gmin;
+
+        NewtonResult result;
+        try {
+            result = newton_solve(ckt, solver, solution, step_opts);
+        } catch (const std::runtime_error&) {
+            result.converged = false;
+        }
+
+        last_residual = result.residual;
+        last_worst_idx = result.worst_node_idx;
+        int iters = result.iterations;
+        total_iterations += iters;
+
+        if (result.converged) {
+            ckt.integrator_ctx.mode = continuemode;
+
+            if (current_gmin <= gtarget) {
+                success = true;
+            } else {
+                saved_solution = solution;
+                saved_state = save_state(ckt);
+
+                if (iters <= step_opts.max_iter / 4) {
+                    factor *= std::sqrt(factor);
+                    if (factor > gmin_factor)
+                        factor = gmin_factor;
+                }
+                if (iters > (3 * step_opts.max_iter / 4)) {
+                    factor = std::sqrt(factor);
+                }
+
+                OldGmin = current_gmin;
+
+                if (current_gmin < factor * gtarget) {
+                    factor = current_gmin / gtarget;
+                    current_gmin = gtarget;
+                } else {
+                    current_gmin /= factor;
+                }
+            }
+        } else {
+            if (factor < 1.00005) {
+                failed = true;
+            } else {
+                factor = std::sqrt(std::sqrt(factor));
+                current_gmin = OldGmin / factor;
+                solution = saved_solution;
+                restore_state(ckt, saved_state);
+            }
         }
     }
 
-    // RAII guard: always restore original DC values on exit
-    struct SourceRestorer {
-        std::vector<SourceInfo>& srcs;
-        ~SourceRestorer() {
-            for (auto& s : srcs) {
-                if (s.vs) s.vs->set_dc_value(s.original_dc);
-                if (s.is) s.is->set_dc_value(s.original_dc);
-            }
+    if (success) {
+        SimOptions final_opts = opts;
+        final_opts.gmin = gtarget;
+        NewtonResult final_result;
+        try {
+            final_result = newton_solve(ckt, solver, solution, final_opts);
+        } catch (const std::runtime_error&) {
+            final_result.converged = false;
         }
-    } restorer{sources};
-
-    // Helper to scale all sources to a given fraction of their original values
-    auto scale_sources = [&](double frac) {
-        for (auto& s : sources) {
-            if (s.vs) s.vs->set_dc_value(frac * s.original_dc);
-            if (s.is) s.is->set_dc_value(frac * s.original_dc);
+        if (!final_result.converged) {
+            solution = entry_solution;
+            restore_state(ckt, entry_state);
+            return {false, total_iterations + final_result.iterations,
+                    final_result.residual, final_result.worst_node_idx};
         }
-    };
+        total_iterations += final_result.iterations;
+        return {true, total_iterations, last_residual, last_worst_idx};
+    }
 
-    // Source stepping with adaptive refinement and backtracking.
+    solution = entry_solution;
+    restore_state(ckt, entry_state);
+    return {false, total_iterations, last_residual, last_worst_idx};
+}
+
+NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
+                             std::vector<double>& solution,
+                             const SimOptions& opts) {
     double fraction = 0.0;
-    double step = 0.001;          // ngspice gillespie_src starts at 0.001
-    const double min_step = 1e-7;  // ngspice: raise >= 1e-7
+    double step = 0.001;
+    const double min_step = 1e-7;
     int total_iterations = 0;
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
 
-    // Start with all sources at zero and solve
     constexpr int MODEINITJCT_BIT   = 0x200;
     constexpr int MODEINITFLOAT_BIT = 0x100;
     constexpr int INITF_MASK        = 0x3F00;
     int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
     ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
 
-    scale_sources(0.0);
+    // Start with all sources at zero
     solution.assign(solution.size(), 0.0);
     clear_state(ckt);
+
+    SimOptions step_opts = opts;
+    step_opts.src_fact = 0.0;
+
     NewtonResult result;
     try {
-        result = newton_solve(ckt, solver, solution, opts);
+        result = newton_solve(ckt, solver, solution, step_opts);
     } catch (const std::runtime_error&) {
         result.converged = false;
     }
     if (!result.converged) {
-        // ngspice gillespie_src: if zero-source solve fails, try gmin
-        // stepping at zero sources before giving up (cktop.c:510-548).
+        // Try gmin stepping at zero sources
         double zg = std::max(opts.gmin, opts.gshunt);
         if (zg == 0.0) zg = opts.gmin;
         double diag = zg;
@@ -243,7 +317,7 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
         solution.assign(solution.size(), 0.0);
         clear_state(ckt);
         ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
-        SimOptions zg_opts = opts;
+        SimOptions zg_opts = step_opts;
         bool zg_ok = false;
         for (int i = 0; i <= 10; ++i) {
             zg_opts.diag_gmin = diag;
@@ -257,6 +331,7 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
             if (i == 10) zg_ok = true;
         }
         if (!zg_ok) {
+            step_opts.src_fact = 1.0;
             return {false, total_iterations, result.residual, result.worst_node_idx};
         }
     }
@@ -264,7 +339,6 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
     std::vector<double> accepted_solution = solution;
     StateCheckpoint accepted_state = save_state(ckt);
 
-    // Use continuation mode (MODEINITFLOAT) during the ramp steps
     ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
 
     while (fraction < 1.0) {
@@ -273,9 +347,10 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
 
         solution = accepted_solution;
         restore_state(ckt, accepted_state);
-        scale_sources(next_frac);
+
+        step_opts.src_fact = next_frac;
         try {
-            result = newton_solve(ckt, solver, solution, opts);
+            result = newton_solve(ckt, solver, solution, step_opts);
         } catch (const std::runtime_error&) {
             result.converged = false;
         }
@@ -298,17 +373,17 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
                 break;
             solution = accepted_solution;
             restore_state(ckt, accepted_state);
-            scale_sources(fraction);
+            step_opts.src_fact = fraction;
             step *= 0.1;
             if (step > 0.01) step = 0.01;
             if (step < min_step) {
+                step_opts.src_fact = 1.0;
                 return {false, total_iterations, last_residual, last_worst_idx};
             }
         }
     }
 
-    // fraction == 1.0 and sources are at their original values; the restorer
-    // will write them again on exit, which is harmless.
+    step_opts.src_fact = 1.0;
     result.iterations = total_iterations;
     return result;
 }
@@ -316,19 +391,16 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
 NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
                               std::vector<double>& solution,
                               const SimOptions& opts) {
-    // Pseudo-transient continuation: add a fictitious conductance
-    // G_pseudo = C_pseudo / dt_pseudo to every diagonal, effectively turning
-    // the DC problem into a transient that can be solved incrementally.
-    // As dt_pseudo grows, G_pseudo decays to zero and the solution converges
-    // to the true DC operating point.
-
-    const double C_pseudo = 1e-3;       // fictitious capacitance (F)
-    double dt_pseudo      = 1e-6;       // initial pseudo-timestep (s)
+    const double C_pseudo = 1e-3;
+    double dt_pseudo      = 1e-6;
     const int max_steps   = 200;
     const double target_gmin = opts.diag_gmin;
     double final_probe_g = std::max(1e-6, target_gmin * 1e6);
 
     SimOptions step_opts = opts;
+
+    // Track residual for adaptive stepping (Kelley, SIAM 2004)
+    double prev_residual = -1.0;
 
     for (int step = 0; step < max_steps; ++step) {
         double G_pseudo = C_pseudo / dt_pseudo;
@@ -343,7 +415,22 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
 
         if (result.converged) {
             StateCheckpoint accepted_state = save_state(ckt);
-            dt_pseudo *= 2.0;  // grow pseudo-timestep (decay G_pseudo)
+            double curr_residual = result.residual;
+
+            // Adaptive dt: dt_new = dt_old * (prev_residual / curr_residual)
+            // Clamped to 4x growth per step, floor 1e-15, ceiling 1e6
+            if (prev_residual > 0.0 && curr_residual > 0.0) {
+                double ratio = prev_residual / curr_residual;
+                ratio = std::min(ratio, 4.0);   // max 4x growth
+                ratio = std::max(ratio, 0.25);  // min 0.25x shrink
+                dt_pseudo *= ratio;
+            } else {
+                dt_pseudo *= 2.0;  // fallback: double on first step
+            }
+            dt_pseudo = std::max(dt_pseudo, 1e-15);
+            dt_pseudo = std::min(dt_pseudo, 1e6);
+
+            prev_residual = curr_residual;
 
             if (G_pseudo <= final_probe_g) {
                 std::vector<double> accepted_solution = solution;
@@ -362,21 +449,19 @@ NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
                 final_probe_g *= 1e-3;
             }
 
-            // When the pseudo-capacitor conductance is negligible compared
-            // to the baseline gmin, the solution is essentially the true DC
-            // operating point — break and confirm with a final solve.
             if (G_pseudo < target_gmin * 0.01) {
                 break;
             }
         } else {
-            dt_pseudo *= 0.5;  // shrink on failure
+            // More aggressive shrink than fixed 0.5x
+            dt_pseudo /= 4.0;
+            prev_residual = -1.0;  // reset residual tracking
             if (dt_pseudo < 1e-15) {
                 return {false, 0, result.residual, result.worst_node_idx};
             }
         }
     }
 
-    // Final solve with the true diag_gmin (no pseudo-capacitor contribution)
     step_opts.diag_gmin = target_gmin;
     NewtonResult final_result;
     try {
