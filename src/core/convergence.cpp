@@ -308,6 +308,7 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
 
     SimOptions step_opts = opts;
     step_opts.src_fact = 0.0;
+    ckt.options.src_fact = 0.0;
 
     NewtonResult result;
     try {
@@ -338,7 +339,7 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
             if (i == 10) zg_ok = true;
         }
         if (!zg_ok) {
-            step_opts.src_fact = 1.0;
+            ckt.options.src_fact = 1.0;
             return {false, total_iterations, result.residual, result.worst_node_idx};
         }
     }
@@ -356,6 +357,7 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
         restore_state(ckt, accepted_state);
 
         step_opts.src_fact = next_frac;
+        ckt.options.src_fact = next_frac;
         try {
             result = newton_solve(ckt, solver, solution, step_opts);
         } catch (const std::runtime_error&) {
@@ -381,16 +383,17 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
             solution = accepted_solution;
             restore_state(ckt, accepted_state);
             step_opts.src_fact = fraction;
+            ckt.options.src_fact = fraction;
             step *= 0.1;
             if (step > 0.01) step = 0.01;
             if (step < min_step) {
-                step_opts.src_fact = 1.0;
+                ckt.options.src_fact = 1.0;
                 return {false, total_iterations, last_residual, last_worst_idx};
             }
         }
     }
 
-    step_opts.src_fact = 1.0;
+    ckt.options.src_fact = 1.0;
     result.iterations = total_iterations;
     return result;
 }

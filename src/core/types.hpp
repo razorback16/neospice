@@ -44,6 +44,13 @@ struct SimOptions {
     bool node_damping = false; // .option NODEDAMPING: damp large Newton voltage swings during DC
     double src_fact = 1.0;   // source scaling factor for CKTsrcFact-style source stepping
     double dep_src_fact = 1.0; // dependent-source gain scaling for gain stepping convergence aid
+
+    // Pseudo-transient continuation: backward Euler companion model.
+    // When ptc_g > 0, newton_solve injects ptc_g * ptc_prev[i] into rhs[i]
+    // for each node (in addition to diag_gmin adding ptc_g to the diagonal).
+    double ptc_g = 0.0;
+    const double* ptc_prev = nullptr;
+    int32_t ptc_num_nodes = 0;
 };
 
 /// Populated by the transient/DC driver before each Newton load, read by

@@ -55,6 +55,11 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
     constexpr int MODETRAN_BIT = 0x1;
     bool force_numeric = !(saved_mode & MODETRAN_BIT);
 
+    // ngspice niiter.c:107-110 — force reorder when mode is MODEINITJCT.
+    // Tracks the *current* mode each iteration, matching ngspice which
+    // checks ckt->CKTmode (which changes mid-loop as init phases transition).
+    bool always_reorder = false;
+
     // Track residual norm and worst node across iterations.
     double max_residual = 0.0;
     int32_t worst_idx = -1;
@@ -82,9 +87,17 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         }
 
         if (opts.diag_gmin != 0.0) {
-            for (int32_t i = 0; i < n; ++i) {
+            for (int32_t i = 0; i < num_nodes; ++i) {
                 MatrixOffset off = pattern.offset(i, i);
                 mat.add(off, opts.diag_gmin);
+            }
+        }
+
+        // Pseudo-transient companion current: inject G*V_old for each node
+        // to complete the backward Euler companion model (C/dt shunt + source).
+        if (opts.ptc_g > 0.0 && opts.ptc_prev != nullptr) {
+            for (int32_t i = 0; i < opts.ptc_num_nodes; ++i) {
+                rhs[i] += opts.ptc_g * opts.ptc_prev[i];
             }
         }
 
@@ -113,12 +126,18 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             }
         }
 
+        // ngspice niiter.c:107-110: force full reorder when in MODEINITJCT.
+        int cur_mode = ckt.integrator_ctx.mode;
+        if (cur_mode & MODEINITJCT_BIT) {
+            always_reorder = true;
+        }
+
         // Factorize: try refactorize first (reuses pivot order), fall back
         // to full numeric factorization if the pivot order is unstable.
         // refactorize() returns true if any near-zero pivot was perturbed,
         // meaning the factorization is approximate — force a full numeric()
         // on the next iteration to re-establish an accurate pivot order.
-        if (force_numeric) {
+        if (force_numeric || always_reorder) {
             bool perturbed = solver.numeric(pattern, mat);
             force_numeric = perturbed;
         } else {
@@ -254,6 +273,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             // Junction-init -> fix mode (try reading CKTrhsOld next iter)
             ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFIX_BIT;
             force_numeric = true;
+            always_reorder = false;
         } else if (m & MODEINITFIX_BIT) {
             // Fix mode -> float once converged under FIX
             if (converged)
