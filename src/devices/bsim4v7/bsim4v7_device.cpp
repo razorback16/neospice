@@ -251,6 +251,7 @@ void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
         ckt.CKTdelta = ic->delta;
         for (int i = 0; i < 8; ++i) ckt.CKTag[i]       = ic->ag[i];
         for (int i = 0; i < 8; ++i) ckt.CKTdeltaOld[i] = ic->delta_old[i];
+        ckt.xmu_ratio = ic->xmu_ratio;
     } else {
         ckt.CKTmode  = 0x10 | 0x200;  // MODEDCOP | MODEINITJCT
         ckt.CKTorder = 1;
@@ -1547,6 +1548,34 @@ BSIM4v7Device::correlated_noise_sources(double freq,
         result.push_back({sp_neo, dp_neo, gp_neo, dp_neo, psd1, psd2, 0.5 * M_PI});
     }
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// check_soa — Safe Operating Area check (informational)
+// ---------------------------------------------------------------------------
+Device::SoaResult
+BSIM4v7Device::check_soa(const std::vector<double>& solution) const {
+    if (!model_ || !state0_ || state_base_ < 0)
+        return {};
+
+    double vgs = state0_[state_base_ + 2];
+    double vds = state0_[state_base_ + 3];
+    double vbs = state0_[state_base_ + 1];
+    double vbd = state0_[state_base_ + 0];
+    double vgd = vgs - vds;
+
+    if (model_->BSIM4v7vgsMaxGiven && std::abs(vgs) > model_->BSIM4v7vgsMax)
+        return {false, "Vgs", vgs, model_->BSIM4v7vgsMax};
+    if (model_->BSIM4v7vgdMaxGiven && std::abs(vgd) > model_->BSIM4v7vgdMax)
+        return {false, "Vgd", vgd, model_->BSIM4v7vgdMax};
+    if (model_->BSIM4v7vdsMaxGiven && std::abs(vds) > model_->BSIM4v7vdsMax)
+        return {false, "Vds", vds, model_->BSIM4v7vdsMax};
+    if (model_->BSIM4v7vbsMaxGiven && std::abs(vbs) > model_->BSIM4v7vbsMax)
+        return {false, "Vbs", vbs, model_->BSIM4v7vbsMax};
+    if (model_->BSIM4v7vbdMaxGiven && std::abs(vbd) > model_->BSIM4v7vbdMax)
+        return {false, "Vbd", vbd, model_->BSIM4v7vbdMax};
+
+    return {};
 }
 
 } // namespace neospice

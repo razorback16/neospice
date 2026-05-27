@@ -58,7 +58,7 @@ int NIintegrate(Ckt *ckt, double *geq, double *ceq,
         deriv = ckt->CKTag[0] * s0[0] + ckt->CKTag[1] * s1[0];
     } else if (ckt->CKTintegrateMethod == 0) {
         // Trapezoidal order 2: i_n = (2/h)(q_n - q_{n-1}) - i_{n-1}
-        deriv = -s1[1] + ckt->CKTag[0] * s0[0] + ckt->CKTag[1] * s1[0];
+        deriv = -s1[1] * ckt->xmu_ratio + ckt->CKTag[0] * s0[0] + ckt->CKTag[1] * s1[0];
     } else {
         // Gear-2 (BDF-2): i_n = ag[0]*q_n + ag[1]*q_{n-1} + ag[2]*q_{n-2}
         double *s2 = ckt->CKTstate2 + qcap;

@@ -91,8 +91,8 @@ void Inductor::evaluate(const std::vector<double>& voltages,
             if (order == 1) {
                 deriv = ic->ag[0] * state0_[0] + ic->ag[1] * state1_[0];
             } else if (ic->integrate_method == 0) {
-                // Trapezoidal
-                deriv = -state1_[1] + ic->ag[0] * state0_[0]
+                // Trapezoidal with xmu damping
+                deriv = -state1_[1] * ic->xmu_ratio + ic->ag[0] * state0_[0]
                       + ic->ag[1] * state1_[0];
             } else {
                 // Gear BDF-2

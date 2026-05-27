@@ -4,7 +4,7 @@
 
 namespace neospice {
 
-void TimeStepController::init(double initial_dt, double tstop) {
+void TimeStepController::init(double initial_dt, double tstop, double max_step) {
     dt_ = initial_dt;
     tstop_ = tstop;
     time_ = 0.0;
@@ -15,6 +15,7 @@ void TimeStepController::init(double initial_dt, double tstop) {
     breakpoints_.clear();
     source_breakpoints_.clear();
     max_seen_.clear();
+    min_break_ = (max_step > 0.0) ? 5e-5 * max_step : 0.0;
 }
 
 void TimeStepController::advance(double dt) {
@@ -106,8 +107,16 @@ void TimeStepController::add_breakpoint(double t) {
 
 void TimeStepController::add_source_breakpoint(double t, BreakpointType type) {
     if (t > time_ && t <= tstop_) {
+        // CKTminBreak: skip if too close to an existing breakpoint (promote if needed)
+        if (min_break_ > 0.0) {
+            auto lb = source_breakpoints_.lower_bound(t - min_break_);
+            if (lb != source_breakpoints_.end() && lb->first <= t + min_break_) {
+                if (type == BreakpointType::HARD)
+                    lb->second = BreakpointType::HARD;
+                return;
+            }
+        }
         breakpoints_.insert(t);
-        // If a breakpoint already exists at this time, promote to HARD if needed
         auto it = source_breakpoints_.find(t);
         if (it != source_breakpoints_.end()) {
             if (type == BreakpointType::HARD) {

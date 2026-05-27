@@ -44,6 +44,8 @@ struct SimOptions {
     bool node_damping = false; // .option NODEDAMPING: damp large Newton voltage swings during DC
     double src_fact = 1.0;   // source scaling factor for CKTsrcFact-style source stepping
     double dep_src_fact = 1.0; // dependent-source gain scaling for gain stepping convergence aid
+    double xmu = 0.5;  // .option xmu: integration damping (0=BE, 0.5=trap)
+    bool newtrunc = true; // .option newtrunc: global node-voltage LTE (always-on by default)
 
     // Pseudo-transient continuation: backward Euler companion model.
     // When ptc_g > 0, newton_solve injects ptc_g * ptc_prev[i] into rhs[i]
@@ -65,6 +67,7 @@ struct IntegratorCtx {
     double delta_old[8] = {};
     int    order = 1;
     int    integrate_method = 0;  // 0=trapezoidal, 1=gear
+    double xmu_ratio = 1.0;     // xmu/(1-xmu), precomputed by fill_integrator_context
     double current_time = 0.0;
     double ac_freq = 0.0;
 

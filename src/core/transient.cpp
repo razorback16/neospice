@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <functional>
 #include <iostream>
+#include <set>
 
 namespace neospice {
 
@@ -402,11 +403,15 @@ static void fill_integrator_context(Circuit& ckt, double dt, int step_count,
         ckt.integrator_ctx.ag[0] =  1.0 / dt;
         ckt.integrator_ctx.ag[1] = -1.0 / dt;
         ckt.integrator_ctx.ag[2] =  0.0;
+        ckt.integrator_ctx.xmu_ratio = 0.0;  // BE: no previous-derivative term
     } else if (!eff_gear) {
-        // Trapezoidal: i_n = (2/h)(q_n - q_{n-1}) - i_{n-1}
-        ckt.integrator_ctx.ag[0] =  2.0 / dt;
-        ckt.integrator_ctx.ag[1] = -2.0 / dt;
+        // Trapezoidal with xmu damping: i_n = ag[0]*(q_n - q_{n-1}) - xmu_ratio*i_{n-1}
+        double xmu = ckt.options.xmu;
+        double one_minus_xmu = 1.0 - xmu;
+        ckt.integrator_ctx.ag[0] =  1.0 / (dt * one_minus_xmu);
+        ckt.integrator_ctx.ag[1] = -1.0 / (dt * one_minus_xmu);
         ckt.integrator_ctx.ag[2] =  0.0;
+        ckt.integrator_ctx.xmu_ratio = xmu / one_minus_xmu;
     } else {
         // Variable-step Gear-2 (BDF2)
         double h_old = ctrl.prev_dt();
@@ -421,6 +426,7 @@ static void fill_integrator_context(Circuit& ckt, double dt, int step_count,
             ckt.integrator_ctx.ag[1] = -1.0 / dt;
             ckt.integrator_ctx.ag[2] =  0.0;
         }
+        ckt.integrator_ctx.xmu_ratio = 0.0;  // Gear: no previous-derivative term
     }
 }
 
@@ -470,11 +476,12 @@ static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
         }
     }
 
-    // Global node-voltage LTE — used for step-size proposal only (never
-    // rejects).  When devices provide LTE, the global check constrains
-    // growth; when no device provides LTE, it also rejects.
+    // Global node-voltage LTE — gated on .option newtrunc.
+    // When enabled: proposal-only (never rejects when devices provide LTE).
+    // When disabled: no global voltage LTE at all (ngspice default behavior).
     bool has_device_lte = (device_dt_out < 1e29);
-    if (step_count >= kLteMinStepCount && steps_after_bp >= kBreakpointSettleSteps) {
+    if (ckt.options.newtrunc &&
+        step_count >= kLteMinStepCount && steps_after_bp >= kBreakpointSettleSteps) {
         ctrl.set_dt(dt);
         bool global_ok = ctrl.evaluate_step(solution, sol_prev, sol_prev2,
                                             num_nodes, ckt.options);
@@ -785,8 +792,13 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // ---------------------------------------------------------------
     // 4. Set up timestep controller
     // ---------------------------------------------------------------
+    // ngspice dctran.c:317: maxStep = min(tstep, (tstop-tstart)/50)
+    const double max_step = std::min(tstep, tstop / 50.0);
+    const double dt_min = max_step * kMinTimeStepRatio;
+    const double dt_max = max_step;
+
     TimeStepController ctrl;
-    ctrl.init(tstep, tstop);
+    ctrl.init(tstep, tstop, max_step);
     collect_breakpoints(ckt, ctrl, tstop);
 
     const bool interp = ckt.options.interp;
@@ -796,11 +808,6 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             ctrl.add_breakpoint(i * tstep);
         }
     }
-
-    // ngspice dctran.c:317: maxStep = min(tstep, (tstop-tstart)/50)
-    const double max_step = std::min(tstep, tstop / 50.0);
-    const double dt_min = max_step * kMinTimeStepRatio;
-    const double dt_max = max_step;
 
     // History for LTE — ring buffer of 3 vectors (pointer rotation instead of 3 copies)
     std::vector<double> hist_buf0 = solution;
@@ -841,6 +848,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
     int total_iterations = 0;
     bool loop_converged = true;  // set false if we break due to no_throw failure
+    bool tried_delmin = false;   // ngspice: one last try at dt_min before aborting
+    std::set<std::string> soa_warned;  // throttle: one SOA warning per device per sim
 
     while (ctrl.current_time() < tstop - 1e-18) {
         if (++total_iterations > kMaxTransientIterations) {
@@ -889,22 +898,27 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             if (ckt.options.verbose)
                 std::cerr << "[tran] NEWTON FAIL sc=" << step_count << " dt=" << dt << " t=" << t << "\n";
             dt /= kNewtonFailureDtFactor;
+            ctrl.set_order(1);  // ngspice: drop to backward Euler on Newton failure
             if (dt < dt_min) {
-                cleanup_transient_devices(ckt);
-                SimStatus nr_fail_status;
-                nr_fail_status.converged = false;
-                nr_fail_status.iterations = total_newton_iters;
-                nr_fail_status.min_timestep = dt;
-                nr_fail_status.elapsed_seconds = std::chrono::duration<double>(
-                    std::chrono::steady_clock::now() - t_start).count();
-                if (!ckt.options.no_throw) {
-                    throw SimulationError("Transient failed to converge at t=" + std::to_string(t),
-                                          nr_fail_status);
+                if (!tried_delmin) {
+                    dt = dt_min;
+                    tried_delmin = true;
+                } else {
+                    cleanup_transient_devices(ckt);
+                    SimStatus nr_fail_status;
+                    nr_fail_status.converged = false;
+                    nr_fail_status.iterations = total_newton_iters;
+                    nr_fail_status.min_timestep = dt;
+                    nr_fail_status.elapsed_seconds = std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - t_start).count();
+                    if (!ckt.options.no_throw) {
+                        throw SimulationError("Transient failed to converge at t=" + std::to_string(t),
+                                              nr_fail_status);
+                    }
+                    tran_result.rejected_steps = ctrl.rejected_count();
+                    tran_result.status = nr_fail_status;
+                    return tran_result;
                 }
-                // no_throw: build partial result with what we have so far
-                tran_result.rejected_steps = ctrl.rejected_count();
-                tran_result.status = nr_fail_status;
-                return tran_result;
             }
             solution = *sol_prev;   // restore last accepted solution
             continue;
@@ -934,6 +948,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         ctrl.advance(dt);
         ctrl.set_dt(dt);
         step_count++;
+        tried_delmin = false;
         if (steps_after_bp < kNoRecentBreakpoint) ++steps_after_bp;
 
         // After crossing a source breakpoint: reduce dt and drop order
@@ -967,6 +982,18 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         ckt.rotate_state();
         accept_step_on_devices(cached, ctrl.current_time(), solution);
 
+        // SOA (Safe Operating Area) checking — informational, once per device
+        for (auto& dev : ckt.devices()) {
+            if (soa_warned.count(dev->name())) continue;
+            auto soa = dev->check_soa(solution);
+            if (!soa.ok) {
+                std::fprintf(stderr, "Warning: SOA violation in %s: %s = %g (limit %g)\n",
+                             dev->name().c_str(), soa.param_name.c_str(),
+                             soa.value, soa.limit);
+                soa_warned.insert(dev->name());
+            }
+        }
+
         if (interp) {
             // Interpolated uniform grid output (.option interp)
             interpolate_and_store_outputs(ctrl, dt, prev_prev_dt, tstep, tstop,
@@ -994,7 +1021,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         // Propose next dt from device and global LTE
         if (step_count >= kLteMinStepCount) {
             double proposed = device_dt;
-            if (steps_after_bp >= kGlobalLteMinStepsAfterBp) {
+            if (ckt.options.newtrunc && steps_after_bp >= kGlobalLteMinStepsAfterBp) {
                 proposed = std::min(proposed, ctrl.proposed_dt());
             }
             proposed = std::min(proposed, kMaxDtGrowthFactor * dt);

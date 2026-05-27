@@ -63,6 +63,7 @@ public:
 
     std::vector<NoiseSource> noise_sources(
         double freq, const std::vector<double>& dc_solution) const override;
+    SoaResult check_soa(const std::vector<double>& solution) const override;
 
 private:
     explicit BJTDevice(std::string name) : Device(std::move(name)) {}

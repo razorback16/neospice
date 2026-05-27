@@ -88,6 +88,7 @@ namespace Shim {
         double  CKTag[8]        = {};
         int     CKTorder        = 1;
         int     CKTintegrateMethod = 0;  // 0=trapezoidal, 1=gear
+        double  xmu_ratio = 1.0;       // xmu/(1-xmu), precomputed
 
         double *CKTstate0 = nullptr;
         double *CKTstate1 = nullptr;

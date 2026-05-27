@@ -12,7 +12,7 @@ public:
     /// reduction; SOFT crossings (SIN, AM, SFFM) use a milder scale.
     enum class BreakpointType { HARD, SOFT };
 
-    void init(double initial_dt, double tstop);
+    void init(double initial_dt, double tstop, double max_step = 0.0);
 
     double current_dt() const { return dt_; }
     double current_time() const { return time_; }
@@ -80,6 +80,7 @@ private:
     int ringing_cooldown_ = 0;
     std::set<double> breakpoints_;
     std::map<double, BreakpointType> source_breakpoints_;
+    double min_break_ = 0.0;  // CKTminBreak: minimum breakpoint spacing (5e-5 * max_step)
     std::vector<double> max_seen_;  // per-node max |value| for lte_ref_mode==2
 };
 

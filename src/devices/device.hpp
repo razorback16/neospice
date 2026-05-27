@@ -181,6 +181,17 @@ public:
         return {};
     }
 
+    struct SoaResult {
+        bool ok = true;
+        std::string param_name;
+        double value = 0.0;
+        double limit = 0.0;
+    };
+
+    virtual SoaResult check_soa(const std::vector<double>& /*solution*/) const {
+        return {};
+    }
+
 protected:
     std::string name_;
     std::vector<int32_t> ext_nodes_;

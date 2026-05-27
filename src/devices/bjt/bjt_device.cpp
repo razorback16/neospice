@@ -171,6 +171,7 @@ void BJTDevice::evaluate(const std::vector<double>& voltages,
         ckt.CKTdelta = ic->delta;
         for (int i = 0; i < 8; ++i) ckt.CKTag[i]       = ic->ag[i];
         for (int i = 0; i < 8; ++i) ckt.CKTdeltaOld[i] = ic->delta_old[i];
+        ckt.xmu_ratio = ic->xmu_ratio;
     } else {
         ckt.CKTmode  = 0x10 | 0x200;  // MODEDCOP | MODEINITJCT
         ckt.CKTorder = 1;
@@ -440,6 +441,34 @@ BJTDevice::query_param(const std::string& name) const {
     if (key == "m")     return inst_.BJTm;
 
     return std::nullopt;
+}
+
+// ---------------------------------------------------------------------------
+// check_soa — Safe Operating Area check (informational)
+// ---------------------------------------------------------------------------
+Device::SoaResult
+BJTDevice::check_soa(const std::vector<double>& solution) const {
+    if (!model_ || !state0_ || state_base_ < 0)
+        return {};
+
+    double vbe = state0_[state_base_ + 0];
+    double vbc = state0_[state_base_ + 1];
+    double vce = vbe - vbc;
+
+    if (model_->BJTvbeMaxGiven && model_->BJTvbeMax > 0.0) {
+        if (std::abs(vbe) > model_->BJTvbeMax)
+            return {false, "Vbe", vbe, model_->BJTvbeMax};
+    }
+    if (model_->BJTvbcMaxGiven && model_->BJTvbcMax > 0.0) {
+        if (std::abs(vbc) > model_->BJTvbcMax)
+            return {false, "Vbc", vbc, model_->BJTvbcMax};
+    }
+    if (model_->BJTvceMaxGiven && model_->BJTvceMax > 0.0) {
+        if (std::abs(vce) > model_->BJTvceMax)
+            return {false, "Vce", vce, model_->BJTvceMax};
+    }
+
+    return {};
 }
 
 } // namespace neospice

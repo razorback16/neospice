@@ -105,6 +105,7 @@ namespace Shim {
         int CKTcopyNodesets = 0;
         int CKTfixLimit = 0;
         int CKTintegrateMethod = 0;  // 0=trapezoidal, 1=gear
+        double  xmu_ratio = 1.0;       // xmu/(1-xmu), precomputed
 
         // Default MOS geometry values (used by temp/setup)
         double CKTdefaultMosM  = 1.0;

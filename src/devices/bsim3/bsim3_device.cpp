@@ -205,6 +205,7 @@ void BSIM3Device::evaluate(const std::vector<double>& voltages,
         ckt.CKTdelta = ic->delta;
         for (int i = 0; i < 8; ++i) ckt.CKTag[i]       = ic->ag[i];
         for (int i = 0; i < 8; ++i) ckt.CKTdeltaOld[i] = ic->delta_old[i];
+        ckt.xmu_ratio = ic->xmu_ratio;
     } else {
         ckt.CKTmode  = 0x10 | 0x200;  // MODEDCOP | MODEINITJCT
         ckt.CKTorder = 1;

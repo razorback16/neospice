@@ -52,9 +52,16 @@ int NIintegrate(Ckt *ckt, double *geq, double *ceq,
     if (order < 1) order = 1;
     if (order > 2) order = 2;
 
-    double deriv = ckt->CKTag[0] * s0[0];
-    if (order >= 1) deriv += ckt->CKTag[1] * s1[0];
-    if (order >= 2) deriv += ckt->CKTag[2] * s2[0];
+    double deriv;
+    if (ckt->CKTintegrateMethod == 0 && order == 2) {
+        // Trapezoidal order 2: needs previous-derivative correction
+        deriv = -s1[1] * ckt->xmu_ratio + ckt->CKTag[0]*s0[0] + ckt->CKTag[1]*s1[0];
+    } else {
+        // BE (order 1) or Gear: pure coefficient sum
+        deriv = ckt->CKTag[0]*s0[0];
+        if (order >= 1) deriv += ckt->CKTag[1]*s1[0];
+        if (order >= 2) deriv += ckt->CKTag[2]*s2[0];
+    }
     s0[1] = deriv;
 
     *geq = ckt->CKTag[0] * cap;

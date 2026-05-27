@@ -68,6 +68,7 @@ public:
     std::vector<CorrelatedNoiseSource> correlated_noise_sources(
         double freq, const std::vector<double>& dc_solution) const override;
     void reset_temp() override { temp_done_ = false; }
+    SoaResult check_soa(const std::vector<double>& solution) const override;
 
     /// Set initial condition voltages on the underlying UCB instance.
     /// Called by the parser after make() when ic=VDS,VGS,VBS is present.

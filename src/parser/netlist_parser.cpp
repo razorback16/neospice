@@ -991,6 +991,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         // Bare flag options (no '=' sign)
                         std::string flag = to_lower(tokens[i]);
                         if (flag == "interp") ckt.options.interp = true;
+                        else if (flag == "newtrunc") ckt.options.newtrunc = true;
+                        else if (flag == "nonewtrunc") ckt.options.newtrunc = false;
                         continue;
                     }
                     std::string key = to_lower(tokens[i].substr(0, eq_pos));
@@ -1020,6 +1022,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                                 ckt.options.lte_ref_mode = static_cast<int>(val);
                             } else if (key == "restart_step_scale") {
                                 ckt.options.restart_step_scale = val;
+                            } else if (key == "xmu") {
+                                ckt.options.xmu = std::max(0.0, std::min(0.5, val));
                             }
                         } catch (...) {
                             // Silently ignore non-numeric option values
