@@ -274,8 +274,9 @@ public:
     double* state0() { return state0_.data(); }
     double* state1() { return state1_.data(); }
     double* state2() { return state2_.data(); }
+    double* state3() { return state3_.data(); }
 
-    /// Rotate state history: state2 <- state1 <- state0 (buffer addresses stay stable).
+    /// Rotate state history: state3 <- state2 <- state1 <- state0.
     void rotate_state();
 
     /// Reset all state buffers and device state for a fresh simulation pass.
@@ -380,7 +381,7 @@ private:
     int32_t next_node_ = 0;
     int32_t num_vars_  = 0;
     int32_t num_states_ = 0;
-    std::vector<double> state0_, state1_, state2_;
+    std::vector<double> state0_, state1_, state2_, state3_;
     std::vector<double> operating_point_;
     std::unique_ptr<SparsityPattern> pattern_;
     bool finalized_ = false;

@@ -181,17 +181,48 @@ PSD expressions. You need to:
 
 ## Phase 5: Truncation Error
 
-**Status**: Auto-generated. Rarely needs manual work.
+**Status**: Auto-generated using `ckt_terr()` helper. Rarely needs manual work.
 
-The tool extracts charge state offsets from `NIintegrate()` calls in the load source and
-generates a complete `compute_trunc()` using the Gear-2 LTE formula with divided
-differences. The descriptor can also override via `charge_states: [3]`.
+The tool generates `compute_trunc()` using `ckt_terr()` from `src/devices/ckt_terr.hpp`,
+a faithful reimplementation of ngspice's `CKTterr` (cktterr.c). It handles arbitrary
+integration order, both Gear and Trapezoidal methods, and computes tolerance exactly as
+ngspice does. The tool emits one `ckt_terr()` call per charge state offset.
 
-Only override manually if the device has conditional charge logic or mode-dependent
-integration (rare). Verify the auto-generated version against the ngspice `*trunc.c`
-or load function for completeness.
+The descriptor can override charge offsets via `charge_states: [8, 10, 12, 14]`. Otherwise
+the tool extracts offsets from `NIintegrate()` calls in the load source.
 
-**References**: `bsim3v32_device.cpp:604`, `hisim2_device.cpp:804`, `bjt_device.cpp:322`
+Only override manually if the device has conditional charge logic (e.g., BSIM4's
+`rgateMod`/`rbodyMod` guards around specific charge states). In that case, wrap the
+relevant `ckt_terr()` calls in the same conditionals.
+
+### What the tool generates
+
+```cpp
+#include "devices/ckt_terr.hpp"
+
+double MyDevice::compute_trunc(const IntegratorCtx& ctx,
+                               const SimOptions& opts) const {
+    if (ctx.order < 1 || ctx.delta <= 0.0) return 1e30;
+    if (!state0_ || !state1_ || !state2_ || !state3_) return 1e30;
+
+    const double* states[] = {state0_, state1_, state2_, state3_};
+    double dt_min = 1e30;
+    ckt_terr(state_base_ + 8, states, ctx, opts, dt_min);
+    ckt_terr(state_base_ + 10, states, ctx, opts, dt_min);
+    // ... one call per charge state
+    return dt_min;
+}
+```
+
+### Key details
+
+- **Guard on `ctx.order < 1`** (not `< 2`) — ckt_terr handles order 1+
+- **All 4 state pointers required** — `state0_` through `state3_` must all be non-null
+- **`ckt_terr` expects `qcap` and reads `ccap = qcap + 1`** — charge at offset N, derivative at N+1
+- **Each charge state gets its own `ckt_terr()` call** — the function updates `dt_min` in-place
+- **Never hand-roll the LTE formula** — older device code had bugs from manual reimplementation (wrong tolerance calc, hardcoded sqrt, wrong early-exit); always use `ckt_terr()`
+
+**References**: `bjt_device.cpp:327`, `bsim4v7_device.cpp:991`, `hisimhv_device.cpp:602`, `ckt_terr.hpp`
 
 ---
 
@@ -438,6 +469,9 @@ default) to detect floating and disconnected nodes.
 - [ ] Multi-device circuits work (shared ModelCard, separate instances)
 - [ ] No memory leaks (ModelCard destructor frees linked lists)
 - [ ] State buffer accesses use absolute offsets (`state_base_` + relative)
+- [ ] `set_state_ptrs` stores all 4 state pointers (`state0_` through `state3_`) and `state_base_`
+- [ ] `compute_trunc` uses `ckt_terr()` from `ckt_terr.hpp` — no hand-rolled LTE formula
+- [ ] `compute_trunc` guards on `ctx.order < 1` (not `< 2`) and checks all 4 state pointers
 - [ ] `noise_sources()` returns correct noise types for the device
 - [ ] Noise analysis matches ngspice within 20% tolerance
 - [ ] No shadowing of base class `sim_temp_` (use `sim_temp()` accessor)
@@ -490,7 +524,7 @@ After migration, verify both internal and public include paths resolve correctly
 | Setup / Load / Temp / Param / Mpar | Yes | Build fixes |
 | CMakeLists.txt | Yes | - |
 | Model card (uses model_card_utils.hpp) | Yes (when `model_types` defined) | - |
-| Truncation error (LTE) | Yes (from charge offsets) | Override if conditional |
+| Truncation error (LTE) | Yes (via `ckt_terr()`) | Override if conditional charges |
 | AC stamp (G/C split) | Scaffolded (when `ac_load_file`) | Map expressions to fields |
 | Noise model | Scaffolded (when `noise_file`) | Map expressions to fields |
 | Parameter query | Skeleton (fill TODOs) | OP param mappings + m-scaling |
@@ -509,6 +543,7 @@ After migration, verify both internal and public include paths resolve correctly
 - `src/devices/ucb_utils.hpp` — `neo_to_ucb()`, `ucb_to_neo()`, `str_tolower()`
 - `src/devices/ucb_device_init.hpp` — `ucb_declare_internal_nodes()`, `ucb_stamp_pattern()`, `ucb_compute_offsets()`, `UCB_SPLICE_INSTANCE()`
 - `src/devices/model_card_utils.hpp` — `convert_model_card_params<>()` template
+- `src/devices/ckt_terr.hpp` — `ckt_terr()` truncation error helper (faithful CKTterr reimplementation)
 
 ### Node Convention
 - neospice: `GROUND_INTERNAL = -1`, real nodes >= 0
@@ -516,9 +551,10 @@ After migration, verify both internal and public include paths resolve correctly
 - `neo_to_ucb(neo)` from `ucb_utils.hpp` converts: `(neo < 0) ? 0 : (neo + 1)`
 
 ### State Ring Buffer
-- 3 levels: `state0_` (current), `state1_` (previous), `state2_` (two steps ago)
+- 4 levels: `state0_` (current), `state1_` (previous), `state2_` (two steps ago), `state3_` (three steps ago)
 - Per-device `state_base_` offset into global buffer
 - All accesses: `state0_[state_base_ + relative_offset]`
+- `set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base)` — must store all 4 pointers
 
 ### MatrixOffset Stamping
 - Offsets pre-resolved during `assign_offsets()`; stored as `int` fields (the `*Ptr` fields)

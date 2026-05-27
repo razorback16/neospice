@@ -181,6 +181,7 @@ void Circuit::finalize() {
     state0_.assign(num_states_, 0.0);
     state1_.assign(num_states_, 0.0);
     state2_.assign(num_states_, 0.0);
+    state3_.assign(num_states_, 0.0);
 
     rebind_device_states();
 
@@ -193,7 +194,7 @@ void Circuit::rebind_device_states() {
         int32_t n = dev->state_vars();
         if (n > 0) {
             dev->set_state_ptrs(state0_.data(), state1_.data(),
-                                state2_.data(), base);
+                                state2_.data(), state3_.data(), base);
             base += n;
         }
     }
@@ -203,6 +204,7 @@ void Circuit::reset_state() {
     std::fill(state0_.begin(), state0_.end(), 0.0);
     std::fill(state1_.begin(), state1_.end(), 0.0);
     std::fill(state2_.begin(), state2_.end(), 0.0);
+    std::fill(state3_.begin(), state3_.end(), 0.0);
     clear_operating_point();
     for (auto& dev : devices_) {
         dev->reset();
@@ -222,21 +224,10 @@ void Circuit::clear_operating_point() {
 }
 
 void Circuit::rotate_state() {
-    // Rotate state history: state2 <- state1 <- state0.
-    //
-    // We use swap(state2_, state1_) then value-copy state0_ into state1_.
-    // swap() leaves state2_ pointing at the buffer that used to back
-    // state1_ (the device's cached state1 pointer now aliases stale data);
-    // the value-copy into state1_ also keeps its backing buffer address
-    // stable but its CONTENTS change.
-    //
-    // Either way, any device that cached raw double* during set_state_ptrs
-    // must be re-bound so its cached state1/state2 pointers reflect the
-    // new ring contents.  rebind_device_states() walks every device and
-    // re-calls set_state_ptrs with fresh data() pointers from the (now
-    // rotated) vectors.
+    // Rotate state history: state3 <- state2 <- state1 <- state0.
+    state3_.swap(state2_);
     state2_.swap(state1_);
-    state1_ = state0_;   // value copy; same backing buffer
+    state1_ = state0_;
     rebind_device_states();
 }
 

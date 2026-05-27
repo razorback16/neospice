@@ -22,11 +22,12 @@ public:
 
     int32_t state_vars() const override { return slots_; }
 
-    void set_state_ptrs(double* s0, double* s1, double* s2,
+    void set_state_ptrs(double* s0, double* s1, double* s2, double* s3,
                         int32_t base) override {
         state0_ = s0;
         state1_ = s1;
         state2_ = s2;
+        state3_ = s3;
         base_   = base;
         ++bind_count_;
     }
@@ -40,6 +41,7 @@ public:
     double* state0() const { return state0_; }
     double* state1() const { return state1_; }
     double* state2() const { return state2_; }
+    double* state3() const { return state3_; }
     int32_t base() const   { return base_; }
     int     bind_count() const { return bind_count_; }
 
@@ -48,6 +50,7 @@ private:
     double* state0_ = nullptr;
     double* state1_ = nullptr;
     double* state2_ = nullptr;
+    double* state3_ = nullptr;
     int32_t base_   = -1;
     int     bind_count_ = 0;
 };

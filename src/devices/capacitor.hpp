@@ -59,7 +59,7 @@ public:
     void apply_ic_override();  // Override v_prev with IC value (call after init_dc_state)
 
     int32_t state_vars() const override { return 2; }
-    void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
+    void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override;
 
     /// Apply temperature-dependent adjustment to effective capacitance.
     void process_temperature(double sim_temp, double sim_tnom) override;
@@ -96,6 +96,7 @@ private:
     double* state0_ = nullptr;
     double* state1_ = nullptr;
     double* state2_ = nullptr;
+    double* state3_ = nullptr;
     int32_t state_base_ = -1;
 
     MatrixOffset off_pp_ = -1, off_pn_ = -1, off_np_ = -1, off_nn_ = -1;

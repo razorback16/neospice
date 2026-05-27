@@ -18,10 +18,13 @@ set(NEOSPICE_DEVICE_NAMES "${NEOSPICE_DEVICE_NAMES}" PARENT_SCOPE)
 add_library(neospice_lib
     core/types.cpp
     core/matrix.cpp
-    core/amd.cpp
-    core/btf.cpp
-    core/matching.cpp
     core/neo_solver.cpp
+    solver/matrix.cpp
+    solver/build.cpp
+    solver/factor.cpp
+    solver/solve.cpp
+    solver/utils.cpp
+    solver/output.cpp
     core/circuit.cpp
     core/newton.cpp
     core/convergence.cpp

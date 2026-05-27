@@ -1,445 +1,73 @@
 #include "core/neo_solver.hpp"
-#include "core/amd.hpp"
-#include "core/matching.hpp"
-#include <algorithm>
-#include <cmath>
-#include <limits>
+#include "solver/matrix.hpp"
+#include <cstddef>
 #include <stdexcept>
-#include <utility>
 
 namespace neospice {
 
+static_assert(
+    offsetof(solver::MatrixElement, Imag) ==
+    offsetof(solver::MatrixElement, Real) + sizeof(double),
+    "Real and Imag must be adjacent in MatrixElement");
+
 NeoSolver::NeoSolver() = default;
+NeoSolver::~NeoSolver() = default;
+NeoSolver::NeoSolver(NeoSolver&&) noexcept = default;
+NeoSolver& NeoSolver::operator=(NeoSolver&&) noexcept = default;
+
+void NeoSolver::load_real(const double* values) {
+    matrix_->set_real();
+    matrix_->clear();
+    for (int32_t k = 0; k < nnz_; ++k)
+        *element_ptrs_[k] = values[k];
+}
+
+void NeoSolver::load_complex(const double* ax) {
+    matrix_->set_complex();
+    matrix_->clear();
+    for (int32_t k = 0; k < nnz_; ++k) {
+        element_ptrs_[k][0] = ax[2 * k];
+        element_ptrs_[k][1] = ax[2 * k + 1];
+    }
+}
 
 void NeoSolver::symbolic(const SparsityPattern& pattern) {
     n_ = pattern.size();
     CSCData csc = pattern.to_csc();
-    col_ptr_ = std::move(csc.col_ptr);
-    row_idx_ = std::move(csc.row_idx);
+    nnz_ = static_cast<int32_t>(csc.row_idx.size());
 
-    use_dense_ = (n_ < DENSE_LIMIT);
+    matrix_ = std::make_unique<solver::SparseMatrix>(n_);
+    element_ptrs_.resize(nnz_);
 
-    if (use_dense_) {
-        lu_.resize(n_ * n_, 0.0);
-        pivot_.resize(n_);
-        lu_z_.resize(2 * n_ * n_, 0.0);
-        pivot_z_.resize(n_);
-    } else {
-        // Maximum transversal: find row permutation for zero-free diagonal.
-        match_perm_ = maximum_transversal(n_, col_ptr_.data(), row_idx_.data());
+    int32_t k = 0;
+    for (int32_t j = 0; j < n_; ++j)
+        for (int32_t p = csc.col_ptr[j]; p < csc.col_ptr[j + 1]; ++p)
+            element_ptrs_[k++] = matrix_->get_element(csc.row_idx[p] + 1, j + 1);
 
-        // AMD ordering on the original pattern (AMD only sees structure,
-        // and MNA structure is nearly symmetric — the matching's benefit
-        // comes from the composed permutation in build_permuted_csc).
-        amd_perm_ = amd_ordering(n_, col_ptr_.data(), row_idx_.data());
-        amd_inv_.resize(n_);
-        for (int32_t i = 0; i < n_; ++i) amd_inv_[amd_perm_[i]] = i;
+    matrix_->mna_preorder();
 
-        build_permuted_csc();
-
-        x_work_.resize(n_, 0.0);
-        xr_work_.resize(n_, 0.0);
-        xi_work_.resize(n_, 0.0);
-        yr_work_.resize(n_);
-        yi_work_.resize(n_);
-        pinv_.assign(n_, -1);
-        piv_.resize(n_);
-    }
+    rhs_1_.resize(n_ + 1);
+    sol_1_.resize(n_ + 1);
+    irhs_1_.resize(n_ + 1);
+    isol_1_.resize(n_ + 1);
 
     symbolized_ = true;
     factored_ = false;
-    factored_z_ = false;
-    sparse_factored_z_ = false;
+    factored_complex_ = false;
 }
 
-void NeoSolver::build_permuted_csc() {
-    int32_t nnz = static_cast<int32_t>(row_idx_.size());
-
-    // Build inverse matching permutation: match_inv[row] = col
-    // match_perm_[col] = row  =>  match_inv[row] = col
-    std::vector<int32_t> match_inv(n_);
-    for (int32_t j = 0; j < n_; ++j) match_inv[match_perm_[j]] = j;
-
-    perm_cp_.assign(n_ + 1, 0);
-    for (int32_t j = 0; j < n_; ++j) {
-        int32_t pj = amd_inv_[j];
-        perm_cp_[pj + 1] += col_ptr_[j + 1] - col_ptr_[j];
-    }
-    for (int32_t j = 0; j < n_; ++j)
-        perm_cp_[j + 1] += perm_cp_[j];
-
-    perm_ri_.resize(nnz);
-    val_map_.resize(nnz);
-
-    std::vector<int32_t> cursor(perm_cp_.begin(), perm_cp_.begin() + n_);
-    for (int32_t j = 0; j < n_; ++j) {
-        int32_t pj = amd_inv_[j];
-        for (int32_t k = col_ptr_[j]; k < col_ptr_[j + 1]; ++k) {
-            // Apply matching row permutation THEN AMD permutation.
-            // Original entry: (row_idx_[k], j)
-            // After matching: (match_inv[row_idx_[k]], j)
-            // After AMD:      (amd_inv_[match_inv[row_idx_[k]]], amd_inv_[j])
-            int32_t matched_row = match_inv[row_idx_[k]];
-            int32_t pi = amd_inv_[matched_row];
-            int32_t pos = cursor[pj]++;
-            perm_ri_[pos] = pi;
-            val_map_[pos] = k;
-        }
-    }
-
-    // Sort each column by row index
-    for (int32_t j = 0; j < n_; ++j) {
-        int32_t start = perm_cp_[j];
-        int32_t end = perm_cp_[j + 1];
-        for (int32_t a = start + 1; a < end; ++a) {
-            int32_t ri = perm_ri_[a];
-            int32_t vm = val_map_[a];
-            int32_t b = a - 1;
-            while (b >= start && perm_ri_[b] > ri) {
-                perm_ri_[b + 1] = perm_ri_[b];
-                val_map_[b + 1] = val_map_[b];
-                --b;
-            }
-            perm_ri_[b + 1] = ri;
-            val_map_[b + 1] = vm;
-        }
-    }
-}
-
-// Left-looking column-LU with Markowitz pivot selection.
-// Uses Gilbert-Peierls reach computation so the left-looking update
-// only visits columns with nonzero U entries, making total work
-// proportional to nnz(L)+nnz(U) instead of O(n²).
-bool NeoSolver::sparse_factor(const double* orig_values) {
-    bool perturbed = false;
-    l_cp_.assign(n_ + 1, 0);
-    u_cp_.assign(n_ + 1, 0);
-    l_ri_.clear();
-    l_val_.clear();
-    u_ri_.clear();
-    u_val_.clear();
-
-    int32_t est = 7 * n_;
-    l_ri_.reserve(est);
-    l_val_.reserve(est);
-    u_ri_.reserve(est);
-    u_val_.reserve(est);
-
-    pinv_.assign(n_, -1);
-    piv_.assign(n_, -1);
-
-    std::fill(x_work_.begin(), x_work_.end(), 0.0);
-
-    // Gilbert-Peierls DFS workspace (persistent across columns)
-    std::vector<int32_t> reach;
-    reach.reserve(n_);
-    std::vector<int32_t> dfs_stack;
-    dfs_stack.reserve(n_);
-    std::vector<int32_t> dfs_pos(n_);
-    std::vector<bool> in_reach(n_, false);
-
-    std::vector<int32_t> nz_rows;
-    nz_rows.reserve(n_);
-    std::vector<bool> in_nz(n_, false);
-
-    // Markowitz row counts: number of nonzeros per row in permuted CSC.
-    // Used as tie-breaker when diagonal pivot fails threshold.
-    std::vector<int32_t> row_nnz(n_, 0);
-    for (int32_t j = 0; j < n_; ++j)
-        for (int32_t p = perm_cp_[j]; p < perm_cp_[j + 1]; ++p)
-            row_nnz[perm_ri_[p]]++;
-
-    for (int32_t col = 0; col < n_; ++col) {
-        nz_rows.clear();
-        reach.clear();
-
-        // Scatter column of PAP^T into dense accumulator
-        for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p) {
-            int32_t row = perm_ri_[p];
-            x_work_[row] = orig_values[val_map_[p]];
-            if (!in_nz[row]) { nz_rows.push_back(row); in_nz[row] = true; }
-        }
-
-        // Gilbert-Peierls reach: DFS from nonzero rows of A(:,col) through
-        // the L graph to find all columns k < col with nonzero U(k,col).
-        for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p) {
-            int32_t sc = pinv_[perm_ri_[p]];
-            if (sc < 0 || sc >= col || in_reach[sc]) continue;
-
-            dfs_stack.push_back(sc);
-            dfs_pos[sc] = l_cp_[sc];
-
-            while (!dfs_stack.empty()) {
-                int32_t j = dfs_stack.back();
-                bool pushed = false;
-                for (int32_t& pp = dfs_pos[j]; pp < l_cp_[j + 1]; ++pp) {
-                    int32_t cc = pinv_[l_ri_[pp]];
-                    if (cc >= 0 && cc < col && !in_reach[cc]) {
-                        dfs_stack.push_back(cc);
-                        dfs_pos[cc] = l_cp_[cc];
-                        ++pp;
-                        pushed = true;
-                        break;
-                    }
-                }
-                if (!pushed) {
-                    in_reach[j] = true;
-                    reach.push_back(j);
-                    dfs_stack.pop_back();
-                }
-            }
-        }
-
-        for (int32_t k : reach) in_reach[k] = false;
-
-        // Sort ascending: dependencies always go from lower to higher column
-        // indices, so processing in increasing order is always valid.
-        std::sort(reach.begin(), reach.end());
-
-        // Left-looking: apply L(:,k) updates only for reached columns
-        u_cp_[col] = static_cast<int32_t>(u_ri_.size());
-        for (int32_t k : reach) {
-            int32_t pr = piv_[k];
-            double u_kj = x_work_[pr];
-            if (u_kj == 0.0) continue;
-
-            u_ri_.push_back(k);
-            u_val_.push_back(u_kj);
-
-            for (int32_t p = l_cp_[k]; p < l_cp_[k + 1]; ++p) {
-                int32_t row = l_ri_[p];
-                if (!in_nz[row]) { nz_rows.push_back(row); in_nz[row] = true; }
-                x_work_[row] -= l_val_[p] * u_kj;
-            }
-        }
-
-        // Markowitz pivot selection: among numerically acceptable candidates,
-        // choose the one with fewest row nonzeros to minimize fill-in.
-        // Diagonal is preferred as tie-breaker to preserve structural symmetry.
-        double col_max = 0.0;
-        for (int32_t row : nz_rows) {
-            if (pinv_[row] >= 0) continue;
-            double v = std::abs(x_work_[row]);
-            if (v > col_max) col_max = v;
-        }
-
-        double threshold = PIVOT_THRESHOLD * col_max;
-        int32_t pivot_row = -1;
-        int32_t best_nnz = std::numeric_limits<int32_t>::max();
-        double best_abs = -1.0;
-
-        for (int32_t row : nz_rows) {
-            if (pinv_[row] >= 0) continue;
-            double v = std::abs(x_work_[row]);
-            if (v < threshold) continue;
-            int32_t rnnz = row_nnz[row];
-            if (rnnz < best_nnz || (rnnz == best_nnz && v > best_abs)) {
-                best_nnz = rnnz;
-                best_abs = v;
-                pivot_row = row;
-            }
-        }
-
-        // Diagonal preference: if diagonal passes threshold and ties on
-        // Markowitz count, prefer it to preserve structural symmetry.
-        if (pivot_row >= 0 && pinv_[col] < 0) {
-            double dv = std::abs(x_work_[col]);
-            if (dv >= threshold) {
-                int32_t dnnz = row_nnz[col];
-                if (dnnz < best_nnz ||
-                    (dnnz == best_nnz && col != pivot_row)) {
-                    pivot_row = col;
-                }
-            }
-        }
-
-        if (pivot_row < 0) {
-            // No unpivoted row had a nonzero — pick any unpivoted row
-            if (pinv_[col] < 0) {
-                pivot_row = col;
-            } else {
-                for (int32_t r = 0; r < n_; ++r) {
-                    if (pinv_[r] < 0) { pivot_row = r; break; }
-                }
-            }
-            x_work_[pivot_row] = 1e-12;
-            perturbed = true;
-        } else if (std::abs(x_work_[pivot_row]) < 1e-30) {
-            x_work_[pivot_row] = (x_work_[pivot_row] >= 0.0) ? 1e-12 : -1e-12;
-            perturbed = true;
-        }
-
-        row_nnz[pivot_row] = -1;
-
-        pinv_[pivot_row] = col;
-        piv_[col] = pivot_row;
-
-        double diag = x_work_[pivot_row];
-
-        u_ri_.push_back(col);
-        u_val_.push_back(diag);
-
-        l_cp_[col] = static_cast<int32_t>(l_ri_.size());
-        for (int32_t row : nz_rows) {
-            if (pinv_[row] >= 0) continue;
-            double val = x_work_[row];
-            if (val != 0.0) {
-                l_ri_.push_back(row);
-                l_val_.push_back(val / diag);
-            }
-        }
-        l_cp_[col + 1] = static_cast<int32_t>(l_ri_.size());
-        u_cp_[col + 1] = static_cast<int32_t>(u_ri_.size());
-
-        for (int32_t row : nz_rows) {
-            x_work_[row] = 0.0;
-            in_nz[row] = false;
-        }
-    }
-    factored_ = true;
-    return perturbed;
-}
-
-// Refactorize: same pivot order and L/U structure, recompute values.
-bool NeoSolver::sparse_refactor(const double* orig_values) {
-    // x_work_ is zero-initialized from symbolic(); we maintain this invariant
-    // by clearing only the positions we touch in each column.
-    bool perturbed = false;
-    for (int32_t col = 0; col < n_; ++col) {
-        // Scatter column of PAP^T (set only nonzero positions)
-        for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p)
-            x_work_[perm_ri_[p]] = orig_values[val_map_[p]];
-
-        // Left-looking: iterate stored U entries only
-        int32_t u_end = u_cp_[col + 1] - 1;
-        for (int32_t up = u_cp_[col]; up < u_end; ++up) {
-            int32_t k = u_ri_[up];
-            int32_t pr = piv_[k];
-            double u_kj = x_work_[pr];
-            u_val_[up] = u_kj;
-            if (u_kj == 0.0) continue;
-
-            for (int32_t p = l_cp_[k]; p < l_cp_[k + 1]; ++p)
-                x_work_[l_ri_[p]] -= l_val_[p] * u_kj;
-        }
-
-        double diag = x_work_[piv_[col]];
-        if (std::abs(diag) < 1e-30) {
-            diag = (diag >= 0.0) ? 1e-12 : -1e-12;
-            perturbed = true;
-        }
-        u_val_[u_end] = diag;
-
-        for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p)
-            l_val_[p] = x_work_[l_ri_[p]] / diag;
-
-        // Clear touched positions (restore x_work_ to zero).
-        for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p)
-            x_work_[perm_ri_[p]] = 0.0;
-        for (int32_t up = u_cp_[col]; up < u_end; ++up) {
-            x_work_[piv_[u_ri_[up]]] = 0.0;
-            for (int32_t p = l_cp_[u_ri_[up]]; p < l_cp_[u_ri_[up] + 1]; ++p)
-                x_work_[l_ri_[p]] = 0.0;
-        }
-        x_work_[piv_[col]] = 0.0;
-        for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p)
-            x_work_[l_ri_[p]] = 0.0;
-    }
-    return perturbed;
-}
-
-// Solve P^T(RAP)P · z = P^T R b via LU, then x[amd_perm_[k]] = z[k]
-void NeoSolver::sparse_solve_real(double* b) const {
-    // RHS read: (P^T R b)[piv_[k]] = b[match_perm_[amd_perm_[piv_[k]]]]
-    std::vector<double> y(n_);
-    for (int32_t k = 0; k < n_; ++k)
-        y[k] = b[match_perm_[amd_perm_[piv_[k]]]];
-
-    // Forward substitution: L is unit lower triangular
-    for (int32_t col = 0; col < n_; ++col) {
-        for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p) {
-            int32_t step = pinv_[l_ri_[p]];
-            y[step] -= l_val_[p] * y[col];
-        }
-    }
-
-    // Backward substitution: U
-    for (int32_t col = n_ - 1; col >= 0; --col) {
-        int32_t diag_pos = u_cp_[col + 1] - 1;
-        y[col] /= u_val_[diag_pos];
-        for (int32_t p = u_cp_[col]; p < diag_pos; ++p)
-            y[u_ri_[p]] -= u_val_[p] * y[col];
-    }
-
-    // Unpermute: x[amd_perm_[k]] = y[k]
-    for (int32_t k = 0; k < n_; ++k)
-        b[amd_perm_[k]] = y[k];
-}
-
-// ---- Dense tier (unchanged) ----
-
-void NeoSolver::scatter_to_dense(const double* csc_values) {
-    std::fill(lu_.begin(), lu_.end(), 0.0);
-    for (int32_t j = 0; j < n_; ++j)
-        for (int32_t k = col_ptr_[j]; k < col_ptr_[j + 1]; ++k)
-            lu_[j * n_ + row_idx_[k]] = csc_values[k];
-}
-
-bool NeoSolver::dense_factor() {
-    bool perturbed = false;
-    for (int32_t k = 0; k < n_; ++k) {
-        int32_t best = k;
-        double best_val = std::abs(lu_[k * n_ + k]);
-        for (int32_t i = k + 1; i < n_; ++i) {
-            double v = std::abs(lu_[k * n_ + i]);
-            if (v > best_val) { best = i; best_val = v; }
-        }
-        pivot_[k] = best;
-        if (best != k)
-            for (int32_t j = 0; j < n_; ++j)
-                std::swap(lu_[j * n_ + k], lu_[j * n_ + best]);
-        double diag = lu_[k * n_ + k];
-        if (std::abs(diag) < 1e-30) {
-            diag = (diag >= 0.0) ? 1e-12 : -1e-12;
-            lu_[k * n_ + k] = diag;
-            perturbed = true;
-        }
-        for (int32_t i = k + 1; i < n_; ++i) {
-            lu_[k * n_ + i] /= diag;
-            for (int32_t j = k + 1; j < n_; ++j)
-                lu_[j * n_ + i] -= lu_[k * n_ + i] * lu_[j * n_ + k];
-        }
-    }
-    return perturbed;
-}
-
-void NeoSolver::dense_solve(double* rhs) const {
-    for (int32_t k = 0; k < n_; ++k)
-        if (pivot_[k] != k) std::swap(rhs[k], rhs[pivot_[k]]);
-    for (int32_t k = 0; k < n_; ++k)
-        for (int32_t i = k + 1; i < n_; ++i)
-            rhs[i] -= lu_[k * n_ + i] * rhs[k];
-    for (int32_t k = n_ - 1; k >= 0; --k) {
-        rhs[k] /= lu_[k * n_ + k];
-        for (int32_t i = 0; i < k; ++i)
-            rhs[i] -= lu_[k * n_ + i] * rhs[k];
-    }
-}
-
-// ---- Dispatch: numeric / refactorize / solve ----
-
-bool NeoSolver::numeric(const SparsityPattern& pattern, const NumericMatrix& mat) {
+bool NeoSolver::numeric(const SparsityPattern& /*pattern*/,
+                         const NumericMatrix& mat) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::numeric: symbolic() not called");
-    bool perturbed;
-    if (use_dense_) {
-        scatter_to_dense(mat.data());
-        perturbed = dense_factor();
-    } else {
-        perturbed = sparse_factor(mat.data());
-    }
+
+    load_real(mat.data());
+    auto err = matrix_->order_and_factor(nullptr, 1e-3, 0.0, true);
+    if (err == solver::SparseError::NoMemory)
+        throw std::runtime_error("NeoSolver::numeric: out of memory");
     factored_ = true;
-    return perturbed;
+    factored_complex_ = false;
+    return err == solver::SparseError::Singular;
 }
 
 bool NeoSolver::refactorize(const NumericMatrix& mat) {
@@ -447,12 +75,12 @@ bool NeoSolver::refactorize(const NumericMatrix& mat) {
         throw std::logic_error("NeoSolver::refactorize: symbolic() not called");
     if (!factored_)
         throw std::logic_error("NeoSolver::refactorize: numeric() not called");
-    if (use_dense_) {
-        scatter_to_dense(mat.data());
-        return dense_factor();
-    } else {
-        return sparse_refactor(mat.data());
-    }
+
+    load_real(mat.data());
+    auto err = matrix_->factor();
+    if (err == solver::SparseError::NoMemory)
+        throw std::runtime_error("NeoSolver::refactorize: out of memory");
+    return err == solver::SparseError::Singular;
 }
 
 void NeoSolver::solve(std::vector<double>& rhs) {
@@ -462,328 +90,56 @@ void NeoSolver::solve(std::vector<double>& rhs) {
         throw std::logic_error("NeoSolver::solve: numeric() not called");
     if (static_cast<int32_t>(rhs.size()) != n_)
         throw std::invalid_argument("NeoSolver::solve: rhs size mismatch");
-    if (use_dense_)
-        dense_solve(rhs.data());
-    else
-        sparse_solve_real(rhs.data());
+
+    for (int32_t i = 0; i < n_; ++i)
+        rhs_1_[i + 1] = rhs[i];
+
+    matrix_->solve(rhs_1_.data(), sol_1_.data());
+
+    for (int32_t i = 0; i < n_; ++i)
+        rhs[i] = sol_1_[i + 1];
 }
 
-// ---- Dense complex tier ----
-
-void NeoSolver::scatter_to_dense_complex(const double* ax) {
-    std::fill(lu_z_.begin(), lu_z_.end(), 0.0);
-    for (int32_t j = 0; j < n_; ++j)
-        for (int32_t k = col_ptr_[j]; k < col_ptr_[j + 1]; ++k) {
-            int32_t idx = 2 * (j * n_ + row_idx_[k]);
-            lu_z_[idx]     = ax[2 * k];
-            lu_z_[idx + 1] = ax[2 * k + 1];
-        }
-}
-
-bool NeoSolver::dense_factor_complex() {
-    bool perturbed = false;
-    for (int32_t k = 0; k < n_; ++k) {
-        int32_t best = k;
-        double best_abs = std::hypot(lu_z_[2*(k*n_+k)], lu_z_[2*(k*n_+k)+1]);
-        for (int32_t i = k + 1; i < n_; ++i) {
-            double v = std::hypot(lu_z_[2*(k*n_+i)], lu_z_[2*(k*n_+i)+1]);
-            if (v > best_abs) { best = i; best_abs = v; }
-        }
-        pivot_z_[k] = best;
-        if (best != k)
-            for (int32_t j = 0; j < n_; ++j) {
-                int32_t a = 2*(j*n_+k), b = 2*(j*n_+best);
-                std::swap(lu_z_[a], lu_z_[b]);
-                std::swap(lu_z_[a+1], lu_z_[b+1]);
-            }
-        double dr = lu_z_[2*(k*n_+k)], di = lu_z_[2*(k*n_+k)+1];
-        double denom = dr*dr + di*di;
-        if (denom < 1e-60) {
-            dr = (dr >= 0.0) ? 1e-12 : -1e-12;
-            di = 0.0;
-            denom = 1e-24;
-            lu_z_[2*(k*n_+k)] = dr;
-            lu_z_[2*(k*n_+k)+1] = di;
-            perturbed = true;
-        }
-        for (int32_t i = k + 1; i < n_; ++i) {
-            double ar = lu_z_[2*(k*n_+i)], ai = lu_z_[2*(k*n_+i)+1];
-            double mr = (ar*dr + ai*di) / denom;
-            double mi = (ai*dr - ar*di) / denom;
-            lu_z_[2*(k*n_+i)] = mr;
-            lu_z_[2*(k*n_+i)+1] = mi;
-            for (int32_t j = k + 1; j < n_; ++j) {
-                double er = lu_z_[2*(j*n_+k)], ei = lu_z_[2*(j*n_+k)+1];
-                lu_z_[2*(j*n_+i)]   -= mr*er - mi*ei;
-                lu_z_[2*(j*n_+i)+1] -= mr*ei + mi*er;
-            }
-        }
-    }
-    return perturbed;
-}
-
-void NeoSolver::dense_solve_complex(double* rhs) const {
-    for (int32_t k = 0; k < n_; ++k)
-        if (pivot_z_[k] != k) {
-            std::swap(rhs[2*k], rhs[2*pivot_z_[k]]);
-            std::swap(rhs[2*k+1], rhs[2*pivot_z_[k]+1]);
-        }
-    for (int32_t k = 0; k < n_; ++k)
-        for (int32_t i = k + 1; i < n_; ++i) {
-            double mr = lu_z_[2*(k*n_+i)], mi = lu_z_[2*(k*n_+i)+1];
-            double xr = rhs[2*k], xi = rhs[2*k+1];
-            rhs[2*i]   -= mr*xr - mi*xi;
-            rhs[2*i+1] -= mr*xi + mi*xr;
-        }
-    for (int32_t k = n_-1; k >= 0; --k) {
-        double dr = lu_z_[2*(k*n_+k)], di = lu_z_[2*(k*n_+k)+1];
-        double denom = dr*dr + di*di;
-        double xr = rhs[2*k], xi = rhs[2*k+1];
-        rhs[2*k]   = (xr*dr + xi*di) / denom;
-        rhs[2*k+1] = (xi*dr - xr*di) / denom;
-        for (int32_t i = 0; i < k; ++i) {
-            double ur = lu_z_[2*(k*n_+i)], ui = lu_z_[2*(k*n_+i)+1];
-            rhs[2*i]   -= ur*rhs[2*k] - ui*rhs[2*k+1];
-            rhs[2*i+1] -= ur*rhs[2*k+1] + ui*rhs[2*k];
-        }
-    }
-}
-
-// ---- Sparse complex ----
-
-void NeoSolver::sparse_factor_complex(const double* orig_ax) {
-    int32_t l_nnz = static_cast<int32_t>(l_ri_.size());
-    int32_t u_nnz = static_cast<int32_t>(u_ri_.size());
-    l_val_z_.resize(2 * l_nnz);
-    u_val_z_.resize(2 * u_nnz);
-
-    std::fill(xr_work_.begin(), xr_work_.end(), 0.0);
-    std::fill(xi_work_.begin(), xi_work_.end(), 0.0);
-
-    for (int32_t col = 0; col < n_; ++col) {
-        for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p) {
-            int32_t row = perm_ri_[p];
-            int32_t oi = val_map_[p];
-            xr_work_[row] = orig_ax[2 * oi];
-            xi_work_[row] = orig_ax[2 * oi + 1];
-        }
-
-        int32_t u_start = u_cp_[col];
-        int32_t u_end = u_cp_[col + 1] - 1;
-
-        for (int32_t up = u_start; up < u_end; ++up) {
-            int32_t k = u_ri_[up];
-            int32_t pr = piv_[k];
-            double ur = xr_work_[pr], ui = xi_work_[pr];
-
-            u_val_z_[2*up]   = ur;
-            u_val_z_[2*up+1] = ui;
-
-            if (ur == 0.0 && ui == 0.0) continue;
-
-            for (int32_t p = l_cp_[k]; p < l_cp_[k + 1]; ++p) {
-                int32_t row = l_ri_[p];
-                double lr = l_val_z_[2*p], li = l_val_z_[2*p+1];
-                xr_work_[row] -= lr*ur - li*ui;
-                xi_work_[row] -= lr*ui + li*ur;
-            }
-        }
-
-        int32_t pivot_row = piv_[col];
-        double dr = xr_work_[pivot_row], di = xi_work_[pivot_row];
-        double denom = dr*dr + di*di;
-        if (denom < 1e-60)
-            throw std::runtime_error("NeoSolver: singular complex matrix");
-
-        u_val_z_[2*u_end]   = dr;
-        u_val_z_[2*u_end+1] = di;
-
-        for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p) {
-            int32_t row = l_ri_[p];
-            double ar = xr_work_[row], ai = xi_work_[row];
-            l_val_z_[2*p]   = (ar*dr + ai*di) / denom;
-            l_val_z_[2*p+1] = (ai*dr - ar*di) / denom;
-        }
-
-        // Clear touched positions (maintain zero invariant)
-        for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p) {
-            xr_work_[perm_ri_[p]] = 0.0;
-            xi_work_[perm_ri_[p]] = 0.0;
-        }
-        for (int32_t up = u_start; up < u_end; ++up) {
-            int32_t pr2 = piv_[u_ri_[up]];
-            xr_work_[pr2] = 0.0; xi_work_[pr2] = 0.0;
-            for (int32_t p = l_cp_[u_ri_[up]]; p < l_cp_[u_ri_[up] + 1]; ++p) {
-                xr_work_[l_ri_[p]] = 0.0; xi_work_[l_ri_[p]] = 0.0;
-            }
-        }
-        xr_work_[pivot_row] = 0.0; xi_work_[pivot_row] = 0.0;
-        for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p) {
-            xr_work_[l_ri_[p]] = 0.0; xi_work_[l_ri_[p]] = 0.0;
-        }
-    }
-
-    sparse_factored_z_ = true;
-}
-
-bool NeoSolver::sparse_refactor_complex(const double* orig_ax) {
-    bool perturbed = false;
-
-    for (int32_t col = 0; col < n_; ++col) {
-        for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p) {
-            int32_t row = perm_ri_[p];
-            int32_t oi = val_map_[p];
-            xr_work_[row] = orig_ax[2 * oi];
-            xi_work_[row] = orig_ax[2 * oi + 1];
-        }
-
-        int32_t u_end = u_cp_[col + 1] - 1;
-
-        for (int32_t up = u_cp_[col]; up < u_end; ++up) {
-            int32_t k = u_ri_[up];
-            int32_t pr = piv_[k];
-            double ur = xr_work_[pr], ui = xi_work_[pr];
-
-            u_val_z_[2*up]   = ur;
-            u_val_z_[2*up+1] = ui;
-
-            if (ur == 0.0 && ui == 0.0) continue;
-
-            for (int32_t p = l_cp_[k]; p < l_cp_[k + 1]; ++p) {
-                int32_t row = l_ri_[p];
-                double lr = l_val_z_[2*p], li = l_val_z_[2*p+1];
-                xr_work_[row] -= lr*ur - li*ui;
-                xi_work_[row] -= lr*ui + li*ur;
-            }
-        }
-
-        int32_t pivot_row = piv_[col];
-        double dr = xr_work_[pivot_row], di = xi_work_[pivot_row];
-        double denom = dr*dr + di*di;
-        if (denom < 1e-60) {
-            dr = (dr >= 0.0) ? 1e-12 : -1e-12;
-            di = 0.0;
-            denom = 1e-24;
-            xr_work_[pivot_row] = dr;
-            xi_work_[pivot_row] = di;
-            perturbed = true;
-        }
-
-        u_val_z_[2*u_end]   = dr;
-        u_val_z_[2*u_end+1] = di;
-
-        for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p) {
-            int32_t row = l_ri_[p];
-            double ar = xr_work_[row], ai = xi_work_[row];
-            l_val_z_[2*p]   = (ar*dr + ai*di) / denom;
-            l_val_z_[2*p+1] = (ai*dr - ar*di) / denom;
-        }
-
-        for (int32_t p = perm_cp_[col]; p < perm_cp_[col + 1]; ++p) {
-            xr_work_[perm_ri_[p]] = 0.0;
-            xi_work_[perm_ri_[p]] = 0.0;
-        }
-        for (int32_t up = u_cp_[col]; up < u_end; ++up) {
-            int32_t pr2 = piv_[u_ri_[up]];
-            xr_work_[pr2] = 0.0; xi_work_[pr2] = 0.0;
-            for (int32_t p = l_cp_[u_ri_[up]]; p < l_cp_[u_ri_[up] + 1]; ++p) {
-                xr_work_[l_ri_[p]] = 0.0; xi_work_[l_ri_[p]] = 0.0;
-            }
-        }
-        xr_work_[pivot_row] = 0.0; xi_work_[pivot_row] = 0.0;
-        for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p) {
-            xr_work_[l_ri_[p]] = 0.0; xi_work_[l_ri_[p]] = 0.0;
-        }
-    }
-    return perturbed;
-}
-
-void NeoSolver::sparse_solve_complex(double* b) {
-    for (int32_t k = 0; k < n_; ++k) {
-        int32_t orig = match_perm_[amd_perm_[piv_[k]]];
-        yr_work_[k] = b[2 * orig];
-        yi_work_[k] = b[2 * orig + 1];
-    }
-
-    for (int32_t col = 0; col < n_; ++col)
-        for (int32_t p = l_cp_[col]; p < l_cp_[col + 1]; ++p) {
-            int32_t step = pinv_[l_ri_[p]];
-            double lr = l_val_z_[2*p], li = l_val_z_[2*p+1];
-            yr_work_[step] -= lr*yr_work_[col] - li*yi_work_[col];
-            yi_work_[step] -= lr*yi_work_[col] + li*yr_work_[col];
-        }
-
-    for (int32_t col = n_-1; col >= 0; --col) {
-        int32_t dp = u_cp_[col+1] - 1;
-        double dr = u_val_z_[2*dp], di = u_val_z_[2*dp+1];
-        double denom = dr*dr + di*di;
-        double xr = yr_work_[col], xiv = yi_work_[col];
-        yr_work_[col] = (xr*dr + xiv*di) / denom;
-        yi_work_[col] = (xiv*dr - xr*di) / denom;
-        for (int32_t p = u_cp_[col]; p < dp; ++p) {
-            int32_t step = u_ri_[p];
-            double ur = u_val_z_[2*p], ui = u_val_z_[2*p+1];
-            yr_work_[step] -= ur*yr_work_[col] - ui*yi_work_[col];
-            yi_work_[step] -= ur*yi_work_[col] + ui*yr_work_[col];
-        }
-    }
-
-    for (int32_t k = 0; k < n_; ++k) {
-        b[2*amd_perm_[k]]     = yr_work_[k];
-        b[2*amd_perm_[k] + 1] = yi_work_[k];
-    }
-}
-
-// ---- Complex dispatch ----
-
-void NeoSolver::numeric_complex(const SparsityPattern& pattern,
-                                  const std::vector<double>& ax) {
+void NeoSolver::numeric_complex(const SparsityPattern& /*pattern*/,
+                                 const std::vector<double>& ax) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::numeric_complex: symbolic() not called");
-    if (use_dense_) {
-        scatter_to_dense_complex(ax.data());
-        dense_factor_complex();
-        factored_z_ = true;
-    } else {
-        if (!factored_) {
-            // Need real factorization to establish L/U structure and pivots
-            std::vector<double> mag(ax.size() / 2);
-            for (size_t i = 0; i < mag.size(); ++i)
-                mag[i] = std::hypot(ax[2*i], ax[2*i+1]);
-            sparse_factor(mag.data());
-        }
-        sparse_factor_complex(ax.data());
-    }
+
+    load_complex(ax.data());
+    matrix_->order_and_factor(nullptr, 1e-3, 0.0, true);
+    factored_complex_ = true;
+    factored_ = false;
 }
 
 bool NeoSolver::refactorize_complex(const std::vector<double>& ax) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::refactorize_complex: symbolic() not called");
-    if (use_dense_) {
-        if (!factored_z_)
-            throw std::logic_error("NeoSolver::refactorize_complex: numeric_complex() not called");
-        scatter_to_dense_complex(ax.data());
-        return dense_factor_complex();
-    } else {
-        if (!sparse_factored_z_)
-            throw std::logic_error("NeoSolver::refactorize_complex: numeric_complex() not called");
-        return sparse_refactor_complex(ax.data());
-    }
+    if (!factored_complex_)
+        throw std::logic_error("NeoSolver::refactorize_complex: numeric_complex() not called");
+
+    load_complex(ax.data());
+    auto err = matrix_->factor();
+    return err == solver::SparseError::Singular;
 }
 
 void NeoSolver::solve_complex(std::vector<double>& rhs) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::solve_complex: symbolic() not called");
+    if (!factored_complex_)
+        throw std::logic_error("NeoSolver::solve_complex: numeric_complex() not called");
     if (static_cast<int32_t>(rhs.size()) != 2 * n_)
         throw std::invalid_argument("NeoSolver::solve_complex: rhs size must be 2*n");
-    if (use_dense_) {
-        if (!factored_z_)
-            throw std::logic_error("NeoSolver::solve_complex: numeric_complex() not called");
-        dense_solve_complex(rhs.data());
-    } else {
-        if (!sparse_factored_z_)
-            throw std::logic_error("NeoSolver::solve_complex: numeric_complex() not called");
-        sparse_solve_complex(rhs.data());
+
+    for (int32_t i = 0; i < n_; ++i) {
+        rhs_1_[i + 1] = rhs[2 * i];
+        irhs_1_[i + 1] = rhs[2 * i + 1];
+    }
+
+    matrix_->solve(rhs_1_.data(), sol_1_.data(), irhs_1_.data(), isol_1_.data());
+
+    for (int32_t i = 0; i < n_; ++i) {
+        rhs[2 * i] = sol_1_[i + 1];
+        rhs[2 * i + 1] = isol_1_[i + 1];
     }
 }
 

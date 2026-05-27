@@ -1,4 +1,5 @@
 #include "devices/inductor.hpp"
+#include "devices/ckt_terr.hpp"
 #include "core/circuit.hpp"
 #include <cmath>
 #include <algorithm>
@@ -237,52 +238,41 @@ std::vector<std::string> Inductor::output_currents() const {
 
 // ---------------------------------------------------------------------------
 // compute_trunc — LTE-based timestep control for inductor flux
-//
-// Mirrors ngspice CKTterr(INDflux, ckt, timeStep) in cktterr.c.
-// Uses divided differences of flux history to estimate local truncation
-// error, then limits the next timestep so LTE stays within tolerance.
 // ---------------------------------------------------------------------------
 double Inductor::compute_trunc(const IntegratorCtx& ctx,
                                const SimOptions& opts) const {
-    if (ctx.order < 2 || ctx.delta <= 0.0) return 1e30;
+    if (ctx.order < 1 || ctx.delta <= 0.0) return 1e30;
+
+    if (state0_ && state1_ && state2_ && state3_ && !coupled_) {
+        const double* states[] = {state0_, state1_, state2_, state3_};
+        double dt_min = 1e30;
+        ckt_terr(0, states, ctx, opts, dt_min);
+        return dt_min;
+    }
+
+    if (!transient_) return 1e30;
 
     const double h0 = ctx.delta;
     const double h1 = ctx.delta_old[1];
     if (h1 <= 0.0) return 1e30;
 
-    double phi0, phi1, phi2, volt0, volt1;
+    double phi0 = inductance_eff_ * i_prev_;
+    double phi1 = phi_prev_;
+    double phi2 = phi_prev2_;
 
-    if (state0_ && !coupled_) {
-        phi0 = state0_[0];
-        phi1 = state1_[0];
-        phi2 = state2_[0];
-        volt0 = state0_[1];
-        volt1 = state1_[1];
-    } else {
-        if (!transient_) return 1e30;
-        phi0 = inductance_eff_ * i_prev_;
-        phi1 = phi_prev_;
-        phi2 = phi_prev2_;
-        volt0 = v_prev_;
-        volt1 = volt0;  // approximate
-    }
-
-    double dd1 = (phi0 - phi1) / h0;
-    double dd2 = ((phi0 - phi1) / h0 - (phi1 - phi2) / h1) / (h0 + h1);
-
-    double volttol = opts.abstol + opts.reltol *
-                     std::max(std::abs(volt0), std::abs(volt1));
+    double volttol = opts.abstol + opts.reltol * std::abs(v_prev_);
     double chargetol = opts.reltol *
                        std::max(std::abs(phi0), opts.chgtol) / h0;
     double tol = std::max(volttol, chargetol);
     if (tol <= 0.0) return 1e30;
 
-    const double lte_coeff = ctx.lte_coefficient();
-    double lte_abs = lte_coeff * std::abs(dd2);
-    if (lte_abs <= opts.abstol) return 1e30;
-
-    double del = opts.trtol * tol / lte_abs;
-    del = std::sqrt(del);
+    double dd2 = ((phi0 - phi1) / h0 - (phi1 - phi2) / h1) / (h0 + h1);
+    double factor = (ctx.integrate_method == 1) ? 0.2222222222 : 0.5;
+    if (ctx.order >= 2)
+        factor = (ctx.integrate_method == 1) ? 0.2222222222 : 0.08333333333;
+    double del = opts.trtol * tol / std::max(opts.abstol, factor * std::abs(dd2));
+    if (ctx.order == 2) del = std::sqrt(del);
+    else if (ctx.order > 2) del = std::exp(std::log(del) / ctx.order);
     return del;
 }
 
@@ -299,10 +289,11 @@ void Inductor::process_temperature(double sim_temp, double sim_tnom) {
     inductance_eff_ = inductance_nom_ * factor * scale_ / m_;
 }
 
-void Inductor::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+void Inductor::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {
     state0_ = s0 + base;
     state1_ = s1 + base;
     state2_ = s2 + base;
+    state3_ = s3 + base;
     state_base_ = base;
 }
 

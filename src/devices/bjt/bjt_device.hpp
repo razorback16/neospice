@@ -50,7 +50,7 @@ public:
                   NumericMatrix& G, NumericMatrix& C) override;
 
     int32_t state_vars() const override { return 24; }
-    void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
+    void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override;
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
     bool device_converged() const override;
@@ -75,6 +75,7 @@ private:
     double* state0_ = nullptr;
     double* state1_ = nullptr;
     double* state2_ = nullptr;
+    double* state3_ = nullptr;
     int32_t state_base_ = -1;
 
     mutable bool temp_done_ = false;

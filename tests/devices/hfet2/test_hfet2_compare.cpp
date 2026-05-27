@@ -158,8 +158,8 @@ TEST_F(HFET2Validation, NhfetTransientPulse) {
 
     ASSERT_FALSE(cs_result.time.empty());
 
-    // Compare transient results with 5% relative, 10mV absolute tolerance
-    auto cmp = compare_transient(ng_result, cs_result, {3e-2, 5e-3});
+    // Compare transient results with 3.5% relative, 5mV absolute tolerance
+    auto cmp = compare_transient(ng_result, cs_result, {3.5e-2, 5e-3});
     EXPECT_TRUE(cmp.passed)
         << "Transient comparison failed. Worst: " << cmp.worst_signal
         << " error: " << cmp.worst_error;

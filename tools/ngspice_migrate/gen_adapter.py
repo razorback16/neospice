@@ -429,7 +429,7 @@ def _gen_query_param(desc, output_params):
 # ---------------------------------------------------------------------------
 
 def _gen_compute_trunc(desc, charge_offsets, charge_states_override):
-    """Generate compute_trunc() body with LTE calculation."""
+    """Generate compute_trunc() body using ckt_terr() helper."""
     if charge_states_override:
         offset_exprs = [f"state_base_ + {off}" for off in charge_states_override]
     elif charge_offsets:
@@ -438,27 +438,14 @@ def _gen_compute_trunc(desc, charge_offsets, charge_states_override):
         return '    // TODO: no charge state offsets found — implement manually\n    return 1e30;\n'
 
     lines = []
-    lines.append('    if (ctx.order < 2 || ctx.delta <= 0.0) return 1e30;')
-    lines.append('    if (!state0_ || !state1_ || !state2_) return 1e30;')
+    lines.append('    if (ctx.order < 1 || ctx.delta <= 0.0) return 1e30;')
+    lines.append('    if (!state0_ || !state1_ || !state2_ || !state3_) return 1e30;')
     lines.append('')
-    lines.append('    const double h0 = ctx.delta;')
-    lines.append('    const double h1 = ctx.delta_old[1];')
-    lines.append('    if (h1 <= 0.0) return 1e30;')
-    lines.append('')
+    lines.append('    const double* states[] = {state0_, state1_, state2_, state3_};')
     lines.append('    double dt_min = 1e30;')
-    lines.append('    const double lte_coeff = ctx.lte_coefficient();')
-    lines.append('')
 
     for expr in offset_exprs:
-        lines.append(f'    {{ // charge offset: {expr}')
-        lines.append(f'        const int qcap = {expr};')
-        lines.append( '        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];')
-        lines.append( '        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);')
-        lines.append( '        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));')
-        lines.append( '        if (tol > 0.0 && std::abs(dd2) > 1e-30) {')
-        lines.append( '            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));')
-        lines.append( '        }')
-        lines.append( '    }')
+        lines.append(f'    ckt_terr({expr}, states, ctx, opts, dt_min);')
 
     lines.append('    return dt_min;')
     return '\n'.join(lines)
@@ -540,7 +527,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
     parts.append("                  NumericMatrix& G, NumericMatrix& C) override;\n")
     parts.append("\n")
     parts.append(f"    int32_t state_vars() const override {{ return {desc.state_count}; }}\n")
-    parts.append("    void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;\n")
+    parts.append("    void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override;\n")
     parts.append("    double compute_trunc(const IntegratorCtx& ctx,\n")
     parts.append("                         const SimOptions& opts) const override;\n")
     parts.append("    bool device_converged() const override;\n")
@@ -563,6 +550,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
     parts.append("    double* state0_ = nullptr;\n")
     parts.append("    double* state1_ = nullptr;\n")
     parts.append("    double* state2_ = nullptr;\n")
+    parts.append("    double* state3_ = nullptr;\n")
     parts.append("    int32_t state_base_ = -1;\n")
     parts.append("\n")
     parts.append("    mutable bool temp_done_ = false;\n")
@@ -619,6 +607,7 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("\n")
     parts.append('#include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx\n')
     parts.append('#include "core/types.hpp"          // SimOptions defaults\n')
+    parts.append('#include "devices/ckt_terr.hpp"\n')
     parts.append('#include "devices/ucb_device_init.hpp"\n')
     parts.append('#include "devices/ucb_utils.hpp"\n')
     parts.append("\n")
@@ -800,10 +789,11 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     parts.append("// ---------------------------------------------------------------------------\n")
     parts.append("// set_state_ptrs\n")
     parts.append("// ---------------------------------------------------------------------------\n")
-    parts.append(f"void {prefix}Device::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {{\n")
+    parts.append(f"void {prefix}Device::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {{\n")
     parts.append("    state0_ = s0;\n")
     parts.append("    state1_ = s1;\n")
     parts.append("    state2_ = s2;\n")
+    parts.append("    state3_ = s3;\n")
     parts.append("    state_base_ = base;\n")
     parts.append(f"    inst_.{desc.state_base_field} = base;\n")
     parts.append("}\n")

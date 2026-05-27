@@ -102,7 +102,8 @@ public:
     /// state0 is the latest iterate; state1/state2 are previous timesteps
     /// (for PREDICTOR and integrator history). Default is a no-op.
     virtual void set_state_ptrs(double* /*state0*/, double* /*state1*/,
-                                double* /*state2*/, int32_t /*base*/) {}
+                                double* /*state2*/, double* /*state3*/,
+                                int32_t /*base*/) {}
 
     /// Compute device-specific timestep limit from local truncation error.
     /// Returns suggested maximum timestep (or a very large value if no

@@ -58,7 +58,7 @@ public:
     void apply_ic_override(std::vector<double>& sol);  // Override i_prev/solution with IC value
 
     int32_t state_vars() const override { return 2; }
-    void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;
+    void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override;
     double* state0() const { return state0_; }
     double multiplier() const { return m_; }
     void set_coupled(bool c) { coupled_ = c; }
@@ -106,6 +106,7 @@ private:
     double* state0_ = nullptr;
     double* state1_ = nullptr;
     double* state2_ = nullptr;
+    double* state3_ = nullptr;
     int32_t state_base_ = -1;
     bool coupled_ = false;  // true when part of a CoupledInductor pair (disables state-vector path until Task 3)
 

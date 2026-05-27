@@ -18,8 +18,6 @@ include(GoogleTest)
 
 add_executable(neospice_tests
     unit/test_matrix.cpp
-    unit/test_amd.cpp
-    unit/test_btf.cpp
     unit/test_neo_solver.cpp
     unit/test_resistor.cpp
     unit/test_vsource.cpp

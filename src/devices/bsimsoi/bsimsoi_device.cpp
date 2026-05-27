@@ -10,6 +10,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include "devices/ckt_terr.hpp"
 
 // Forward declarations for translated UCB functions.
 namespace neospice::bsimsoi {
@@ -247,10 +248,11 @@ void B4SOIDevice::assign_offsets(const SparsityPattern& pattern) {
 // ---------------------------------------------------------------------------
 // set_state_ptrs
 // ---------------------------------------------------------------------------
-void B4SOIDevice::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+void B4SOIDevice::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {
     state0_ = s0;
     state1_ = s1;
     state2_ = s2;
+    state3_ = s3;
     state_base_ = base;
     inst_.B4SOIstates = base;
 }
@@ -1012,88 +1014,21 @@ void B4SOIDevice::ac_stamp(const std::vector<double>& /*voltages*/,
 // ---------------------------------------------------------------------------
 double B4SOIDevice::compute_trunc(const IntegratorCtx& ctx,
                                const SimOptions& opts) const {
-    if (ctx.order < 2 || ctx.delta <= 0.0) return 1e30;
-    if (!state0_ || !state1_ || !state2_) return 1e30;
+    if (ctx.order < 1 || ctx.delta <= 0.0)
+        return 1e30;
+    if (!state0_ || !state1_ || !state2_ || !state3_)
+        return 1e30;
 
-    const double h0 = ctx.delta;
-    const double h1 = ctx.delta_old[1];
-    if (h1 <= 0.0) return 1e30;
-
+    const double* states[] = {state0_, state1_, state2_, state3_};
     double dt_min = 1e30;
-    const double lte_coeff = ctx.lte_coefficient();
-
-    { // charge offset: inst_.B4SOIqb
-        const int qcap = inst_.B4SOIqb;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.B4SOIqg
-        const int qcap = inst_.B4SOIqg;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.B4SOIqd
-        const int qcap = inst_.B4SOIqd;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.B4SOIqe
-        const int qcap = inst_.B4SOIqe;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.B4SOIqth
-        const int qcap = inst_.B4SOIqth;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.B4SOIqgmid
-        const int qcap = inst_.B4SOIqgmid;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.B4SOIqbs
-        const int qcap = inst_.B4SOIqbs;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.B4SOIqbd
-        const int qcap = inst_.B4SOIqbd;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
+    ckt_terr(inst_.B4SOIqb, states, ctx, opts, dt_min);
+    ckt_terr(inst_.B4SOIqg, states, ctx, opts, dt_min);
+    ckt_terr(inst_.B4SOIqd, states, ctx, opts, dt_min);
+    ckt_terr(inst_.B4SOIqe, states, ctx, opts, dt_min);
+    ckt_terr(inst_.B4SOIqth, states, ctx, opts, dt_min);
+    ckt_terr(inst_.B4SOIqgmid, states, ctx, opts, dt_min);
+    ckt_terr(inst_.B4SOIqbs, states, ctx, opts, dt_min);
+    ckt_terr(inst_.B4SOIqbd, states, ctx, opts, dt_min);
     return dt_min;
 }
 

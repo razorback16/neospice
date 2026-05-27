@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include "devices/ckt_terr.hpp"
 
 // Forward declarations for translated UCB functions.
 namespace neospice::bsim4v7 {
@@ -215,10 +216,11 @@ void BSIM4v7Device::assign_offsets(const SparsityPattern& pattern) {
 // ---------------------------------------------------------------------------
 // set_state_ptrs
 // ---------------------------------------------------------------------------
-void BSIM4v7Device::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+void BSIM4v7Device::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {
     state0_ = s0;
     state1_ = s1;
     state2_ = s2;
+    state3_ = s3;
     state_base_ = base;
     inst_.BSIM4v7states = base;
 }
@@ -987,84 +989,24 @@ bool BSIM4v7Device::ac_stamp_freq(double omega, std::vector<double>& ax,
 // ---------------------------------------------------------------------------
 double BSIM4v7Device::compute_trunc(const IntegratorCtx& ctx,
                                      const SimOptions& opts) const {
-    // Only meaningful for order >= 2 with valid state history.
-    if (ctx.order < 2 || ctx.delta <= 0.0)
+    if (ctx.order < 1 || ctx.delta <= 0.0)
+        return 1e30;
+    if (!state0_ || !state1_ || !state2_ || !state3_)
         return 1e30;
 
-    if (!state0_ || !state1_ || !state2_)
-        return 1e30;
-
-    const double lte_coeff = ctx.lte_coefficient();
-
-    const double h  = ctx.delta;
-    const double h1 = ctx.delta_old[1];
-    if (h1 <= 0.0)
-        return 1e30;
-
-    // Collect charge offsets to check.
-    // Each charge q has its derivative (current) at q+1 in the state vector.
-    // Offsets are relative to instance base (BSIM4v7states).
-    int charge_offsets[7];
-    int ncharges = 0;
-
-    // Always check: qb(11), qg(13), qd(15)
-    charge_offsets[ncharges++] = 11;  // qb
-    charge_offsets[ncharges++] = 13;  // qg
-    charge_offsets[ncharges++] = 15;  // qd
-
-    // Conditional charges
+    const double* states[] = {state0_, state1_, state2_, state3_};
+    double dt_min = 1e30;
+    ckt_terr(state_base_ + 11, states, ctx, opts, dt_min);  // qb
+    ckt_terr(state_base_ + 13, states, ctx, opts, dt_min);  // qg
+    ckt_terr(state_base_ + 15, states, ctx, opts, dt_min);  // qd
     if (inst_.BSIM4v7rgateMod == 3)
-        charge_offsets[ncharges++] = 17;  // qgmid
+        ckt_terr(state_base_ + 17, states, ctx, opts, dt_min);  // qgmid
     if (inst_.BSIM4v7rbodyMod) {
-        charge_offsets[ncharges++] = 19;  // qbs
-        charge_offsets[ncharges++] = 21;  // qbd
+        ckt_terr(state_base_ + 19, states, ctx, opts, dt_min);  // qbs
+        ckt_terr(state_base_ + 21, states, ctx, opts, dt_min);  // qbd
     }
     if (inst_.BSIM4v7trnqsMod)
-        charge_offsets[ncharges++] = 25;  // qcdump
-
-    double dt_min = 1e30;
-
-    for (int i = 0; i < ncharges; ++i) {
-        const int qcap = state_base_ + charge_offsets[i];
-        const int ccap = qcap + 1;  // derivative index
-
-        // ---- 1. Tolerance (mirrors CKTterr) ----
-        const double ccap0 = state0_[ccap];
-        const double ccap1 = state1_[ccap];
-        double diff_tol = opts.abstol + opts.reltol * std::max(std::abs(ccap0),
-                                                                std::abs(ccap1));
-
-        const double qcap0 = state0_[qcap];
-        const double qcap1 = state1_[qcap];
-        double chargetol = opts.reltol * std::max({std::abs(qcap0),
-                                                    std::abs(qcap1),
-                                                    opts.chgtol}) / h;
-        double tol = std::max(diff_tol, chargetol);
-        if (tol <= 0.0)
-            continue;
-
-        // ---- 2. Divided differences for order 2 ----
-        // 2nd divided difference from 3 state snapshots (state0/state1/state2).
-        // 1st DD: (q0-q1)/h,  (q1-q2)/h1
-        // 2nd DD: (dd1_0 - dd1_1) / (h + h1)
-        const double qcap2 = state2_[qcap];
-        double dd1_0 = (qcap0 - qcap1) / h;
-        double dd1_1 = (qcap1 - qcap2) / h1;
-        double dd2 = (dd1_0 - dd1_1) / (h + h1);
-
-        // ---- 3. Compute suggested timestep ----
-        double lte_est = lte_coeff * std::abs(dd2);
-        if (lte_est <= opts.abstol)
-            continue;  // negligible error — no constraint from this charge
-
-        // del = trtol * tol / lte_est;  for order 2: del = sqrt(del)
-        double del = opts.trtol * tol / lte_est;
-        del = std::sqrt(del);
-
-        if (del < dt_min)
-            dt_min = del;
-    }
-
+        ckt_terr(state_base_ + 25, states, ctx, opts, dt_min);  // qcdump
     return dt_min;
 }
 

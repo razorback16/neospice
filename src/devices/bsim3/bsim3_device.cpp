@@ -11,6 +11,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include "devices/ckt_terr.hpp"
 
 // Forward declarations for translated UCB functions.
 namespace neospice::bsim3 {
@@ -169,10 +170,11 @@ void BSIM3Device::assign_offsets(const SparsityPattern& pattern) {
 // ---------------------------------------------------------------------------
 // set_state_ptrs
 // ---------------------------------------------------------------------------
-void BSIM3Device::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+void BSIM3Device::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {
     state0_ = s0;
     state1_ = s1;
     state2_ = s2;
+    state3_ = s3;
     state_base_ = base;
     inst_.BSIM3states = base;
 }
@@ -526,59 +528,16 @@ void BSIM3Device::ac_stamp(const std::vector<double>& /*voltages*/,
 // ---------------------------------------------------------------------------
 double BSIM3Device::compute_trunc(const IntegratorCtx& ctx,
                                    const SimOptions& opts) const {
-    if (ctx.order < 2 || ctx.delta <= 0.0)
+    if (ctx.order < 1 || ctx.delta <= 0.0)
+        return 1e30;
+    if (!state0_ || !state1_ || !state2_ || !state3_)
         return 1e30;
 
-    if (!state0_ || !state1_ || !state2_)
-        return 1e30;
-
-    const double lte_coeff = ctx.lte_coefficient();
-
-    const double h  = ctx.delta;
-    const double h1 = ctx.delta_old[1];
-    if (h1 <= 0.0)
-        return 1e30;
-
-    // Charge offsets relative to instance base
-    static constexpr int charge_offsets[] = { 4, 6, 8 };  // qb, qg, qd
-    static constexpr int ncharges = 3;
-
+    const double* states[] = {state0_, state1_, state2_, state3_};
     double dt_min = 1e30;
-
-    for (int i = 0; i < ncharges; ++i) {
-        const int qcap = state_base_ + charge_offsets[i];
-        const int ccap = qcap + 1;
-
-        const double ccap0 = state0_[ccap];
-        const double ccap1 = state1_[ccap];
-        double diff_tol = opts.abstol + opts.reltol * std::max(std::abs(ccap0),
-                                                                std::abs(ccap1));
-
-        const double qcap0 = state0_[qcap];
-        const double qcap1 = state1_[qcap];
-        double chargetol = opts.reltol * std::max({std::abs(qcap0),
-                                                    std::abs(qcap1),
-                                                    opts.chgtol}) / h;
-        double tol = std::max(diff_tol, chargetol);
-        if (tol <= 0.0)
-            continue;
-
-        const double qcap2 = state2_[qcap];
-        double dd1_0 = (qcap0 - qcap1) / h;
-        double dd1_1 = (qcap1 - qcap2) / h1;
-        double dd2 = (dd1_0 - dd1_1) / (h + h1);
-
-        double lte_est = lte_coeff * std::abs(dd2);
-        if (lte_est <= opts.abstol)
-            continue;
-
-        double del = opts.trtol * tol / lte_est;
-        del = std::sqrt(del);
-
-        if (del < dt_min)
-            dt_min = del;
-    }
-
+    static const int charge_offsets[] = {4, 6, 8};  // qb, qg, qd
+    for (int rel : charge_offsets)
+        ckt_terr(state_base_ + rel, states, ctx, opts, dt_min);
     return dt_min;
 }
 

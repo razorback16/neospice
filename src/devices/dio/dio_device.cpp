@@ -8,6 +8,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include "devices/ckt_terr.hpp"
 
 // Forward declarations for translated UCB functions.
 namespace neospice::dio {
@@ -117,10 +118,11 @@ void DIODevice::assign_offsets(const SparsityPattern& pattern) {
 // ---------------------------------------------------------------------------
 // set_state_ptrs
 // ---------------------------------------------------------------------------
-void DIODevice::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+void DIODevice::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {
     state0_ = s0;
     state1_ = s1;
     state2_ = s2;
+    state3_ = s3;
     state_base_ = base;
     inst_.DIOstate = base;
 }
@@ -248,24 +250,15 @@ void DIODevice::ac_stamp(const std::vector<double>& /*voltages*/,
 // ---------------------------------------------------------------------------
 double DIODevice::compute_trunc(const IntegratorCtx& ctx,
                              const SimOptions& opts) const {
-    if (ctx.order < 2 || ctx.delta <= 0.0)
+    if (ctx.order < 1 || ctx.delta <= 0.0)
         return 1e30;
-    if (!state0_ || !state1_ || !state2_)
-        return 1e30;
-
-    const double h0 = ctx.delta;
-    const double h1 = ctx.delta_old[1];
-    if (h1 <= 0.0) return 1e30;
-
-    const int qcap = state_base_ + 3;  // DIOcapCharge
-    const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-    const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-    const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-    if (tol <= 0.0 || std::abs(dd2) <= 1e-30)
+    if (!state0_ || !state1_ || !state2_ || !state3_)
         return 1e30;
 
-    const double lte_coeff = ctx.lte_coefficient();
-    return std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2)));
+    const double* states[] = {state0_, state1_, state2_, state3_};
+    double dt_min = 1e30;
+    ckt_terr(state_base_ + 3, states, ctx, opts, dt_min);  // DIOcapCharge
+    return dt_min;
 }
 
 // ---------------------------------------------------------------------------

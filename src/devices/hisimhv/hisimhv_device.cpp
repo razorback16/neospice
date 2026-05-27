@@ -4,6 +4,7 @@
 #include "core/types.hpp"          // SimOptions defaults
 #include "devices/ucb_device_init.hpp"
 #include "devices/ucb_utils.hpp"
+#include "devices/ckt_terr.hpp"
 
 #include <cmath>
 #include <optional>
@@ -233,10 +234,11 @@ void HSMHVDevice::assign_offsets(const SparsityPattern& pattern) {
 // ---------------------------------------------------------------------------
 // set_state_ptrs
 // ---------------------------------------------------------------------------
-void HSMHVDevice::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+void HSMHVDevice::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {
     state0_ = s0;
     state1_ = s1;
     state2_ = s2;
+    state3_ = s3;
     state_base_ = base;
     inst_.HSMHVstates = base;
 }
@@ -598,115 +600,22 @@ void HSMHVDevice::ac_stamp(const std::vector<double>& /*voltages*/,
 // ---------------------------------------------------------------------------
 double HSMHVDevice::compute_trunc(const IntegratorCtx& ctx,
                                const SimOptions& opts) const {
-    if (ctx.order < 2 || ctx.delta <= 0.0) return 1e30;
-    if (!state0_ || !state1_ || !state2_) return 1e30;
+    if (ctx.order < 1 || ctx.delta <= 0.0) return 1e30;
+    if (!state0_ || !state1_ || !state2_ || !state3_) return 1e30;
 
-    const double h0 = ctx.delta;
-    const double h1 = ctx.delta_old[1];
-    if (h1 <= 0.0) return 1e30;
-
+    const double* states[] = {state0_, state1_, state2_, state3_};
     double dt_min = 1e30;
-    const double lte_coeff = ctx.lte_coefficient();
-
-    { // charge offset: inst_.HSMHVqb
-        const int qcap = inst_.HSMHVqb;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqg
-        const int qcap = inst_.HSMHVqg;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqd
-        const int qcap = inst_.HSMHVqd;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqbs
-        const int qcap = inst_.HSMHVqbs;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqbd
-        const int qcap = inst_.HSMHVqbd;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqth
-        const int qcap = inst_.HSMHVqth;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqfd
-        const int qcap = inst_.HSMHVqfd;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqfs
-        const int qcap = inst_.HSMHVqfs;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqdE
-        const int qcap = inst_.HSMHVqdE;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqi_nqs
-        const int qcap = inst_.HSMHVqi_nqs;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
-    { // charge offset: inst_.HSMHVqb_nqs
-        const int qcap = inst_.HSMHVqb_nqs;
-        const double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        const double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        const double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol > 0.0 && std::abs(dd2) > 1e-30) {
-            dt_min = std::min(dt_min, std::sqrt(opts.trtol * tol / (lte_coeff * std::abs(dd2))));
-        }
-    }
+    ckt_terr(inst_.HSMHVqb, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqg, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqd, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqbs, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqbd, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqth, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqfd, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqfs, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqdE, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqi_nqs, states, ctx, opts, dt_min);
+    ckt_terr(inst_.HSMHVqb_nqs, states, ctx, opts, dt_min);
     return dt_min;
 }
 

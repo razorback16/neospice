@@ -30,9 +30,9 @@ namespace neospice {
 /// Initial dt = min(tstop, tstep) / kInitialStepDivisor (ngspice dctran.c ~112,569)
 constexpr double kInitialStepDivisor = 100.0;
 
-/// Maximum dt = min(tstep, tstop/50) (ngspice traninit.c ~27-31, dctran.c ~530)
+/// Maximum dt = min(tstep, tstop/50) (ngspice dctran.c:317)
 
-/// Minimum dt = tstep * kMinTimeStepRatio
+/// Minimum dt = max_step * kMinTimeStepRatio
 constexpr double kMinTimeStepRatio = 1e-6;
 
 /// Safety iteration cap for the main transient loop
@@ -381,13 +381,16 @@ static void update_source_time(Circuit& ckt, double t) {
 // Helper: Fill integrator context with coefficients for current step
 // ===================================================================
 static void fill_integrator_context(Circuit& ckt, double dt, int step_count,
-                                    const TimeStepController& ctrl) {
+                                    const TimeStepController& ctrl,
+                                    double prev_prev_dt) {
     bool first_step = (step_count == 0);
     int cur_order = ctrl.order();
     ckt.integrator_ctx.order = cur_order;
     ckt.integrator_ctx.delta = dt;
     ckt.integrator_ctx.current_time = ctrl.current_time() + dt;
+    ckt.integrator_ctx.delta_old[0] = dt;
     ckt.integrator_ctx.delta_old[1] = first_step ? dt : ctrl.prev_dt();
+    ckt.integrator_ctx.delta_old[2] = prev_prev_dt;
     ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
 
     // Determine effective method: trap unless user chose gear or
@@ -769,6 +772,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         if (ns > 0) {
             std::copy_n(ckt.state0(), ns, ckt.state1());
             std::copy_n(ckt.state0(), ns, ckt.state2());
+            std::copy_n(ckt.state0(), ns, ckt.state3());
         }
     }
 
@@ -793,8 +797,10 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         }
     }
 
-    const double dt_min = tstep * kMinTimeStepRatio;
-    const double dt_max = interp ? std::min(tstep, tstop / 50.0) : tstop / 50.0;
+    // ngspice dctran.c:317: maxStep = min(tstep, (tstop-tstart)/50)
+    const double max_step = std::min(tstep, tstop / 50.0);
+    const double dt_min = max_step * kMinTimeStepRatio;
+    const double dt_max = max_step;
 
     // History for LTE — ring buffer of 3 vectors (pointer rotation instead of 3 copies)
     std::vector<double> hist_buf0 = solution;
@@ -809,9 +815,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // ---------------------------------------------------------------
     // 5. Adaptive time-stepping loop
     // ---------------------------------------------------------------
-    // ngspice: delta = MIN(finalTime/100, step)/10  (dctran.c ~line 112)
-    // Then at the first breakpoint: delta /= 10  (dctran.c ~line 569)
-    // Combined: initial dt = MIN(tstop/100, tstep) / kInitialStepDivisor
+    // ngspice: delta = MIN(tstop/100, tstep) / kInitialStepDivisor
     double dt = std::min(tstop / kInitialStepDivisor, tstep) / kInitialStepDivisor;
     ckt.integrator_ctx.integrate_method = use_gear ? 1 : 0;
 
@@ -875,7 +879,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         // Prepare devices and integrator for this timestep
         update_device_timestep(cached, dt, ctrl.order());
         update_source_time(cached, t);
-        fill_integrator_context(ckt, dt, step_count, ctrl);
+        fill_integrator_context(ckt, dt, step_count, ctrl, prev_prev_dt);
 
         // Newton-Raphson solve
         SimOptions tran_opts = ckt.options;

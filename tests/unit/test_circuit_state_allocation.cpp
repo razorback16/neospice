@@ -12,11 +12,11 @@ struct FakeStateDev : public Device {
     void assign_offsets(const SparsityPattern&) override {}
     void evaluate(const std::vector<double>&, NumericMatrix&, std::vector<double>&) override {}
     int32_t state_vars() const override { return nv_; }
-    void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override {
-        bound0_ = s0; bound1_ = s1; bound2_ = s2; base_ = base;
+    void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override {
+        bound0_ = s0; bound1_ = s1; bound2_ = s2; bound3_ = s3; base_ = base;
     }
     int32_t nv_;
-    double *bound0_ = nullptr, *bound1_ = nullptr, *bound2_ = nullptr;
+    double *bound0_ = nullptr, *bound1_ = nullptr, *bound2_ = nullptr, *bound3_ = nullptr;
     int32_t base_ = -1;
 };
 }

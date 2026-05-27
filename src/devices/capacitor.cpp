@@ -1,4 +1,5 @@
 #include "devices/capacitor.hpp"
+#include "devices/ckt_terr.hpp"
 #include "core/circuit.hpp"
 #include <cmath>
 #include <algorithm>
@@ -235,51 +236,43 @@ void Capacitor::init_dc_state_gear(double v_prev, double i_prev,
 // ---------------------------------------------------------------------------
 // compute_trunc — LTE-based timestep control for capacitor charge
 //
-// Mirrors ngspice CKTterr(CAPqcap, ckt, timeStep) in cktterr.c.
-// Uses divided differences of charge history to estimate local truncation
-// error, then limits the next timestep so LTE stays within tolerance.
+// Uses ckt_terr (faithful CKTterr reimplementation) when state buffers
+// are available; falls back to member-variable path otherwise.
 // ---------------------------------------------------------------------------
 double Capacitor::compute_trunc(const IntegratorCtx& ctx,
                                 const SimOptions& opts) const {
-    if (ctx.order < 2 || ctx.delta <= 0.0) return 1e30;
+    if (ctx.order < 1 || ctx.delta <= 0.0) return 1e30;
+
+    if (state0_ && state1_ && state2_ && state3_) {
+        const double* states[] = {state0_, state1_, state2_, state3_};
+        double dt_min = 1e30;
+        ckt_terr(0, states, ctx, opts, dt_min);
+        return dt_min;
+    }
+
+    if (!transient_) return 1e30;
 
     const double h0 = ctx.delta;
     const double h1 = ctx.delta_old[1];
     if (h1 <= 0.0) return 1e30;
 
-    double q0, q1, q2, ccap0, ccap1;
+    double q0 = cap_eff_ * v_prev_;
+    double q1 = q_prev_;
+    double q2 = q_prev2_;
 
-    if (state0_) {
-        q0 = state0_[0];
-        q1 = state1_[0];
-        q2 = state2_[0];
-        ccap0 = state0_[1];
-        ccap1 = state1_[1];
-    } else {
-        if (!transient_) return 1e30;
-        q0 = cap_eff_ * v_prev_;
-        q1 = q_prev_;
-        q2 = q_prev2_;
-        ccap0 = i_prev_;
-        ccap1 = ccap0;  // approximate
-    }
-
-    double dd1 = (q0 - q1) / h0;
-    double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-
-    double volttol = opts.abstol + opts.reltol *
-                     std::max(std::abs(ccap0), std::abs(ccap1));
+    double volttol = opts.abstol + opts.reltol * std::abs(i_prev_);
     double chargetol = opts.reltol *
                        std::max(std::abs(q0), opts.chgtol) / h0;
     double tol = std::max(volttol, chargetol);
     if (tol <= 0.0) return 1e30;
 
-    const double lte_coeff = ctx.lte_coefficient();
-    double lte_abs = lte_coeff * std::abs(dd2);
-    if (lte_abs <= opts.abstol) return 1e30;
-
-    double del = opts.trtol * tol / lte_abs;
-    del = std::sqrt(del);
+    double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
+    double factor = (ctx.integrate_method == 1) ? 0.2222222222 : 0.5;
+    if (ctx.order >= 2)
+        factor = (ctx.integrate_method == 1) ? 0.2222222222 : 0.08333333333;
+    double del = opts.trtol * tol / std::max(opts.abstol, factor * std::abs(dd2));
+    if (ctx.order == 2) del = std::sqrt(del);
+    else if (ctx.order > 2) del = std::exp(std::log(del) / ctx.order);
     return del;
 }
 
@@ -307,10 +300,11 @@ void Capacitor::process_temperature(double sim_temp, double sim_tnom) {
     cap_eff_ = cap_nom_ * factor * scale_ * m_;
 }
 
-void Capacitor::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+void Capacitor::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {
     state0_ = s0 + base;
     state1_ = s1 + base;
     state2_ = s2 + base;
+    state3_ = s3 + base;
     state_base_ = base;
 }
 

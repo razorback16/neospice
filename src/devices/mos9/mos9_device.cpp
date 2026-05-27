@@ -11,6 +11,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include "devices/ckt_terr.hpp"
 
 // Forward declarations for translated UCB functions.
 namespace neospice::mos9 {
@@ -145,10 +146,11 @@ void MOS9Device::assign_offsets(const SparsityPattern& pattern) {
 // ---------------------------------------------------------------------------
 // set_state_ptrs
 // ---------------------------------------------------------------------------
-void MOS9Device::set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) {
+void MOS9Device::set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) {
     state0_ = s0;
     state1_ = s1;
     state2_ = s2;
+    state3_ = s3;
     state_base_ = base;
     inst_.MOS9states = base;
 }
@@ -333,34 +335,16 @@ void MOS9Device::ac_stamp(const std::vector<double>& /*voltages*/,
 // ---------------------------------------------------------------------------
 double MOS9Device::compute_trunc(const IntegratorCtx& ctx,
                               const SimOptions& opts) const {
-    if (ctx.order < 2 || ctx.delta <= 0.0)
+    if (ctx.order < 1 || ctx.delta <= 0.0)
+        return 1e30;
+    if (!state0_ || !state1_ || !state2_ || !state3_)
         return 1e30;
 
-    if (!state0_ || !state1_ || !state2_)
-        return 1e30;
-
-    const double lte_coeff = ctx.lte_coefficient();
-    const double h0 = ctx.delta;
-    const double h1 = ctx.delta_old[1];
-    if (h1 <= 0.0) return 1e30;
-
-    // Charge state variable offsets: qgs=5, qgd=8, qgb=11, qbd=13, qbs=15
-    static const int charge_offsets[] = {5, 8, 11, 13, 15};
+    const double* states[] = {state0_, state1_, state2_, state3_};
     double dt_min = 1e30;
-
-    for (int rel : charge_offsets) {
-        int qcap = state_base_ + rel;
-        double q0 = state0_[qcap], q1 = state1_[qcap], q2 = state2_[qcap];
-        double dd1 = (q0 - q1) / h0;
-        double dd2 = ((q0 - q1) / h0 - (q1 - q2) / h1) / (h0 + h1);
-        double tol = opts.chgtol + opts.reltol * std::max(std::abs(q0), std::abs(q1));
-        if (tol <= 0.0) continue;
-        if (std::abs(dd2) > 1e-30) {
-            double del = opts.trtol * tol / (lte_coeff * std::abs(dd2));
-            del = std::sqrt(del);
-            dt_min = std::min(dt_min, del);
-        }
-    }
+    static const int charge_offsets[] = {5, 8, 11, 13, 15};  // qgs, qgd, qgb, qbd, qbs
+    for (int rel : charge_offsets)
+        ckt_terr(state_base_ + rel, states, ctx, opts, dt_min);
     return dt_min;
 }
 

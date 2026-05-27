@@ -18,5 +18,5 @@ TEST(DeviceInterface, SetStatePtrsDefaultIsNoop) {
     // Use Resistor as a simple stateless device
     Resistor r("R1", 1, 0, 1000.0);
     // Must not crash / throw for a stateless device when given nullptrs
-    r.set_state_ptrs(nullptr, nullptr, nullptr, 0);
+    r.set_state_ptrs(nullptr, nullptr, nullptr, nullptr, 0);
 }
