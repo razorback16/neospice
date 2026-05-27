@@ -28,13 +28,15 @@ namespace neospice {
 // Named constants — replace magic numbers with descriptive names
 // ===================================================================
 
-/// Initial dt = min(tstop, tstep) / kInitialStepDivisor (ngspice dctran.c ~112,569)
-constexpr double kInitialStepDivisor = 100.0;
+/// Initial dt = min(tstop/100, tstep) / 10  (ngspice dctran.c:134)
+/// Two separate constants: 100 for the tstop estimate, 10 for the step reduction.
+constexpr double kInitialStopDivisor = 100.0;
+constexpr double kInitialStepDivisor = 10.0;
 
 /// Maximum dt = min(tstep, tstop/50) (ngspice dctran.c:317)
 
 /// Minimum dt = max_step * kMinTimeStepRatio
-constexpr double kMinTimeStepRatio = 1e-6;
+constexpr double kMinTimeStepRatio = 1e-11;
 
 /// Safety iteration cap for the main transient loop
 constexpr int kMaxTransientIterations = 500000;
@@ -822,8 +824,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // ---------------------------------------------------------------
     // 5. Adaptive time-stepping loop
     // ---------------------------------------------------------------
-    // ngspice: delta = MIN(tstop/100, tstep) / kInitialStepDivisor
-    double dt = std::min(tstop / kInitialStepDivisor, tstep) / kInitialStepDivisor;
+    // ngspice dctran.c:134: delta = MIN(finalTime/100, step) / 10
+    double dt = std::min(tstop / kInitialStopDivisor, tstep) / kInitialStepDivisor;
     ckt.integrator_ctx.integrate_method = use_gear ? 1 : 0;
 
     double saved_delta = dt;
@@ -943,6 +945,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         }
 
         // Accept step — advance controller
+        double accepted_dt = dt;   // save before breakpoint handler modifies dt
         prev_prev_dt = ctrl.prev_dt();
         ctrl.set_prev_dt(dt);
         ctrl.advance(dt);
@@ -996,7 +999,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
         if (interp) {
             // Interpolated uniform grid output (.option interp)
-            interpolate_and_store_outputs(ctrl, dt, prev_prev_dt, tstep, tstop,
+            interpolate_and_store_outputs(ctrl, accepted_dt, prev_prev_dt, tstep, tstop,
                                           step_count, n, solution, *sol_prev,
                                           *sol_prev2, next_output_time, store_point);
         } else {
