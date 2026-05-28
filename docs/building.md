@@ -15,7 +15,7 @@
 sudo apt install cmake g++ libopenblas-dev libsleef-dev libngspice0-dev ngspice pkg-config
 ```
 
-The Ubuntu `libngspice0-dev` package is built with XSPICE, KLU, and OSDI support. All tests should pass out of the box.
+The Ubuntu `libngspice0-dev` package is built with XSPICE, KLU, and OSDI support, but ngspice still uses Sparse 1.3 by default unless `.options klu` is set. neospice comparison tests and benchmarks do not request KLU.
 
 ## macOS (Homebrew)
 

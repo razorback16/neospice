@@ -1016,6 +1016,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                             } else if (key == "itl1") {
                                 ckt.options.itl1 = static_cast<int>(val);
                                 ckt.options.max_iter = ckt.options.itl1;
+                            } else if (key == "itl2") {
+                                ckt.options.itl2 = static_cast<int>(val);
                             } else if (key == "itl4") {
                                 ckt.options.itl4 = static_cast<int>(val);
                             } else if (key == "lte_ref_mode") {

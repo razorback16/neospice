@@ -4,14 +4,14 @@
 
 A SPICE circuit simulator written from scratch in C++20 -- not a fork of ngspice or any Berkeley SPICE derivative. Clean architecture, native Python bindings, and MIT licensed with no LGPL baggage.
 
-Reads standard SPICE netlists and produces ngspice-compatible results, but runs 1.2--8x faster per-analysis in-process with a custom sparse solver, auto-differentiation in behavioral sources, and a modern embeddable API designed for integration into EDA tools, optimization loops, and notebooks.
+Reads standard SPICE netlists and produces ngspice-compatible results, with up to 8.7x faster per-analysis in-process performance on the benchmark suite, a self-contained Sparse 1.3-compatible solver stack, auto-differentiation in behavioral sources, and a modern embeddable API designed for integration into EDA tools, optimization loops, and notebooks.
 
 ## Features
 
 - **10 analysis types** -- DC OP, DC sweep, transient (adaptive Trap/Gear-2/BE), AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero, Fourier/THD, parameter sweep (`.step`), and `.measure` post-processing
 - **32 device models** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, MESFETs, HFETs, and MOSFETs through BSIM4v7
 - **Embeddable C++ API** -- `Simulator`/`Circuit`/`Result` types with handle-based and string-based accessors, typed device methods, and circuit introspection
-- **High performance** -- NeoSolver (dense + sparse column-LU with AMD ordering), G/C matrix caching for AC, adjoint-method noise
+- **High performance** -- NeoSolver (self-contained Sparse 1.3-compatible LU), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
 - **972 tests** validated against ngspice with tolerances as tight as 1e-6
 
@@ -217,24 +217,24 @@ All result vectors are returned as NumPy arrays. Supports Python 3.10+ on Linux 
 
 ## Performance
 
-Benchmarked in-process against ngspice-42 on Intel Core Ultra 9 285K, GCC 14, `-O3`. Both simulators linked as libraries -- no subprocess overhead, no file I/O in timed sections. Median of 10-30 runs.
+Benchmarked in-process against ngspice-42 on Intel Core Ultra 9 285K, GCC 14, `-O3`. Both simulators linked as libraries -- no subprocess overhead, no file I/O in timed sections. ngspice uses its default Sparse 1.3 path; `.options klu` is not used. Median of 30 runs.
 
 | Benchmark | ngspice | neospice | Speedup |
 |---|---:|---:|---:|
-| **Parse** THS4131 (77 nodes) | 431 us | 199 us | 2.2x |
-| **Parse** resistor divider | 44 us | 8 us | 5.1x |
-| **DC OP** THS4131 (14 BJTs) | 620 us | 363 us | 1.7x |
-| **DC OP** resistor divider | 49 us | 6 us | 7.8x |
-| **AC** THS4131, 81 points | 964 us | 523 us | 1.8x |
-| **AC** THS4131, 8001 points | 21.6 ms | 19.3 ms | 1.1x |
-| **AC** RC lowpass, 91 points | 111 us | 14 us | 7.9x |
-| **Transient** RC lowpass, 500 us | 1.11 ms | 607 us | 1.8x |
-| **Transient** RLC series, 100 us | 1.56 ms | 1.96 ms | 1.3x ngspice |
-| **Transient** pulse source, 100 us | 992 us | 334 us | 3.0x |
-| **Noise** resistor divider, 91 pts | 89 us | 56 us | 1.6x |
-| **DC sweep** V1, 1001 pts | 816 us | 197 us | 4.1x |
-| **E2E** THS4131 (.op + .ac) | 726 us | 524 us | 1.4x |
-| **E2E** OPA1632 (.op + .ac) | 6.42 ms | 5.90 ms | 1.1x |
+| **Parse** THS4131 (77 nodes) | 435 us | 312 us | 1.4x |
+| **Parse** resistor divider | 45 us | 11 us | 4.1x |
+| **DC OP** THS4131 (14 BJTs) | 623 us | 483 us | 1.3x |
+| **DC OP** resistor divider | 54 us | 10 us | 5.4x |
+| **AC** THS4131, 81 points | 1.04 ms | 706 us | 1.5x |
+| **AC** THS4131, 8001 points | 22.35 ms | 23.33 ms | 1.0x ngspice |
+| **AC** RC lowpass, 91 points | 120 us | 18 us | 6.7x |
+| **Transient** RC lowpass, 500 us | 1.17 ms | 284 us | 4.1x |
+| **Transient** RLC series, 100 us | 1.66 ms | 397 us | 4.2x |
+| **Transient** pulse source, 100 us | 1.02 ms | 118 us | 8.6x |
+| **Noise** resistor divider, 91 pts | 91 us | 54 us | 1.7x |
+| **DC sweep** V1, 1001 pts | 847 us | 207 us | 4.1x |
+| **E2E** THS4131 (.op + .ac) | 746 us | 633 us | 1.2x |
+| **E2E** OPA1632 (.op + .ac) | 6.72 ms | 3.59 ms | 1.9x |
 
 See [docs/performance-comparison-with-ngspice.md](docs/performance-comparison-with-ngspice.md) for the full methodology and results.
 

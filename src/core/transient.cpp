@@ -29,7 +29,6 @@ namespace neospice {
 // ===================================================================
 
 /// Initial dt = min(tstop/100, tstep) / 10  (ngspice dctran.c:134)
-/// Two separate constants: 100 for the tstop estimate, 10 for the step reduction.
 constexpr double kInitialStopDivisor = 100.0;
 constexpr double kInitialStepDivisor = 10.0;
 
@@ -478,11 +477,11 @@ static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
         }
     }
 
-    // Global node-voltage LTE — gated on .option newtrunc.
+    // Global node-voltage LTE — gated on .option newtrunc or .option interp.
     // When enabled: proposal-only (never rejects when devices provide LTE).
     // When disabled: no global voltage LTE at all (ngspice default behavior).
     bool has_device_lte = (device_dt_out < 1e29);
-    if (ckt.options.newtrunc &&
+    if ((ckt.options.newtrunc || ckt.options.interp) &&
         step_count >= kLteMinStepCount && steps_after_bp >= kBreakpointSettleSteps) {
         ctrl.set_dt(dt);
         bool global_ok = ctrl.evaluate_step(solution, sol_prev, sol_prev2,
@@ -698,10 +697,10 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // the DC OP establishes baseline node voltages, then apply_ic_overrides
     // and initialize_device_dc_state override with user-specified IC values.
     std::vector<double> solution(n, 0.0);
-    auto solver = std::make_unique<NeoSolver>();
-    solver->symbolic(ckt.pattern());
+    auto dc_solver = std::make_unique<NeoSolver>();
+    dc_solver->symbolic(ckt.pattern());
     try {
-        compute_dc_operating_point(ckt, *solver, solution, total_newton_iters);
+        compute_dc_operating_point(ckt, *dc_solver, solution, total_newton_iters);
     } catch (const SimulationError& e) {
         if (!ckt.options.no_throw) throw;
         TransientResult fail_result;
@@ -710,6 +709,10 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         fail_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
         return fail_result;
     }
+
+    auto solver = std::make_unique<NeoSolver>();
+    solver->symbolic(ckt.pattern());
+    NewtonWorkspace newton_workspace(ckt.pattern());
 
     // Cache typed device pointers (one-time cost, eliminates per-step dynamic_cast)
     CachedDevicePtrs cached;
@@ -852,6 +855,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     bool loop_converged = true;  // set false if we break due to no_throw failure
     bool tried_delmin = false;   // ngspice: one last try at dt_min before aborting
     std::set<std::string> soa_warned;  // throttle: one SOA warning per device per sim
+    int order_promote_cooldown = 0;
 
     while (ctrl.current_time() < tstop - 1e-18) {
         if (++total_iterations > kMaxTransientIterations) {
@@ -895,12 +899,13 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         // Newton-Raphson solve
         SimOptions tran_opts = ckt.options;
         tran_opts.max_iter = ckt.options.itl4;
-        auto nr = newton_solve(ckt, *solver, solution, tran_opts);
+        auto nr = newton_solve(ckt, *solver, solution, tran_opts, newton_workspace);
         if (!nr.converged) {
             if (ckt.options.verbose)
                 std::cerr << "[tran] NEWTON FAIL sc=" << step_count << " dt=" << dt << " t=" << t << "\n";
             dt /= kNewtonFailureDtFactor;
             ctrl.set_order(1);  // ngspice: drop to backward Euler on Newton failure
+            order_promote_cooldown = 5;
             if (dt < dt_min) {
                 if (!tried_delmin) {
                     dt = dt_min;
@@ -968,7 +973,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         }
 
         // LTE-conditioned order promotion (ngspice dctran.c:862-873)
-        if (ctrl.order() == 1 && step_count >= 2) {
+        if (order_promote_cooldown > 0) --order_promote_cooldown;
+        if (ctrl.order() == 1 && step_count >= 2 && order_promote_cooldown == 0) {
             ckt.integrator_ctx.order = 2;
             double device_dt_order2 = 1e30;
             for (const auto& dev : ckt.devices()) {
@@ -1024,7 +1030,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         // Propose next dt from device and global LTE
         if (step_count >= kLteMinStepCount) {
             double proposed = device_dt;
-            if (ckt.options.newtrunc && steps_after_bp >= kGlobalLteMinStepsAfterBp) {
+            if ((ckt.options.newtrunc || ckt.options.interp) && steps_after_bp >= kGlobalLteMinStepsAfterBp) {
                 proposed = std::min(proposed, ctrl.proposed_dt());
             }
             proposed = std::min(proposed, kMaxDtGrowthFactor * dt);

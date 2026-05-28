@@ -139,11 +139,17 @@ void MESDevice::evaluate(const std::vector<double>& voltages,
                            std::vector<double>& rhs) {
     const int n_real = static_cast<int>(rhs.size());
     const int n_ghost = (max_neo_node_ >= 0 ? max_neo_node_ + 1 : 0) + 1;
+    const OneBasedEvalArrays* shared_arrays = tls_one_based_eval_arrays;
+    const bool use_shared_arrays = shared_arrays != nullptr &&
+        shared_arrays->rhs_old != nullptr && shared_arrays->rhs != nullptr &&
+        max_neo_node_ + 1 < shared_arrays->size;
 
-    ghost_voltages_.assign(n_ghost, 0.0);
-    ghost_rhs_.assign(n_ghost, 0.0);
-    for (int32_t k = 0; k <= max_neo_node_ && k < n_real; ++k) {
-        ghost_voltages_[k + 1] = voltages[k];
+    if (!use_shared_arrays) {
+        ghost_voltages_.assign(n_ghost, 0.0);
+        ghost_rhs_.assign(n_ghost, 0.0);
+        for (int32_t k = 0; k <= max_neo_node_ && k < n_real; ++k) {
+            ghost_voltages_[k + 1] = voltages[k];
+        }
     }
 
     Shim::Ckt ckt;
@@ -181,9 +187,15 @@ void MESDevice::evaluate(const std::vector<double>& voltages,
     ckt.CKTstate1 = state1_;
     ckt.CKTstate2 = state2_;
 
-    // Ghost rhs / old-iterate pointers.
-    ckt.CKTrhs    = ghost_rhs_.data();
-    ckt.CKTrhsOld = ghost_voltages_.data();
+    // RHS / old-iterate pointers. Prefer the shared Newton arrays;
+    // they match ngspice's circuit-global CKTrhs/CKTrhsOld storage.
+    if (use_shared_arrays) {
+        ckt.CKTrhs    = shared_arrays->rhs;
+        ckt.CKTrhsOld = shared_arrays->rhs_old;
+    } else {
+        ckt.CKTrhs    = ghost_rhs_.data();
+        ckt.CKTrhsOld = ghost_voltages_.data();
+    }
     ckt.mat       = &mat;
 
     // First-call MEStemp.
@@ -212,9 +224,12 @@ void MESDevice::evaluate(const std::vector<double>& voltages,
 
     last_noncon_ = ckt.CKTnoncon;
 
-    // Fold ghost rhs contributions back into the real rhs.
-    for (int32_t k = 1; k <= max_neo_node_ + 1 && k < n_ghost; ++k) {
-        if (k - 1 < n_real) rhs[k - 1] += ghost_rhs_[k];
+    // Private ghost arrays need folding. Shared arrays are folded once
+    // by the Newton driver after all UCB-style devices have stamped.
+    if (!use_shared_arrays) {
+        for (int32_t k = 1; k <= max_neo_node_ + 1 && k < n_ghost; ++k) {
+            if (k - 1 < n_real) rhs[k - 1] += ghost_rhs_[k];
+        }
     }
 }
 

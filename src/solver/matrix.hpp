@@ -22,6 +22,7 @@ public:
     double* get_element(int32_t row, int32_t col);
     double* find_element(int32_t row, int32_t col);
     void clear();
+    void clear_for_load();
 
     // --- Factorization ---
     [[nodiscard]] SparseError order_and_factor(double* rhs,
@@ -31,6 +32,7 @@ public:
     [[nodiscard]] SparseError factor();
     void partition(int mode);
     void mna_preorder();
+    void add_diag_gmin(double gmin);
 
     // --- Solve ---
     void solve(double* rhs, double* solution,

@@ -18,8 +18,9 @@ public:
     NeoSolver& operator=(NeoSolver&&) noexcept;
 
     void symbolic(const SparsityPattern& pattern);
-    bool numeric(const SparsityPattern& pattern, const NumericMatrix& mat);
-    bool refactorize(const NumericMatrix& mat);
+    bool numeric(const SparsityPattern& pattern, const NumericMatrix& mat,
+                 double diag_gmin = 0.0);
+    bool refactorize(const NumericMatrix& mat, double diag_gmin = 0.0);
     void solve(std::vector<double>& rhs);
     void numeric_complex(const SparsityPattern& pattern,
                          const std::vector<double>& ax);
@@ -32,6 +33,7 @@ private:
     bool symbolized_ = false;
     bool factored_ = false;
     bool factored_complex_ = false;
+    bool preordered_ = false;
 
     std::unique_ptr<solver::SparseMatrix> matrix_;
     std::vector<double*> element_ptrs_;

@@ -10,6 +10,14 @@
 
 namespace neospice {
 
+struct OneBasedEvalArrays {
+    double* rhs_old = nullptr;
+    double* rhs = nullptr;
+    int32_t size = 0;
+};
+
+extern thread_local OneBasedEvalArrays* tls_one_based_eval_arrays;
+
 class Circuit;  // forward decl for declare_internal_nodes
 
 constexpr int32_t GROUND_INTERNAL = static_cast<int32_t>(GND);  // internal index for ground node

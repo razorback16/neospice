@@ -159,7 +159,35 @@ backtracking.
 
 ---
 
-## 9. Speed comparison
+## 9. DC operating-point convergence fallback order
+
+**ngspice** `CKTop` tries direct Newton first, then dynamic diagonal-gmin
+stepping, then device-level `new_gmin`, then source stepping.
+
+**neospice** tries direct Newton first, then device-level true-gmin stepping,
+then dynamic diagonal-gmin, then source/gain/pseudo-transient fallback.
+
+**Why:** The port now matches ngspice's `NIiter` result-vector convention:
+when Newton converges, callers keep the previous iterate (`CKTrhsOld`) rather
+than the just-solved proposal. That fixed a real continuation discrepancy.
+However, the translated diagonal-gmin path can still land on a Newton-stable
+false branch in dependent-source macromodels such as OPA1632. ngspice's own
+`new_gmin` path reaches the reference operating point without changing
+reltol/abstol/vntol or accepting a looser result, so neospice uses that
+official device-level continuation first.
+
+**Impact:** OPA1632 `.op + .ac dec 10` now matches ngspice and runs within
+1.3× of ngspice in-process. The dynamic diagonal-gmin implementation remains
+available as a fallback, but it is not allowed to override the verified
+ngspice operating point from true-gmin continuation.
+
+**Source:** `src/core/dc.cpp`, `src/core/convergence.cpp`,
+`src/core/newton.cpp`; ngspice `src/spicelib/analysis/cktop.c`
+(`dynamic_gmin`, `new_gmin`) and `src/maths/ni/niiter.c`.
+
+---
+
+## 10. Speed comparison
 
 On a CMOS inverter transient (20ns, BSIM4v7 NMOS + PMOS, 10fF load):
 - neospice: 23ms

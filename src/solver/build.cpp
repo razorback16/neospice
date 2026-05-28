@@ -33,6 +33,25 @@ void SparseMatrix::clear() {
     prev_complex_ = complex_;
 }
 
+void SparseMatrix::clear_for_load() {
+    // NeoSolver overwrites every original matrix element from NumericMatrix.
+    // Fill-ins are numeric workspace from the previous factorization and must
+    // be reset, but clearing originals here just duplicates the reload pass.
+    if (prev_complex_ && !complex_) {
+        clear();
+        return;
+    }
+
+    arena_.clear_fillin_values(prev_complex_ || complex_);
+    trash_can_.Real = 0.0;
+    trash_can_.Imag = 0.0;
+    error_ = SparseError::OK;
+    factored_ = false;
+    singular_col_ = 0;
+    singular_row_ = 0;
+    prev_complex_ = complex_;
+}
+
 double* SparseMatrix::get_element(int32_t row, int32_t col) {
     assert(row >= 0 && col >= 0);
 

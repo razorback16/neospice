@@ -144,22 +144,13 @@ void Circuit::finalize() {
         dev->stamp_pattern(builder);
     }
 
-    // Record which node diagonals are "organic" (stamped by devices) before
-    // adding blanket structural diagonals.  newton_solve uses this to inject
-    // gmin only where devices contribute — V-source-driven nodes stay at
-    // zero, avoiding spurious gmin current artifacts.
-    organic_diagonal_.assign(next_node_, false);
-    for (int32_t i = 0; i < next_node_; ++i) {
+    // Record which diagonals are stamped by devices before adding structural
+    // placeholders.  ngspice's LoadGmin only touches existing diagonal
+    // elements, not later-created placeholders.
+    organic_diagonal_.assign(num_vars_, false);
+    for (int32_t i = 0; i < num_vars_; ++i)
         organic_diagonal_[i] = builder.has_diagonal(i);
-        if (!organic_diagonal_[i])
-            builder.add(i, i);
-    }
-    // Ensure branch equation diagonals exist too (matches ngspice's
-    // LoadGmin which adds CKTdiagGmin to every matrix diagonal).
-    for (int32_t i = next_node_; i < num_vars_; ++i) {
-        if (!builder.has_diagonal(i))
-            builder.add(i, i);
-    }
+
     pattern_ = std::make_unique<SparsityPattern>(builder.build());
 
     // 4. Assign offsets into the pattern for each device.

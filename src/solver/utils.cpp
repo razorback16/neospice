@@ -88,4 +88,12 @@ void SparseMatrix::swap_cols(MatrixElement* twin1, MatrixElement* twin2) {
     interchanges_odd_ = !interchanges_odd_;
 }
 
+void SparseMatrix::add_diag_gmin(double gmin) {
+    if (gmin == 0.0) return;
+    for (int32_t i = size_; i > 0; --i) {
+        if (diag_[i])
+            diag_[i]->Real += gmin;
+    }
+}
+
 } // namespace neospice::solver

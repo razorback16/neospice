@@ -1,4 +1,5 @@
 #include "core/ac.hpp"
+#include "core/dc.hpp"
 #include "core/freq_utils.hpp"
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
@@ -30,6 +31,17 @@ static SimOptions direct_attempt_options(const SimOptions& opts) {
     return direct_opts;
 }
 
+static bool can_use_zero_ac_operating_point(const Circuit& ckt) {
+    for (const auto& dev : ckt.devices()) {
+        const std::string type = dev->device_type();
+        if (type == "D" || type == "Q" || type == "J" || type == "M" ||
+            type == "S" || type == "W" || type == "B") {
+            return false;
+        }
+    }
+    return true;
+}
+
 ACResult solve_ac(Circuit& ckt, ACMode mode,
                   int npoints, double fstart, double fstop) {
     auto t_start = std::chrono::steady_clock::now();
@@ -43,84 +55,23 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
         cached_op && static_cast<int32_t>(cached_op->size()) == n) {
         dc_solution = *cached_op;
     } else {
-        // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
-        // .nodeset wins when both are set.  .ic doubles as a Newton seed hint here
-        // so circuits that ship .ic start DC from a feasible point instead of
-        // all-zero (where subthreshold gm/gds vanish).
-        dc_solution.assign(n, 0.0);
-        std::vector<char> pinned(n, 0);
-        for (auto& [node_id, value] : ckt.nodeset) {
-            int32_t node_idx = static_cast<int32_t>(node_id);
-            if (node_idx >= 0 && node_idx < n) {
-                dc_solution[node_idx] = value;
-                pinned[node_idx] = 1;
+        try {
+            auto dc = solve_dc(ckt);
+            if (!dc.status.converged) {
+                ACResult fail_result;
+                fail_result.status = dc.status;
+                return fail_result;
             }
+            const auto* cached = ckt.operating_point();
+            if (!cached || static_cast<int32_t>(cached->size()) != n)
+                throw std::logic_error("AC analysis: DC operating point cache missing");
+            dc_solution = *cached;
+        } catch (const SimulationError& e) {
+            if (!can_use_zero_ac_operating_point(ckt))
+                throw;
+            dc_solution.assign(n, 0.0);
+            ckt.set_operating_point(dc_solution);
         }
-        for (auto& [node_id, value] : ckt.ic) {
-            int32_t node_idx = static_cast<int32_t>(node_id);
-            if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
-                dc_solution[node_idx] = value;
-            }
-        }
-
-        auto dc_solver = std::make_unique<NeoSolver>();
-        dc_solver->symbolic(ckt.pattern());
-
-        // Publish SimOptions for BSIM4v7Device (and any future state-storing
-        // device) via the same integrator_ctx channel used for CKTmode/ag.
-        ckt.integrator_ctx.options = &ckt.options;
-
-        // AC analysis runs a plain DC operating point first — use MODEDCOP (0x10),
-        // same as solve_dc().  newton_solve() reads integrator_ctx.mode.
-        constexpr int MODEDCOP_BIT       = 0x10;
-        constexpr int MODEINITJCT_BIT    = 0x200;
-        constexpr int MODEINITFLOAT_BIT  = 0x100;
-        constexpr int MODEINITFIX_BIT    = 0x400;
-
-        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-        auto result = newton_solve(ckt, *dc_solver, dc_solution,
-                                   direct_attempt_options(ckt.options));
-        if (result.converged) {
-            // dc_solution modified in-place by newton_solve
-        } else {
-            result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options,
-                                   MODEDCOP_BIT | MODEINITJCT_BIT,
-                                   MODEDCOP_BIT | MODEINITFLOAT_BIT);
-            if (result.converged) {
-                // dc_solution modified in-place
-            } else {
-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-                result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
-                if (result.converged) {
-                    // dc_solution modified in-place
-                } else {
-                    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-                    result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
-                    if (result.converged) {
-                        // dc_solution modified in-place
-                    } else {
-                        SimStatus fail_status;
-                        fail_status.converged = false;
-                        fail_status.residual = result.residual;
-                        fail_status.worst_node_idx = result.worst_node_idx;
-                        if (!ckt.options.no_throw) {
-                            throw SimulationError(
-                                "AC analysis: DC operating point failed to converge",
-                                fail_status);
-                        }
-                        auto t_end = std::chrono::steady_clock::now();
-                        fail_status.elapsed_seconds =
-                            std::chrono::duration<double>(t_end - t_start).count();
-                        ACResult fail_result;
-                        fail_result.status = fail_status;
-                        return fail_result;
-                    }
-                }
-            }
-        }
-        // Persist diag_gmin baseline after DC convergence
-        ckt.options.diag_gmin = ckt.options.gshunt;
-        ckt.set_operating_point(dc_solution);
     }
     ckt.integrator_ctx.options = &ckt.options;
 

@@ -1,5 +1,5 @@
-// Micro-benchmark: NeoSolver (dense LU + AMD sparse column-LU) per-point timing.
-// Measures refactorize+solve at various matrix sizes.
+// Micro-benchmark: NeoSolver per-point timing.
+// Measures self-contained Sparse-compatible refactorize+solve at various matrix sizes.
 
 #include "core/neo_solver.hpp"
 #include "core/matrix.hpp"

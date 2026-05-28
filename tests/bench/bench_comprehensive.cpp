@@ -87,8 +87,8 @@ int main() {
 
     std::printf("=== Comprehensive neospice vs ngspice Benchmark ===\n");
     std::printf("Both simulators in-process. Warmup=%d, Runs=%d\n", W, R);
-    std::printf("ngspice: system libngspice (Sparse 1.3 solver)\n");
-    std::printf("neospice: NeoSolver (sparse column-LU + AMD)\n\n");
+    std::printf("ngspice: system libngspice (Sparse 1.3 default; .options klu not used)\n");
+    std::printf("neospice: NeoSolver (self-contained Sparse 1.3-compatible solver; no KLU)\n\n");
 
     NgspiceLib ng;
     Simulator sim;

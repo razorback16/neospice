@@ -101,110 +101,23 @@ DCResult solve_dc(Circuit& ckt) {
         sim_status.residual = result.residual;
         sim_status.worst_node_idx = result.worst_node_idx;
 
-        // 3+. Gain stepping verification: if direct Newton converged and the
-        // circuit has dependent sources (E/G), try gain stepping as well.
-        // Subcircuits with VCVS/VCCS feedback can create false equilibria
-        // where Newton converges to a non-physical fixed point.  Gain stepping
-        // avoids this by ramping gains from 0→1, building the solution
-        // incrementally.  Compare solutions and prefer the one with smaller
-        // total voltage magnitude.
-        bool has_dependent = false;
-        for (const auto& dev : ckt.devices()) {
-            const std::string& dt = dev->device_type();
-            if (dt == "E" || dt == "G" || dt == "F" || dt == "H") {
-                has_dependent = true;
-                break;
-            }
-        }
-        if (has_dependent) {
-            std::vector<double> direct_solution = solution;
-            std::vector<double> gs_solution(n, 0.0);
-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-            NewtonResult gs_result;
-            try {
-                gs_result = gain_stepping(ckt, *solver, gs_solution, ckt.options);
-            } catch (const std::runtime_error&) {
-                gs_result.converged = false;
-            }
-            if (gs_result.converged) {
-                double sum_direct = 0.0, sum_gs = 0.0;
-                bool solutions_differ = false;
-                for (int32_t i = 0; i < num_nodes; ++i) {
-                    sum_direct += std::abs(direct_solution[i]);
-                    sum_gs     += std::abs(gs_solution[i]);
-                    double diff = std::abs(direct_solution[i] - gs_solution[i]);
-                    double tol  = ckt.options.reltol *
-                                  std::max(std::abs(direct_solution[i]),
-                                           std::abs(gs_solution[i])) +
-                                  ckt.options.vntol;
-                    if (diff > tol)
-                        solutions_differ = true;
-                }
-                if (solutions_differ && sum_gs < sum_direct) {
-                    solution = gs_solution;
-                    sim_status.convergence_method = ConvergenceMethod::SOURCE_STEPPING;
-                    sim_status.warnings.push_back("gain stepping preferred over direct Newton");
-                    if (ckt.options.verbose)
-                        std::cerr << "[dc] gain stepping preferred (sum_direct="
-                                  << sum_direct << " sum_gs=" << sum_gs << ")\n";
-                } else {
-                    solution = direct_solution;
-                    if (ckt.options.verbose && solutions_differ)
-                        std::cerr << "[dc] gain stepping NOT preferred (sum_direct="
-                                  << sum_direct << " sum_gs=" << sum_gs << ")\n";
-                }
-            } else {
-                solution = direct_solution;
-                if (ckt.options.verbose)
-                    std::cerr << "[dc] gain stepping verification: not converged\n";
-            }
-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFLOAT_BIT;
-        }
     }
-    // 3a. Retry with diag_gmin = gmin to regularize singular matrices.
-    if (!result.converged) {
-        std::fill(solution.begin(), solution.end(), 0.0);
-        ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-        SimOptions reg_opts = direct_attempt_options(ckt.options);
-        reg_opts.diag_gmin = ckt.options.gmin;
-        try {
-            result = newton_solve(ckt, *solver, solution, reg_opts);
-        } catch (const std::runtime_error&) {
-            result.converged = false;
-        }
-        if (result.converged) {
-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFLOAT_BIT;
-            SimOptions verify_opts = direct_attempt_options(ckt.options);
-            try {
-                result = newton_solve(ckt, *solver, solution, verify_opts);
-            } catch (const std::runtime_error&) {
-                result.converged = false;
-            }
-        }
-        if (result.converged) {
-            sim_status.iterations = result.iterations;
-            sim_status.residual = result.residual;
-            sim_status.worst_node_idx = result.worst_node_idx;
-        }
-    }
-
     if (!result.converged) {
         if (ckt.options.verbose)
             std::cerr << "[dc] direct Newton failed (iters=" << result.iterations
-                      << " residual=" << result.residual << "), trying gmin stepping\n";
-        // 4. Try gmin stepping
+                      << " residual=" << result.residual << "), trying true gmin stepping\n";
         try {
-            result = gmin_stepping(ckt, *solver, solution, ckt.options,
-                                   MODEDCOP_BIT | MODEINITJCT_BIT,
-                                   MODEDCOP_BIT | MODEINITFLOAT_BIT);
+            result = true_gmin_stepping(ckt, *solver, solution, ckt.options,
+                                        MODEDCOP_BIT | MODEINITJCT_BIT,
+                                        MODEDCOP_BIT | MODEINITFLOAT_BIT);
             if (ckt.options.verbose)
-                std::cerr << "[dc] gmin stepping: converged=" << result.converged
+                std::cerr << "[dc] true gmin stepping: converged=" << result.converged
                           << " iters=" << result.iterations
                           << " residual=" << result.residual << "\n";
         } catch (const std::runtime_error& e) {
             result.converged = false;
             if (ckt.options.verbose)
-                std::cerr << "[dc] gmin stepping threw: " << e.what() << "\n";
+                std::cerr << "[dc] true gmin stepping threw: " << e.what() << "\n";
         }
         if (result.converged) {
             sim_status.iterations = result.iterations;
@@ -212,24 +125,23 @@ DCResult solve_dc(Circuit& ckt) {
             sim_status.residual = result.residual;
             sim_status.worst_node_idx = result.worst_node_idx;
             sim_status.gmin_steps = 1;
-            sim_status.warnings.push_back("gmin stepping used");
+            sim_status.warnings.push_back("true gmin stepping used");
         }
         if (!result.converged) {
             if (ckt.options.verbose)
-                std::cerr << "[dc] trying true gmin stepping\n";
-            // 4b. Try true gmin stepping (modifies device-level gmin)
+                std::cerr << "[dc] trying dynamic gmin stepping\n";
             try {
-                result = true_gmin_stepping(ckt, *solver, solution, ckt.options,
-                                            MODEDCOP_BIT | MODEINITJCT_BIT,
-                                            MODEDCOP_BIT | MODEINITFLOAT_BIT);
+                result = gmin_stepping(ckt, *solver, solution, ckt.options,
+                                       MODEDCOP_BIT | MODEINITJCT_BIT,
+                                       MODEDCOP_BIT | MODEINITFLOAT_BIT);
                 if (ckt.options.verbose)
-                    std::cerr << "[dc] true gmin stepping: converged=" << result.converged
+                    std::cerr << "[dc] gmin stepping: converged=" << result.converged
                               << " iters=" << result.iterations
                               << " residual=" << result.residual << "\n";
             } catch (const std::runtime_error& e) {
                 result.converged = false;
                 if (ckt.options.verbose)
-                    std::cerr << "[dc] true gmin stepping threw: " << e.what() << "\n";
+                    std::cerr << "[dc] gmin stepping threw: " << e.what() << "\n";
             }
             if (result.converged) {
                 sim_status.iterations = result.iterations;
@@ -237,7 +149,7 @@ DCResult solve_dc(Circuit& ckt) {
                 sim_status.residual = result.residual;
                 sim_status.worst_node_idx = result.worst_node_idx;
                 sim_status.gmin_steps = 1;
-                sim_status.warnings.push_back("true gmin stepping used");
+                sim_status.warnings.push_back("gmin stepping used");
             }
         }
         if (!result.converged) {

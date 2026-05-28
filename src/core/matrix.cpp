@@ -14,31 +14,30 @@ SparsityPattern::SparsityPattern(int32_t n,
                                  std::vector<std::pair<int32_t, int32_t>> entries)
     : n_(n), entries_(std::move(entries)) {}
 
-MatrixOffset SparsityPattern::offset(int32_t row, int32_t col) const {
-    // entries_ is sorted by (col, row) — binary search on (col, row)
-    // We need to search by (col, row) but entries_ stores (row, col)
-    // So we search for the entry where entry.second == col and entry.first == row
-    // Equivalently: find entry == {row, col} in the (col, row)-sorted list.
-    // Since we sorted by (col, row), we can binary-search treating each entry
-    // as the key (col, row) = (entry.second, entry.first).
-
-    // Use lower_bound with a custom comparator over the index range
+MatrixOffset SparsityPattern::find_offset(int32_t row, int32_t col) const {
+    // entries_ is sorted by (col, row).
     auto it = std::lower_bound(
         entries_.begin(), entries_.end(),
         std::make_pair(row, col),
         [](const std::pair<int32_t, int32_t>& a,
            const std::pair<int32_t, int32_t>& b) {
-            // CSC order: primary key is col (a.second), secondary is row (a.first)
             if (a.second != b.second) return a.second < b.second;
             return a.first < b.first;
         });
 
-    if (it == entries_.end() || it->first != row || it->second != col) {
+    if (it == entries_.end() || it->first != row || it->second != col)
+        return -1;
+    return static_cast<MatrixOffset>(it - entries_.begin());
+}
+
+MatrixOffset SparsityPattern::offset(int32_t row, int32_t col) const {
+    MatrixOffset off = find_offset(row, col);
+    if (off < 0) {
         throw std::out_of_range(
             "SparsityPattern::offset: position (" + std::to_string(row) +
             ", " + std::to_string(col) + ") not in pattern");
     }
-    return static_cast<MatrixOffset>(it - entries_.begin());
+    return off;
 }
 
 CSCData SparsityPattern::to_csc() const {

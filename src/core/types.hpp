@@ -34,6 +34,7 @@ struct SimOptions {
     double tnom   = T_NOMINAL; // nominal temperature for model parameters (default 27°C = 300.15K)
     int max_iter  = 100;
     int itl1      = 100;    // DC iteration limit (alias for max_iter)
+    int itl2      = 50;     // DC transfer/gmin continuation iteration limit
     int itl4      = 50;     // transient iteration limit per timepoint
     std::string method = "trap"; // integration method: "trap" or "gear"
     int lte_ref_mode = 0;       // LTE reference mode: 0=per-node, 1=max-all, 2=max-per-signal-over-time
@@ -45,7 +46,7 @@ struct SimOptions {
     double src_fact = 1.0;   // source scaling factor for CKTsrcFact-style source stepping
     double dep_src_fact = 1.0; // dependent-source gain scaling for gain stepping convergence aid
     double xmu = 0.5;  // .option xmu: integration damping (0=BE, 0.5=trap)
-    bool newtrunc = true; // .option newtrunc: global node-voltage LTE (always-on by default)
+    bool newtrunc = false; // .option newtrunc: global node-voltage LTE
 
     // Pseudo-transient continuation: backward Euler companion model.
     // When ptc_g > 0, newton_solve injects ptc_g * ptc_prev[i] into rhs[i]

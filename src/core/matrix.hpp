@@ -29,6 +29,9 @@ public:
     /// Throws std::out_of_range if the position was not registered.
     MatrixOffset offset(int32_t row, int32_t col) const;
 
+    /// Return the index into the values array, or -1 if absent.
+    MatrixOffset find_offset(int32_t row, int32_t col) const;
+
     /// Convert to CSC format (col_ptr, row_idx).
     CSCData to_csc() const;
 

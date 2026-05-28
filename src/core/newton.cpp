@@ -1,21 +1,63 @@
 #include "core/newton.hpp"
 #include "core/circuit.hpp"
 #include "core/neo_solver.hpp"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 
 namespace neospice {
 
+thread_local OneBasedEvalArrays* tls_one_based_eval_arrays = nullptr;
+
+NewtonWorkspace::NewtonWorkspace(const SparsityPattern& pattern)
+    : mat(pattern),
+      matrix_size(pattern.size()),
+      matrix_nnz(pattern.nnz()) {
+    ensure_size(pattern.size());
+}
+
+void NewtonWorkspace::ensure_size(int32_t n) {
+    if (static_cast<int32_t>(rhs.size()) != n)
+        rhs.resize(n);
+    if (static_cast<int32_t>(old_solution.size()) != n)
+        old_solution.resize(n);
+    if (static_cast<int32_t>(proposed.size()) != n)
+        proposed.resize(n);
+    if (static_cast<int32_t>(one_based_solution.size()) != n + 1)
+        one_based_solution.resize(n + 1);
+    if (static_cast<int32_t>(one_based_rhs.size()) != n + 1)
+        one_based_rhs.resize(n + 1);
+}
+
 NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts) {
+    NewtonWorkspace workspace(ckt.pattern());
+    return newton_solve(ckt, solver, solution, opts, workspace);
+}
+
+NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
+                          std::vector<double>& solution,
+                          const SimOptions& opts,
+                          NewtonWorkspace& workspace) {
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
     const auto& pattern = ckt.pattern();
 
-    NumericMatrix mat(pattern);
-    std::vector<double> rhs(n, 0.0);
+    if (workspace.matrix_size != pattern.size() ||
+        workspace.matrix_nnz != pattern.nnz()) {
+        throw std::logic_error("NewtonWorkspace does not match circuit sparsity pattern");
+    }
+    workspace.ensure_size(n);
+
+    NumericMatrix& mat = workspace.mat;
+    std::vector<double>& rhs = workspace.rhs;
+    std::vector<double>& old_solution = workspace.old_solution;
+    std::vector<double>& old_state0 = workspace.old_state0;
+    std::vector<double>& proposed = workspace.proposed;
+    std::vector<double>& one_based_solution = workspace.one_based_solution;
+    std::vector<double>& one_based_rhs = workspace.one_based_rhs;
 
     if (opts.verbose) {
         std::cerr << "[newton] gmin=" << opts.gmin << " start:";
@@ -47,13 +89,12 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
     // Save the caller's mode so we can restore it on exit.
     const int saved_mode = ckt.integrator_ctx.mode;
 
-    // Warm-start: during transient analysis (MODEINITTRAN/MODEINITPRED)
-    // the matrix from the previous timestep is structurally similar, so
-    // iter 0 can try refactorize() instead of full numeric().  For DC
-    // and convergence helpers the matrix changes drastically (different
-    // gmin, source scaling), so always start with numeric().
+    // Start by reusing the existing pivot order whenever possible.
+    // ngspice only forces a full reorder through NISHOULDREORDER
+    // (not at every continuation step); MODEINITJCT and singular
+    // refactors below set force_numeric when a fresh order is required.
     constexpr int MODETRAN_BIT = 0x1;
-    bool force_numeric = !(saved_mode & MODETRAN_BIT);
+    bool force_numeric = false;
 
     // ngspice niiter.c:107-110 — force reorder when mode is MODEINITJCT.
     // Tracks the *current* mode each iteration, matching ngspice which
@@ -64,33 +105,39 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
     double max_residual = 0.0;
     int32_t worst_idx = -1;
 
-    std::vector<double> old_solution(solution.size());
     for (int iter = 0; iter < opts.max_iter; ++iter) {
         // Save old solution for convergence check
-        old_solution = solution;
+        std::copy(solution.begin(), solution.end(), old_solution.begin());
 
         // Clear matrix and RHS
         mat.clear();
         std::fill(rhs.begin(), rhs.end(), 0.0);
 
         // Evaluate all devices at the current guess.  Publish the
-        // Circuit's IntegratorCtx through a thread-local so state-storing
-        // devices (BSIM4v7) can read CKTmode/ag/delta/order without an
-        // extra parameter on the Device interface.  RAII guard clears the
-        // pointer even if a device throws.
-        struct IntegratorCtxGuard {
-            IntegratorCtxGuard(const IntegratorCtx& c) { tls_integrator_ctx = &c; }
-            ~IntegratorCtxGuard()                      { tls_integrator_ctx = nullptr; }
-        } guard(ckt.integrator_ctx);
+        // Circuit's IntegratorCtx and ngspice-style one-based RHS arrays
+        // through thread-locals so UCB-port device loads can stamp into
+        // circuit-global storage instead of private per-device copies.
+        one_based_solution[0] = 0.0;
+        std::copy(solution.begin(), solution.end(), one_based_solution.begin() + 1);
+        std::fill(one_based_rhs.begin(), one_based_rhs.end(), 0.0);
+        OneBasedEvalArrays eval_arrays{one_based_solution.data(),
+                                        one_based_rhs.data(),
+                                        static_cast<int32_t>(one_based_solution.size())};
+        struct EvalContextGuard {
+            EvalContextGuard(const IntegratorCtx& c, OneBasedEvalArrays& arrays) {
+                tls_integrator_ctx = &c;
+                tls_one_based_eval_arrays = &arrays;
+            }
+            ~EvalContextGuard() {
+                tls_one_based_eval_arrays = nullptr;
+                tls_integrator_ctx = nullptr;
+            }
+        } guard(ckt.integrator_ctx, eval_arrays);
         for (auto& dev : ckt.devices()) {
             dev->evaluate(solution, mat, rhs);
         }
-
-        if (opts.diag_gmin != 0.0) {
-            for (int32_t i = 0; i < num_nodes; ++i) {
-                MatrixOffset off = pattern.offset(i, i);
-                mat.add(off, opts.diag_gmin);
-            }
+        for (int32_t i = 0; i < n; ++i) {
+            rhs[i] += one_based_rhs[i + 1];
         }
 
         // Pseudo-transient companion current: inject G*V_old for each node
@@ -132,37 +179,54 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             always_reorder = true;
         }
 
-        // Factorize: try refactorize first (reuses pivot order), fall back
-        // to full numeric factorization if the pivot order is unstable.
-        // refactorize() returns true if any near-zero pivot was perturbed,
-        // meaning the factorization is approximate — force a full numeric()
-        // on the next iteration to re-establish an accurate pivot order.
+        // Factorize: try refactorize first (reuses pivot order).  If
+        // refactorization finds a singular pivot, match ngspice NIiter: mark
+        // the matrix for a full reorder and retry without solving the failed
+        // factorization.  A singular full reorder means this Newton attempt
+        // failed at the current continuation point.
         if (force_numeric || always_reorder) {
-            bool perturbed = solver.numeric(pattern, mat);
-            force_numeric = perturbed;
+            bool singular = solver.numeric(pattern, mat, opts.diag_gmin);
+            if (singular) {
+                ckt.integrator_ctx.mode = saved_mode;
+                return {false, iter + 1, max_residual, worst_idx};
+            }
+            force_numeric = false;
         } else {
             try {
-                bool perturbed = solver.refactorize(mat);
-                if (perturbed)
+                bool singular = solver.refactorize(mat, opts.diag_gmin);
+                if (singular) {
                     force_numeric = true;
+                    continue;
+                }
             } catch (const std::exception&) {
-                bool perturbed = solver.numeric(pattern, mat);
-                force_numeric = perturbed;
+                bool singular = solver.numeric(pattern, mat, opts.diag_gmin);
+                if (singular) {
+                    ckt.integrator_ctx.mode = saved_mode;
+                    return {false, iter + 1, max_residual, worst_idx};
+                }
+                force_numeric = false;
             }
         }
+
+
+        const int32_t num_states = ckt.num_states();
+        if (static_cast<int32_t>(old_state0.size()) != num_states)
+            old_state0.resize(num_states);
+        if (num_states > 0)
+            std::copy_n(ckt.state0(), num_states, old_state0.begin());
 
         // Solve: rhs is overwritten with the new solution
         solver.solve(rhs);
 
         // rhs now contains the proposed new solution from the linear solve
-        std::vector<double> proposed = rhs;
+        std::copy(rhs.begin(), rhs.end(), proposed.begin());
 
         // Apply per-device voltage limiting
         for (auto& dev : ckt.devices()) {
             dev->limit_voltages(old_solution, proposed);
         }
 
-        solution = proposed;
+        std::copy(proposed.begin(), proposed.end(), solution.begin());
 
         // Node damping (ngspice niiter.c:296-323): when Newton updates
         // produce large voltage swings, scale the update so the maximum
@@ -174,7 +238,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         if (opts.node_damping && (saved_mode & (MODEDCOP_BIT | MODETRANOP_BIT)) && iter > 0) {
             double max_diff = 0.0;
             for (int32_t i = 0; i < num_nodes; ++i) {
-                double diff = solution[i] - old_solution[i];
+                double diff = std::abs(solution[i] - old_solution[i]);
                 if (diff > max_diff)
                     max_diff = diff;
             }
@@ -184,6 +248,9 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
                     damp_factor = 0.1;
                 for (int32_t i = 0; i < num_nodes; ++i) {
                     solution[i] = old_solution[i] + damp_factor * (solution[i] - old_solution[i]);
+                }
+                for (int32_t i = 0; i < num_states; ++i) {
+                    ckt.state0()[i] = old_state0[i] + damp_factor * (ckt.state0()[i] - old_state0[i]);
                 }
             }
         }
@@ -238,6 +305,11 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
                       << "\n";
         }
 
+        // ngspice NIiter does not accept convergence on the first iteration
+        // of a call; it skips NIconvTest and forces CKTnoncon=1 for iterno==1.
+        if (iter == 0)
+            converged = false;
+
         // Device-specific convergence check (e.g. BSIM4v7 current-based
         // convergence).  Only evaluated when node/branch convergence passed,
         // so it is purely additive — both must pass.
@@ -263,8 +335,13 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         int m = ckt.integrator_ctx.mode;
 
         if (m & MODEINITFLOAT_BIT) {
-            // Corrector phase — convergence check is meaningful.
+            // Corrector phase: convergence check is meaningful.  ngspice
+            // returns OP/transient values from CKTrhsOld, i.e. the previous
+            // iterate that the proposal just converged against.  Keep the
+            // caller's solution on that same side of the final NIiter swap so
+            // continuation methods follow the same path.
             if (converged) {
+                std::copy(old_solution.begin(), old_solution.end(), solution.begin());
                 ckt.integrator_ctx.mode = saved_mode;
                 return {true, iter + 1, max_residual, worst_idx};
             }
@@ -292,6 +369,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
             // No init flag set (shouldn't happen in well-formed usage).
             // If already converged, return success.
             if (converged) {
+                std::copy(old_solution.begin(), old_solution.end(), solution.begin());
                 ckt.integrator_ctx.mode = saved_mode;
                 return {true, iter + 1, max_residual, worst_idx};
             }

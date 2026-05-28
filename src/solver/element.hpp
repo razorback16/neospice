@@ -96,6 +96,16 @@ public:
         return &fillin_blocks_[current_fill_block_][fill_next_++];
     }
 
+    void clear_fillin_values(bool clear_imag) {
+        for (auto& block : fillin_blocks_) {
+            for (auto& elem : block) {
+                elem.Real = 0.0;
+                if (clear_imag)
+                    elem.Imag = 0.0;
+            }
+        }
+    }
+
 private:
     void alloc_element_block(int32_t count) {
         element_blocks_.emplace_back(count);

@@ -111,7 +111,7 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
 
     // Golden from ngspice op() on tests/goldens/probe.cir, date 2026-04-16.
     // Captured with: ngspice -b tests/goldens/probe.cir → @m1[id] = 5.754970e-05.
-    // ngspice version: ngspice-42 (KLU direct solver).
+    // ngspice version: ngspice-42.
     constexpr double id_golden = 5.754970e-05;
     constexpr double rel_tol   = 1e-3;
     constexpr double abs_floor = 1e-15;
