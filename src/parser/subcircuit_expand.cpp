@@ -851,9 +851,18 @@ std::vector<TokenizedLine> expand_instance(
                 // Pass POLY(N) token through as-is
                 new_line.tokens.push_back(line.tokens[value_start]);
                 value_start++;
-                // Handle split "(N)" token
+                // Handle split "(N)" dimension token (e.g. "POLY" "(2)"). A real
+                // dimension token contains only a number; a control-node pair
+                // like "(3,0)" has a comma and must NOT be consumed here.
                 if (value_start < line.tokens.size() &&
-                    line.tokens[value_start].front() == '(') {
+                    line.tokens[value_start].front() == '(' &&
+                    line.tokens[value_start].find(',') == std::string::npos) {
+                    if (eg_poly_dim == 0) {
+                        const std::string& dt = line.tokens[value_start];
+                        size_t close = dt.find(')');
+                        if (close != std::string::npos && close > 1)
+                            eg_poly_dim = std::stoi(dt.substr(1, close - 1));
+                    }
                     new_line.tokens.push_back(line.tokens[value_start]);
                     value_start++;
                 }
