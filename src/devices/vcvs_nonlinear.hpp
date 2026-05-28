@@ -1,6 +1,7 @@
 #pragma once
 #include "devices/device.hpp"
 #include <utility>
+#include <vector>
 
 namespace neospice {
 
@@ -105,6 +106,78 @@ struct TablePoint {
     double x;
     double y;
 };
+
+// ---------------------------------------------------------------------------
+// Smoothed piecewise-linear table lookup, matching ngspice's E/G TABLE.
+//
+// ngspice rewrites `E/G ... TABLE {expr} (x0,y0)...(xn,yn)` into an XSPICE
+// `pwl` code model with `input_domain=0.1 fraction=TRUE limit=TRUE`
+// (src/frontend/inpcom.c). That model:
+//   1. pads the breakpoint array with one synthetic point at each end
+//      (x extended by linear continuation; y held flat — limit=TRUE), and
+//   2. rounds every corner with a parabola over ±input_domain (= 0.1 × the
+//      smaller adjacent segment) via cm_smooth_corner (src/xspice/cm/cmutil.c).
+// The net effect is that exactly at a breakpoint the output is the parabola's
+// midpoint value, not the raw yi — e.g. at the first breakpoint of (0,0)(1,1)
+// the output is 0.025·range, not 0. Plain saturating interpolation diverges
+// from ngspice here; this routine reproduces it bit-for-bit.
+//
+// `tbl` must be sorted ascending by x with size >= 2.
+inline double pwl_smooth_interp(const std::vector<TablePoint>& tbl,
+                                double x, double& slope) {
+    const int n = static_cast<int>(tbl.size());
+    // Padded arrays: real points at indices 1..n, synthetic ends at 0 and n+1.
+    const int m = n + 2;
+    std::vector<double> X(m), Y(m);
+    for (int i = 1; i <= n; ++i) { X[i] = tbl[i - 1].x; Y[i] = tbl[i - 1].y; }
+    X[0]     = 2.0 * X[1]     - X[2];
+    X[m - 1] = 2.0 * X[m - 2] - X[m - 3];
+    // limit=TRUE: flat (constant) extrapolation of y beyond the table.
+    Y[0]     = Y[1];
+    Y[m - 1] = Y[m - 2];
+
+    if (x <= (X[0] + X[1]) / 2.0) {
+        slope = (Y[1] - Y[0]) / (X[1] - X[0]);
+        return Y[0] + (x - X[0]) * slope;
+    }
+    if (x >= (X[m - 2] + X[m - 1]) / 2.0) {
+        slope = (Y[m - 1] - Y[m - 2]) / (X[m - 1] - X[m - 2]);
+        return Y[m - 1] + (x - X[m - 1]) * slope;
+    }
+
+    constexpr double input_domain = 0.1;  // ngspice default for the rewrite
+    for (int i = 1; i <= m - 2; ++i) {
+        if (x < (X[i] + X[i + 1]) / 2.0) {
+            const double lower_seg = X[i] - X[i - 1];
+            const double upper_seg = X[i + 1] - X[i];
+            // fraction=TRUE: domain is a fraction of the smaller segment.
+            const double dom = input_domain *
+                (lower_seg <= upper_seg ? lower_seg : upper_seg);
+            const double tl = X[i] - dom;
+            const double tu = X[i] + dom;
+            if (x < tl) {                       // lower linear region
+                slope = (Y[i] - Y[i - 1]) / lower_seg;
+                return Y[i] + (x - X[i]) * slope;
+            } else if (x < tu) {                // parabolic corner (cm_smooth_corner)
+                const double lower_slope = (Y[i] - Y[i - 1]) / lower_seg;
+                const double upper_slope = (Y[i + 1] - Y[i]) / upper_seg;
+                const double x_upper = X[i] + dom;
+                const double y_upper = Y[i] + upper_slope * dom;
+                const double a = ((upper_slope - lower_slope) / 4.0) * (1.0 / dom);
+                const double b = upper_slope - 2.0 * a * x_upper;
+                const double c = y_upper - a * x_upper * x_upper - b * x_upper;
+                slope = 2.0 * a * x + b;
+                return a * x * x + b * x + c;
+            } else {                            // upper linear region
+                slope = (Y[i + 1] - Y[i]) / upper_seg;
+                return Y[i] + (x - X[i]) * slope;
+            }
+        }
+    }
+    // Unreachable given the midpoint guards above, but stay defined.
+    slope = 0.0;
+    return tbl.back().y;
+}
 
 class TableVCVS : public Device {
 public:

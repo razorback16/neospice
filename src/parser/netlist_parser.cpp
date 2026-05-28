@@ -1436,10 +1436,23 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             try {
                 val = parse_value(tokens[3]);
             } catch (const ParseError&) {
-                // tokens[3] is not a number — treat as model name
+                // tokens[3] is not a number — treat as model name.
+                // ngspice accepts both token orders:
+                //   Rname n+ n- value MODEL   and   Rname n+ n- MODEL value
+                // so when the model name comes first, the resistance is in a
+                // later bare (non key=value) token. Also honor an r=<val> param.
                 auto mit = res_models.find(to_lower(tokens[3]));
                 if (mit != res_models.end()) {
-                    val = 0.0; // model-only resistor, value from model
+                    val = 0.0; // resistance may follow the model name
+                    for (size_t k = 4; k < tokens.size(); ++k) {
+                        std::string tl = to_lower(tokens[k]);
+                        if (tl.starts_with("r=")) {
+                            try { val = parse_value(tokens[k].substr(2)); } catch (const ParseError&) {}
+                            break;
+                        }
+                        if (tl.find('=') != std::string::npos) continue; // skip TC1=, etc.
+                        try { val = parse_value(tokens[k]); break; } catch (const ParseError&) {}
+                    }
                 } else {
                     fprintf(stderr, "Warning: Line %d: Resistor '%s' has unrecognized value/model '%s' — skipping\n",
                             line.line_number, name.c_str(), tokens[3].c_str());

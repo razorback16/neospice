@@ -276,34 +276,8 @@ double TableVCVS::interp(double x, double& slope) const {
         slope = 0.0;
         return table_[0].y;
     }
-
-    // Clamp below — output is constant, so slope = 0
-    if (x <= table_.front().x) {
-        slope = 0.0;
-        return table_.front().y;
-    }
-    // Clamp above — output is constant, so slope = 0
-    if (x >= table_.back().x) {
-        slope = 0.0;
-        return table_.back().y;
-    }
-
-    // Binary search for the segment
-    size_t lo = 0, hi = table_.size() - 1;
-    while (hi - lo > 1) {
-        size_t mid = (lo + hi) / 2;
-        if (table_[mid].x <= x) lo = mid;
-        else hi = mid;
-    }
-
-    double dx = table_[hi].x - table_[lo].x;
-    if (dx == 0.0) {
-        slope = 0.0;
-        return table_[lo].y;
-    }
-    slope = (table_[hi].y - table_[lo].y) / dx;
-    double t = (x - table_[lo].x) / dx;
-    return table_[lo].y + t * (table_[hi].y - table_[lo].y);
+    // Match ngspice's E/G TABLE smoothing (padding + parabolic corners).
+    return pwl_smooth_interp(table_, x, slope);
 }
 
 void TableVCVS::stamp_pattern(SparsityBuilder& builder) const {

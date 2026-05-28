@@ -203,7 +203,11 @@ R1 out 0 1k
     auto ckt = sim.parse(netlist);
     auto result = sim.run(ckt);
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
-    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 5.0, 1e-4);
+    // ngspice rewrites E/G TABLE to an XSPICE pwl code model that rounds every
+    // corner with a parabola over ±0.1·segment (limit=TRUE). At the (1,5) corner
+    // the slope drops 5→0, so the smoothed output is 4.875, NOT the raw 5.0.
+    // Verified against ngspice on this exact circuit: v(out) = 4.875.
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 4.875, 1e-4);
 }
 
 // ---------------------------------------------------------------------------
