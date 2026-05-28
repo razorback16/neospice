@@ -5,7 +5,8 @@
 namespace neospice {
 
 struct ParsedDiode : ParsedElement {
-    std::string anode_str, cathode_str;
+    int32_t anode = GROUND_INTERNAL;
+    int32_t cathode = GROUND_INTERNAL;
     DIODevice::Geom geom;
     double ic_vd = 0.0;
     bool ic_vd_given = false;

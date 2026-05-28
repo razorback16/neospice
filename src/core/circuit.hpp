@@ -270,6 +270,7 @@ public:
     const SparsityPattern& pattern() const { return *pattern_; }
     const std::vector<std::unique_ptr<Device>>& devices() const { return devices_; }
     std::vector<std::unique_ptr<Device>>& devices()             { return devices_; }
+    const std::vector<Device*>& device_load_order() const { return device_load_order_; }
 
     double* state0() { return state0_.data(); }
     double* state1() { return state1_.data(); }
@@ -367,9 +368,11 @@ public:
 
 private:
     void rebind_device_states();  // re-invoke set_state_ptrs on every device
+    void rebuild_device_load_order();
     static std::string model_key(std::string_view name);
 
     std::vector<std::unique_ptr<Device>> devices_;
+    std::vector<Device*> device_load_order_;
     // Owns model card instances for the lifetime of the Circuit so
     // device non-owning model_ pointers stay valid.
     std::vector<std::unique_ptr<ModelCardHolder>> model_cards_;

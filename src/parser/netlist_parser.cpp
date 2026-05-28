@@ -718,6 +718,7 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
 
         if (first == ".model") {
             auto card = parse_model_card(line.tokens);
+            card.source_order = state.next_model_order++;
             state.models[card.name] = card;
             if (card.type == "r") {
                 state.res_models[to_lower(card.name)] = to_resistor_model(card);
@@ -984,7 +985,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     continue;
                 }
                 ckt.analyses.push_back(dcmd);
-            } else if (first == ".options") {
+            } else if (first == ".options" || first == ".option") {
                 for (size_t i = 1; i < tokens.size(); ++i) {
                     auto eq_pos = tokens[i].find('=');
                     if (eq_pos == std::string::npos) {
@@ -1675,6 +1676,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 try {
                     auto elem = handler->parse(tokens, parse_ctx);
                     if (elem) {
+                        elem->parse_order = state.next_element_order++;
                         parsed_elements[elem_type].push_back(std::move(elem));
                     }
                 } catch (const ParseError& e) {

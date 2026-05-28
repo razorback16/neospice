@@ -247,6 +247,8 @@ void MOS1Device::evaluate(const std::vector<double>& voltages,
     }
 
     last_noncon_ = ckt.CKTnoncon;
+    last_reltol_ = sim_opts->reltol;
+    last_abstol_ = sim_opts->abstol;
 
     // Private ghost arrays need folding. Shared arrays are folded once
     // by the Newton driver after all UCB-style devices have stamped.
@@ -364,8 +366,60 @@ double MOS1Device::compute_trunc(const IntegratorCtx& ctx,
 // ---------------------------------------------------------------------------
 // device_converged
 // ---------------------------------------------------------------------------
+double MOS1Device::solution_value(const std::vector<double>& solution, int node) const {
+    if (node <= 0) return 0.0;
+    const int idx = node - 1;
+    if (idx < 0 || idx >= static_cast<int>(solution.size())) return 0.0;
+    return solution[idx];
+}
+
+bool MOS1Device::conv_test(const std::vector<double>& solution) const {
+    if (!state0_ || !model_) return true;
+
+    const double type = static_cast<double>(model_->MOS1type);
+    const double vbs = type * (solution_value(solution, inst_.MOS1bNode) -
+                               solution_value(solution, inst_.MOS1sNodePrime));
+    const double vgs = type * (solution_value(solution, inst_.MOS1gNode) -
+                               solution_value(solution, inst_.MOS1sNodePrime));
+    const double vds = type * (solution_value(solution, inst_.MOS1dNodePrime) -
+                               solution_value(solution, inst_.MOS1sNodePrime));
+    const double vbd = vbs - vds;
+    const double vgd = vgs - vds;
+    const double vgdo = state0_[inst_.MOS1vgs] - state0_[inst_.MOS1vds];
+
+    const double delvbs = vbs - state0_[inst_.MOS1vbs];
+    const double delvbd = vbd - state0_[inst_.MOS1vbd];
+    const double delvgs = vgs - state0_[inst_.MOS1vgs];
+    const double delvds = vds - state0_[inst_.MOS1vds];
+    const double delvgd = vgd - vgdo;
+
+    double cdhat;
+    if (inst_.MOS1mode >= 0) {
+        cdhat = inst_.MOS1cd - inst_.MOS1gbd * delvbd +
+                inst_.MOS1gmbs * delvbs + inst_.MOS1gm * delvgs +
+                inst_.MOS1gds * delvds;
+    } else {
+        cdhat = inst_.MOS1cd - (inst_.MOS1gbd - inst_.MOS1gmbs) * delvbd -
+                inst_.MOS1gm * delvgd + inst_.MOS1gds * delvds;
+    }
+
+    const double cb = inst_.MOS1cbs + inst_.MOS1cbd;
+    const double cbhat = cb + inst_.MOS1gbd * delvbd + inst_.MOS1gbs * delvbs;
+
+    double tol = last_reltol_ * std::max(std::abs(cdhat), std::abs(inst_.MOS1cd)) + last_abstol_;
+    if (std::abs(cdhat - inst_.MOS1cd) >= tol)
+        return false;
+
+    tol = last_reltol_ * std::max(std::abs(cbhat), std::abs(cb)) + last_abstol_;
+    return std::abs(cbhat - cb) <= tol;
+}
+
 bool MOS1Device::device_converged() const {
     return last_noncon_ == 0;
+}
+
+bool MOS1Device::device_converged(const std::vector<double>& solution) const {
+    return last_noncon_ == 0 && conv_test(solution);
 }
 
 // ---------------------------------------------------------------------------

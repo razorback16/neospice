@@ -9,7 +9,7 @@
 // --- Physical constants ---------------------------------------------------
 
 #ifndef CONSTvt0
-#define CONSTvt0 (1.3806226e-23*300.15/1.6021918e-19)
+#define CONSTvt0 (1.38064852e-23*300.15/1.6021766208e-19)
 #endif
 #ifndef CONSTroot2
 #define CONSTroot2 1.4142135623730950488
@@ -18,7 +18,7 @@
 #define CONSTCtoK 273.15
 #endif
 #ifndef CHARGE
-#define CHARGE 1.6021918e-19
+#define CHARGE 1.6021766208e-19
 #endif
 
 // --- Math wrappers --------------------------------------------------------

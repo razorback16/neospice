@@ -28,6 +28,7 @@ std::unique_ptr<ParsedElement> parse_bjt_element(
     }
     auto q = std::make_unique<ParsedBJT>();
     q->name = tokens[0];
+    q->nc = ctx.node(tokens[1]);
     q->nb = ctx.node(tokens[2]);
     q->ne = ctx.node(tokens[3]);
     q->line_number = ctx.line_number;
@@ -47,12 +48,10 @@ std::unique_ptr<ParsedElement> parse_bjt_element(
     }
     size_t param_start;
     if (is_model_name) {
-        q->nc = ctx.node(tokens[1]);
         q->ns = ctx.node("0");  // default substrate = ground
         q->model_name = tok4;
         param_start = 5;
     } else if (tokens.size() >= 6) {
-        q->nc = ctx.node(tokens[1]);
         q->ns = ctx.node(tok4);
         q->model_name = tokens[5];
         param_start = 6;
@@ -155,6 +154,7 @@ void resolve_bjts(
             vgeom.m_given = q.geom.m_given;
             auto dev = VBICDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
                                         vgeom, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, q.parse_order);
             if (q.ic_vbe_given || q.ic_vce_given) {
                 dev->set_ic(q.ic_vbe, q.ic_vbe_given, q.ic_vce, q.ic_vce_given);
             }
@@ -174,6 +174,7 @@ void resolve_bjts(
             }
             auto dev = BJTDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
                                        q.geom, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, q.parse_order);
             if (q.ic_vbe_given || q.ic_vce_given) {
                 dev->set_ic(q.ic_vbe, q.ic_vbe_given, q.ic_vce, q.ic_vce_given);
             }

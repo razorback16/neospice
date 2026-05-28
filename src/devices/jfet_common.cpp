@@ -28,9 +28,9 @@ std::unique_ptr<ParsedElement> parse_jfet_element(
     }
     auto j = std::make_unique<ParsedJFET>();
     j->name = tokens[0];
-    j->nd_str = tokens[1];
-    j->ng_str = tokens[2];
-    j->ns_str = tokens[3];
+    j->nd = ctx.node(tokens[1]);
+    j->ng = ctx.node(tokens[2]);
+    j->ns = ctx.node(tokens[3]);
     j->model_name = tokens[4];
     j->line_number = ctx.line_number;
     // Parse remaining: area=, m=, ic=, off, or bare area number
@@ -122,9 +122,9 @@ void resolve_jfets(
                     continue;
                 }
             }
-            int32_t nd = ctx.node(j.nd_str);
-            int32_t ng = ctx.node(j.ng_str);
-            int32_t ns = ctx.node(j.ns_str);
+            int32_t nd = j.nd;
+            int32_t ng = j.ng;
+            int32_t ns = j.ns;
             JFET2Device::Geom g2;
             g2.area = j.geom.area;
             g2.area_given = j.geom.area_given;
@@ -132,6 +132,7 @@ void resolve_jfets(
             g2.m_given = j.geom.m_given;
             auto dev = JFET2Device::make(j.name, nd, ng, ns,
                                           g2, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, j.parse_order);
             if (j.ic_vds_given || j.ic_vgs_given) {
                 dev->set_ic(j.ic_vds, j.ic_vds_given, j.ic_vgs, j.ic_vgs_given);
             }
@@ -149,11 +150,12 @@ void resolve_jfets(
                     continue;
                 }
             }
-            int32_t nd = ctx.node(j.nd_str);
-            int32_t ng = ctx.node(j.ng_str);
-            int32_t ns = ctx.node(j.ns_str);
+            int32_t nd = j.nd;
+            int32_t ng = j.ng;
+            int32_t ns = j.ns;
             auto dev = JFETDevice::make(j.name, nd, ng, ns,
                                          j.geom, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, j.parse_order);
             if (j.ic_vds_given || j.ic_vgs_given) {
                 dev->set_ic(j.ic_vds, j.ic_vds_given, j.ic_vgs, j.ic_vgs_given);
             }

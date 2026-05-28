@@ -5,7 +5,9 @@
 namespace neospice {
 
 struct ParsedJFET : ParsedElement {
-    std::string nd_str, ng_str, ns_str;  // drain, gate, source node names
+    int32_t nd = GROUND_INTERNAL;
+    int32_t ng = GROUND_INTERNAL;
+    int32_t ns = GROUND_INTERNAL;
     JFETDevice::Geom geom;
     double ic_vds = 0, ic_vgs = 0;
     bool ic_vds_given = false, ic_vgs_given = false;

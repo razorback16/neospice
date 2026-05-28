@@ -50,6 +50,8 @@ struct ParseState {
     std::unordered_map<std::string, ResistorModel> res_models;
     std::unordered_map<std::string, CapacitorModel> cap_models;
     std::unordered_map<std::string, InductorModel> ind_models;
+    int next_model_order = 0;
+    int next_element_order = 0;
 
     // Deferred struct types (were anonymous structs inside parse())
 

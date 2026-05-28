@@ -5,6 +5,7 @@
 #include "devices/ucb_device_init.hpp"
 #include "devices/ucb_utils.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -20,6 +21,15 @@ namespace neospice::bjt {
 namespace neospice {
 
 using namespace neospice::bjt;
+
+namespace {
+
+double rhs_value(const double* rhs, int size, int node) {
+    if (!rhs || node <= 0 || node >= size) return 0.0;
+    return rhs[node];
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // BJTModelCard destructor
@@ -236,8 +246,10 @@ void BJTDevice::evaluate(const std::vector<double>& voltages,
         throw std::runtime_error("BJTload failed with rc=" + std::to_string(rc));
     }
 
-    // Capture the UCB convergence flag for device_converged().
+    // Capture the UCB load and convTest convergence flags for device_converged().
     last_noncon_ = ckt.CKTnoncon;
+    const int rhs_old_size = use_shared_arrays ? shared_arrays->size : n_ghost;
+    last_conv_converged_ = conv_test(ckt.CKTrhsOld, rhs_old_size, *sim_opts);
 
     // Private ghost arrays need folding. Shared arrays are folded once
     // by the Newton driver after all UCB-style devices have stamped.
@@ -251,8 +263,36 @@ void BJTDevice::evaluate(const std::vector<double>& voltages,
 // ---------------------------------------------------------------------------
 // device_converged
 // ---------------------------------------------------------------------------
+bool BJTDevice::conv_test(const double* rhs_old, int rhs_old_size,
+                          const SimOptions& opts) const {
+    if (!rhs_old || !state0_ || !model_) return true;
+
+    const double type = static_cast<double>(model_->BJTtype);
+    const double vbe = type * (rhs_value(rhs_old, rhs_old_size, inst_.BJTbasePrimeNode) -
+                               rhs_value(rhs_old, rhs_old_size, inst_.BJTemitPrimeNode));
+    const double vbc = type * (rhs_value(rhs_old, rhs_old_size, inst_.BJTbasePrimeNode) -
+                               rhs_value(rhs_old, rhs_old_size, inst_.BJTcolPrimeNode));
+
+    const double delvbe = vbe - state0_[inst_.BJTvbe];
+    const double delvbc = vbc - state0_[inst_.BJTvbc];
+    const double cchat = state0_[inst_.BJTcc] +
+        (state0_[inst_.BJTgm] + state0_[inst_.BJTgo]) * delvbe -
+        (state0_[inst_.BJTgo] + state0_[inst_.BJTgmu]) * delvbc;
+    const double cbhat = state0_[inst_.BJTcb] +
+        state0_[inst_.BJTgpi] * delvbe + state0_[inst_.BJTgmu] * delvbc;
+    const double cc = state0_[inst_.BJTcc];
+    const double cb = state0_[inst_.BJTcb];
+
+    double tol = opts.reltol * std::max(std::abs(cchat), std::abs(cc)) + opts.abstol;
+    if (std::abs(cchat - cc) > tol)
+        return false;
+
+    tol = opts.reltol * std::max(std::abs(cbhat), std::abs(cb)) + opts.abstol;
+    return std::abs(cbhat - cb) <= tol;
+}
+
 bool BJTDevice::device_converged() const {
-    return last_noncon_ == 0;
+    return last_noncon_ == 0 && last_conv_converged_;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@
 #include "neospice/types.hpp"
 #include <cctype>
 #include <complex>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -30,7 +31,14 @@ public:
 
     virtual std::string device_type() const {
         if (name_.empty()) return "unknown";
-        switch (static_cast<unsigned char>(std::toupper(name_[0]))) {
+        // Subcircuit expansion prefixes device names with hierarchy
+        // (for example x1.m3). The local instance name after the final dot
+        // is the SPICE device designator that ngspice uses for type lookup.
+        std::size_t pos = 0;
+        const std::size_t dot = name_.rfind('.');
+        if (dot != std::string::npos && dot + 1 < name_.size())
+            pos = dot + 1;
+        switch (static_cast<unsigned char>(std::toupper(name_[pos]))) {
             case 'R': return "R"; case 'C': return "C"; case 'L': return "L";
             case 'V': return "V"; case 'I': return "I"; case 'K': return "K";
             case 'D': return "D"; case 'Q': return "Q"; case 'J': return "J";
@@ -47,6 +55,16 @@ public:
     virtual std::optional<double> primary_value() const { return std::nullopt; }
 
     virtual bool set_value(double /*value*/) { return false; }
+
+    /// ngspice stores modeled devices under model lists and links instances
+    /// at the list head. Circuit::finalize() uses these keys to mirror that
+    /// setup/load traversal without changing neospice's ownership order.
+    void set_ngspice_setup_order(int model_order, int instance_order) {
+        ngspice_model_order_ = model_order;
+        ngspice_instance_order_ = instance_order;
+    }
+    int ngspice_model_order() const { return ngspice_model_order_; }
+    int ngspice_instance_order() const { return ngspice_instance_order_; }
 
     /// Called by Circuit::finalize() before branch assignment and sparsity
     /// build. Devices that need internal MNA nodes (e.g. BSIM4 resistance
@@ -126,6 +144,10 @@ public:
     /// converged (e.g. all internal current checks pass).  The default is
     /// true — only devices with their own convergence criteria override this.
     virtual bool device_converged() const { return true; }
+    virtual bool device_converged(const std::vector<double>& solution) const {
+        (void)solution;
+        return device_converged();
+    }
 
     /// Query a device operating-point or geometry parameter by name.
     /// Returns the parameter value, or std::nullopt if the name is
@@ -204,6 +226,8 @@ protected:
     std::string name_;
     std::vector<int32_t> ext_nodes_;
     double sim_temp_ = T_NOMINAL;  ///< simulation temperature for noise (K)
+    int ngspice_model_order_ = std::numeric_limits<int>::max();
+    int ngspice_instance_order_ = -1;
 
     // Helpers for ground-aware stamping
     static void stamp_if_not_ground(SparsityBuilder& builder, int32_t r, int32_t c) {

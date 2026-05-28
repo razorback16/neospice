@@ -13,8 +13,8 @@ using NodeIndex = int32_t;
 constexpr NodeIndex GROUND = 0;
 using MatrixOffset = int32_t;
 
-constexpr double BOLTZMANN = 1.3806226e-23;
-constexpr double CHARGE_Q  = 1.6021918e-19;
+constexpr double BOLTZMANN = 1.38064852e-23;
+constexpr double CHARGE_Q  = 1.6021766208e-19;
 constexpr double T_NOMINAL = 300.15;
 
 inline double thermal_voltage(double temp = T_NOMINAL) {

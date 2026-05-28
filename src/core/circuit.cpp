@@ -20,6 +20,77 @@ Circuit::~Circuit() = default;
 Circuit::Circuit(Circuit&&) noexcept = default;
 Circuit& Circuit::operator=(Circuit&&) noexcept = default;
 
+static int ngspice_load_rank(const Device& dev) {
+    // Mirrors ngspice src/spicelib/devices/dev.c static_devices[] order for
+    // the device families implemented in neospice. Device ownership remains
+    // in netlist order; this order is used only for load/stamp traversal.
+    const std::string type = dev.device_type();
+    if (type == "B") return 1;   // ASRC
+    if (type == "Q") return 2;   // BJT-style devices
+    if (type == "M") return 3;   // MOS/BSIM/HISIM families
+    if (type == "C") return 17;
+    if (type == "F") return 18;  // CCCS
+    if (type == "H") return 19;  // CCVS
+    if (type == "W") return 21;  // current-controlled switch
+    if (type == "D") return 22;
+    if (type == "L") return 29;
+    if (type == "K") return 30;  // mutual inductor
+    if (type == "I") return 31;
+    if (type == "J") return 32;
+    if (type == "O") return 34;  // LTRA/CPL-style devices
+    if (type == "R") return 41;
+    if (type == "S") return 43;  // voltage-controlled switch
+    if (type == "T") return 44;
+    if (type == "G") return 48;  // VCCS
+    if (type == "E") return 49;  // VCVS
+    if (type == "V") return 50;
+    return 1000;
+}
+
+void Circuit::rebuild_device_load_order() {
+    struct OrderedDevice {
+        Device* device;
+        std::size_t index;
+        int rank;
+        int model_order;
+        int instance_order;
+    };
+
+    std::vector<OrderedDevice> ordered;
+    ordered.reserve(devices_.size());
+    for (std::size_t i = 0; i < devices_.size(); ++i) {
+        Device* dev = devices_[i].get();
+        ordered.push_back({dev, i, ngspice_load_rank(*dev),
+                           dev->ngspice_model_order(),
+                           dev->ngspice_instance_order()});
+    }
+
+    std::stable_sort(ordered.begin(), ordered.end(),
+                     [](const OrderedDevice& a, const OrderedDevice& b) {
+                         if (a.rank != b.rank)
+                             return a.rank < b.rank;
+                         if (a.rank >= 1000 && a.instance_order < 0 &&
+                             b.instance_order < 0)
+                             return a.index < b.index;
+                         if (a.model_order != b.model_order)
+                             return a.model_order < b.model_order;
+                         const int a_instance = (a.instance_order >= 0)
+                             ? a.instance_order
+                             : static_cast<int>(a.index);
+                         const int b_instance = (b.instance_order >= 0)
+                             ? b.instance_order
+                             : static_cast<int>(b.index);
+                         if (a_instance != b_instance)
+                             return a_instance > b_instance;
+                         return a.index > b.index;
+                     });
+
+    device_load_order_.clear();
+    device_load_order_.reserve(ordered.size());
+    for (const auto& item : ordered)
+        device_load_order_.push_back(item.device);
+}
+
 Circuit::ModelCardHolder* Circuit::find_model_holder(std::string_view name) const {
     auto it = model_card_index_.find(model_key(name));
     if (it == model_card_index_.end()) return nullptr;
@@ -119,10 +190,12 @@ void Circuit::finalize_if_needed() {
 void Circuit::finalize() {
     assert(!finalized_ && "Circuit::finalize() called twice");
 
+    rebuild_device_load_order();
+
     // 0. Let devices declare internal nodes. These get allocated from
     //    next_node_ via the normal Circuit::node() path, so they appear
     //    before branch indices in the MNA variable numbering.
-    for (auto& dev : devices_) {
+    for (Device* dev : device_load_order_) {
         dev->declare_internal_nodes(*this);
     }
 
@@ -131,7 +204,7 @@ void Circuit::finalize() {
     //    internal, since internal nodes were just allocated above).
     int32_t branch_idx = next_node_;
 
-    for (auto& dev : devices_) {
+    for (Device* dev : device_load_order_) {
         dev->assign_branch_index(branch_idx);
     }
 
@@ -140,7 +213,7 @@ void Circuit::finalize() {
 
     // 3. Build sparsity pattern.
     SparsityBuilder builder(num_vars_);
-    for (auto& dev : devices_) {
+    for (Device* dev : device_load_order_) {
         dev->stamp_pattern(builder);
     }
 
@@ -154,7 +227,7 @@ void Circuit::finalize() {
     pattern_ = std::make_unique<SparsityPattern>(builder.build());
 
     // 4. Assign offsets into the pattern for each device.
-    for (auto& dev : devices_) {
+    for (Device* dev : device_load_order_) {
         dev->assign_offsets(*pattern_);
     }
 
@@ -162,13 +235,13 @@ void Circuit::finalize() {
     //    This mirrors ngspice's REStemp/CAPtemp/INDtemp calls.
     //    Device::process_temperature() is a no-op by default; subclasses
     //    with temperature coefficients override it.
-    for (auto& dev : devices_) {
+    for (Device* dev : device_load_order_) {
         dev->process_temperature(options.temp, options.tnom);
     }
 
     // 6. Allocate state ring buffers and bind per-device base offsets.
     num_states_ = 0;
-    for (auto& dev : devices_) num_states_ += dev->state_vars();
+    for (Device* dev : device_load_order_) num_states_ += dev->state_vars();
     state0_.assign(num_states_, 0.0);
     state1_.assign(num_states_, 0.0);
     state2_.assign(num_states_, 0.0);
@@ -181,13 +254,21 @@ void Circuit::finalize() {
 
 void Circuit::rebind_device_states() {
     int32_t base = 0;
-    for (auto& dev : devices_) {
+    auto bind_device = [&](Device* dev) {
         int32_t n = dev->state_vars();
         if (n > 0) {
             dev->set_state_ptrs(state0_.data(), state1_.data(),
                                 state2_.data(), state3_.data(), base);
             base += n;
         }
+    };
+
+    if (!device_load_order_.empty()) {
+        for (Device* dev : device_load_order_)
+            bind_device(dev);
+    } else {
+        for (auto& dev : devices_)
+            bind_device(dev.get());
     }
 }
 

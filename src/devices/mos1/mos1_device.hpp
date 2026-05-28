@@ -57,6 +57,7 @@ public:
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
     bool device_converged() const override;
+    bool device_converged(const std::vector<double>& solution) const override;
     std::optional<double> query_param(const std::string& name) const override;
     void reset_temp() override { temp_done_ = false; }
 
@@ -85,6 +86,11 @@ private:
 
     mutable bool temp_done_ = false;
     mutable int last_noncon_ = 0;
+    mutable double last_reltol_ = 1e-3;
+    mutable double last_abstol_ = 1e-12;
+
+    bool conv_test(const std::vector<double>& solution) const;
+    double solution_value(const std::vector<double>& solution, int node) const;
 
     int32_t max_neo_node_ = -1;
 

@@ -31,9 +31,9 @@ std::unique_ptr<ParsedElement> parse_hfet_element(
     }
     auto z = std::make_unique<ParsedHFET>();
     z->name = tokens[0];
-    z->nd_str = tokens[1];
-    z->ng_str = tokens[2];
-    z->ns_str = tokens[3];
+    z->nd = ctx.node(tokens[1]);
+    z->ng = ctx.node(tokens[2]);
+    z->ns = ctx.node(tokens[3]);
     z->model_name = tokens[4];
     z->line_number = ctx.line_number;
     for (size_t i = 5; i < tokens.size(); ++i) {
@@ -109,9 +109,9 @@ void resolve_hfets(
         if (lvl_it != it->second.params.end()) {
             level = static_cast<int>(lvl_it->second);
         }
-        int32_t nd = ctx.node(z.nd_str);
-        int32_t ng = ctx.node(z.ng_str);
-        int32_t ns = ctx.node(z.ns_str);
+        int32_t nd = z.nd;
+        int32_t ng = z.ng;
+        int32_t ns = z.ns;
 
         if (model_type == "nmf" || model_type == "pmf") {
             auto card_it = mes_cards.find(z.model_name);
@@ -130,6 +130,7 @@ void resolve_hfets(
             geom.m = z.m_given ? z.m : 1.0;
             auto dev = MESDevice::make(z.name, nd, ng, ns,
                                        geom, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, z.parse_order);
             if (z.ic_vds_given || z.ic_vgs_given) {
                 dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
             }
@@ -150,6 +151,7 @@ void resolve_hfets(
             geom.L = z.length; geom.W = z.width; geom.M = z.m;
             auto dev = HFET2Device::make(z.name, nd, ng, ns,
                                          geom, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, z.parse_order);
             if (z.ic_vds_given || z.ic_vgs_given) {
                 dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
             }
@@ -174,6 +176,7 @@ void resolve_hfets(
             geom.m_given = z.m_given;
             auto dev = HFETADevice::make(z.name, nd, ng, ns,
                                          geom, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, z.parse_order);
             if (z.ic_vds_given || z.ic_vgs_given) {
                 dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
             }

@@ -26,8 +26,8 @@ std::unique_ptr<ParsedElement> parse_diode_element(
     }
     auto dd = std::make_unique<ParsedDiode>();
     dd->name = tokens[0];
-    dd->anode_str = tokens[1];
-    dd->cathode_str = tokens[2];
+    dd->anode = ctx.node(tokens[1]);
+    dd->cathode = ctx.node(tokens[2]);
     dd->model_name = tokens[3];
     dd->line_number = ctx.line_number;
     for (size_t i = 4; i < tokens.size(); ++i) {
@@ -69,9 +69,8 @@ void resolve_diodes(
             card_it = dio_cards.emplace(dd.model_name,
                                         to_dio_card(it->second)).first;
         }
-        int32_t na = ctx.node(dd.anode_str);
-        int32_t nc = ctx.node(dd.cathode_str);
-        auto dev = DIODevice::make(dd.name, na, nc, dd.geom, *card_it->second);
+        auto dev = DIODevice::make(dd.name, dd.anode, dd.cathode, dd.geom, *card_it->second);
+        dev->set_ngspice_setup_order(it->second.source_order, dd.parse_order);
         if (dd.ic_vd_given) {
             dev->set_ic(dd.ic_vd, dd.ic_vd_given);
         }

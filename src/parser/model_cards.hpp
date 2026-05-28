@@ -25,6 +25,7 @@ struct ToleranceAnnotation {
 struct ModelCard {
     std::string name;
     std::string type; // "d", "nmos", "pmos", "npn", "pnp" (lowercase)
+    int source_order = 0; // Flat .model card order after subcircuit expansion.
     std::string ako_base; // PSpice AKO: base model name (empty if not AKO)
     // Stored lowercase for case-insensitive lookup.  Values are parsed as
     // doubles; integer/flag BSIM4 parameters cast from double at dispatch.

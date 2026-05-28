@@ -52,6 +52,21 @@ R1 a 0 1k
     EXPECT_DOUBLE_EQ(ckt.options.vntol, 1e-6);
 }
 
+TEST(Options, ParseSingularOptionAlias) {
+    std::string netlist = R"(
+Options singular option alias
+V1 a 0 1
+R1 a 0 1k
+.option reltol=2e-4 method=gear
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    EXPECT_DOUBLE_EQ(ckt.options.reltol, 2e-4);
+    EXPECT_EQ(ckt.options.method, "gear");
+}
+
 TEST(Options, ParseTempConvertedToKelvin) {
     // .options temp=85 should store 85 + 273.15 = 358.15 K
     std::string netlist = R"(

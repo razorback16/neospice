@@ -21,13 +21,13 @@ namespace neospice::mes {
 
 // UCB physical constants (used in temp and load functions).
 #ifndef CONSTKoverQ
-#define CONSTKoverQ (1.3806226e-23/1.6021918e-19)  // Boltzmann/charge  (eV/K)
+#define CONSTKoverQ (1.38064852e-23/1.6021766208e-19)  // Boltzmann/charge  (eV/K)
 #endif
 #ifndef CONSTe
 #define CONSTe 2.7182818284590452354 // Euler's number
 #endif
 #ifndef CONSTboltz
-#define CONSTboltz 1.3806226e-23
+#define CONSTboltz 1.38064852e-23
 #endif
 #ifndef REFTEMP
 #define REFTEMP 300.15

@@ -4,6 +4,7 @@
 #include "core/types.hpp"          // SimOptions defaults
 #include "devices/ucb_device_init.hpp"
 #include "devices/ucb_utils.hpp"
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <stdexcept>
@@ -20,6 +21,15 @@ namespace neospice::dio {
 namespace neospice {
 
 using namespace neospice::dio;
+
+namespace {
+
+double rhs_value(const double* rhs, int size, int node) {
+    if (!rhs || node <= 0 || node >= size) return 0.0;
+    return rhs[node];
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // DIOModelCard destructor
@@ -219,6 +229,8 @@ void DIODevice::evaluate(const std::vector<double>& voltages,
     }
 
     last_noncon_ = ckt.CKTnoncon;
+    const int rhs_old_size = use_shared_arrays ? shared_arrays->size : n_ghost;
+    last_conv_converged_ = conv_test(ckt.CKTrhsOld, rhs_old_size, *sim_opts);
 
     // Private ghost arrays need folding. Shared arrays are folded once
     // by the Newton driver after all UCB-style devices have stamped.
@@ -280,8 +292,21 @@ double DIODevice::compute_trunc(const IntegratorCtx& ctx,
 // ---------------------------------------------------------------------------
 // device_converged
 // ---------------------------------------------------------------------------
+bool DIODevice::conv_test(const double* rhs_old, int rhs_old_size,
+                          const SimOptions& opts) const {
+    if (!rhs_old || !state0_) return true;
+
+    const double vd = rhs_value(rhs_old, rhs_old_size, inst_.DIOposPrimeNode) -
+                      rhs_value(rhs_old, rhs_old_size, inst_.DIOnegNode);
+    const double delvd = vd - state0_[inst_.DIOvoltage];
+    const double cdhat = state0_[inst_.DIOcurrent] + state0_[inst_.DIOconduct] * delvd;
+    const double cd = state0_[inst_.DIOcurrent];
+    const double tol = opts.reltol * std::max(std::abs(cdhat), std::abs(cd)) + opts.abstol;
+    return std::abs(cdhat - cd) <= tol;
+}
+
 bool DIODevice::device_converged() const {
-    return last_noncon_ == 0;
+    return last_noncon_ == 0 && last_conv_converged_;
 }
 
 // ---------------------------------------------------------------------------

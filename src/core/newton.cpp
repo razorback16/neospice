@@ -44,6 +44,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
     const auto& pattern = ckt.pattern();
+    const auto& load_order = ckt.device_load_order();
 
     if (workspace.matrix_size != pattern.size() ||
         workspace.matrix_nnz != pattern.nnz()) {
@@ -133,7 +134,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
                 tls_integrator_ctx = nullptr;
             }
         } guard(ckt.integrator_ctx, eval_arrays);
-        for (auto& dev : ckt.devices()) {
+        for (Device* dev : load_order) {
             dev->evaluate(solution, mat, rhs);
         }
         for (int32_t i = 0; i < n; ++i) {
@@ -154,7 +155,7 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         // Only relevant during DC — transient already handles this via the
         // warm-start path.
         if (!(saved_mode & MODETRAN_BIT)) {
-            for (const auto& dev : ckt.devices()) {
+            for (const Device* dev : load_order) {
                 if (dev->matrix_structure_changed()) {
                     force_numeric = true;
                     break;
@@ -222,38 +223,12 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         std::copy(rhs.begin(), rhs.end(), proposed.begin());
 
         // Apply per-device voltage limiting
-        for (auto& dev : ckt.devices()) {
+        for (Device* dev : load_order) {
             dev->limit_voltages(old_solution, proposed);
         }
 
         std::copy(proposed.begin(), proposed.end(), solution.begin());
 
-        // Node damping (ngspice niiter.c:296-323): when Newton updates
-        // produce large voltage swings, scale the update so the maximum
-        // change is bounded.  Only active during DC operating point
-        // (MODEDCOP/MODETRANOP), after the first iteration, and before
-        // convergence is reached.
-        constexpr int MODEDCOP_BIT   = 0x10;
-        constexpr int MODETRANOP_BIT = 0x20;
-        if (opts.node_damping && (saved_mode & (MODEDCOP_BIT | MODETRANOP_BIT)) && iter > 0) {
-            double max_diff = 0.0;
-            for (int32_t i = 0; i < num_nodes; ++i) {
-                double diff = std::abs(solution[i] - old_solution[i]);
-                if (diff > max_diff)
-                    max_diff = diff;
-            }
-            if (max_diff > 10.0) {
-                double damp_factor = 10.0 / max_diff;
-                if (damp_factor < 0.1)
-                    damp_factor = 0.1;
-                for (int32_t i = 0; i < num_nodes; ++i) {
-                    solution[i] = old_solution[i] + damp_factor * (solution[i] - old_solution[i]);
-                }
-                for (int32_t i = 0; i < num_states; ++i) {
-                    ckt.state0()[i] = old_state0[i] + damp_factor * (ckt.state0()[i] - old_state0[i]);
-                }
-            }
-        }
 
         // Check convergence
         bool converged = true;
@@ -314,13 +289,40 @@ NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
         // convergence).  Only evaluated when node/branch convergence passed,
         // so it is purely additive — both must pass.
         if (converged) {
-            for (const auto& dev : ckt.devices()) {
-                if (!dev->device_converged()) {
+            for (const Device* dev : load_order) {
+                if (!dev->device_converged(solution)) {
                     converged = false;
                     if (opts.verbose)
                         std::cerr << "[newton] device '" << dev->name()
                                   << "' reports non-convergence\n";
                     break;
+                }
+            }
+        }
+
+        // Node damping (ngspice niiter.c:295-323) is applied only after the
+        // iteration has already been found non-converged.  This keeps the
+        // convergence test on the raw Newton proposal and damps only the value
+        // carried into the next load.
+        constexpr int MODEDCOP_BIT   = 0x10;
+        constexpr int MODETRANOP_BIT = 0x20;
+        if (!converged && opts.node_damping &&
+            (saved_mode & (MODEDCOP_BIT | MODETRANOP_BIT)) && iter > 0) {
+            double max_diff = 0.0;
+            for (int32_t i = 0; i < num_nodes; ++i) {
+                double diff = std::abs(solution[i] - old_solution[i]);
+                if (diff > max_diff)
+                    max_diff = diff;
+            }
+            if (max_diff > 10.0) {
+                double damp_factor = 10.0 / max_diff;
+                if (damp_factor < 0.1)
+                    damp_factor = 0.1;
+                for (int32_t i = 0; i < num_nodes; ++i) {
+                    solution[i] = old_solution[i] + damp_factor * (solution[i] - old_solution[i]);
+                }
+                for (int32_t i = 0; i < num_states; ++i) {
+                    ckt.state0()[i] = old_state0[i] + damp_factor * (ckt.state0()[i] - old_state0[i]);
                 }
             }
         }

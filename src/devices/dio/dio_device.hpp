@@ -75,6 +75,9 @@ private:
 
     mutable bool temp_done_ = false;
     mutable int last_noncon_ = 0;
+    mutable bool last_conv_converged_ = true;
+
+    bool conv_test(const double* rhs_old, int rhs_old_size, const SimOptions& opts) const;
 
     int32_t max_neo_node_ = -1;
 

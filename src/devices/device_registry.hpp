@@ -18,6 +18,7 @@ struct ParsedElement {
     std::string name;
     std::string model_name;
     int line_number = 0;
+    int parse_order = 0;
 };
 
 struct ParseContext {
