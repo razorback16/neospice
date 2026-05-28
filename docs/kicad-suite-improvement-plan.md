@@ -1,7 +1,25 @@
-# KiCad Suite Improvement Plan
+# KiCad SPICE Library Parity — Improvement Plan & Investigations
 
-This document tracks all known failures in the KiCad SPICE Library test suite and
-the planned simulator improvements needed to close them. It covers DC convergence,
+This is the consolidated reference for neospice's parity work against the KiCad
+SPICE Library (ngspice as the reference simulator). It combines three previously
+separate documents:
+
+- **Part I — Suite Improvement Plan:** all known failures in the full KiCad suite
+  and the planned simulator improvements (DC convergence, solver hardening, parser
+  gaps) to close them.
+- **Part II — 5000-Model MISMATCH Investigation & Scope Decisions:** the
+  root-cause taxonomy of the cases where *both* simulators converge but disagree,
+  and what is fixed / backlog / out of scope.
+- **Part III — Case Study: LinearTech Op-Amp False Equilibrium (RESOLVED):** a
+  detailed worked investigation, retained for historical context.
+
+---
+---
+
+# Part I — Suite Improvement Plan
+
+This part tracks all known failures in the KiCad SPICE Library test suite and the
+planned simulator improvements needed to close them. It covers DC convergence,
 solver hardening, parser gaps, and structural issues.
 
 ## Current State
@@ -344,16 +362,292 @@ used for AKO cross-scope resolution) to cover `F` element controlling source nam
 **Files:** `src/parser/subcircuit_expand.cpp`
 
 ---
+---
+
+# Part II — 5000-Model MISMATCH Investigation & Scope Decisions
+
+This part records the root-cause investigation (2026-05-28) of the **MISMATCH**
+cases in the KiCad 5000-model ngspice parity test — circuits where *both*
+simulators converge but the values disagree (baseline:
+`results/compare_5k_after3.json`, 175 MISMATCH). It records what was **fixed**,
+what is **deferred backlog** (real bugs, low impact), and what is explicitly
+**out of scope** (large features / test artifacts).
+
+Every item below was root-caused with numbers from both simulators. Full
+mechanism detail also lives in the memory note `neospice-mismatch-taxonomy`.
+
+**Result after the two high-impact fixes:** MATCH 3606 → 3677,
+MISMATCH 175 → **104** (−71, −41%), **zero regressions**, all 992 unit tests
+pass. The remaining 104 map exactly onto the out-of-scope / backlog buckets below.
+
+## ✅ FIXED (the two high-impact gaps)
+
+### 1. Modeled-resistor token order — ~18 cases
+`Rname n+ n- MODEL value` (resistance **after** the model name). The parser only
+read the resistance from `tokens[3]`; a model name there threw, the catch set
+`val=0`, and the 1 mΩ floor turned it into a dead short. ngspice accepts both
+token orders. **Fix:** `src/parser/netlist_parser.cpp` resistor branch now scans
+later tokens (and `r=`) for the numeric value when `tokens[3]` is a res-model.
+Verified: `RD1 a 0 ROVD1 1.1429e4` → 11429 Ω (was 0.001 Ω). LinearTech MISMATCH
+33 → 17.
+
+### 2. E/G TABLE endpoint smoothing — ~57 cases (53 photodiode + ~4 Elantec)
+ngspice rewrites `E/G ... TABLE {expr} (x,y)...` into an XSPICE `pwl` code model
+with `input_domain=0.1 fraction=TRUE limit=TRUE` (`src/frontend/inpcom.c`):
+synthetic endpoint padding (flat-y extrapolation) + parabolic corner smoothing
+(`cm_smooth_corner`, `src/xspice/cm/cmutil.c`). neospice clamped to the raw
+endpoint value. **Fix:** `pwl_smooth_interp()` in
+`src/devices/vcvs_nonlinear.hpp`, called by both `TableVCVS::interp` and
+`TableVCCS::interp`. Verified: photodiode `net_c` −0.3776 (matches ngspice to
+6 sig figs; was +0.131, a sign flip). D-photo MATCH 0 → 53/54. Unit test
+`NonlinearVCVS.TableExactPoint` updated 5.0 → 4.875 (ngspice confirms 4.875 on
+that exact circuit).
+
+## 🔧 BACKLOG — real neospice bugs, low impact (NOT done; fix when prioritized)
+
+| Bug | Cases | Fix site |
+|-----|-------|----------|
+| BJT `ISE/ISC > 1e-4` treated as relative multiplier of IS (SPICE2 rule) | 1 (KT801B) | `src/devices/bjt/bjt_setup.cpp`, mirror ngspice `bjtsetup.c:62-75` |
+| `I(<non-vsource>)` in a B-element silently dropped (only `I(Vname)` bound) | 1 (AD633AN) | `src/devices/asrc/asrc_device.*` + current-sense shunt; `netlist_parser.cpp:3211-3246` |
+| Model-card param tokenizer breaks on `,` (`af=1,`) and trailing `)` (`C2=1e-15)`) | ~4 (AD4817, 4N25/4N27) | model-card tokenizer |
+| JFET `T_abs` parsed into ModelCard but never applied | (AD4817) | `src/devices/jfet/` temp path |
+| BJT `[substrate]` bracket-node syntax parsed as a literal node | (4N25/4N27) | `netlist_parser.cpp` BJT branch |
+| Modeled **capacitor/inductor** value-after-model (same class as Part II fix #1, C/L branches still skip on a model name) | rare | `netlist_parser.cpp` C/L branches |
+
+These are genuine ngspice-parity bugs but each touches only 1–4 models. Grouping
+the model-card tokenizer fix would knock out AD4817 + 4N25/4N27 together.
+
+## 🚫 OUT OF SCOPE — large features
+
+### XSPICE event-driven digital — 53 cases (ALL of Digital Logic)
+54ALS / 54hcxx / 54fxx / 74fxx / 54hctxx / 54actxx use XSPICE digital primitives
+(`anand [in1 in2] out ls_nand` + `.model ls_nand d_nand`). neospice silently
+drops the `a`-device (floating-node warning), so the output stays 0; ngspice runs
+the digital primitive through a dac_bridge → 3.3 V. Requires a full **event-driven
+digital simulation kernel** (digital nodes, event queue, d_* code models, adc/dac
+bridges) — a major subsystem, not a point fix.
+
+### BJT quasi-saturation — 3 cases (Zetex FCX690B, ZXTN07012/07045)
+`QUASIMOD=1 RCO=… GAMMA=… VO=…` epitaxial-collector model. neospice doesn't
+define those params and runs plain Gummel-Poon. Substantial model feature
+(`bjt_load.cpp` + param/temp plumbing) for 3 parts at 2–5 % error.
+
+## 🚫 OUT OF SCOPE — not neospice bugs (test artifacts / both-valid)
+
+- **Catastrophic cancellation (~6: TI lm101a/lm301a/ne5534/tl070/tl080/ua748).**
+  Boyle macromodel reports `ga·(v11−v12)` with `v11≈v12≈4.95 V`; a ~1e-7 V solver
+  residual is amplified ~1e5×. Both sims converge within tolerance; macro outputs
+  (out, in_m) match. Not fixable without bit-identical iteration ordering.
+- **BJT saturation-knee amplification (~14 BJT.lib).** Both within reltol=1e-3;
+  the steep IC–Vce knee maps a 0.02–0.5 % current residual to 0.4–1.2 % Vce.
+- **Multiple DC roots / basin selection.** Infineon depletion-MOSFET latches (3);
+  LinearTech subckts with numeric port names (~7) where the harness powers
+  nothing and ties all pins to ground (ill-posed fixture). Both land on different
+  valid roots.
+- **psa-mode reference (~7 LinearTech).** The harness runs
+  `ngspice -D ngbehavior=psa` (needed to parse PSpice-syntax models;
+  `tools/compare_kicad_models.py:112`). A few models match *standard* ngspice but
+  not psa-mode. Closing these means emulating specific psa semantics — deferred.
+  Note: the Elantec steep-gain (×5000) tables that still fail are a neospice
+  **convergence** issue in the table active region, tracked separately from the
+  TABLE-value fix above.
+
+## Recall summary (if asked later)
+
+"Out of scope" = the **53 digital (XSPICE event-driven)**, the **3 BJT
+quasi-saturation**, and the **~30 artifacts** (cancellation, saturation-knee,
+basin selection, psa-mode). "Backlog" = the **~7 small real bugs** in the table
+above. "Done" = modeled-resistor token order + E/G TABLE smoothing.
+
+---
+---
+
+# Part III — Case Study: LinearTech Op-Amp False Equilibrium (RESOLVED)
+
+> **Status — RESOLVED (2026-05-28).** Retained for historical context. The
+> root-cause conclusion in the analysis below (pivot order / LU roundoff) was
+> **disproven**; the real cause and fix are in the box immediately following.
+
+## RESOLVED (2026-05-28)
+
+The root cause was **NOT** pivot order / LU roundoff as hypothesized below. It was
+a bug in `Resistor`: any resistance below 1 mΩ was clamped up to `1e-3 Ω`
+(`src/devices/resistor.cpp`). The LT op-amp output stage has `RC 17 0 1.063E-04`
+(≈9409 S) balanced against `GC` (VCCS, gain 9408). Clamping RC to 1e-3 Ω
+(1000 S) destroyed that balance by ~9.4×, driving node 17 (and the output) into
+the wrong basin. ngspice (`restemp.c`) only substitutes 1 mΩ when **no**
+resistance is given; a specified value is used directly.
+
+Confirmed by tracing the DC Newton trajectory in an instrumented ngspice debug
+build vs neospice: the two diverged at iteration 1 (neospice node 17 was 10×
+ngspice's), and a minimal `GC`/`RC` test reproduced V(17)=9.408 (neospice) vs
+1.0 (ngspice). Fix: only guard against a zero/non-finite resistance. After the
+fix the standard test gives v(out)=1.00002, matching ngspice; all 992 unit tests
+pass. The analysis below is retained for historical context but its root-cause
+conclusion is superseded.
+
+## Problem Statement
+
+61 LinearTech op-amp models (LT1012, LT1007, LT1001, etc.) converge to a **false equilibrium** (v(out)≈-0.163V) instead of the correct operating point (v(out)=1.0V for the standard test circuit). Both neospice and ngspice use direct Newton—ngspice converges correctly purely due to different roundoff from its SPARSE 1.3 Markowitz solver.
+
+## Circuit Topology (LT1012 Example)
+
+```
+V+ = 5V, V- = -5V, V(in_p) = 0.5V, V(in_m) via feedback resistors
+
+Internal subcircuit path:
+  Q1/Q2 diff pair → GA(VCCS, gm=1.131e-4) → node 8 (R2=100kΩ)
+                  → GB(VCCS, gain=196) → node 1
+                  → RO1(100Ω) → output (node 6)
+
+Feedback/clamping:
+  GC(VCCS, gain=9408): V(output) → current into node 17
+  RC(1.063e-4 Ω): node 17 to ground (conductance = 9409 S)
+  D1(1→17), D2(17→1): clamp diodes (Is=1.179e-19)
+```
+
+Key parameters: GC gain (9408) and RC conductance (9409 S) dominate the circuit. Node 17 is an extremely stiff node.
+
+## Root Cause Analysis
+
+### Why ngspice succeeds
+ngspice uses SPARSE 1.3 with Markowitz pivoting (threshold 0.001, different tie-breaking from our solver). The different factorization order produces different roundoff in the Newton direction, steering early iterations toward the correct basin. No convergence aids are used—ngspice's `CKTnodeDamping=0` by default.
+
+### What happens in neospice (direct Newton)
+The Newton iteration trace reveals:
+
+| Iter | v(out_net) | v(x1.17) | max_diff | Note |
+|------|-----------|-----------|----------|------|
+| 1    | 0.036     | 0.342     | —        | JCT→FIX transition |
+| 5    | 0.531     | 2.257     | 13.7     | x1.17 growing |
+| 9    | **1.002** | **9.424** | 0.026    | Output correct! Node 17 wrong |
+| 10-12| ~1.0      | ~9.4      | 0.023    | Slowly converging... |
+| 13   | —         | —         | **2.37** | Sudden divergence |
+| 14+  | —         | —         | 2.37+    | Limit cycle |
+
+**Critical observation**: Direct Newton reaches v(out)=1.0 at iteration 9, but node x1.17 is at 9.4V (should be ~1.0V). The diode D2 (anode=17, cathode=1) sees ~8.4V forward bias—physically impossible. Iterations 10-12 nearly converge (md=0.023) but then a sudden jump at iter 13 triggers a limit cycle.
+
+### The false equilibrium mechanism
+1. GC produces enormous current into node 17 proportional to v(out)
+2. Node 17's voltage should be clamped by D1/D2 to within ~0.7V of node 1
+3. During Newton, DEVpnjlim limits the **linearization voltage** but not the actual node voltage
+4. Node 17 accumulates voltage across iterations (each step adds ~1.5V)
+5. Once x1.17 >> v(node 1), D2 is numerically saturated and its Jacobian contribution becomes negligible
+6. The system settles into a false fixed point where D2 "thinks" it's forward-biased but the actual physics are violated
+
+## Approaches Tried
+
+### 1. Node Damping (3.5V threshold)
+**Result**: Fails. Limits per-iteration change to 3.5V but accumulation over 8+ iterations still pushes x1.17 past the crossover. Even at 1.5V threshold, same issue—just slower.
+
+### 2. Oscillation Detection + Best-Solution Revert
+**Result**: Partially works—detects the divergence at iter 13 and reverts. But the "best" solution at iter 9-12 isn't actually converged (md=0.023 > tolerance). Stuck in a revert loop.
+
+### 3. Pseudo-Transient Continuation (PTC)
+Multiple sub-approaches tried:
+
+- **PTC from zero IC**: Large G_pseudo crushes all nodes to 0. Companion G*V_prev=G*0=0 provides no drive. Solution never evolves from zero.
+- **PTC with warm start (from gmin stepping result)**: V_prev≈-0.163V (the wrong equilibrium). Companion reinforces the wrong basin. Reducing G leads back to divergence.
+- **PTC with INITJCT→INITFLOAT transition**: Mode switch + G reduction simultaneously causes failure. Fixed by keeping same G during transition, but subsequent G reduction still fails.
+- **Aggressive final probes**: Tried probing (remove companion, run plain Newton) at G=954 and G=0.93. v(out_net)≈0 at both—PTC never found the correct basin.
+
+**Fundamental PTC limitation**: For this circuit, the false equilibrium at v(out)≈0 is the nearest equilibrium from zero. PTC's backward Euler companion with zero initial conditions naturally settles there.
+
+### 4. Gain Stepping (combined source + gain)
+**Result**: Gets to ~35.7% of full gain then hits a **bifurcation**. Steps below 1e-7 fail. Jump-to-full from 35.7% also fails.
+
+**Hypothesis**: Near dep_src_fact≈0.44, the internal diodes D1/D2 switch state (off→on), creating a discontinuity that Newton can't track. The Jacobian becomes singular at the bifurcation point.
+
+### 5. diag_gmin fix (applied to node variables only)
+**Result**: Fixed a correctness bug (was applying gmin to branch current rows, corrupting voltage source equations). But 1e-12 on diagonal is negligible for this problem.
+
+### 6. Supply-rail clamping
+**Result**: Ineffective. Rail_max = max_node_value + 1.0 ≈ 6V. But x1.17's correct value (1.0V) is well within rails—the issue is the intermediate state during Newton, not the final value.
+
+## Open Problems
+
+> Note: these were the open problems *before* the resistor-clamp root cause was
+> found. They remain useful as general Newton-hardening ideas (and overlap with
+> Part I Priorities 2A/3A), but they were not what fixed this circuit.
+
+### P1: Newton doesn't monotonically converge from the correct basin
+At iter 9, v(out)=1.0 (correct) and md=0.026. But Newton can't complete convergence because x1.17 is at 9.4V. A **backtracking line search** would detect that the full Newton step at iter 13 increases the residual and scale back, potentially allowing convergence from the iter 9 state.
+
+### P2: No convergence aid escapes the zero/false basin
+All current aids (gmin stepping, source stepping, gain stepping, PTC) end up near v(out)≈0 or ≈-0.163V. We need either:
+- **OPtran (transient-based OP)**: Run actual transient from t=0 with added capacitances. Circuit's parasitic caps provide physical damping. Most SPICE simulators use this as last resort.
+- **Continuation past bifurcation**: Arc-length continuation or PTC specifically at the gain-stepping stuck point (~35% gain).
+- **Randomized perturbation**: Try Newton from multiple random initial conditions. If any perturbation lands in the correct basin, Newton converges.
+
+### P3: Pivot order affects basin selection
+The core difference with ngspice is the LU factorization pivot order. Options:
+- Try **full pivoting** (`numeric_fullpivot`) during direct Newton for these circuits
+- Try **random pivot perturbation**: add tiny random noise (1e-15 scale) to matrix entries before factorization to change tie-breaking
+- Implement a second pivot strategy (e.g., different Markowitz threshold) and try both
+
+### P4: DEVpnjlim doesn't prevent unphysical junction voltages
+The pnjlim mechanism limits the linearization voltage for I-V calculation but doesn't prevent the actual node voltage from growing unboundedly. A hard clamp on Vd = V(anode) - V(cathode) within the Newton iteration might help, but could also prevent convergence for legitimately large reverse-bias scenarios.
+
+## Recommended Next Steps (in priority order)
+
+1. **Backtracking line search in Newton** (addresses P1):
+   - After computing Newton step Δx, evaluate ||f(x + Δx)||
+   - If ||f(x + Δx)|| > ||f(x)||, try α=0.5, 0.25, etc.
+   - This prevents the overshoot at iter 13 and may allow convergence from iter 9's state
+   - Low risk of regression (line search can only reduce step, never increase)
+
+2. **OPtran implementation** (addresses P2):
+   - Add virtual capacitors (C=1e-12 F) to all nodes
+   - Run 100-200 backward Euler steps with progressively larger dt
+   - Uses circuit physics (KVL/KCL with time evolution) to find correct steady state
+   - This is how ngspice's `-o` option works and is standard in commercial SPICE
+
+3. **Alternative pivot ordering** (addresses P3):
+   - Try `numeric_fullpivot` for DC OP when direct Newton fails
+   - Or implement Markowitz with threshold=0.001 (ngspice's value; ours is 0.1)
+   - Test if different pivot ordering reaches correct basin
+
+4. **Junction voltage hard limit** (addresses P4):
+   - In diode `limit_voltages()`, clamp V(anode)-V(cathode) to [-100Vt, +40Vt]
+   - Prevents the unphysical x1.17=9.4V state from forming
+   - Requires careful testing to avoid breaking legitimate circuits
+
+---
+
+## Test Commands
+
+```bash
+# Build
+cd build && cmake --build . -j$(nproc)
+
+# Run unit tests
+cd build && ctest -j$(nproc)
+
+# Test single model
+./build/neospice /tmp/test_lt1012_verbose.cir
+
+# Run KiCad comparison (all 5000 models)
+python3 tools/compare_kicad_models.py --max 5000 --save results/compare_5k.json --jobs 8
+
+# Run a specific library/family
+python3 tools/compare_kicad_models.py --file "LinearTech" --save results/lt_only.json --jobs 8
+
+# See actual error margins (configure with debug compare)
+cmake .. -DNEOSPICE_DEBUG_COMPARE=ON   # prints MARGIN_TRAN|signal|err|tol|headroom
+```
+
+---
 
 ## Key References
 
 1. ngspice source: `src/spicelib/analysis/cktop.c` — DC convergence orchestration
 2. ngspice source: `src/maths/ni/niiter.c` — Newton iteration with node damping
 3. ngspice source: `src/spicelib/analysis/optran.c` — Transient startup for DC
-4. Kelley, "Pseudo-Transient Continuation for DAEs", SIAM J. Sci. Comput., 2004
-5. Moon et al., "Homotopy Methods for DC Analysis", Oregon State / Wiley
-6. Roychowdhury & Melville, "Delivering Global DC Convergence for Large Mixed-Signal Circuits"
-7. Intusoft, "Convergence in SPICE" — comprehensive practical guide
-8. SIMetrix help: "DC Operating Point" — multi-algorithm approach documentation
-9. LTwiki, "Convergence Problems" — practical tips and device modeling advice
-10. Cadence Spectre lectures on convergence (YouTube)
+4. ngspice source: `src/frontend/inpcom.c` + `src/xspice/cm/cmutil.c` — E/G TABLE → XSPICE pwl rewrite and corner smoothing
+5. Kelley, "Pseudo-Transient Continuation for DAEs", SIAM J. Sci. Comput., 2004
+6. Moon et al., "Homotopy Methods for DC Analysis", Oregon State / Wiley
+7. Roychowdhury & Melville, "Delivering Global DC Convergence for Large Mixed-Signal Circuits"
+8. Intusoft, "Convergence in SPICE" — comprehensive practical guide
+9. SIMetrix help: "DC Operating Point" — multi-algorithm approach documentation
+10. LTwiki, "Convergence Problems" — practical tips and device modeling advice
+11. Cadence Spectre lectures on convergence (YouTube)
