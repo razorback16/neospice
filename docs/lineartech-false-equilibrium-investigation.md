@@ -1,5 +1,23 @@
 # LinearTech Op-Amp False Equilibrium — Investigation Findings
 
+## RESOLVED (2026-05-28)
+
+The root cause was **NOT** pivot order / LU roundoff as hypothesized below. It was
+a bug in `Resistor`: any resistance below 1 mΩ was clamped up to `1e-3 Ω`
+(`src/devices/resistor.cpp`). The LT op-amp output stage has `RC 17 0 1.063E-04`
+(≈9409 S) balanced against `GC` (VCCS, gain 9408). Clamping RC to 1e-3 Ω
+(1000 S) destroyed that balance by ~9.4×, driving node 17 (and the output) into
+the wrong basin. ngspice (`restemp.c`) only substitutes 1 mΩ when **no**
+resistance is given; a specified value is used directly.
+
+Confirmed by tracing the DC Newton trajectory in an instrumented ngspice debug
+build vs neospice: the two diverged at iteration 1 (neospice node 17 was 10×
+ngspice's), and a minimal `GC`/`RC` test reproduced V(17)=9.408 (neospice) vs
+1.0 (ngspice). Fix: only guard against a zero/non-finite resistance. After the
+fix the standard test gives v(out)=1.00002, matching ngspice; all 992 unit tests
+pass. The analysis below is retained for historical context but its root-cause
+conclusion is superseded.
+
 ## Problem Statement
 
 61 LinearTech op-amp models (LT1012, LT1007, LT1001, etc.) converge to a **false equilibrium** (v(out)≈-0.163V) instead of the correct operating point (v(out)=1.0V for the standard test circuit). Both neospice and ngspice use direct Newton—ngspice converges correctly purely due to different roundoff from its SPARSE 1.3 Markowitz solver.

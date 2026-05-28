@@ -911,6 +911,23 @@ std::vector<TokenizedLine> expand_instance(
                 continue;  // skip the normal value-evaluation loop below
             }
 
+            // B-source (ASRC) expressions: like E/G ABM, the I=/V= expression
+            // references node voltages and subcircuit-local .param values.
+            // Substitute node names (so v(local) -> v(x1.local)) and inline
+            // local params so the runtime expression evaluator resolves them.
+            if (elem_type == 'b') {
+                for (size_t i = value_start; i < line.tokens.size(); ++i) {
+                    std::string tok = line.tokens[i];
+                    if (tok.find('(') != std::string::npos) {
+                        tok = subst_expr_nodes(tok, subst_node, instance_prefix);
+                    }
+                    tok = subst_param_names(tok, params);
+                    new_line.tokens.push_back(tok);
+                }
+                result.push_back(new_line);
+                continue;  // skip the normal value-evaluation loop below
+            }
+
             // Special handling for H (CCVS) and F (CCCS) elements:
             // In simple form, token[3] is a Vsense device name that must be
             // prefixed with the instance hierarchy.

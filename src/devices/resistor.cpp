@@ -9,8 +9,10 @@ Resistor::Resistor(std::string name, int32_t node_pos, int32_t node_neg, double 
     : Device(std::move(name)), np_(node_pos), nn_(node_neg),
       resistance_nom_(resistance), resistance_eff_(resistance)
 {
-    // Guard against zero/near-zero resistance in case process_temperature is never called
-    if (std::abs(resistance_eff_) < 1e-3)
+    // ngspice (restemp.c) uses the given resistance directly; its 1 mOhm
+    // default applies only when no resistance is specified. Guard only against
+    // a zero/non-finite value to avoid division by zero in the conductance.
+    if (!(std::isfinite(resistance_eff_)) || resistance_eff_ == 0.0)
         resistance_eff_ = 1e-3;
 }
 
@@ -84,8 +86,10 @@ void Resistor::process_temperature(double sim_temp, double sim_tnom) {
     double difference = (temp + dtemp) - tnom;
     double factor = 1.0 + tc1_ * difference + tc2_ * difference * difference;
     resistance_eff_ = resistance_nom_ * factor * scale_ / m_;
-    // Guard against zero or negative resistance
-    if (std::abs(resistance_eff_) < 1e-3) resistance_eff_ = 1e-3;
+    // Guard only against a zero/non-finite value (division-by-zero); keep
+    // legitimately-specified small resistances, matching ngspice restemp.c.
+    if (!(std::isfinite(resistance_eff_)) || resistance_eff_ == 0.0)
+        resistance_eff_ = 1e-3;
 }
 
 } // namespace neospice
