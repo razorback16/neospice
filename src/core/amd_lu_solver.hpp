@@ -66,10 +66,35 @@ private:
     // pinv_[orig_row] = pivot step at which that row became pivotal, or -1.
     std::vector<int32_t> pinv_;
 
+    // ---- Refactor replay data (KLU-style fast path) ----
+    // Recorded by factor_() so refactorize() can recompute numeric values along
+    // the SAME structure and pivot order with no DFS and no pivot search.
+    //
+    // For each value slot p of A (matching NumericMatrix values[]), the
+    // pivot-step row it scatters into during the per-column solve. This is just
+    // pinv_[a_rowidx_[p]] precomputed once, so refactor can scatter directly.
+    std::vector<int32_t> scatter_row_;  // nnz: pivot-step row for value slot p
+    bool replay_ready_ = false;         // true once factor_ recorded replay data
+
     // scratch for solve
     std::vector<double> x_;
 
+    // Last full-factor diag_gmin, reused by the replay path.
+    double last_gmin_ = 0.0;
+
+    // Diagnostics / test hooks: count which path refactorize() took.
+    int32_t refactor_fast_count_ = 0;     // replay (no pivot) succeeded
+    int32_t refactor_fallback_count_ = 0;  // fell back to full factor_()
+
     bool factor_(const NumericMatrix& mat, double diag_gmin);
+    bool refactor_replay_(const NumericMatrix& mat, double diag_gmin);
+
+public:
+    // Test/diagnostic accessors for the refactor fast-path counters.
+    int32_t refactor_fast_count() const { return refactor_fast_count_; }
+    int32_t refactor_fallback_count() const { return refactor_fallback_count_; }
+
+private:
 
     // Complex ops delegate to a Markowitz solver.
     std::unique_ptr<NeoSolver> complex_solver_;

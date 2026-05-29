@@ -28,6 +28,7 @@ void AmdLuSolver::symbolic(const SparsityPattern& pattern) {
 
     factored_ = false;
     symbolized_ = true;
+    replay_ready_ = false;
 
     pinv_.assign(n_, -1);
     x_.assign(n_, 0.0);
@@ -179,8 +180,94 @@ bool AmdLuSolver::factor_(const NumericMatrix& mat, double diag_gmin) {
     // and U share the same (pivot-step) index space for substitution.
     for (size_t p = 0; p < Li_.size(); ++p) Li_[p] = pinv_[Li_[p]];
 
+    // --- Record refactor replay data (KLU-style fast path) ---
+    // After a full factorization the pivot order (pinv_) and the L/U structure
+    // are fixed. Precompute, for each value slot p of A, the pivot-step row it
+    // scatters into during the per-column solve. refactorize() then re-scatters
+    // and recomputes numeric values along this exact structure with no DFS and
+    // no pivot search (klu_refactor style). Ux_/Lx_ already hold the structure
+    // we replay over (Ui_ for each column is in topological/reach order).
+    scatter_row_.assign(nnz_, -1);
+    for (int32_t p = 0; p < nnz_; ++p) scatter_row_[p] = pinv_[a_rowidx_[p]];
+    last_gmin_ = diag_gmin;
+    replay_ready_ = true;
+
     factored_ = true;
     return false;
+}
+
+// KLU-style refactor: recompute L/U numeric values along the stored structure
+// and pivot order from the last full factor_(). No DFS, no pivot search.
+//
+// Pivot-growth safety: when reusing the old pivot row, the new diagonal U(k,k)
+// may have shrunk toward zero (the value change weakened a previously-good
+// pivot). KLU's halt_if_singular only catches an exactly-zero pivot; here we
+// additionally guard against tiny pivots that would amplify round-off through
+// the substitution. We compare |ukk| against the largest-magnitude entry seen
+// in column k's solve (the natural growth reference, mirroring how partial
+// pivoting bounds growth). If |ukk| < pivot_tol_ * colmax the reused pivot is
+// no longer the threshold-acceptable choice the full factor would have made, so
+// we BAIL and let the caller fall back to a full re-pivoting factorization.
+// Threshold = pivot_tol_ (KLU default 1e-3): identical criterion the full
+// factor uses to accept a diagonal/pivot candidate, so the fast path only
+// succeeds when it reproduces a factorization the full path would also accept.
+bool AmdLuSolver::refactor_replay_(const NumericMatrix& mat, double diag_gmin) {
+    const double* values = mat.data();
+    const int32_t n = n_;
+
+    std::vector<double>& X = x_;
+    X.assign(n, 0.0);
+
+    for (int32_t k = 0; k < n; ++k) {
+        int32_t col = q_[k];
+
+        // Scatter A(:,col) into X in pivot-step space (no DFS — rows fixed).
+        for (int32_t p = a_colptr_[col]; p < a_colptr_[col + 1]; ++p)
+            X[scatter_row_[p]] = values[p];
+        // Apply diag_gmin to the diagonal entry of this column (pivot-step row
+        // pinv_[col]), matching the full factor's add to x[col].
+        if (diag_gmin != 0.0) X[pinv_[col]] += diag_gmin;
+
+        // Track the largest-magnitude entry encountered (growth reference).
+        double colmax = 0.0;
+
+        // Compute U(:,k) and update X using already-computed L columns, in the
+        // stored topological (reach) order. Ui_/Ux_ hold the U structure.
+        int32_t up_beg = Up_[k], up_end = Up_[k + 1];
+        // The last U entry is the diagonal U(k,k); the rest are above-diagonal.
+        for (int32_t up = up_beg; up < up_end - 1; ++up) {
+            int32_t j = Ui_[up];        // pivot-step row of the U entry
+            double ujk = X[j];
+            X[j] = 0.0;
+            Ux_[up] = ujk;
+            double a = std::fabs(ujk);
+            if (a > colmax) colmax = a;
+            // L(:,j): skip the unit diagonal (first entry).
+            for (int32_t p = Lp_[j] + 1; p < Lp_[j + 1]; ++p)
+                X[Li_[p]] -= Lx_[p] * ujk;
+        }
+
+        // Diagonal pivot U(k,k) sits at pivot-step row k.
+        double ukk = X[k];
+        X[k] = 0.0;
+        double aukk = std::fabs(ukk);
+        if (aukk > colmax) colmax = aukk;
+
+        // Pivot-growth check: reject a tiny/zero reused pivot and fall back.
+        if (ukk == 0.0 || (colmax > 0.0 && aukk < pivot_tol_ * colmax)) {
+            return false;  // unstable — caller falls back to full factor.
+        }
+
+        // Store the (last) diagonal U entry, then gather/divide L(:,k).
+        Ux_[up_end - 1] = ukk;
+        // L(:,k): first entry is the unit diagonal (Lx_==1, leave it).
+        for (int32_t p = Lp_[k] + 1; p < Lp_[k + 1]; ++p) {
+            int32_t i = Li_[p];         // pivot-step row
+            Lx_[p] = X[i] / ukk;
+            X[i] = 0.0;
+        }
+    }
+    return true;  // replay succeeded.
 }
 
 bool AmdLuSolver::numeric(const SparsityPattern& /*pattern*/,
@@ -193,7 +280,23 @@ bool AmdLuSolver::numeric(const SparsityPattern& /*pattern*/,
 bool AmdLuSolver::refactorize(const NumericMatrix& mat, double diag_gmin) {
     if (!symbolized_)
         throw std::logic_error("AmdLuSolver::refactorize: symbolic() not called");
-    // Stage 2: no symbolic reuse — just refactor with pivoting.
+
+    // Fast path: replay the structure + pivot order from the last full factor_.
+    // Only available once a full factorization has recorded the replay data.
+    if (replay_ready_) {
+        // Snapshot numeric state so a failed replay leaves nothing half-written
+        // before the full-factor fallback rebuilds everything anyway. (factor_
+        // fully reassigns Lx_/Ux_, so we only need the structure intact, which
+        // refactor_replay_ never touches — it overwrites values in place.)
+        if (refactor_replay_(mat, diag_gmin)) {
+            ++refactor_fast_count_;
+            factored_ = true;
+            return false;  // not singular
+        }
+        // Reused pivots became unstable (tiny/zero pivot): fall back to a full
+        // re-pivoting factorization for this call. This re-records replay data.
+        ++refactor_fallback_count_;
+    }
     return factor_(mat, diag_gmin);
 }
 

@@ -283,6 +283,162 @@ TEST(AmdLuSolver, RefactorizeChangesValues) {
         EXPECT_NEAR(rhs[i], x_true[i], 1e-10);
 }
 
+// Refactor fast path: after numeric(), change values, refactorize(), and assert
+// the solve matches a fresh-from-numeric() solve of the SAME changed matrix.
+// Also prove the fast (replay) path is actually taken (counter), not a fallback.
+TEST(AmdLuSolver, RefactorFastPathMatchesFreshFactor) {
+    int n = 50;
+    SparsityBuilder sb(n);
+    for (int i = 0; i < n; ++i) {
+        sb.add(i, i);
+        if (i > 0) sb.add(i, i - 1);
+        if (i < n - 1) sb.add(i, i + 1);
+        if (i + 2 < n) sb.add(i, i + 2);  // a little asymmetry/fill
+    }
+    SparsityPattern pat = sb.build();
+
+    auto fill = [&](NumericMatrix& m, double s) {
+        for (int i = 0; i < n; ++i) {
+            m.add(pat.offset(i, i), 10.0 * s + 0.1 * i);
+            if (i > 0) m.add(pat.offset(i, i - 1), -1.0 * s);
+            if (i < n - 1) m.add(pat.offset(i, i + 1), -1.5 * s);
+            if (i + 2 < n) m.add(pat.offset(i, i + 2), -0.3 * s);
+        }
+    };
+
+    // Initial full factor on scale s0.
+    NumericMatrix mat0(pat);
+    fill(mat0, 1.0);
+    AmdLuSolver amd;
+    amd.symbolic(pat);
+    ASSERT_FALSE(amd.numeric(pat, mat0));
+    EXPECT_EQ(amd.refactor_fast_count(), 0);
+
+    // Change values, then refactorize (should take fast path).
+    NumericMatrix mat1(pat);
+    fill(mat1, 1.7);
+    ASSERT_FALSE(amd.refactorize(mat1));
+    EXPECT_EQ(amd.refactor_fast_count(), 1) << "fast replay path not taken";
+    EXPECT_EQ(amd.refactor_fallback_count(), 0) << "unexpected fallback";
+
+    // Fresh-from-numeric reference solve of the SAME changed matrix.
+    AmdLuSolver fresh;
+    fresh.symbolic(pat);
+    ASSERT_FALSE(fresh.numeric(pat, mat1));
+
+    std::vector<double> x_true(n);
+    for (int i = 0; i < n; ++i) x_true[i] = std::sin(0.2 * i) + 1.3;
+    std::vector<double> rhs_ref = make_rhs(pat, mat1, x_true);
+    std::vector<double> rhs_amd = rhs_ref;
+    fresh.solve(rhs_ref);
+    amd.solve(rhs_amd);
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(rhs_amd[i], x_true[i], 1e-9) << "refactor vs x_true at " << i;
+        EXPECT_NEAR(rhs_amd[i], rhs_ref[i], 1e-12)
+            << "refactor vs fresh factor at " << i;  // bit-identical structure
+    }
+
+    // A second refactor with yet another value set still uses the fast path.
+    NumericMatrix mat2(pat);
+    fill(mat2, 0.6);
+    ASSERT_FALSE(amd.refactorize(mat2));
+    EXPECT_EQ(amd.refactor_fast_count(), 2);
+    EXPECT_EQ(amd.refactor_fallback_count(), 0);
+    std::vector<double> rhs2 = make_rhs(pat, mat2, x_true);
+    amd.solve(rhs2);
+    for (int i = 0; i < n; ++i)
+        EXPECT_NEAR(rhs2[i], x_true[i], 1e-9) << "second refactor at " << i;
+}
+
+// Refactor fallback: drive a previously-good diagonal pivot near zero so the
+// reused pivot fails the growth check. Assert it falls back to a full factor
+// AND still solves correctly (the fallback re-pivots).
+TEST(AmdLuSolver, RefactorFallbackOnUnstablePivot) {
+    // 3x3 dense. First factor with a strong diagonal so pivots = diagonal.
+    int n = 3;
+    SparsityBuilder sb(n);
+    for (int i = 0; i < n; ++i) for (int j = 0; j < n; ++j) sb.add(i, j);
+    SparsityPattern pat = sb.build();
+
+    NumericMatrix mat0(pat);
+    // Diagonally dominant: pivots are the diagonal entries.
+    double a0[3][3] = {{10, 1, 2}, {1, 12, 3}, {2, 1, 15}};
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) mat0.add(pat.offset(i, j), a0[i][j]);
+
+    AmdLuSolver amd;
+    amd.symbolic(pat);
+    ASSERT_FALSE(amd.numeric(pat, mat0));
+
+    // New values: collapse the (0,0) diagonal to ~0 while making the matrix
+    // still nonsingular overall. Reusing the old pivot (row 0 at step for col 0)
+    // would yield a tiny U(0,0) -> growth check trips -> fallback re-pivots.
+    NumericMatrix mat1(pat);
+    double a1[3][3] = {{1e-12, 1, 2}, {1, 12, 3}, {2, 1, 15}};
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) mat1.add(pat.offset(i, j), a1[i][j]);
+
+    ASSERT_FALSE(amd.refactorize(mat1));
+    EXPECT_GE(amd.refactor_fallback_count(), 1) << "expected pivot fallback";
+
+    // Still solves correctly (compare against NeoSolver on the same matrix).
+    std::vector<double> x_true = {2.0, -1.0, 0.5};
+    std::vector<double> rhs = make_rhs(pat, mat1, x_true);
+
+    NeoSolver neo;
+    neo.symbolic(pat);
+    ASSERT_FALSE(neo.numeric(pat, mat1));
+    std::vector<double> rhs_neo = rhs;
+    neo.solve(rhs_neo);
+
+    std::vector<double> rhs_amd = rhs;
+    amd.solve(rhs_amd);
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(rhs_amd[i], x_true[i], 1e-7) << "fallback solve at " << i;
+        EXPECT_NEAR(rhs_amd[i], rhs_neo[i], 1e-7) << "fallback vs neo at " << i;
+    }
+}
+
+// gmin must be applied identically on the refactor fast path.
+TEST(AmdLuSolver, RefactorAppliesGmin) {
+    int n = 30;
+    SparsityBuilder sb(n);
+    for (int i = 0; i < n; ++i) {
+        sb.add(i, i);
+        if (i > 0) sb.add(i, i - 1);
+        if (i < n - 1) sb.add(i, i + 1);
+    }
+    SparsityPattern pat = sb.build();
+    auto fill = [&](NumericMatrix& m, double s) {
+        for (int i = 0; i < n; ++i) {
+            m.add(pat.offset(i, i), 3.0 * s);
+            if (i > 0) m.add(pat.offset(i, i - 1), -1.0 * s);
+            if (i < n - 1) m.add(pat.offset(i, i + 1), -1.0 * s);
+        }
+    };
+    double gmin = 1e-2;
+
+    NumericMatrix mat0(pat); fill(mat0, 1.0);
+    AmdLuSolver amd; amd.symbolic(pat);
+    ASSERT_FALSE(amd.numeric(pat, mat0, gmin));
+
+    NumericMatrix mat1(pat); fill(mat1, 1.4);
+    ASSERT_FALSE(amd.refactorize(mat1, gmin));
+    EXPECT_EQ(amd.refactor_fast_count(), 1);
+
+    // Fresh factor of the same matrix+gmin as reference.
+    AmdLuSolver fresh; fresh.symbolic(pat);
+    ASSERT_FALSE(fresh.numeric(pat, mat1, gmin));
+
+    std::vector<double> rhs(n);
+    for (int i = 0; i < n; ++i) rhs[i] = (i % 4) + 1.0;
+    std::vector<double> rhs_amd = rhs, rhs_fresh = rhs;
+    amd.solve(rhs_amd);
+    fresh.solve(rhs_fresh);
+    for (int i = 0; i < n; ++i)
+        EXPECT_NEAR(rhs_amd[i], rhs_fresh[i], 1e-12) << "gmin refactor at " << i;
+}
+
 TEST(AmdLuSolver, StructurallySingular) {
     // Empty column 1 -> structurally singular.
     SparsityBuilder sb(2);
