@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -44,6 +45,20 @@ std::string to_lower(const std::string& s) {
     std::string result = s;
     std::transform(result.begin(), result.end(), result.begin(), ::tolower);
     return result;
+}
+
+// Case-insensitive equality of a token against a lowercase literal, without
+// allocating a lowercased copy. Used in the hot per-line directive dispatch
+// loops (pass025 / pass04 / pass1) which would otherwise lowercase tokens[0]
+// of every line in a large included library.
+inline bool iequals(const std::string& tok, const char* lit) {
+    size_t i = 0;
+    for (; i < tok.size(); ++i) {
+        char c = tok[i];
+        if (c >= 'A' && c <= 'Z') c = char(c - 'A' + 'a');
+        if (lit[i] == '\0' || c != lit[i]) return false;
+    }
+    return lit[i] == '\0';
 }
 
 // Parse a .func directive from a tokenized line and add to func_defs.
@@ -471,9 +486,20 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
                 continue;
             }
 
-            std::string first = to_lower(line.tokens[0]);
+            // Only lines beginning with '.' can be .subckt/.ends; for the bulk
+            // of library lines (.model cards, elements) skip the lowercasing.
+            const std::string& tok0 = line.tokens[0];
+            bool is_subckt = false, is_ends = false;
+            if (tok0[0] == '.') {
+                is_subckt = iequals(tok0, ".subckt");
+                // .ends matches ".ends" exactly or any token starting ".ends..."
+                if (!is_subckt && tok0.size() >= 5 &&
+                    (tok0[1]=='e'||tok0[1]=='E') && (tok0[2]=='n'||tok0[2]=='N') &&
+                    (tok0[3]=='d'||tok0[3]=='D') && (tok0[4]=='s'||tok0[4]=='S'))
+                    is_ends = true;
+            }
 
-            if (first == ".subckt") {
+            if (is_subckt) {
                 if (line.tokens.size() < 2) {
                     fprintf(stderr, "Warning: Line %d: .subckt requires a subcircuit name — skipping\n", line.line_number);
                     continue;
@@ -530,7 +556,7 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
 
                 depth++;
 
-            } else if (first == ".ends" || (first.size() > 4 && first.substr(0, 5) == ".ends")) {
+            } else if (is_ends) {
                 if (depth == 0) {
                     // Stray .ends without matching .subckt — silently skip
                     continue;
@@ -612,8 +638,7 @@ void NetlistParser::pass025_resolve_funcs_params(ParseState& state) {
         // First collect .func definitions
         for (const auto& line : state.lines) {
             if (line.tokens.empty()) continue;
-            std::string first = to_lower(line.tokens[0]);
-            if (first == ".func") {
+            if (iequals(line.tokens[0], ".func")) {
                 parse_func_def(line.tokens, state.func_defs);
             }
         }
@@ -631,8 +656,7 @@ void NetlistParser::pass025_resolve_funcs_params(ParseState& state) {
         std::vector<std::pair<std::string, std::string>> pre_raw_params;
         for (const auto& line : state.lines) {
             if (line.tokens.empty()) continue;
-            std::string first = to_lower(line.tokens[0]);
-            if (first == ".param") {
+            if (iequals(line.tokens[0], ".param")) {
                 for (size_t i = 1; i < line.tokens.size(); ++i) {
                     auto eq_pos = line.tokens[i].find('=');
                     if (eq_pos != std::string::npos) {
@@ -669,7 +693,7 @@ void NetlistParser::pass04_collect_globals(ParseState& state) {
     // hierarchies and must NOT be prefixed during expansion.
     for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
-        if (to_lower(line.tokens[0]) == ".global") {
+        if (iequals(line.tokens[0], ".global")) {
             for (size_t i = 1; i < line.tokens.size(); ++i) {
                 state.global_nodes.insert(to_lower(line.tokens[i]));
             }
@@ -696,8 +720,7 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
     // Re-collect .func from post-expansion lines (subcircuit bodies may define .func)
     for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
-        std::string first = to_lower(line.tokens[0]);
-        if (first == ".func") {
+        if (iequals(line.tokens[0], ".func")) {
             parse_func_def(line.tokens, state.func_defs);
         }
     }
@@ -714,9 +737,10 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
     std::vector<std::pair<std::string, std::string>> raw_params;
     for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
-        std::string first = to_lower(line.tokens[0]);
+        // Only .model / .param are handled here; both start with '.'.
+        if (line.tokens[0][0] != '.') continue;
 
-        if (first == ".model") {
+        if (iequals(line.tokens[0], ".model")) {
             // Lazy: store only the raw token vector keyed by lowercased name.
             // The expensive parse_model_card + AKO resolution is deferred to
             // ensure_model(), triggered on first reference by an instance.
@@ -730,7 +754,7 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
                 rm.source_order = state.next_model_order++;
                 state.model_raw[key] = std::move(rm);
             }
-        } else if (first == ".param") {
+        } else if (iequals(line.tokens[0], ".param")) {
             // .param key=value  or  .param key={expr}  or  .param key = value
             // Collect raw (name, expression) pairs; resolve later in dependency order.
             for (size_t i = 1; i < line.tokens.size(); ++i) {
@@ -3400,6 +3424,28 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
     }
 }
 
+// Helper: case-insensitive prefix test starting at offset `off` in `s`.
+// Returns true if s[off..] begins with the (lowercase) literal `prefix`.
+static inline bool ci_prefix_at(const std::string& s, size_t off, const char* prefix) {
+    size_t i = 0;
+    for (; prefix[i] != '\0'; ++i) {
+        size_t j = off + i;
+        if (j >= s.size()) return false;
+        char c = s[j];
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        if (c != prefix[i]) return false;
+    }
+    return true;
+}
+
+// Helper: the character that would follow a matched prefix is end-of-line or a
+// whitespace delimiter (so ".inc" doesn't match ".include" spuriously, etc.).
+static inline bool is_word_boundary(const std::string& s, size_t pos) {
+    if (pos >= s.size()) return true;
+    char c = s[pos];
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
 // Helper: resolve a filename token (possibly quoted) from a line.
 // pos points to the start of the filename token in `line`.
 // Returns the unquoted filename and advances pos past it.
@@ -3463,26 +3509,28 @@ std::string NetlistParser::resolve_includes(const std::string& content,
         while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start])))
             ++start;
 
-        // Build lowercase version from the non-whitespace start
-        std::string lower_line = line.substr(start);
-        std::transform(lower_line.begin(), lower_line.end(), lower_line.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        // Fast path: only lines whose first non-whitespace char is '.' can be a
+        // directive handled here (.include/.inc/.lib/.endl). Everything else
+        // (the overwhelming majority of library lines: .model cards, element
+        // lines, comments) is emitted verbatim without any lowercasing or
+        // prefix matching. This avoids a full per-line string allocation for
+        // every line of a large included library.
+        if (start >= line.size() || line[start] != '.') {
+            result << line << '\n';
+            continue;
+        }
 
         // ----------------------------------------------------------------
         // .include filename
         // ----------------------------------------------------------------
         bool is_include = false;
         size_t filename_start = 0;
-        if (lower_line.size() >= 8 && lower_line.substr(0, 8) == ".include") {
-            if (lower_line.size() == 8 || std::isspace(static_cast<unsigned char>(lower_line[8]))) {
-                is_include = true;
-                filename_start = start + 8; // position in original line after ".include"
-            }
-        } else if (lower_line.size() >= 4 && lower_line.substr(0, 4) == ".inc") {
-            if (lower_line.size() == 4 || std::isspace(static_cast<unsigned char>(lower_line[4]))) {
-                is_include = true;
-                filename_start = start + 4;
-            }
+        if (ci_prefix_at(line, start, ".include") && is_word_boundary(line, start + 8)) {
+            is_include = true;
+            filename_start = start + 8; // position in original line after ".include"
+        } else if (ci_prefix_at(line, start, ".inc") && is_word_boundary(line, start + 4)) {
+            is_include = true;
+            filename_start = start + 4;
         }
 
         if (is_include) {
@@ -3524,17 +3572,12 @@ std::string NetlistParser::resolve_includes(const std::string& content,
                     std::istringstream scan(expanded);
                     std::string scan_line;
                     while (std::getline(scan, scan_line)) {
-                        std::string sl = scan_line;
-                        // Strip leading whitespace
-                        size_t sp = sl.find_first_not_of(" \t");
-                        if (sp != std::string::npos) sl = sl.substr(sp);
-                        // Case-insensitive check
-                        std::string sl_lower = sl;
-                        std::transform(sl_lower.begin(), sl_lower.end(), sl_lower.begin(), ::tolower);
-                        if (sl_lower.substr(0, 7) == ".subckt" &&
-                            (sl_lower.size() == 7 || sl_lower[7] == ' ' || sl_lower[7] == '\t'))
+                        size_t sp = scan_line.find_first_not_of(" \t");
+                        if (sp == std::string::npos || scan_line[sp] != '.')
+                            continue;
+                        if (ci_prefix_at(scan_line, sp, ".subckt") && is_word_boundary(scan_line, sp + 7))
                             sub_depth++;
-                        else if (sl_lower.substr(0, 5) == ".ends")
+                        else if (ci_prefix_at(scan_line, sp, ".ends"))
                             sub_depth = std::max(0, sub_depth - 1);
                     }
                     if (sub_depth > 0) {
@@ -3550,35 +3593,33 @@ std::string NetlistParser::resolve_includes(const std::string& content,
                 // outside .subckt blocks; these are library-author test
                 // commands that must not override the main netlist's analysis.
                 {
+                    static const char* const kAnalysisCmds[] = {
+                        ".dc", ".tran", ".ac", ".op",
+                        ".noise", ".tf", ".sens",
+                        ".pz", ".fourier", ".four", ".meas",
+                        ".measure", ".temp", ".step"};
                     std::ostringstream filtered;
                     std::istringstream flines(expanded);
                     std::string fline;
                     int subckt_depth = 0;
                     while (std::getline(flines, fline)) {
-                        std::string fl = fline;
-                        size_t fp = fl.find_first_not_of(" \t");
-                        if (fp == std::string::npos) { filtered << fline << '\n'; continue; }
-                        std::string fl_lower = fl.substr(fp);
-                        std::transform(fl_lower.begin(), fl_lower.end(), fl_lower.begin(), ::tolower);
-                        if (fl_lower.substr(0, 7) == ".subckt" &&
-                            (fl_lower.size() == 7 || fl_lower[7] == ' ' || fl_lower[7] == '\t'))
+                        size_t fp = fline.find_first_not_of(" \t");
+                        // Only lines whose first non-blank char is '.' can be a
+                        // .subckt/.ends/analysis directive; everything else is
+                        // emitted verbatim with no lowercasing.
+                        if (fp == std::string::npos || fline[fp] != '.') {
+                            filtered << fline << '\n';
+                            continue;
+                        }
+                        if (ci_prefix_at(fline, fp, ".subckt") && is_word_boundary(fline, fp + 7))
                             subckt_depth++;
-                        else if (fl_lower.substr(0, 5) == ".ends")
+                        else if (ci_prefix_at(fline, fp, ".ends"))
                             subckt_depth = std::max(0, subckt_depth - 1);
                         if (subckt_depth == 0) {
                             bool is_analysis = false;
-                            for (const auto& cmd : std::vector<std::string>{
-                                    ".dc", ".tran", ".ac", ".op",
-                                    ".noise", ".tf", ".sens",
-                                    ".pz", ".fourier", ".four", ".meas",
-                                    ".measure", ".temp", ".step"}) {
-                                if (fl_lower.size() >= cmd.size() &&
-                                    fl_lower.compare(0, cmd.size(), cmd) == 0 &&
-                                    (fl_lower.size() == cmd.size() ||
-                                     fl_lower[cmd.size()] == ' ' ||
-                                     fl_lower[cmd.size()] == '\t' ||
-                                     fl_lower[cmd.size()] == '\r' ||
-                                     fl_lower[cmd.size()] == '\n'))
+                            for (const char* cmd : kAnalysisCmds) {
+                                if (ci_prefix_at(fline, fp, cmd) &&
+                                    is_word_boundary(fline, fp + std::strlen(cmd)))
                                     { is_analysis = true; break; }
                             }
                             if (is_analysis) continue;
@@ -3604,11 +3645,9 @@ std::string NetlistParser::resolve_includes(const std::string& content,
         // ----------------------------------------------------------------
         bool is_lib = false;
         size_t lib_rest_start = 0;
-        if (lower_line.size() >= 4 && lower_line.substr(0, 4) == ".lib") {
-            if (lower_line.size() == 4 || std::isspace(static_cast<unsigned char>(lower_line[4]))) {
-                is_lib = true;
-                lib_rest_start = start + 4; // position in original line after ".lib"
-            }
+        if (ci_prefix_at(line, start, ".lib") && is_word_boundary(line, start + 4)) {
+            is_lib = true;
+            lib_rest_start = start + 4; // position in original line after ".lib"
         }
 
         if (is_lib) {
@@ -3677,10 +3716,8 @@ std::string NetlistParser::resolve_includes(const std::string& content,
         // .endl — section end delimiter; skip at top level
         // ----------------------------------------------------------------
         bool is_endl = false;
-        if (lower_line.size() >= 5 && lower_line.substr(0, 5) == ".endl") {
-            if (lower_line.size() == 5 || std::isspace(static_cast<unsigned char>(lower_line[5]))) {
-                is_endl = true;
-            }
+        if (ci_prefix_at(line, start, ".endl") && is_word_boundary(line, start + 5)) {
+            is_endl = true;
         }
         if (is_endl) {
             // Skip .endl lines that appear at the top-level (outside a lib section context)
@@ -3694,17 +3731,32 @@ std::string NetlistParser::resolve_includes(const std::string& content,
 }
 
 SpiceDialect NetlistParser::detect_dialect(const std::string& content) const {
-    std::string upper = content;
-    std::transform(upper.begin(), upper.end(), upper.begin(),
-                   [](unsigned char c) { return std::toupper(c); });
+    // Case-insensitive substring search over `content` without building an
+    // uppercased copy of the whole (possibly very large) expanded netlist.
+    // `needle` must be given in UPPERCASE.
+    auto ci_contains = [&content](const char* needle) {
+        size_t nlen = std::strlen(needle);
+        if (nlen == 0 || content.size() < nlen) return false;
+        size_t last = content.size() - nlen;
+        for (size_t i = 0; i <= last; ++i) {
+            size_t j = 0;
+            for (; j < nlen; ++j) {
+                char c = content[i + j];
+                if (c >= 'a' && c <= 'z') c = char(c - 'a' + 'A');
+                if (c != needle[j]) break;
+            }
+            if (j == nlen) return true;
+        }
+        return false;
+    };
 
     for (const auto* kw : {"PARAMS:", "AKO:", "VALUE=", "OPTIONAL:", "TEXT:"}) {
-        if (upper.find(kw) != std::string::npos)
+        if (ci_contains(kw))
             return SpiceDialect::PSPICE;
     }
 
     for (const auto* kw : {" VSWITCH ", " ISWITCH ", " RES ", " CAP ", " IND "}) {
-        if (upper.find(kw) != std::string::npos)
+        if (ci_contains(kw))
             return SpiceDialect::PSPICE;
     }
 

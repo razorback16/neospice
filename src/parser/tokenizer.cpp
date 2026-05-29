@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <iterator>
 
 namespace neospice {
 
@@ -13,14 +14,38 @@ static std::string to_lower(const std::string& s) {
     return result;
 }
 
-static std::vector<std::string> split_tokens(const std::string& line) {
+// Extract the next whitespace-delimited token from `line` starting at `pos`.
+// On return, `pos` points just past the token (at the delimiter or end).
+// Returns false if no further token exists.
+static inline bool next_ws_token(const std::string& line, size_t& pos, std::string& out) {
+    size_t n = line.size();
+    while (pos < n) {
+        char c = line[pos];
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v')
+            ++pos;
+        else
+            break;
+    }
+    if (pos >= n) return false;
+    size_t begin = pos;
+    while (pos < n) {
+        char c = line[pos];
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v')
+            break;
+        ++pos;
+    }
+    out.assign(line, begin, pos - begin);
+    return true;
+}
+
+static std::vector<std::string> split_tokens(const std::string& line, size_t pos = 0) {
     std::vector<std::string> tokens;
-    std::istringstream iss(line);
+    tokens.reserve(8);
     std::string tok;
     int brace_depth = 0;
     std::string brace_accum;
 
-    while (iss >> tok) {
+    while (next_ws_token(line, pos, tok)) {
         if (brace_depth == 0 && tok[0] == '$') break;
         if (brace_depth == 0 && tok[0] == ';') break;
 
@@ -111,17 +136,23 @@ std::vector<TokenizedLine> tokenize(const std::string& netlist) {
         if (raw_line.empty()) continue;
         if (raw_line[0] == '*') continue;
 
-        // Check for .end directive
-        std::string lower_line = to_lower(raw_line);
-        if (lower_line.substr(0, 4) == ".end" &&
-            (raw_line.size() == 4 || std::isspace(static_cast<unsigned char>(raw_line[4])))) {
-            continue;
+        // Check for .end directive (case-insensitive) without lowercasing the
+        // whole line: only lines starting with '.' can be ".end".
+        if (raw_line[0] == '.' && raw_line.size() >= 4) {
+            char c1 = raw_line[1], c2 = raw_line[2], c3 = raw_line[3];
+            auto lc = [](char c) { return (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c; };
+            if (lc(c1) == 'e' && lc(c2) == 'n' && lc(c3) == 'd' &&
+                (raw_line.size() == 4 || std::isspace(static_cast<unsigned char>(raw_line[4])))) {
+                continue;
+            }
         }
 
         // Line continuation: append tokens to current line
         if (raw_line[0] == '+') {
-            auto toks = split_tokens(raw_line.substr(1));
-            current.tokens.insert(current.tokens.end(), toks.begin(), toks.end());
+            auto toks = split_tokens(raw_line, 1);
+            current.tokens.insert(current.tokens.end(),
+                                  std::make_move_iterator(toks.begin()),
+                                  std::make_move_iterator(toks.end()));
             continue;
         }
 
