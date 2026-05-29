@@ -201,3 +201,15 @@ add_executable(bench_neo_solver
 )
 target_link_libraries(bench_neo_solver PRIVATE neospice_lib)
 target_include_directories(bench_neo_solver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Solver-throughput benchmark: measures solve time isolated from parse time on
+# large, scalable in-memory circuits. neospice-only (no ngspice dependency).
+# Not registered with ctest -- benchmarks must not gate CI.
+add_executable(bench_solver_throughput
+    bench/bench_solver_throughput.cpp
+)
+target_link_libraries(bench_solver_throughput PRIVATE neospice_lib)
+target_include_directories(bench_solver_throughput PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(bench_solver_throughput PRIVATE
+    TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
+)

@@ -228,6 +228,84 @@ transient/DC circuits (reuse `tests/bench/bench_newton_profile.cpp` and
 cost, and matrix factor/refactor cost independently of parse overhead. Without
 this, parser wins could mask solver regressions (or vice versa).
 
+#### Implemented: `bench_solver_throughput`
+
+`tests/bench/bench_solver_throughput.cpp` is the first cut of this benchmark. It
+generates large circuits **in-memory** and reports **solve time isolated from
+parse time**, so the two phases can move independently.
+
+What it measures:
+
+- **Two scalable circuit classes**, each at N ≈ {100, 1000, 5000, 20000} nodes:
+  - **Linear** — a 2-D resistor mesh (R grid). Linear, so DC converges in a
+    small fixed iteration count: isolates symbolic + numeric LU factorization
+    and the triangular solve (the sparse-LU hot path).
+  - **Nonlinear** — a diode+resistor ladder. Each stage adds a nonlinear
+    junction, so DC needs several Newton iterations: isolates Newton iteration
+    count and per-iteration device evaluation.
+- **Per-phase breakdown** via the public API:
+  - `parse(ms)` — `Simulator::parse()` (build + finalize),
+  - `solve(ms)` — `Simulator::run_dc()` (full Newton DC solve),
+  - `iter` — Newton iterations (`DCResult::status.iterations`),
+  - `us/iter` — solve time per iteration, plus convergence-method annotation
+    (e.g. gmin-stepping) when the solve didn't converge directly.
+- **Steady numbers** — medians over N repetitions after warmup; iteration counts
+  scale down automatically as circuits grow. Problem stats (nodes, vars, nnz,
+  device count) are printed per size.
+
+It links `neospice_lib` only — **no ngspice dependency** — and is **not**
+registered with ctest (benchmarks must not gate CI).
+
+Build and run:
+
+```bash
+cd build && cmake .. && cmake --build . --target bench_solver_throughput -j$(nproc)
+./tests/bench_solver_throughput
+```
+
+Sample output (Release-equivalent local build):
+
+```
+LINEAR  -- 2D resistor mesh (stresses sparse LU: symbolic+numeric factor + solve)
+     nodes     vars      nnz   devices  iter     parse(ms)    solve(ms)    us/iter
+        99      100      457       181     3         0.147        0.213       70.9
+      1023     1024     4989      1985     3         1.691        8.220     2740.2
+      5040     5041    24918      9941     3        19.682      241.076    80358.7
+     19880    19881    98838     39481     3       259.138     4406.233  1468744.2
+
+NONLINEAR -- diode+R ladder (stresses Newton iterations + device eval)
+     nodes     vars      nnz   devices  iter     parse(ms)    solve(ms)    us/iter
+       102      103      306       202    11         0.133        0.438       39.8
+      1002     1003     3006      2002    11         1.801       35.734     3248.6
+      5002     5003    15006     10002    11        18.259      878.227    79838.8
+     20002    20003    60006     40002    11       243.284    14079.549  1279959.0
+```
+
+Scaling observations from the sample run:
+
+- **Solve dominates parse on large circuits.** At ~20k nodes, parse is ~0.26 s
+  but solve is ~4.4 s (linear) / ~14 s (nonlinear) — i.e. solve is 17×–58×
+  parse. The parser wins from Phases 1–3 are real but only matter for the
+  small-fixture regime; this benchmark is where solver work shows up.
+- **Per-iteration cost grows super-linearly with size** (`us/iter` rises ~20×
+  from N≈5k to N≈20k for a ~4× node increase), consistent with fill-in growth
+  in the sparse LU on these 2-D-connectivity meshes rather than O(n) behavior.
+- **Nonlinear holds a constant 11 Newton iterations across sizes**, so its solve
+  cost scales with per-iteration factor+device-eval cost rather than with
+  iteration count — a clean signal for catching device-eval or refactor
+  regressions.
+
+**Follow-up — finer instrumentation.** The current breakdown stops at
+parse/solve/per-iteration because the public API does not expose
+symbolic-factor vs numeric-factor vs triangular-solve vs device-eval
+microseconds: `newton_solve()` and `NeoSolver` return no per-phase timers.
+Splitting those cleanly would require lightweight optional instrumentation hooks
+inside `newton_solve()` / `NeoSolver` (e.g. an opt-in timing struct populated
+only when requested, kept off the hot path by default). That is deliberately
+deferred — the scratch profiler `tests/bench/bench_newton_profile.cpp` shows
+what such a manual split looks like, but it re-implements the Newton loop and so
+does not reflect the production solver path.
+
 ---
 
 ## 6. Expected Outcome
