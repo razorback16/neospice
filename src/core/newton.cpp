@@ -1,6 +1,6 @@
 #include "core/newton.hpp"
 #include "core/circuit.hpp"
-#include "core/neo_solver.hpp"
+#include "core/solver_iface.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -30,14 +30,14 @@ void NewtonWorkspace::ensure_size(int32_t n) {
         one_based_rhs.resize(n + 1);
 }
 
-NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
+NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts) {
     NewtonWorkspace workspace(ckt.pattern());
     return newton_solve(ckt, solver, solution, opts, workspace);
 }
 
-NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
+NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts,
                           NewtonWorkspace& workspace) {

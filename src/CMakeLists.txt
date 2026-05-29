@@ -21,6 +21,8 @@ add_library(neospice_lib
     core/amd.cpp
     core/btf.cpp
     core/neo_solver.cpp
+    core/amd_lu_solver.cpp
+    core/make_solver.cpp
     solver/matrix.cpp
     solver/build.cpp
     solver/factor.cpp

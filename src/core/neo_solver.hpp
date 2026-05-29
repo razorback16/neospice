@@ -1,5 +1,6 @@
 #pragma once
 #include "core/matrix.hpp"
+#include "core/solver_iface.hpp"
 #include <memory>
 #include <vector>
 
@@ -7,25 +8,25 @@ namespace neospice {
 
 namespace solver { class SparseMatrix; }
 
-class NeoSolver {
+class NeoSolver : public ISolver {
 public:
     NeoSolver();
-    ~NeoSolver();
+    ~NeoSolver() override;
 
     NeoSolver(const NeoSolver&) = delete;
     NeoSolver& operator=(const NeoSolver&) = delete;
     NeoSolver(NeoSolver&&) noexcept;
     NeoSolver& operator=(NeoSolver&&) noexcept;
 
-    void symbolic(const SparsityPattern& pattern);
+    void symbolic(const SparsityPattern& pattern) override;
     bool numeric(const SparsityPattern& pattern, const NumericMatrix& mat,
-                 double diag_gmin = 0.0);
-    bool refactorize(const NumericMatrix& mat, double diag_gmin = 0.0);
-    void solve(std::vector<double>& rhs);
+                 double diag_gmin = 0.0) override;
+    bool refactorize(const NumericMatrix& mat, double diag_gmin = 0.0) override;
+    void solve(std::vector<double>& rhs) override;
     void numeric_complex(const SparsityPattern& pattern,
-                         const std::vector<double>& ax);
-    bool refactorize_complex(const std::vector<double>& ax);
-    void solve_complex(std::vector<double>& rhs);
+                         const std::vector<double>& ax) override;
+    bool refactorize_complex(const std::vector<double>& ax) override;
+    void solve_complex(std::vector<double>& rhs) override;
 
 private:
     int32_t n_ = 0;
