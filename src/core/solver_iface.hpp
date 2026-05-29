@@ -26,13 +26,39 @@ public:
                                  const std::vector<double>& ax) = 0;
     virtual bool refactorize_complex(const std::vector<double>& ax) = 0;
     virtual void solve_complex(std::vector<double>& rhs) = 0;
+
+    // Stable identifier of the concrete solver actually doing the work, for
+    // diagnostics and selection-policy tests. Wrappers (e.g. the auto-fallback
+    // solver) report the engine currently in use.
+    //   "markowitz" — NeoSolver
+    //   "amdlu"     — AmdLuSolver
+    virtual const char* name() const = 0;
 };
 
-// Factory for the real (DC/transient) solver path. Returns NeoSolver by default;
-// when the environment requests it (NEOSPICE_SOLVER=amdlu or
-// NEOSPICE_FORCE_AMDLU=1) returns AmdLuSolver instead. The selection is read
-// once per call. AC/noise/tf/pz paths construct NeoSolver directly and are
-// unaffected by this factory.
+// Factory for the real (DC/transient) solver path.
+//
+// Selection policy (Stage 4):
+//   NEOSPICE_SOLVER controls the engine:
+//     - "auto" (default): pick by problem size — Markowitz (NeoSolver) below the
+//       auto-enable threshold, AMD-LU (AmdLuSolver) at/above it. Auto-selected
+//       AMD-LU is wrapped so a hard factor failure (structural/numeric
+//       singularity at the first factorization) falls back to Markowitz for that
+//       solve instead of failing outright.
+//     - "amdlu" / "klu": force AMD-LU always (no size gate, no fallback wrapper).
+//     - "markowitz" / "sparse": force Markowitz always.
+//   NEOSPICE_FORCE_AMDLU=<non-empty,non-"0"> is an alias for forced "amdlu".
+//
+// `num_vars` is the matrix dimension (Circuit::num_vars() / pattern.size()),
+// used only by the "auto" policy. The zero-arg overload selects with size 0
+// (always Markowitz under auto) and is kept for callers without a size.
+//
+// AC/noise/tf/pz paths construct NeoSolver directly and are unaffected.
+std::unique_ptr<ISolver> make_solver(int num_vars);
 std::unique_ptr<ISolver> make_solver();
+
+// AMD-LU auto-enable threshold (unknowns). Circuits with num_vars >= this use
+// AMD-LU under the "auto" policy; smaller circuits stay on Markowitz. See
+// make_solver.cpp for the derivation from the measured KiCad-suite max.
+int amdlu_auto_threshold();
 
 }  // namespace neospice

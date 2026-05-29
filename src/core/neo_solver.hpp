@@ -27,6 +27,7 @@ public:
                          const std::vector<double>& ax) override;
     bool refactorize_complex(const std::vector<double>& ax) override;
     void solve_complex(std::vector<double>& rhs) override;
+    const char* name() const override { return "markowitz"; }
 
 private:
     int32_t n_ = 0;

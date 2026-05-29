@@ -22,6 +22,7 @@ add_executable(neospice_tests
     unit/test_btf.cpp
     unit/test_neo_solver.cpp
     unit/test_amd_lu.cpp
+    unit/test_solver_select.cpp
     unit/test_resistor.cpp
     unit/test_vsource.cpp
     unit/test_isource.cpp
