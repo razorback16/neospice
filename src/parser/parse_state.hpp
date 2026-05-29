@@ -46,12 +46,32 @@ struct ParseState {
     std::unordered_set<std::string> global_nodes;
 
     // Model state
+    // `models` is a *memoization cache*: a model card is fully parsed (via
+    // parse_model_card + AKO resolution) only when it is first referenced by an
+    // instance. See `model_raw` below and ensure_model() in netlist_parser.cpp.
     std::unordered_map<std::string, ModelCard> models;
     std::unordered_map<std::string, ResistorModel> res_models;
     std::unordered_map<std::string, CapacitorModel> cap_models;
     std::unordered_map<std::string, InductorModel> ind_models;
     int next_model_order = 0;
     int next_element_order = 0;
+
+    // Lazy .model parsing support.
+    //   raw_tokens : the original ".model ..." token vector for the card.
+    //   key        : lowercased model name (matches the lowercased keys produced
+    //                by subcircuit expansion and used everywhere for lookup).
+    // Pass 1 populates this cheaply for every .model card; the expensive
+    // parse_model_card work is deferred until ensure_model() is called for a
+    // referenced model.
+    struct RawModel {
+        std::vector<std::string> tokens;
+        int source_order = 0;
+        bool parsed = false;       // memoized into `models` yet?
+        bool resolving = false;    // cycle guard during AKO resolution
+        std::string cache_key;     // key under which it lives in `models`
+                                   // (original-case card name); valid iff parsed
+    };
+    std::unordered_map<std::string, RawModel> model_raw;
 
     // Deferred struct types (were anonymous structs inside parse())
 

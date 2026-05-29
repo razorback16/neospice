@@ -717,15 +717,18 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
         std::string first = to_lower(line.tokens[0]);
 
         if (first == ".model") {
-            auto card = parse_model_card(line.tokens);
-            card.source_order = state.next_model_order++;
-            state.models[card.name] = card;
-            if (card.type == "r") {
-                state.res_models[to_lower(card.name)] = to_resistor_model(card);
-            } else if (card.type == "c") {
-                state.cap_models[to_lower(card.name)] = to_capacitor_model(card);
-            } else if (card.type == "l") {
-                state.ind_models[to_lower(card.name)] = to_inductor_model(card);
+            // Lazy: store only the raw token vector keyed by lowercased name.
+            // The expensive parse_model_card + AKO resolution is deferred to
+            // ensure_model(), triggered on first reference by an instance.
+            // source_order is assigned here, in card order, so that setup
+            // ordering is identical to the old eager path regardless of the
+            // order in which models are later materialized.
+            if (line.tokens.size() >= 2) {
+                std::string key = to_lower(line.tokens[1]);
+                ParseState::RawModel rm;
+                rm.tokens = line.tokens;
+                rm.source_order = state.next_model_order++;
+                state.model_raw[key] = std::move(rm);
             }
         } else if (first == ".param") {
             // .param key=value  or  .param key={expr}  or  .param key = value
@@ -752,80 +755,143 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
             }
         }
     }
-    // Resolve PSpice AKO: (A Kind Of) model inheritance.
-    // Multiple passes handle chains (A inherits B, B inherits C).
-    {
-        // Track which models still need resolution
-        bool changed = true;
-        int max_passes = static_cast<int>(state.models.size()) + 1; // detect cycles
-        int pass = 0;
-        while (changed && pass < max_passes) {
-            changed = false;
-            ++pass;
-            for (auto& [name, card] : state.models) {
-                if (card.ako_base.empty()) continue;
-                // Normalize ako_base to lowercase so it matches the lowercased
-                // model keys produced by subcircuit expansion (e.g. "QON" -> "qon").
-                std::transform(card.ako_base.begin(), card.ako_base.end(),
-                               card.ako_base.begin(), ::tolower);
-                auto base_it = state.models.find(card.ako_base);
-                if (base_it == state.models.end()) {
-                    // Try instance-prefixed variant: if this model is "x1.qp"
-                    // and ako_base is "qon", try "x1.qon"
-                    auto dot_pos = name.rfind('.');
-                    if (dot_pos != std::string::npos) {
-                        std::string prefixed = name.substr(0, dot_pos + 1) + card.ako_base;
-                        base_it = state.models.find(prefixed);
-                        if (base_it != state.models.end()) {
-                            card.ako_base = prefixed;
-                        }
-                    }
-                    if (base_it == state.models.end()) {
-                        fprintf(stderr, "Warning: .model %s AKO: base model '%s' not found — skipping inheritance\n",
-                                name.c_str(), card.ako_base.c_str());
-                        card.ako_base.clear(); // stop trying to resolve
-                        changed = true;
-                        continue;
-                    }
-                }
-                const auto& base = base_it->second;
-                // If base itself has unresolved AKO, defer to next pass
-                if (!base.ako_base.empty()) continue;
-                // Inherit type if derived doesn't specify one
-                if (card.type.empty()) {
-                    card.type = base.type;
-                }
-                // Merge params: start with base, overlay derived
-                auto merged = base.params;
-                for (const auto& [pk, pv] : card.params) {
-                    merged[pk] = pv;
-                }
-                card.params = std::move(merged);
-                // Mark as resolved
-                card.ako_base.clear();
-                changed = true;
-                // Update typed model maps
-                if (card.type == "r") {
-                    state.res_models[to_lower(name)] = to_resistor_model(card);
-                } else if (card.type == "c") {
-                    state.cap_models[to_lower(name)] = to_capacitor_model(card);
-                } else if (card.type == "l") {
-                    state.ind_models[to_lower(name)] = to_inductor_model(card);
-                }
-            }
-        }
-        for (auto& [name, card] : state.models) {
-            if (!card.ako_base.empty()) {
-                fprintf(stderr, "Warning: .model %s AKO: circular inheritance detected — ignoring\n", name.c_str());
-                card.ako_base.clear();
-            }
-        }
-    }
+    // NOTE: PSpice AKO (A Kind Of) inheritance and typed-map population are no
+    // longer resolved eagerly here. They happen on demand in ensure_model(),
+    // which is invoked the first time a model is referenced by an instance.
 
     // Resolve all .param definitions in dependency order (handles forward references)
     if (!raw_params.empty()) {
         state.params = resolve_params(raw_params);
     }
+}
+
+// ---------------------------------------------------------------------------
+// ensure_model — lazily parse + AKO-resolve + memoize a single model card.
+//
+// Replaces the old eager parse-everything path: parse_model_card and AKO merge
+// only run for models that an instance actually references. The result is cached
+// in state.models (and the typed res/cap/ind maps) so subsequent lookups are
+// O(1). AKO bases are materialized transitively. Behavior (warnings, merge
+// semantics, source ordering, lowercase normalization) matches the old code for
+// any model that is actually used.
+// ---------------------------------------------------------------------------
+ModelCard* NetlistParser::ensure_model(ParseState& state, const std::string& name) {
+    std::string key = to_lower(name);
+
+    auto raw_it = state.model_raw.find(key);
+    if (raw_it == state.model_raw.end()) {
+        // Not in the raw index. It may still be a pre-populated cache entry
+        // (the expand_subcircuit_into / API path seeds state.models directly).
+        auto cached = state.models.find(name);
+        if (cached != state.models.end()) return &cached->second;
+        return nullptr; // no such .model
+    }
+
+    ParseState::RawModel& raw = raw_it->second;
+
+    // Already memoized?
+    if (raw.parsed) {
+        auto cached = state.models.find(raw.cache_key);
+        if (cached != state.models.end()) return &cached->second;
+    }
+
+    // Cycle guard: if we re-enter for a model currently being resolved, this is
+    // circular AKO inheritance. Match the old "circular inheritance detected"
+    // behavior: warn and treat as if the AKO link were absent.
+    if (raw.resolving) {
+        fprintf(stderr, "Warning: .model %s AKO: circular inheritance detected — ignoring\n",
+                name.c_str());
+        return nullptr;
+    }
+    raw.resolving = true;
+
+    ModelCard card = parse_model_card(raw.tokens);
+    card.source_order = raw.source_order;
+
+    // Resolve AKO inheritance on demand.
+    if (!card.ako_base.empty()) {
+        // Normalize ako_base to lowercase so it matches the lowercased model
+        // keys produced by subcircuit expansion (e.g. "QON" -> "qon").
+        std::transform(card.ako_base.begin(), card.ako_base.end(),
+                       card.ako_base.begin(), ::tolower);
+
+        std::string base_key = card.ako_base;
+        bool base_exists = state.model_raw.count(base_key) != 0;
+        if (!base_exists) {
+            // Try instance-prefixed variant: if this model is "x1.qp" and
+            // ako_base is "qon", try "x1.qon".
+            auto dot_pos = key.rfind('.');
+            if (dot_pos != std::string::npos) {
+                std::string prefixed = key.substr(0, dot_pos + 1) + card.ako_base;
+                if (state.model_raw.count(prefixed) != 0) {
+                    base_key = prefixed;
+                    card.ako_base = prefixed;
+                    base_exists = true;
+                }
+            }
+        }
+
+        if (!base_exists) {
+            fprintf(stderr, "Warning: .model %s AKO: base model '%s' not found — skipping inheritance\n",
+                    name.c_str(), card.ako_base.c_str());
+            card.ako_base.clear();
+        } else {
+            ModelCard* base = ensure_model(state, base_key);
+            if (base == nullptr) {
+                // base resolution failed (e.g. circular) — drop the link.
+                card.ako_base.clear();
+            } else {
+                // Inherit type if derived doesn't specify one.
+                if (card.type.empty()) {
+                    card.type = base->type;
+                }
+                // Merge params: start with base, overlay derived.
+                auto merged = base->params;
+                for (const auto& [pk, pv] : card.params) {
+                    merged[pk] = pv;
+                }
+                card.params = std::move(merged);
+                card.ako_base.clear();
+            }
+        }
+    }
+
+    raw.resolving = false;
+    raw.parsed = true;
+    raw.cache_key = card.name;
+
+    // Memoize. The cache is keyed by card.name (original case), exactly as the
+    // old eager path keyed state.models. Some device resolve handlers (e.g.
+    // MOSFET) look up by the original-case name only, so this preserves their
+    // behavior. The raw index (model_raw) remains lowercase-keyed.
+    std::string cache_key = card.name;
+    auto [ins_it, _] = state.models.emplace(cache_key, std::move(card));
+    ModelCard& stored = ins_it->second;
+
+    // Populate typed model maps for r/c/l on first materialization. These are
+    // lowercase-keyed (matching every res/cap/ind lookup site).
+    if (stored.type == "r") {
+        state.res_models[key] = to_resistor_model(stored);
+    } else if (stored.type == "c") {
+        state.cap_models[key] = to_capacitor_model(stored);
+    } else if (stored.type == "l") {
+        state.ind_models[key] = to_inductor_model(stored);
+    }
+
+    return &stored;
+}
+
+// ---------------------------------------------------------------------------
+// materialize_all_models — eagerly parse every collected .model card. Used by
+// the load_definitions() API path which must hand back a fully-populated map.
+// ---------------------------------------------------------------------------
+void NetlistParser::materialize_all_models(ParseState& state) {
+    // Iterate over a snapshot of keys: ensure_model may insert into state.models
+    // but does not modify model_raw's key set.
+    std::vector<std::string> keys;
+    keys.reserve(state.model_raw.size());
+    for (const auto& [k, _] : state.model_raw) keys.push_back(k);
+    for (const auto& k : keys) ensure_model(state, k);
 }
 
 // ---------------------------------------------------------------------------
@@ -872,6 +938,33 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
         }
         return parse_spice_number(token);
     };
+
+    // Lazy-model pre-pass: materialize every .model card that is actually
+    // referenced by an element line before we start parsing elements. This
+    // guarantees that membership tests against state.models / the typed
+    // res/cap/ind maps (e.g. "is this token a model name or a node?") and all
+    // later content lookups in pass 2/3 behave exactly as they did when every
+    // model was parsed eagerly — but only for models that are used.
+    //
+    // Any token on a non-dot element line that matches a collected .model name
+    // is materialized (which also pulls in its AKO base transitively). Tokens
+    // that don't name a model are ignored. This is O(used models), not
+    // O(models-in-library).
+    if (!state.model_raw.empty()) {
+        for (const auto& line : state.lines) {
+            if (line.tokens.empty()) continue;
+            if (!line.tokens[0].empty() && line.tokens[0][0] == '.') continue;
+            for (const auto& tok : line.tokens) {
+                auto eq = tok.find('=');
+                std::string cand = (eq == std::string::npos) ? tok : tok.substr(0, eq);
+                std::string lc = to_lower(cand);
+                auto rit = state.model_raw.find(lc);
+                if (rit != state.model_raw.end() && !rit->second.parsed) {
+                    ensure_model(state, lc);
+                }
+            }
+        }
+    }
 
     for (const auto& line : state.lines) {
         if (line.tokens.empty()) continue;
@@ -3683,7 +3776,10 @@ DefinitionSet NetlistParser::load_definitions(const std::string& filepath) {
     // Run only the definition-extraction passes
     pass0_extract_subcircuits(state);      // extracts .subckt/.ends
     pass025_resolve_funcs_params(state);   // .func + .param resolution
-    pass1_collect_models_params(state);    // .model parsing + AKO resolution
+    pass1_collect_models_params(state);    // collect raw .model cards (lazy)
+    // The API path must hand back a fully-populated model map, so force every
+    // collected card to be parsed + AKO-resolved now.
+    materialize_all_models(state);
 
     // Package results
     DefinitionSet defs;

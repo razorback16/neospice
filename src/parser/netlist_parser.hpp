@@ -57,6 +57,17 @@ private:
     static void pass1_collect_models_params(ParseState& state);
     static void pass2_parse_elements(ParseState& state);
     static void pass3_resolve_deferred(ParseState& state);
+
+    // Lazy .model support: parse + AKO-resolve + memoize a single model card on
+    // first reference. Returns a pointer to the cached ModelCard, or nullptr if
+    // no .model with that name exists. `name` may be any case (it is lowercased
+    // internally). Transitively materializes the AKO base if present.
+    static ModelCard* ensure_model(ParseState& state, const std::string& name);
+
+    // Force every .model card in `model_raw` to be parsed/resolved now. Used by
+    // the load_definitions() / Circuit::include() API path, which packages the
+    // full model set into a DefinitionSet.
+    static void materialize_all_models(ParseState& state);
 };
 
 } // namespace neospice
