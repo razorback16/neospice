@@ -26,6 +26,7 @@ namespace neospice {
 
 class NonlinearCCCS : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     NonlinearCCCS(std::string name,
                   int32_t node_pos, int32_t node_neg,
                   std::vector<const VSource*> vsenses,

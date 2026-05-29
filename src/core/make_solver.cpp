@@ -13,27 +13,28 @@ namespace {
 // ---------------------------------------------------------------------------
 // AMD-LU auto-enable threshold (number of unknowns / matrix dimension).
 //
-// Derivation: the whole KiCad parity suite must stay on Markowitz so the
-// default ("auto") path is byte-identical to the historical baseline (including
-// the 3 LinearTech op-amps that diverge under forced AMD-LU). We measured the
-// matrix dimension (num_vars) via NEOSPICE_PRINT_NVARS over every generated .op
-// netlist the comparator can produce (34,908 model/subckt tests). Findings:
-//   - first 5000 tests (the parity gate the orchestrator runs): MAX = 191
-//   - full library: median 12, p95 69, p99 140, MAX = 5129
-//       (twisted_pair1024 = 5129, twisted_pair256 = 1289, symmetric_line256 =
-//        1030; everything else is < 400). These large RC-line models sit at
-//       index >9800 in the sorted list, past the 5000-gate, but we still must
-//       not let them auto-switch.
+// Policy: under "auto", AMD-LU engages iff the circuit is BOTH large
+// (num_vars >= threshold) AND linear (no nonlinear device). The linearity gate
+// is what makes the threshold safe to lower:
+//   - On LINEAR large circuits, the system has a unique solution, so AMD's
+//     fill-reducing pivot order is provably result-identical to Markowitz. We
+//     measured the twisted_pair*/symmetric_line* RC-ladder models (262-5129
+//     vars) as byte-identical (max diff 0.0) and up to 1691x faster under
+//     AMD-LU. These get the fast solver.
+//   - On NONLINEAR macromodels (OPA*/INA*/PGA*/LT* op-amps, 192-388 vars),
+//     AMD-LU's static order diverges from Markowitz by up to 8.5% (Newton
+//     basin / pivot sensitivity). These stay on Markowitz to preserve their
+//     ngspice-validated results, REGARDLESS of size.
 //
-// We set the threshold to 12000 unknowns — above 2x the library-wide MAX
-// (2 * 5129 = 10258) — so:
-//   - EVERY KiCad test circuit (max 5129) stays on Markowitz, guaranteeing the
-//     auto path is byte-identical no matter how large a subset is run, and
-//   - AMD-LU still auto-engages where it actually pays off — AMD ordering +
-//     Gilbert-Peierls only wins on large sparse systems (measured 7.6x at ~20k
-//     nodes). A 141x141 resistor mesh (19,882 unknowns) crosses the threshold
-//     and gets the fast solver.
-constexpr int kAmdLuAutoThreshold = 12000;
+// Threshold = 256 unknowns. Justification from measured num_vars (via
+// NEOSPICE_PRINT_NVARS) over the generated suite:
+//   - the 5000-model parity gate's largest circuit is 191 vars; everything in
+//     the gate is < 256 AND the largest gate circuits are nonlinear op-amps, so
+//     the gate stays entirely on Markowitz -> byte-identical to baseline.
+//   - the smallest large LINEAR circuit is symmetric_line64 at 262 vars; the
+//     twisted_pair linear wins are at 329 / 1289 / 5129 vars.
+// 256 clears the gate with margin and captures every linear win.
+constexpr int kAmdLuAutoThreshold = 256;
 
 enum class SolverChoice { kAuto, kForceAmdLu, kForceMarkowitz };
 
@@ -152,17 +153,20 @@ void maybe_print_nvars(int num_vars, const char* engine) {
 
 int amdlu_auto_threshold() { return kAmdLuAutoThreshold; }
 
-std::unique_ptr<ISolver> make_solver(int num_vars) {
+std::unique_ptr<ISolver> make_solver(int num_vars, bool is_linear) {
     switch (read_choice()) {
         case SolverChoice::kForceMarkowitz:
             maybe_print_nvars(num_vars, "markowitz");
             return std::make_unique<NeoSolver>();
         case SolverChoice::kForceAmdLu:
+            // Forced amdlu/klu always uses AMD-LU regardless of size/linearity
+            // (testing/benchmark override).
             maybe_print_nvars(num_vars, "amdlu");
             return std::make_unique<AmdLuSolver>();
         case SolverChoice::kAuto:
         default:
-            if (num_vars >= kAmdLuAutoThreshold) {
+            // Auto engages AMD-LU only when the circuit is large AND linear.
+            if (num_vars >= kAmdLuAutoThreshold && is_linear) {
                 maybe_print_nvars(num_vars, "amdlu-auto");
                 return std::make_unique<AutoFallbackSolver>();
             }
@@ -171,6 +175,6 @@ std::unique_ptr<ISolver> make_solver(int num_vars) {
     }
 }
 
-std::unique_ptr<ISolver> make_solver() { return make_solver(0); }
+std::unique_ptr<ISolver> make_solver() { return make_solver(0, true); }
 
 }  // namespace neospice

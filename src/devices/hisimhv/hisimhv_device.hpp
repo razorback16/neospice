@@ -25,6 +25,7 @@ struct HSMHVModelCard {
 
 class HSMHVDevice : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     struct Geom {
         double W = 1e-6;
         double L = 1e-7;

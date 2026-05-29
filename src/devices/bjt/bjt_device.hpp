@@ -25,6 +25,7 @@ struct BJTModelCard {
 
 class BJTDevice : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     struct Geom {
         double area = 1.0;
         double areab = 1.0;  // defaults to area if not given

@@ -698,7 +698,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // the DC OP establishes baseline node voltages, then apply_ic_overrides
     // and initialize_device_dc_state override with user-specified IC values.
     std::vector<double> solution(n, 0.0);
-    auto dc_solver = make_solver(ckt.num_vars());
+    auto dc_solver = make_solver(ckt.num_vars(), ckt.is_linear());
     dc_solver->symbolic(ckt.pattern());
     try {
         compute_dc_operating_point(ckt, *dc_solver, solution, total_newton_iters);
@@ -711,7 +711,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         return fail_result;
     }
 
-    auto solver = make_solver(ckt.num_vars());
+    auto solver = make_solver(ckt.num_vars(), ckt.is_linear());
     solver->symbolic(ckt.pattern());
     NewtonWorkspace newton_workspace(ckt.pattern());
 

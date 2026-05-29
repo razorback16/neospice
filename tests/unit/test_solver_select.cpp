@@ -105,12 +105,48 @@ TEST(SolverSelect, AutoAtOrAboveThresholdPicksAmdLu) {
     EXPECT_STREQ(s_big->name(), "amdlu");
 }
 
-// Every KiCad parity circuit (measured library MAX = 5129 unknowns) must stay
-// on Markowitz under the default policy. Guard the threshold against regression.
-TEST(SolverSelect, KicadMaxStaysBelowThreshold) {
-    EXPECT_GE(amdlu_auto_threshold(), 2 * 5129)
-        << "threshold must stay above 2x the measured KiCad library max so no "
-           "parity circuit auto-switches to AMD-LU";
+// The 5000-model parity gate's largest circuit is 191 vars; the threshold must
+// stay above it so the whole gate stays on Markowitz (byte-identical baseline).
+TEST(SolverSelect, KicadGateMaxStaysBelowThreshold) {
+    EXPECT_GT(amdlu_auto_threshold(), 191)
+        << "threshold must exceed the 5000-gate max (191 vars) so no parity "
+           "circuit auto-switches to AMD-LU";
+}
+
+// ---------------------------------------------------------------------------
+// Auto policy: linearity gate
+//
+// Under auto, AMD-LU engages only when the circuit is BOTH large AND linear.
+// A large LINEAR circuit selects AMD-LU; a large NONLINEAR circuit (basin/pivot
+// sensitive) stays on Markowitz to preserve ngspice-validated results.
+// ---------------------------------------------------------------------------
+
+TEST(SolverSelect, AutoLargeLinearPicksAmdLu) {
+    ScopedEnv solver("NEOSPICE_SOLVER");   solver.unset();
+    ScopedEnv force("NEOSPICE_FORCE_AMDLU"); force.unset();
+
+    const int thr = amdlu_auto_threshold();
+    EXPECT_STREQ(make_solver(thr, /*is_linear=*/true)->name(), "amdlu");
+    EXPECT_STREQ(make_solver(thr * 2, /*is_linear=*/true)->name(), "amdlu");
+}
+
+TEST(SolverSelect, AutoLargeNonlinearStaysMarkowitz) {
+    ScopedEnv solver("NEOSPICE_SOLVER");   solver.unset();
+    ScopedEnv force("NEOSPICE_FORCE_AMDLU"); force.unset();
+
+    const int thr = amdlu_auto_threshold();
+    EXPECT_STREQ(make_solver(thr, /*is_linear=*/false)->name(), "markowitz");
+    EXPECT_STREQ(make_solver(thr * 4, /*is_linear=*/false)->name(), "markowitz");
+}
+
+// Forced amdlu/klu ignores the linearity gate (testing override): a nonlinear
+// circuit still gets AMD-LU when explicitly requested.
+TEST(SolverSelect, ForcedAmdLuIgnoresLinearityGate) {
+    ScopedEnv force("NEOSPICE_FORCE_AMDLU"); force.unset();
+    ScopedEnv solver("NEOSPICE_SOLVER");
+    solver.set("amdlu");
+    EXPECT_STREQ(make_solver(amdlu_auto_threshold() * 2,
+                             /*is_linear=*/false)->name(), "amdlu");
 }
 
 // ---------------------------------------------------------------------------

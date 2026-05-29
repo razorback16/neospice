@@ -49,11 +49,16 @@ public:
 //   NEOSPICE_FORCE_AMDLU=<non-empty,non-"0"> is an alias for forced "amdlu".
 //
 // `num_vars` is the matrix dimension (Circuit::num_vars() / pattern.size()),
-// used only by the "auto" policy. The zero-arg overload selects with size 0
-// (always Markowitz under auto) and is kept for callers without a size.
+// `is_linear` is Circuit::is_linear() (true iff no nonlinear device). Both are
+// used only by the "auto" policy, which engages AMD-LU iff the circuit is BOTH
+// large (>= threshold) AND linear. Linear circuits have a unique solution so
+// AMD-LU's static pivot ordering is provably result-identical to Markowitz;
+// nonlinear circuits are basin/pivot sensitive and stay on Markowitz. The
+// zero-arg overload selects with size 0 (always Markowitz under auto) and is
+// kept for callers without a size.
 //
 // AC/noise/tf/pz paths construct NeoSolver directly and are unaffected.
-std::unique_ptr<ISolver> make_solver(int num_vars);
+std::unique_ptr<ISolver> make_solver(int num_vars, bool is_linear = true);
 std::unique_ptr<ISolver> make_solver();
 
 // AMD-LU auto-enable threshold (unknowns). Circuits with num_vars >= this use

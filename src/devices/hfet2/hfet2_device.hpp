@@ -25,6 +25,7 @@ struct HFET2ModelCard {
 
 class HFET2Device : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     struct Geom {
         double L = 1e-6;
         double W = 20e-6;
