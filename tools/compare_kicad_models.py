@@ -27,6 +27,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -98,7 +99,12 @@ def parse_raw_file(path):
 
 
 def run_simulator(netlist_text, sim_bin, is_ngspice=False, timeout=10):
-    """Run a simulator on a netlist. Returns (success, raw_values, stderr_text)."""
+    """Run a simulator on a netlist.
+
+    Returns (success, raw_values, stderr_text, elapsed_seconds) where
+    elapsed_seconds is the wall-clock time of the simulator subprocess only
+    (process startup + simulation), excluding netlist write and raw parsing.
+    """
     with tempfile.NamedTemporaryFile(
         mode='w', suffix='.cir', delete=False, dir='/tmp'
     ) as f:
@@ -113,33 +119,35 @@ def run_simulator(netlist_text, sim_bin, is_ngspice=False, timeout=10):
         else:
             cmd = [sim_bin, tmp_cir, '-o', tmp_raw]
 
+        t0 = time.perf_counter()
         result = subprocess.run(
             cmd, capture_output=True, timeout=timeout
         )
+        elapsed = time.perf_counter() - t0
         stderr = result.stderr.decode('utf-8', errors='replace')
         stdout = result.stdout.decode('utf-8', errors='replace')
         combined = stdout + stderr
 
         if result.returncode != 0:
-            return False, None, combined.strip()
+            return False, None, combined.strip(), elapsed
 
         # For ngspice, also check for "run simulation(s) aborted" or no raw file
         if is_ngspice and ('aborted' in combined.lower()):
-            return False, None, combined.strip()
+            return False, None, combined.strip(), elapsed
 
         if not os.path.exists(tmp_raw):
-            return False, None, 'No raw file produced'
+            return False, None, 'No raw file produced', elapsed
 
         values = parse_raw_file(tmp_raw)
         if values is None:
-            return False, None, 'Failed to parse raw file'
+            return False, None, 'Failed to parse raw file', elapsed
 
-        return True, values, combined.strip()
+        return True, values, combined.strip(), elapsed
 
     except subprocess.TimeoutExpired:
-        return False, None, 'Timeout'
+        return False, None, 'Timeout', float(timeout)
     except Exception as e:
-        return False, None, str(e)
+        return False, None, str(e), 0.0
     finally:
         for p in (tmp_cir, tmp_raw):
             try:
@@ -206,8 +214,8 @@ def run_one_test(args_tuple):
     """Worker function for parallel execution. Returns a result dict."""
     kind, name, info, netlist, rel_path, neo_bin, ng_bin, ext_only = args_tuple
 
-    neo_ok, neo_vals, neo_err = run_simulator(netlist, neo_bin, is_ngspice=False)
-    ng_ok, ng_vals, ng_err = run_simulator(netlist, ng_bin, is_ngspice=True)
+    neo_ok, neo_vals, neo_err, neo_time = run_simulator(netlist, neo_bin, is_ngspice=False)
+    ng_ok, ng_vals, ng_err, ng_time = run_simulator(netlist, ng_bin, is_ngspice=True)
 
     if neo_ok and ng_ok:
         match, details = compare_values(neo_vals, ng_vals, external_only=ext_only)
@@ -236,6 +244,8 @@ def run_one_test(args_tuple):
         'ng_ok': ng_ok,
         'neo_err': neo_err if not neo_ok else '',
         'ng_err': ng_err if not ng_ok else '',
+        'neo_time': neo_time,
+        'ng_time': ng_time,
         'mismatches': mismatches,
         'netlist': netlist,
     }
@@ -470,6 +480,42 @@ def main():
             print(f"  {name:30s} {var:20s} neo={neo:12.6g} ng={ng:12.6g} "
                   f"rel_err={rel_err:.2e}  ({fpath})")
 
+    # Timing / speed summary
+    # Fair comparison: only circuits where BOTH simulators succeeded, so we
+    # compare identical work (both actually ran an OP solve to completion).
+    both_ok = [r for r in all_results if r['neo_ok'] and r['ng_ok']]
+    if both_ok:
+        neo_times = sorted(r['neo_time'] for r in both_ok)
+        ng_times = sorted(r['ng_time'] for r in both_ok)
+        n = len(both_ok)
+
+        def _median(xs):
+            m = len(xs) // 2
+            return xs[m] if len(xs) % 2 else 0.5 * (xs[m - 1] + xs[m])
+
+        neo_total, ng_total = sum(neo_times), sum(ng_times)
+        neo_med, ng_med = _median(neo_times), _median(ng_times)
+        # Per-circuit speedup = ng_time / neo_time (>1 means neospice faster)
+        ratios = sorted(r['ng_time'] / r['neo_time']
+                        for r in both_ok if r['neo_time'] > 0)
+
+        print()
+        print("=" * 75)
+        print("SPEED SUMMARY")
+        print("=" * 75)
+        print(f"  (subprocess wall time incl. process startup; {n} circuits where both succeeded)")
+        print(f"  {'':14s}{'neospice':>14s}{'ngspice':>14s}{'ratio (ng/neo)':>18s}")
+        print(f"  {'total (s)':14s}{neo_total:14.3f}{ng_total:14.3f}{ng_total / neo_total:17.2f}x")
+        print(f"  {'mean (ms)':14s}{1e3 * neo_total / n:14.3f}{1e3 * ng_total / n:14.3f}"
+              f"{ng_total / neo_total:17.2f}x")
+        print(f"  {'median (ms)':14s}{1e3 * neo_med:14.3f}{1e3 * ng_med:14.3f}"
+              f"{(ng_med / neo_med if neo_med else 0):17.2f}x")
+        if ratios:
+            print(f"  median per-circuit speedup (ng_time/neo_time): {_median(ratios):.2f}x")
+            faster = sum(1 for x in ratios if x > 1.0)
+            print(f"  neospice faster on {faster}/{len(ratios)} circuits "
+                  f"({100.0 * faster / len(ratios):.1f}%)")
+
     # Save results
     if args.save:
         save_data = {
@@ -488,6 +534,8 @@ def main():
                 'ng_ok': r['ng_ok'],
                 'neo_err': r['neo_err'],
                 'ng_err': r['ng_err'],
+                'neo_time': r['neo_time'],
+                'ng_time': r['ng_time'],
                 'mismatches': r['mismatches'],
             } for r in all_results],
         }
