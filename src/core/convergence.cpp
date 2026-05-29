@@ -1,6 +1,6 @@
 #include "core/convergence.hpp"
 #include "core/circuit.hpp"
-#include "core/neo_solver.hpp"
+#include "core/solver_iface.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include "devices/capacitor.hpp"
@@ -192,7 +192,7 @@ void fill_optran_integrator_context(Circuit& ckt, double t, double dt,
 
 } // namespace
 
-NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
+NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
                            std::vector<double>& solution,
                            const SimOptions& opts,
                            int firstmode, int continuemode) {
@@ -324,7 +324,7 @@ NewtonResult gmin_stepping(Circuit& ckt, NeoSolver& solver,
     return {false, total_iterations, last_residual, last_worst_idx};
 }
 
-NewtonResult true_gmin_stepping(Circuit& ckt, NeoSolver& solver,
+NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
                                 std::vector<double>& solution,
                                 const SimOptions& opts,
                                 int firstmode, int continuemode) {
@@ -447,7 +447,7 @@ NewtonResult true_gmin_stepping(Circuit& ckt, NeoSolver& solver,
     return {false, total_iterations, last_residual, last_worst_idx};
 }
 
-NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
+NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
                              std::vector<double>& solution,
                              const SimOptions& opts) {
     double fraction = 0.0;
@@ -559,7 +559,7 @@ NewtonResult source_stepping(Circuit& ckt, NeoSolver& solver,
     return result;
 }
 
-NewtonResult gain_stepping(Circuit& ckt, NeoSolver& solver,
+NewtonResult gain_stepping(Circuit& ckt, ISolver& solver,
                            std::vector<double>& solution,
                            const SimOptions& opts) {
     const double original_dep_src_fact = ckt.options.dep_src_fact;
@@ -673,7 +673,7 @@ NewtonResult gain_stepping(Circuit& ckt, NeoSolver& solver,
     return result;
 }
 
-NewtonResult transient_operating_point(Circuit& ckt, NeoSolver& solver,
+NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
                                         std::vector<double>& solution,
                                         const SimOptions& opts) {
     const std::vector<double> entry_solution = solution;
@@ -829,7 +829,7 @@ NewtonResult transient_operating_point(Circuit& ckt, NeoSolver& solver,
     return {false, total_iterations, last_result.residual, last_result.worst_node_idx};
 }
 
-NewtonResult pseudo_transient(Circuit& ckt, NeoSolver& solver,
+NewtonResult pseudo_transient(Circuit& ckt, ISolver& solver,
                               std::vector<double>& solution,
                               const SimOptions& opts) {
     const std::vector<double> entry_solution = solution;

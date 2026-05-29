@@ -50,6 +50,7 @@ inline bool switch_is_on(SwitchState s) {
 
 class VSwitch : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     VSwitch(std::string name,
             int32_t node_pos, int32_t node_neg,
             int32_t node_ctrl_pos, int32_t node_ctrl_neg,
@@ -100,6 +101,7 @@ private:
 
 class CSwitch : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     /// vsense must remain valid for the lifetime of this CSwitch (owned by Circuit).
     CSwitch(std::string name,
             int32_t node_pos, int32_t node_neg,

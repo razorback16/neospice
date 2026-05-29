@@ -2,6 +2,7 @@
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/neo_solver.hpp"
+#include "core/solver_iface.hpp"
 #include "core/timestep.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
@@ -129,7 +130,7 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
 // ===================================================================
 // Tries Newton, then gmin stepping, source stepping, pseudo-transient.
 // Returns the converged solution; throws SimulationError on failure.
-static void compute_dc_operating_point(Circuit& ckt, NeoSolver& solver,
+static void compute_dc_operating_point(Circuit& ckt, ISolver& solver,
                                        std::vector<double>& solution,
                                        int& total_newton_iters) {
     // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
@@ -314,7 +315,7 @@ static void initialize_device_dc_state(Circuit& ckt, std::vector<double>& soluti
 // to make node voltages consistent before storing the t=0 output.
 // ngspice achieves this implicitly: its first output point is after
 // the first MODEINITTRAN Newton step, so ICs are already resolved.
-static void resolve_tl_initial_conditions(Circuit& ckt, NeoSolver& solver,
+static void resolve_tl_initial_conditions(Circuit& ckt, ISolver& solver,
                                           std::vector<double>& solution,
                                           double tstep) {
     bool tl_has_ic = false;
@@ -697,7 +698,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // the DC OP establishes baseline node voltages, then apply_ic_overrides
     // and initialize_device_dc_state override with user-specified IC values.
     std::vector<double> solution(n, 0.0);
-    auto dc_solver = std::make_unique<NeoSolver>();
+    auto dc_solver = make_solver(ckt.num_vars(), ckt.is_linear());
     dc_solver->symbolic(ckt.pattern());
     try {
         compute_dc_operating_point(ckt, *dc_solver, solution, total_newton_iters);
@@ -710,7 +711,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         return fail_result;
     }
 
-    auto solver = std::make_unique<NeoSolver>();
+    auto solver = make_solver(ckt.num_vars(), ckt.is_linear());
     solver->symbolic(ckt.pattern());
     NewtonWorkspace newton_workspace(ckt.pattern());
 

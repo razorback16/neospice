@@ -29,6 +29,7 @@ namespace neospice {
 
 class NonlinearCCVS : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     NonlinearCCVS(std::string name,
                   int32_t node_pos, int32_t node_neg,
                   std::vector<const VSource*> vsenses,

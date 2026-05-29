@@ -56,6 +56,15 @@ public:
 
     virtual bool set_value(double /*value*/) { return false; }
 
+    /// True if the device contributes a voltage-dependent (nonlinear) Jacobian
+    /// that requires Newton iteration to converge: diodes, BJT/JFET/MOSFET,
+    /// switches, behavioral (B) sources, and nonlinear/table controlled sources.
+    /// Linear devices (R/L/C, independent sources, linear controlled sources,
+    /// transmission lines) keep the default false.  Used by the solver-selection
+    /// policy: AMD-LU's static pivot order is only provably safe (identical
+    /// result) on circuits with a unique solution, i.e. fully linear ones.
+    virtual bool is_nonlinear() const { return false; }
+
     /// ngspice stores modeled devices under model lists and links instances
     /// at the list head. Circuit::finalize() uses these keys to mirror that
     /// setup/load traversal without changing neospice's ownership order.

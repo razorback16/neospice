@@ -32,6 +32,7 @@ struct CtrlPair {
 
 class NonlinearVCVS : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     NonlinearVCVS(std::string name,
                   int32_t node_pos, int32_t node_neg,
                   std::vector<CtrlPair> ctrl_pairs,
@@ -181,6 +182,7 @@ inline double pwl_smooth_interp(const std::vector<TablePoint>& tbl,
 
 class TableVCVS : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     TableVCVS(std::string name,
               int32_t node_pos, int32_t node_neg,
               int32_t ctrl_pos, int32_t ctrl_neg,

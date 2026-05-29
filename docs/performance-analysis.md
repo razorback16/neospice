@@ -351,3 +351,96 @@ The timing instrumentation lives in `tools/compare_kicad_models.py`
 (`run_simulator` returns elapsed seconds; results carry `neo_time` / `ng_time`;
 the `SPEED SUMMARY` block reports totals, mean, median, and per-circuit
 speedup).
+
+---
+---
+
+# Part V — AMD-Ordered Sparse-LU Solver (Implemented)
+
+This part documents the KLU-style direct solver added on top of the parser work.
+It was built as a measurement spike → staged implementation on the
+`solver-amd-ordering-spike` branch, each stage gated on the full 5000-model
+ngspice parity (byte-identical) plus the unit-test suite.
+
+## Motivation
+
+The `bench_solver_throughput` benchmark (Part I, Priority 4) surfaced that the
+production solver — a Sparse1.3-style **Markowitz** factorization
+(`src/solver/factor.cpp`, wrapped by `NeoSolver`) — scales ~O(n^2.1) on
+2-D-connectivity matrices. This matches ngspice's default SPARSE exactly (it is
+the same algorithm), so it is not a defect. But ngspice's opt-in **KLU** (AMD
+ordering + BTF) is dramatically faster on the same matrices:
+
+| nodes | ng-default (Markowitz) | ng-KLU (AMD) | speedup |
+|------:|-----------------------:|-------------:|--------:|
+| 5,041 | 253 ms | 43 ms | 5.8× |
+| 19,881 | 5,130 ms | 192 ms | 26.7× |
+
+neospice already had unit-tested but **orphaned** AMD (`src/core/amd.cpp`) and
+BTF (`src/core/btf.cpp`) implementations (not compiled into the library, tests
+not registered). A measurement spike confirmed neospice's own `amd_ordering`
+reduces symbolic L+U fill 2.73×–5.46× on meshes, predicting a large speedup.
+
+## What was built
+
+`AmdLuSolver` (`src/core/amd_lu_solver.{hpp,cpp}`):
+
+- **AMD column ordering** in `symbolic()` (structurally symmetrized pattern).
+- **Gilbert–Peierls left-looking sparse LU** with KLU-style threshold partial
+  pivoting (tol 1e-3) in `numeric()`.
+- **Refactor reuse** in `refactorize()`: replays the stored pivot order and L/U
+  structure (no DFS, no pivot search), à la `klu_refactor`, with a pivot-growth
+  fallback to a full re-pivoting factor when a reused pivot becomes unstable.
+- **Complex (AC/noise) ops delegate to an internal `NeoSolver`** — the real
+  DC/transient path is the target.
+
+Selection (`make_solver(num_vars, is_linear)`, `ISolver` interface):
+
+- `NEOSPICE_SOLVER=auto` (default): AMD-LU iff **`num_vars >= 256` AND the
+  circuit is linear**; otherwise Markowitz. `amdlu`/`klu` force AMD-LU;
+  `markowitz`/`sparse` force Markowitz.
+- `AutoFallbackSolver` wraps the auto path: on a hard singular at first factor
+  it swaps to Markowitz.
+
+## Why "large AND linear"
+
+A full-library survey + a Markowitz-vs-AMD-LU agreement check on all 66 circuits
+> 191 unknowns showed two distinct populations:
+
+- **Linear** transmission-line models (`twisted_pair*`, `symmetric_line*`,
+  262–5129 vars): AMD-LU is **byte-identical** to Markowitz (unique solution →
+  zero divergence) and up to **1691× faster**.
+- **Nonlinear** op-amp/inst-amp macromodels (`OPA*`, `INA*`, `PGA*`, 192–388
+  vars): AMD-LU **diverges from Markowitz by up to 8.5%** — pivot-order/roundoff
+  **basin sensitivity** (the same effect documented for the LinearTech op-amps
+  in Part III). These must stay on their ngspice-validated Markowitz path.
+
+Their size ranges overlap, so size alone can't separate them; **linearity** can.
+A linear circuit has a unique operating point, so any correct factorization
+yields the same answer — AMD-LU is provably safe there.
+
+## Results
+
+- **Production payoff** (default `auto`, no env var): `twisted_pair1024`
+  (5129 vars) **~9.6 min → 0.37 s**; `twisted_pair256` 5774 ms → 34 ms. Synthetic
+  2-D mesh: 7.6× @ 20k nodes. Refactor reuse: 3–5× per factorization.
+- **Parity:** 5000-model ngspice comparison **byte-identical to baseline**
+  (MATCH 3677 / MISMATCH 104 / NEO_ONLY 369 / NG_ONLY 6 / BOTH_FAIL 844) —
+  every nonlinear macromodel stays on Markowitz.
+- **Tests:** AMD/BTF tests wired into ctest; new `AmdLuSolver` LU-correctness,
+  refactor-reuse, and selection-routing tests. Suite 992 → 1037.
+
+## Known limitations / future work
+
+- **Nonlinear large circuits stay on Markowitz.** Enabling AMD-LU there could
+  speed them up (and ~24 currently converge under AMD-LU where Markowitz fails),
+  but each would need per-circuit ngspice validation because of basin
+  sensitivity. Out of scope for the byte-identical-parity bar.
+- **BTF unused.** `btf_decompose` is wired into the lib + tested but not used by
+  `AmdLuSolver`; the meshes/transmission-lines are single-SCC so BTF gives no
+  gain. It would help reducible large circuits.
+- **AC/noise** still use Markowitz (complex path delegates).
+- **No finer solver instrumentation** (symbolic vs numeric vs solve vs
+  device-eval timers) — would need opt-in hooks in the factor hot path.
+- Selection is by static device linearity at solve setup; a mostly-linear
+  circuit with one nonlinear device stays on Markowitz by design (safety > speed).

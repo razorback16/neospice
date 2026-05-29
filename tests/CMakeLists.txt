@@ -18,7 +18,11 @@ include(GoogleTest)
 
 add_executable(neospice_tests
     unit/test_matrix.cpp
+    unit/test_amd.cpp
+    unit/test_btf.cpp
     unit/test_neo_solver.cpp
+    unit/test_amd_lu.cpp
+    unit/test_solver_select.cpp
     unit/test_resistor.cpp
     unit/test_vsource.cpp
     unit/test_isource.cpp
@@ -213,3 +217,14 @@ target_include_directories(bench_solver_throughput PRIVATE ${CMAKE_CURRENT_SOURC
 target_compile_definitions(bench_solver_throughput PRIVATE
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )
+
+# Ordering spike: measures LU fill (natural vs neospice's amd_ordering) and a
+# representative no-pivot factor-time estimate vs the production Markowitz
+# solver. neospice-only, not registered with ctest (a measurement spike).
+# amd.cpp/btf.cpp are now part of neospice_lib, so link the lib (do NOT
+# recompile core/amd.cpp here to avoid duplicate-symbol/ODR issues).
+add_executable(bench_ordering_spike
+    bench/bench_ordering_spike.cpp
+)
+target_link_libraries(bench_ordering_spike PRIVATE neospice_lib)
+target_include_directories(bench_ordering_spike PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

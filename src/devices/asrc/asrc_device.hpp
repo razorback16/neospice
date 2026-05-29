@@ -31,6 +31,7 @@ class VSource;  // forward decl
 
 class ASRCDevice : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     enum class Mode { VOLTAGE, CURRENT };
 
     /// Construct from parsed data.

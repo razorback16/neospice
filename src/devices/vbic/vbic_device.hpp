@@ -25,6 +25,7 @@ struct VBICModelCard {
 
 class VBICDevice : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     struct Geom {
         double area = 1.0;
         double m = 1.0;

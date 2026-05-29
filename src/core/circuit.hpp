@@ -163,6 +163,17 @@ public:
     int32_t num_vars() const  { return num_vars_; }
     int32_t num_states() const { return num_states_; }
 
+    /// True if the circuit contains no nonlinear device — i.e. every device
+    /// has a constant (voltage-independent) Jacobian, so the system has a
+    /// unique solution and any correct LU ordering yields the identical result.
+    /// Used by the solver-selection policy to gate AMD-LU (whose static pivot
+    /// order is only provably safe on linear systems). O(num_devices), cheap.
+    bool is_linear() const {
+        for (const auto& dev : devices_)
+            if (dev && dev->is_nonlinear()) return false;
+        return true;
+    }
+
     // --- Typed device construction methods ---
     // Passives
     DevId R(std::string_view name, NodeId a, NodeId b, double ohms);

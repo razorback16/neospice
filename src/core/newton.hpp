@@ -7,7 +7,7 @@
 namespace neospice {
 
 class Circuit;
-class NeoSolver;
+class ISolver;
 
 struct NewtonWorkspace {
     explicit NewtonWorkspace(const SparsityPattern& pattern);
@@ -32,11 +32,11 @@ struct NewtonResult {
     int32_t worst_node_idx = -1;    // node with largest residual
 };
 
-NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
+NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts);
 
-NewtonResult newton_solve(Circuit& ckt, NeoSolver& solver,
+NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts,
                           NewtonWorkspace& workspace);

@@ -34,6 +34,7 @@ class VSource;  // forward declaration for I() refs
 
 class NonlinearVCCS : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     NonlinearVCCS(std::string name,
                   int32_t node_pos, int32_t node_neg,
                   std::vector<CtrlPair> ctrl_pairs,
@@ -84,6 +85,7 @@ private:
 
 class TableVCCS : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     // Simple form: control is V(ctrl_pos) - V(ctrl_neg)
     TableVCCS(std::string name,
               int32_t node_pos, int32_t node_neg,

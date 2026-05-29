@@ -25,6 +25,7 @@ struct DIOModelCard {
 
 class DIODevice : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     struct Geom {
         double area = 1.0;
         double pj = 0.0;

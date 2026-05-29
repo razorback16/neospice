@@ -25,6 +25,7 @@ struct MOS3ModelCard {
 
 class MOS3Device : public Device {
 public:
+    bool is_nonlinear() const override { return true; }
     struct Geom {
         double W = 1e-4;
         double L = 1e-4;
