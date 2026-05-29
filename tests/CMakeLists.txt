@@ -213,3 +213,16 @@ target_include_directories(bench_solver_throughput PRIVATE ${CMAKE_CURRENT_SOURC
 target_compile_definitions(bench_solver_throughput PRIVATE
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )
+
+# Ordering spike: measures LU fill (natural vs neospice's amd_ordering) and a
+# representative no-pivot factor-time estimate vs the production Markowitz
+# solver. neospice-only, not registered with ctest (a measurement spike).
+# amd.cpp/btf.cpp are not part of neospice_lib (not yet wired into the solver),
+# so compile core/amd.cpp directly into the spike to exercise the real
+# amd_ordering() exactly as-is.
+add_executable(bench_ordering_spike
+    bench/bench_ordering_spike.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/amd.cpp
+)
+target_link_libraries(bench_ordering_spike PRIVATE neospice_lib)
+target_include_directories(bench_ordering_spike PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
