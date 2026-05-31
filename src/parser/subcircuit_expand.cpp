@@ -296,9 +296,21 @@ void extract_nested_defs(
 
             bool seen_param = false;
             for (size_t i = 2; i < line.tokens.size(); ++i) {
-                const std::string& tok = line.tokens[i];
-                // PSpice section keywords — skip the keyword itself
+                std::string tok = line.tokens[i];
                 std::string tok_lower = to_lower(tok);
+                // A PSpice section keyword may be glued to the first parameter,
+                // e.g. "Params:B0=1" — strip the prefix so the remainder ("B0=1")
+                // parses as a normal key=value.
+                for (const char* kw : {"params:", "optional:", "text:"}) {
+                    size_t kl = std::char_traits<char>::length(kw);
+                    if (tok_lower.size() > kl && tok_lower.compare(0, kl, kw) == 0) {
+                        if (kw[0] == 'p') seen_param = true;
+                        tok = tok.substr(kl);
+                        tok_lower = to_lower(tok);
+                        break;
+                    }
+                }
+                // PSpice section keywords — skip the keyword itself
                 if (tok_lower == "params:" || tok_lower == "optional:" || tok_lower == "text:") {
                     if (tok_lower == "params:") seen_param = true;
                     continue;
@@ -519,7 +531,8 @@ std::vector<TokenizedLine> expand_instance(
     int depth,
     int line_number,
     const std::unordered_map<std::string, double>& global_params,
-    const std::unordered_set<std::string>& global_nodes) {
+    const std::unordered_set<std::string>& global_nodes,
+    const std::unordered_set<std::string>& global_model_names) {
 
     if (depth > MAX_SUBCIRCUIT_DEPTH) {
         throw ParseError("Line " + std::to_string(line_number) +
@@ -766,7 +779,7 @@ std::vector<TokenizedLine> expand_instance(
             auto expanded = expand_instance(sub_prefix, sub_def, sub_connections,
                                             sub_params, merged_defs, depth + 1,
                                             line.line_number, global_params,
-                                            global_nodes);
+                                            global_nodes, global_model_names);
             result.insert(result.end(), expanded.begin(), expanded.end());
 
         } else {
@@ -777,7 +790,11 @@ std::vector<TokenizedLine> expand_instance(
             // Use the local model names to disambiguate token[4].
             if (elem_type == 'q' && line.tokens.size() > 4) {
                 std::string tok4_lower = to_lower(line.tokens[4]);
-                if (local_model_names.count(tok4_lower)) {
+                // token[4] is the model (3-node Q) if it names a model defined
+                // either in the subckt body OR at top level (ngspice resolves
+                // the model against the global table regardless of scope).
+                if (local_model_names.count(tok4_lower) ||
+                    global_model_names.count(tok4_lower)) {
                     ncount = 3;  // token[4] is model, not substrate
                 }
             }
@@ -1030,6 +1047,15 @@ std::vector<TokenizedLine> expand_all_instances(
     std::vector<TokenizedLine> result;
     result.reserve(lines.size());
 
+    // Collect top-level (global) .model names so the Q-card node/model
+    // disambiguation inside subcircuits can recognize models defined outside
+    // the subcircuit body (ngspice resolves against the global model table).
+    std::unordered_set<std::string> global_model_names;
+    for (const auto& line : lines) {
+        if (line.tokens.size() >= 2 && to_lower(line.tokens[0]) == ".model")
+            global_model_names.insert(to_lower(line.tokens[1]));
+    }
+
     for (const auto& line : lines) {
         if (line.tokens.empty()) {
             result.push_back(line);
@@ -1112,7 +1138,7 @@ std::vector<TokenizedLine> expand_all_instances(
             auto expanded = expand_instance(x_name, def, connections,
                                             instance_params, all_defs, 1,
                                             line.line_number, global_params,
-                                            global_nodes);
+                                            global_nodes, global_model_names);
             result.insert(result.end(), expanded.begin(), expanded.end());
         } else {
             result.push_back(line);

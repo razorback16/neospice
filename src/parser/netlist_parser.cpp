@@ -549,9 +549,25 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
 
                 bool seen_param = false;
                 for (size_t i = 2; i < line.tokens.size(); ++i) {
-                    const std::string& tok = line.tokens[i];
-                    // PSpice section keywords — skip the keyword itself
+                    std::string tok = line.tokens[i];
+                    // Commas separate parameters in PSpice subckt headers
+                    // ("Params:B0=1, B1=1,"): drop a standalone comma and strip
+                    // a trailing comma glued to a token.
+                    if (tok == ",") continue;
+                    if (!tok.empty() && tok.back() == ',') tok.pop_back();
                     std::string tok_lower = to_lower(tok);
+                    // A PSpice section keyword may be glued to the first param
+                    // ("Params:B0=1") — strip the prefix so the rest parses.
+                    for (const char* kw : {"params:", "optional:", "text:"}) {
+                        size_t kl = std::char_traits<char>::length(kw);
+                        if (tok_lower.size() > kl && tok_lower.compare(0, kl, kw) == 0) {
+                            if (kw[0] == 'p') seen_param = true;
+                            tok = tok.substr(kl);
+                            tok_lower = to_lower(tok);
+                            break;
+                        }
+                    }
+                    // PSpice section keywords — skip the keyword itself
                     if (tok_lower == "params:" || tok_lower == "optional:" || tok_lower == "text:") {
                         if (tok_lower == "params:") seen_param = true;
                         continue;
@@ -2794,7 +2810,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                             continue;
                         }
                     }
-                    if      (key == "z0") { tz0 = val; z0_given = true; }
+                    if      (key == "z0" || key == "zo") { tz0 = val; z0_given = true; }
                     else if (key == "td") { ttd = val; }
                     else if (key == "f")  { tf  = val; }
                     else if (key == "nl") { tnl = val; }
@@ -2946,13 +2962,23 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             std::string expr_str;
             std::string rest_lower = to_lower(rest);
 
-            if (rest_lower.size() >= 2 && rest_lower[0] == 'v' && rest_lower[1] == '=') {
-                mode = ASRCDevice::Mode::VOLTAGE;
-                expr_str = rest.substr(2);
-            } else if (rest_lower.size() >= 2 && rest_lower[0] == 'i' && rest_lower[1] == '=') {
-                mode = ASRCDevice::Mode::CURRENT;
-                expr_str = rest.substr(2);
-            } else {
+            // Accept "V=expr" / "I=expr" with optional whitespace around '='
+            // (e.g. "V = 1e-3 + V(a,b)") as PSpice/ngspice allow.
+            bool b_ok = false;
+            if (!rest_lower.empty() && (rest_lower[0] == 'v' || rest_lower[0] == 'i')) {
+                size_t p = 1;
+                while (p < rest.size() &&
+                       std::isspace(static_cast<unsigned char>(rest[p]))) ++p;
+                if (p < rest.size() && rest[p] == '=') {
+                    mode = (rest_lower[0] == 'v') ? ASRCDevice::Mode::VOLTAGE
+                                                  : ASRCDevice::Mode::CURRENT;
+                    expr_str = rest.substr(p + 1);
+                    size_t s = expr_str.find_first_not_of(" \t");
+                    expr_str = (s == std::string::npos) ? "" : expr_str.substr(s);
+                    b_ok = true;
+                }
+            }
+            if (!b_ok) {
                 fprintf(stderr, "Warning: Line %d: B element requires V={expr} or I={expr}, got '%s' — skipping\n", line.line_number, rest.c_str());
                 continue;
             }

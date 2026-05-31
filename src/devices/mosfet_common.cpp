@@ -160,6 +160,12 @@ void resolve_mosfets(
         const auto& m = static_cast<const ParsedMosfet&>(*elem);
         auto it = models.find(m.model_name);
         if (it == models.end()) {
+            // Model names are case-insensitive; fall back to a lowercase lookup
+            // (handles a lowercase .model definition referenced in upper case,
+            // matching the BJT/JFET resolvers).
+            it = models.find(to_lower(m.model_name));
+        }
+        if (it == models.end()) {
             throw ParseError("Line " + std::to_string(m.line_number) +
                 ": Unknown model '" + m.model_name + "' for MOSFET '" + m.name + "'");
         }

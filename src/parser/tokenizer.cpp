@@ -47,7 +47,24 @@ static std::vector<std::string> split_tokens(const std::string& line, size_t pos
 
     while (next_ws_token(line, pos, tok)) {
         if (brace_depth == 0 && tok[0] == '$') break;
-        if (brace_depth == 0 && tok[0] == ';') break;
+        // An inline ';' comment may be glued mid-token (e.g. "NOUT;OFF" or
+        // "5;note") — ngspice ends the line at ';' anywhere. Honor it at
+        // brace-depth 0, tracking braces within the token so a ';' inside a
+        // {...} expression is not mistaken for a comment.
+        if (brace_depth == 0) {
+            int d = 0;
+            size_t sc = std::string::npos;
+            for (size_t i = 0; i < tok.size(); ++i) {
+                if (tok[i] == '{') ++d;
+                else if (tok[i] == '}') { if (d > 0) --d; }
+                else if (tok[i] == ';' && d == 0) { sc = i; break; }
+            }
+            if (sc != std::string::npos) {
+                tok.erase(sc);
+                if (!tok.empty()) tokens.push_back(tok);
+                break;
+            }
+        }
 
         if (brace_depth > 0) {
             brace_accum += ' ';
