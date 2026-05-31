@@ -32,6 +32,12 @@ public:
     void set_rac(double r) { rac_ = r; }
     double rac() const { return rac_; }
 
+    /// Negative-terminal node accessor/setter. Used to splice a 0V current-
+    /// sense source in series (to support I(Rname) inside B-source/E/G TABLE
+    /// expressions) before matrix offsets are assigned.
+    int32_t neg_node() const { return nn_; }
+    void set_neg_node(int32_t n) { nn_ = n; }
+
     std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
     std::optional<double> primary_value() const override { return resistance_eff_; }
     bool set_value(double value) override {

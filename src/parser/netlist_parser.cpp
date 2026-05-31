@@ -3342,7 +3342,32 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         ckt.add_device(std::move(ltra_dev));
     }
 
-    // Resolve deferred ASRC (B elements) — find VSource pointers for I() refs
+    // Resolve deferred ASRC (B elements) — find VSource pointers for I() refs.
+    // I() may also reference a non-source 2-terminal device (e.g. a resistor);
+    // ngspice supports that. We splice a 0V current-sense source in series with
+    // the device and bind I() to it. rsense_sources caches one sense source per
+    // device so multiple references reuse it.
+    std::unordered_map<std::string, const VSource*> rsense_sources;
+    auto sense_source_for = [&](const std::string& devname) -> const VSource* {
+        std::string key = to_lower(devname);
+        if (auto it = rsense_sources.find(key); it != rsense_sources.end())
+            return it->second;
+        for (auto& dev : ckt.devices()) {
+            auto* r = dynamic_cast<Resistor*>(dev.get());
+            if (r && to_lower(r->name()) == key) {
+                int32_t orig_nn = r->neg_node();
+                int32_t sense_node = node_raw("__isns_" + devname);
+                r->set_neg_node(sense_node);
+                auto sense = std::make_unique<VSource>(
+                    "__visns_" + devname, sense_node, orig_nn, 0.0);
+                const VSource* sp = sense.get();
+                ckt.add_device(std::move(sense));
+                rsense_sources[key] = sp;
+                return sp;
+            }
+        }
+        return nullptr;
+    };
     for (auto& bd : deferred_asrcs) {
         const auto& refs = bd.expr.var_refs();
         int nv = bd.expr.num_vars();
@@ -3361,6 +3386,7 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
                         }
                     }
                 }
+                if (!vs) vs = sense_source_for(bd.vsrc_names[i]);
                 if (!vs) {
                     fprintf(stderr, "Warning: Line %d: B element '%s' references unknown voltage source '%s' in I() — skipping\n",
                             bd.line_number, bd.name.c_str(), bd.vsrc_names[i].c_str());
