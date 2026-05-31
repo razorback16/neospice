@@ -450,11 +450,12 @@ std::unordered_set<std::string> collect_internal_nodes(
                 size_t ctrl_pos = ctrl_start;
                 for (int k = 0; k < pdim && ctrl_pos < line.tokens.size(); ++k) {
                     const std::string& ctrl_tok = line.tokens[ctrl_pos];
-                    if (ctrl_tok.size() > 1 && ctrl_tok[0] == '(' &&
-                        ctrl_tok.find(',') != std::string::npos) {
-                        // Parenthesized pair (cp,cn) — extract both node names
-                        std::string inner = ctrl_tok.substr(1);
-                        if (!inner.empty() && inner.back() == ')') inner.pop_back();
+                    if (ctrl_tok.find(',') != std::string::npos) {
+                        // One-token control pair: "(cp,cn)" or bare "cp,cn" —
+                        // strip parens and split on the comma.
+                        std::string inner = ctrl_tok;
+                        inner.erase(std::remove(inner.begin(), inner.end(), '('), inner.end());
+                        inner.erase(std::remove(inner.begin(), inner.end(), ')'), inner.end());
                         auto comma = inner.find(',');
                         std::string cp = to_lower(inner.substr(0, comma));
                         std::string cn = to_lower(inner.substr(comma + 1));
@@ -886,11 +887,13 @@ std::vector<TokenizedLine> expand_instance(
                 // Substitute control node pairs — each may be (cp,cn) or two separate tokens
                 for (int k = 0; k < eg_poly_dim && value_start < line.tokens.size(); ++k) {
                     const std::string& ctrl_tok = line.tokens[value_start];
-                    if (ctrl_tok.size() > 1 && ctrl_tok[0] == '(' &&
-                        ctrl_tok.find(',') != std::string::npos) {
-                        // Parenthesized pair (cp,cn) — substitute each node inside
-                        std::string inner = ctrl_tok.substr(1);
-                        if (!inner.empty() && inner.back() == ')') inner.pop_back();
+                    if (ctrl_tok.find(',') != std::string::npos) {
+                        // One-token pair: "(cp,cn)" or bare "cp,cn" — strip parens,
+                        // split the comma, substitute each node. Must stay in sync
+                        // with the node-collection pass above (consumes 1 token).
+                        std::string inner = ctrl_tok;
+                        inner.erase(std::remove(inner.begin(), inner.end(), '('), inner.end());
+                        inner.erase(std::remove(inner.begin(), inner.end(), ')'), inner.end());
                         auto comma = inner.find(',');
                         std::string cp_sub = subst_node(inner.substr(0, comma));
                         std::string cn_sub = subst_node(inner.substr(comma + 1));

@@ -1922,33 +1922,33 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
                 bool poly_ok = true;
-                for (int k = 0; k < poly_dim; ++k) {
-                    if (idx >= tokens.size()) {
-                        fprintf(stderr, "Warning: Line %d: POLY VCVS: not enough control node pairs — skipping\n", line.line_number);
-                        poly_ok = false;
-                        break;
-                    }
-                    // Support parenthesized control node pair: (cp,cn)
-                    if (tokens[idx].size() > 1 && tokens[idx][0] == '(' &&
-                        tokens[idx].find(',') != std::string::npos) {
-                        std::string inner = tokens[idx];
-                        if (inner.front() == '(') inner.erase(0, 1);
-                        if (inner.back() == ')') inner.pop_back();
-                        auto comma = inner.find(',');
-                        int32_t cp = node_raw(inner.substr(0, comma));
-                        int32_t cn = node_raw(inner.substr(comma + 1));
-                        ctrl_pairs.push_back({cp, cn});
-                        idx += 1;
-                    } else {
-                        if (idx + 1 >= tokens.size()) {
+                {
+                    // Read 2*poly_dim control-node atoms treating '(' ')' ',' as
+                    // delimiters (ngspice gettok_node semantics), so (cp,cn),
+                    // (cp cn), bare cp,cn and cp cn all parse identically.
+                    std::vector<std::string> atoms;
+                    auto next_atom = [&](std::string& out) -> bool {
+                        while (atoms.empty() && idx < tokens.size()) {
+                            std::string cur;
+                            for (char c : tokens[idx]) {
+                                if (c=='('||c==')'||c==',') {
+                                    if (!cur.empty()) { atoms.push_back(cur); cur.clear(); }
+                                } else cur += c;
+                            }
+                            if (!cur.empty()) atoms.push_back(cur);
+                            ++idx;
+                        }
+                        if (atoms.empty()) return false;
+                        out = atoms.front(); atoms.erase(atoms.begin()); return true;
+                    };
+                    for (int k = 0; k < poly_dim; ++k) {
+                        std::string sp, sn;
+                        if (!next_atom(sp) || !next_atom(sn)) {
                             fprintf(stderr, "Warning: Line %d: POLY VCVS: not enough control node pairs — skipping\n", line.line_number);
                             poly_ok = false;
                             break;
                         }
-                        int32_t cp = node_raw(tokens[idx]);
-                        int32_t cn = node_raw(tokens[idx + 1]);
-                        ctrl_pairs.push_back({cp, cn});
-                        idx += 2;
+                        ctrl_pairs.push_back({node_raw(sp), node_raw(sn)});
                     }
                 }
                 if (!poly_ok) continue;
@@ -2258,34 +2258,34 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
                 bool poly_ok = true;
-                for (int k = 0; k < poly_dim; ++k) {
-                    if (idx >= tokens.size()) {
-                        fprintf(stderr, "Warning: Line %d: POLY VCCS: not enough control node pairs — skipping\n", line.line_number);
-                        poly_ok = false;
-                        break;
+                {
+                    // Read 2*poly_dim control-node atoms treating '(' ')' ',' as
+                    // delimiters (ngspice gettok_node semantics), so (cp,cn),
+                    // (cp cn), bare cp,cn and cp cn all parse identically.
+                    std::vector<std::string> atoms;
+                    auto next_atom = [&](std::string& out) -> bool {
+                        while (atoms.empty() && idx < tokens.size()) {
+                            std::string cur;
+                            for (char c : tokens[idx]) {
+                                if (c=='('||c==')'||c==',') {
+                                    if (!cur.empty()) { atoms.push_back(cur); cur.clear(); }
+                                } else cur += c;
+                            }
+                            if (!cur.empty()) atoms.push_back(cur);
+                            ++idx;
+                        }
+                        if (atoms.empty()) return false;
+                        out = atoms.front(); atoms.erase(atoms.begin()); return true;
+                    };
+                    for (int k = 0; k < poly_dim; ++k) {
+                        std::string sp, sn;
+                        if (!next_atom(sp) || !next_atom(sn)) {
+                            fprintf(stderr, "Warning: Line %d: POLY VCCS: not enough control node pairs — skipping\n", line.line_number);
+                            poly_ok = false;
+                            break;
+                        }
+                        ctrl_pairs.push_back({node_raw(sp), node_raw(sn)});
                     }
-                    // Support parenthesized control node pair: (cp,cn)
-                    if (tokens[idx].size() > 1 && tokens[idx][0] == '(' &&
-                        tokens[idx].find(',') != std::string::npos) {
-                        std::string inner = tokens[idx];
-                        if (inner.front() == '(') inner.erase(0, 1);
-                        if (inner.back() == ')') inner.pop_back();
-                        auto comma = inner.find(',');
-                        int32_t cp = node_raw(inner.substr(0, comma));
-                        int32_t cn = node_raw(inner.substr(comma + 1));
-                        ctrl_pairs.push_back({cp, cn});
-                        idx += 1;
-                        continue;
-                    }
-                    if (idx + 1 >= tokens.size()) {
-                        fprintf(stderr, "Warning: Line %d: POLY VCCS: not enough control node pairs — skipping\n", line.line_number);
-                        poly_ok = false;
-                        break;
-                    }
-                    int32_t cp = node_raw(tokens[idx]);
-                    int32_t cn = node_raw(tokens[idx + 1]);
-                    ctrl_pairs.push_back({cp, cn});
-                    idx += 2;
                 }
                 if (!poly_ok) continue;
                 std::vector<double> coeffs;
