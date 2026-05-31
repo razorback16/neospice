@@ -101,11 +101,15 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
     // Parse parameters (from paren block or bare params)
     if (!params_str.empty()) {
 
-        // Replace '=' with ' = ' for easier parsing, then split
+        // Replace '=' with ' = ' for easier parsing, then split. Commas are
+        // valid parameter separators in PSpice model cards (e.g.
+        // "d(kf=2e-12,af=1, T_abs=-4)"), so treat them as whitespace.
         std::string normalized;
         for (char c : params_str) {
             if (c == '=') {
                 normalized += " = ";
+            } else if (c == ',') {
+                normalized += ' ';
             } else {
                 normalized += c;
             }
