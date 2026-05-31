@@ -579,40 +579,35 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_number() {
         }
     }
 
-    // Consume SPICE suffix letters: t, g, meg, k, m, u, n, p, f, a
-    // A suffix is consumed if:
-    //   1. It's a recognized suffix letter/sequence
-    //   2. It's NOT followed by another alpha char (which would make it an identifier)
-    if (pos_ < expr_.size()) {
-        char ch = std::tolower(static_cast<unsigned char>(expr_[pos_]));
-
-        // Check for "meg" (3-letter suffix) first
-        bool consumed = false;
-        if (ch == 'm' && pos_ + 2 < expr_.size()) {
+    // Consume an optional SPICE scale suffix (meg, or t/g/k/m/u/n/p/f/a) and
+    // then any trailing unit letters (V, A, s, F, H, Hz, Ohm, ...). We are in a
+    // numeric token (it began with a digit or '.') and SPICE has no implicit
+    // multiplication, so a trailing alpha run is always a scale suffix and/or a
+    // unit: "800mV" -> 0.8, "5V" -> 5, "5meg" -> 5e6, "1.5s" -> 1.5. The scale
+    // suffix is kept in the parsed substring; the unit letters are discarded.
+    size_t num_end = pos_;
+    if (pos_ < expr_.size() && std::isalpha(static_cast<unsigned char>(expr_[pos_]))) {
+        bool got_scale = false;
+        if (pos_ + 3 <= expr_.size()) {
             std::string three = expr_.substr(pos_, 3);
             std::transform(three.begin(), three.end(), three.begin(), ::tolower);
-            if (three == "meg" &&
-                (pos_ + 3 >= expr_.size() ||
-                 !std::isalpha(static_cast<unsigned char>(expr_[pos_ + 3])))) {
-                pos_ += 3;
-                consumed = true;
-            }
+            if (three == "meg") { pos_ += 3; got_scale = true; }
         }
-
-        // Single-letter suffixes
-        if (!consumed) {
+        if (!got_scale) {
+            char ch = std::tolower(static_cast<unsigned char>(expr_[pos_]));
             if (ch == 't' || ch == 'g' || ch == 'k' || ch == 'm' ||
                 ch == 'u' || ch == 'n' || ch == 'p' || ch == 'f' || ch == 'a') {
-                // Only consume if NOT followed by another alpha char
-                if (pos_ + 1 >= expr_.size() ||
-                    !std::isalpha(static_cast<unsigned char>(expr_[pos_ + 1]))) {
-                    ++pos_;
-                }
+                ++pos_;
             }
         }
+        num_end = pos_;  // numeric part (mantissa + scale) ends here
+        // Discard any trailing unit letters.
+        while (pos_ < expr_.size() &&
+               std::isalpha(static_cast<unsigned char>(expr_[pos_])))
+            ++pos_;
     }
 
-    std::string numstr = expr_.substr(start, pos_ - start);
+    std::string numstr = expr_.substr(start, num_end - start);
     double val = parse_spice_number(numstr);
 
     auto node = std::make_unique<ASTNode>();
@@ -1226,7 +1221,12 @@ CompiledExpression::eval_node(const ASTNode* node,
         result.val = std::copysign(raw, a.val);
         if (need_grad) {
             // d/dx[sgn(x)*|x|^y] = y * |x|^(y-1)   (sign-preserving)
-            double da_coeff = b.val * std::pow(abs_x, b.val - 1.0);
+            // Floor the base for the derivative: a fractional exponent gives an
+            // infinite slope at x=0 (e.g. pwr(I,0.4) with I=0 at the DC op),
+            // which would make the Jacobian singular. Match ngspice's tolerance
+            // by clamping the magnitude used for the derivative only.
+            double da_coeff = b.val * std::pow(std::max(abs_x, 1e-12), b.val - 1.0);
+            if (!std::isfinite(da_coeff)) da_coeff = 0.0;
             // d/dy[sgn(x)*|x|^y] = sgn(x) * |x|^y * ln(|x|)
             double db_coeff = (abs_x > 0.0) ? raw * std::log(abs_x) : 0.0;
             double sign = (a.val >= 0.0) ? 1.0 : -1.0;
@@ -1244,8 +1244,10 @@ CompiledExpression::eval_node(const ASTNode* node,
         double raw = std::pow(abs_x, b.val);
         result.val = std::copysign(raw, a.val);
         if (need_grad) {
-            // d/dx[PWRS(x,y)] = y * |x|^(y-1)  (same magnitude as PWR)
-            double da_coeff = b.val * std::pow(abs_x, b.val - 1.0);
+            // d/dx[PWRS(x,y)] = y * |x|^(y-1)  (same magnitude as PWR); floor
+            // the derivative base to avoid an infinite slope at x=0.
+            double da_coeff = b.val * std::pow(std::max(abs_x, 1e-12), b.val - 1.0);
+            if (!std::isfinite(da_coeff)) da_coeff = 0.0;
             double db_coeff = (abs_x > 0.0) ? raw * std::log(abs_x) : 0.0;
             double sign = (a.val >= 0.0) ? 1.0 : -1.0;
             for (int i = 0; i < nv; ++i)
