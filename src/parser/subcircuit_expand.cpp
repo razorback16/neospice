@@ -62,6 +62,58 @@ int node_count_for_element(char elem_type) {
     }
 }
 
+/// Extract up to `want` node atoms from `tokens` starting at token index
+/// `start`, following ngspice gettok_node semantics: '(', ')', ',' and
+/// whitespace ALL delimit. This makes "(n+,n-) (nc+,nc-)", "(n+ n-)",
+/// "n+ n-" and bare "n+,n-" all yield the same atom list. On return,
+/// `tokens_consumed` is the number of whole tokens fully consumed (so the
+/// caller can resume reading non-node tokens, e.g. an S model name) — a
+/// partially-consumed token is NOT counted as consumed.
+std::vector<std::string> extract_node_atoms(
+    const std::vector<std::string>& tokens, size_t start, int want,
+    size_t& tokens_consumed, size_t start_off = 0) {
+    std::vector<std::string> atoms;
+    size_t idx = start;
+    size_t off = start_off;
+    std::string cur;
+    auto flush = [&]() {
+        if (!cur.empty()) { atoms.push_back(cur); cur.clear(); }
+    };
+    while (idx < tokens.size() && static_cast<int>(atoms.size()) < want) {
+        const std::string& tok = tokens[idx];
+        bool stop = false;
+        for (; off < tok.size(); ++off) {
+            char c = tok[off];
+            if (c == '(' || c == ')' || c == ',') {
+                flush();
+                if (static_cast<int>(atoms.size()) >= want) { ++off; stop = true; break; }
+            } else {
+                cur += c;
+            }
+        }
+        if (stop) {
+            // If the delimiter that satisfied `want` was the last char of this
+            // token, the whole token is consumed; advance so the caller resumes
+            // at the next token.
+            if (off >= tok.size()) { ++idx; off = 0; }
+            break;
+        }
+        // Reached end of token → whitespace delimiter.
+        flush();
+        ++idx;
+        off = 0;
+    }
+    flush();
+    // Determine the next whole token the caller should resume from. If we are
+    // mid-token (off in the interior), the remaining chars are part of the same
+    // physical token and the caller (which works token-by-token) must skip it.
+    if (idx < tokens.size() && off > 0 && off < tokens[idx].size())
+        tokens_consumed = (idx - start) + 1;
+    else
+        tokens_consumed = idx - start;
+    return atoms;
+}
+
 /// Replace every {expr} in a string with its evaluated numeric value,
 /// preserving all surrounding text (parens, punctuation, etc.).
 std::string subst_brace_params(
@@ -430,67 +482,110 @@ std::unordered_set<std::string> collect_internal_nodes(
         } else {
             int ncount = node_count_for_element(elem_type);
 
-            // E/G POLY: only 2 output nodes, then POLY(N) + 2*N control nodes
+            // E/G POLY: only 2 output nodes, then POLY(N) + 2*N control node
+            // atoms. Handles control pairs as "(cp,cn)", "(cp cn)", bare
+            // "cp cn", and the comma-glued "POLY(N),(cp,cn),..." form via the
+            // gettok_node atom scanner.
             if ((elem_type == 'e' || elem_type == 'g') &&
                 line.tokens.size() > 3 &&
                 to_lower(line.tokens[3]).substr(0, 4) == "poly") {
                 ncount = 2;  // output nodes only
                 std::string pt = to_lower(line.tokens[3]);
                 int pdim = 1;
+                bool dim_in_token = false;
                 size_t paren = pt.find('(');
                 if (paren != std::string::npos) {
                     size_t close = pt.find(')');
-                    if (close != std::string::npos && close > paren)
+                    if (close != std::string::npos && close > paren) {
                         pdim = std::stoi(pt.substr(paren + 1, close - paren - 1));
-                }
-                // Skip POLY token (position 3), then 2*N control nodes
-                size_t ctrl_start = 4;
-                if (ctrl_start < line.tokens.size() && line.tokens[ctrl_start].front() == '(')
-                    ctrl_start++;  // skip split "(N)" token
-                size_t ctrl_pos = ctrl_start;
-                for (int k = 0; k < pdim && ctrl_pos < line.tokens.size(); ++k) {
-                    const std::string& ctrl_tok = line.tokens[ctrl_pos];
-                    if (ctrl_tok.find(',') != std::string::npos) {
-                        // One-token control pair: "(cp,cn)" or bare "cp,cn" —
-                        // strip parens and split on the comma.
-                        std::string inner = ctrl_tok;
-                        inner.erase(std::remove(inner.begin(), inner.end(), '('), inner.end());
-                        inner.erase(std::remove(inner.begin(), inner.end(), ')'), inner.end());
-                        auto comma = inner.find(',');
-                        std::string cp = to_lower(inner.substr(0, comma));
-                        std::string cn = to_lower(inner.substr(comma + 1));
-                        if (!is_global_node(cp, global_nodes) && port_set.find(cp) == port_set.end())
-                            internal_nodes.insert(cp);
-                        if (!is_global_node(cn, global_nodes) && port_set.find(cn) == port_set.end())
-                            internal_nodes.insert(cn);
-                        ctrl_pos += 1;
-                    } else {
-                        // Two separate node tokens
-                        node_positions.push_back(ctrl_pos);
-                        if (ctrl_pos + 1 < line.tokens.size())
-                            node_positions.push_back(ctrl_pos + 1);
-                        ctrl_pos += 2;
+                        dim_in_token = true;
                     }
+                }
+                size_t scan_tok = 3, scan_off = 0;
+                if (dim_in_token) {
+                    scan_off = pt.find(')') + 1;  // resume after the glued count
+                } else {
+                    scan_tok = 4;
+                    if (scan_tok < line.tokens.size() && line.tokens[scan_tok].front() == '(')
+                        ++scan_tok;  // skip split "(N)" token
+                }
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, scan_tok, 2 * pdim,
+                                                consumed, scan_off);
+                for (const auto& a : atoms) {
+                    std::string an = to_lower(a);
+                    if (!is_global_node(an, global_nodes) &&
+                        port_set.find(an) == port_set.end())
+                        internal_nodes.insert(an);
                 }
             }
 
-            // E/G linear form with parenthesized control nodes: (nc+,nc-)
+            // S (VSWITCH): 4 node atoms (n+ n- nc+ nc-) which may use any
+            // gettok_node form, including two parenthesized groups
+            // "(n+,n-) (nc+,nc-)" (cadlab regulators). Collect via atom scan.
+            if (elem_type == 's') {
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, 1, 4, consumed);
+                for (const auto& a : atoms) {
+                    std::string an = to_lower(a);
+                    if (!is_global_node(an, global_nodes) &&
+                        port_set.find(an) == port_set.end())
+                        internal_nodes.insert(an);
+                }
+                continue;  // node_positions path below not used for S
+            }
+
+            // F/H with a parenthesized OUTPUT group, e.g. "Fl (Ground,0) Vmon 3e-4":
+            // collect the 2 output node atoms (control is a Vsense name, not a node).
+            if ((elem_type == 'f' || elem_type == 'h') &&
+                line.tokens.size() > 1 &&
+                line.tokens[1].size() > 1 && line.tokens[1][0] == '(') {
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, 1, 2, consumed);
+                for (const auto& a : atoms) {
+                    std::string an = to_lower(a);
+                    if (!is_global_node(an, global_nodes) &&
+                        port_set.find(an) == port_set.end())
+                        internal_nodes.insert(an);
+                }
+                continue;
+            }
+
+            // E/G linear form with a parenthesized OUTPUT group, e.g.
+            // "Ebg (102,0) (Input,Ground) 1" — read all 4 nodes via atom scan.
+            if ((elem_type == 'e' || elem_type == 'g') &&
+                line.tokens.size() > 1 &&
+                to_lower(line.tokens.size() > 3 ? line.tokens[3] : "").substr(0, 4) != "poly" &&
+                line.tokens[1].size() > 1 && line.tokens[1][0] == '(' &&
+                to_lower(line.tokens[1]).substr(0, 4) != "poly") {
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, 1, 4, consumed);
+                for (const auto& a : atoms) {
+                    std::string an = to_lower(a);
+                    if (!is_global_node(an, global_nodes) &&
+                        port_set.find(an) == port_set.end())
+                        internal_nodes.insert(an);
+                }
+                continue;
+            }
+
+            // E/G linear form with parenthesized control nodes — handles both
+            // comma "(nc+,nc-)" and space "(nc+ nc-)" forms (the latter spans
+            // two whitespace-split tokens). Output nodes np, nn stay at 1,2.
             if ((elem_type == 'e' || elem_type == 'g') &&
                 line.tokens.size() > 3 &&
                 to_lower(line.tokens[3]).substr(0, 4) != "poly") {
                 const std::string& t3 = line.tokens[3];
-                if (t3.size() > 1 && t3[0] == '(' && t3.find(',') != std::string::npos) {
+                if (t3.size() > 1 && t3[0] == '(') {
                     ncount = 2;  // only np, nn are output nodes
-                    // Extract node names from (nc+,nc-)
-                    std::string inner = t3.substr(1);
-                    if (!inner.empty() && inner.back() == ')') inner.pop_back();
-                    auto comma = inner.find(',');
-                    std::string cp = to_lower(inner.substr(0, comma));
-                    std::string cn = to_lower(inner.substr(comma + 1));
-                    if (!is_global_node(cp, global_nodes) && port_set.find(cp) == port_set.end())
-                        internal_nodes.insert(cp);
-                    if (!is_global_node(cn, global_nodes) && port_set.find(cn) == port_set.end())
-                        internal_nodes.insert(cn);
+                    size_t consumed = 0;
+                    auto atoms = extract_node_atoms(line.tokens, 3, 2, consumed);
+                    for (const auto& a : atoms) {
+                        std::string an = to_lower(a);
+                        if (!is_global_node(an, global_nodes) &&
+                            port_set.find(an) == port_set.end())
+                            internal_nodes.insert(an);
+                    }
                 }
             }
 
@@ -827,6 +922,7 @@ std::vector<TokenizedLine> expand_instance(
                 line.tokens.size() > 3) {
                 std::string t3 = to_lower(line.tokens[3]);
                 if (t3 == "value" || t3.substr(0, 6) == "value=" ||
+                    t3.substr(0, 6) == "value{" ||
                     t3 == "table" || t3.substr(0, 6) == "table{") {
                     eg_abm = true;
                     ncount = 2;
@@ -836,14 +932,39 @@ std::vector<TokenizedLine> expand_instance(
             // E/G linear form with parenthesized control nodes:
             // E name np nn (nc+,nc-) gain  /  G name np nn (nc+,nc-) gm
             // token[3] is a single token containing (nc+,nc-) — only 2 output nodes.
+            // Triggers for both "(nc+,nc-)" and space-in-parens "(nc+ nc-)".
             bool eg_paren_ctrl = false;
             if ((elem_type == 'e' || elem_type == 'g') && !eg_poly && !eg_abm &&
                 line.tokens.size() > 3) {
                 const std::string& t3 = line.tokens[3];
-                if (t3.size() > 1 && t3[0] == '(' && t3.find(',') != std::string::npos) {
+                if (t3.size() > 1 && t3[0] == '(') {
                     eg_paren_ctrl = true;
                     ncount = 2;  // only np, nn are output nodes
                 }
+            }
+
+            // E/G linear form with a parenthesized OUTPUT group, e.g.
+            // "Ebg (102,0) (Input,Ground) 1" or "Gq (Input,Ground) (Input,9) 2e-5"
+            // (cadlab regulators). The output pair is its own token, so the
+            // by-position logic above mis-detects the control pair. Read all 4
+            // nodes with the gettok_node atom scanner; the gain/gm follows.
+            bool eg_linear_paren_out = false;
+            if ((elem_type == 'e' || elem_type == 'g') && !eg_poly && !eg_abm &&
+                !eg_paren_ctrl && line.tokens.size() > 1) {
+                const std::string& t1 = line.tokens[1];
+                if (t1.size() > 1 && t1[0] == '(')
+                    eg_linear_paren_out = true;
+            }
+
+            // F/H (CCCS/CCVS) with a parenthesized OUTPUT group, e.g.
+            // "Fl (Ground,0) Vmon 3.0E-4" (cadlab). The output pair is its own
+            // token; read the 2 output node atoms then resume with the Vsense
+            // name(s) / coeffs via the existing F/H handling below.
+            bool fh_paren_out = false;
+            if ((elem_type == 'f' || elem_type == 'h') && line.tokens.size() > 1) {
+                const std::string& t1 = line.tokens[1];
+                if (t1.size() > 1 && t1[0] == '(')
+                    fh_paren_out = true;
             }
 
             TokenizedLine new_line;
@@ -856,73 +977,121 @@ std::vector<TokenizedLine> expand_instance(
             std::string orig_name = to_lower(line.tokens[0]);
             new_line.tokens.push_back(instance_prefix + "." + orig_name);
 
-            // Tokens 1..ncount: node names — substitute
-            for (int i = 1; i <= ncount && static_cast<size_t>(i) < line.tokens.size(); ++i) {
-                new_line.tokens.push_back(subst_node(line.tokens[i]));
+            // S (VSWITCH): emit 4 substituted node atoms (handling any
+            // gettok_node form incl. two parenthesized groups) followed by the
+            // model name and any trailing tokens, then continue. Must stay in
+            // sync with the node-collection pass above.
+            if (elem_type == 's') {
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, 1, 4, consumed);
+                for (const auto& a : atoms)
+                    new_line.tokens.push_back(subst_node(a));
+                for (size_t i = 1 + consumed; i < line.tokens.size(); ++i) {
+                    std::string tok_lower = to_lower(line.tokens[i]);
+                    if (local_model_names.count(tok_lower))
+                        new_line.tokens.push_back(instance_prefix + "." + tok_lower);
+                    else
+                        new_line.tokens.push_back(line.tokens[i]);
+                }
+                result.push_back(new_line);
+                continue;
             }
 
-            // E/G POLY form: pass POLY(N) token through, substitute
-            // 2*N control node pairs, then let remaining coefficients
-            // fall through to the normal value-evaluation path below.
+            // E/G linear form with a parenthesized output group: emit the 4
+            // substituted nodes (out+ out- nc+ nc-) followed by the gain and
+            // any trailing tokens. Emitted as bare nodes — the netlist parser's
+            // atom scanner accepts this just like the original parenthesized
+            // form.
+            if (eg_linear_paren_out) {
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, 1, 4, consumed);
+                for (const auto& a : atoms)
+                    new_line.tokens.push_back(subst_node(a));
+                for (size_t i = 1 + consumed; i < line.tokens.size(); ++i) {
+                    std::string tok = line.tokens[i];
+                    tok = subst_param_names(tok, params);
+                    new_line.tokens.push_back(tok);
+                }
+                result.push_back(new_line);
+                continue;
+            }
+
+            // F/H with parenthesized output group: emit the 2 substituted
+            // output node atoms and advance value_start past them so the F/H
+            // Vsense/POLY handling below resumes at the right token.
             size_t value_start = static_cast<size_t>(1 + ncount);
-            if (eg_poly && value_start < line.tokens.size()) {
-                // Pass POLY(N) token through as-is
-                new_line.tokens.push_back(line.tokens[value_start]);
-                value_start++;
-                // Handle split "(N)" dimension token (e.g. "POLY" "(2)"). A real
-                // dimension token contains only a number; a control-node pair
-                // like "(3,0)" has a comma and must NOT be consumed here.
-                if (value_start < line.tokens.size() &&
-                    line.tokens[value_start].front() == '(' &&
-                    line.tokens[value_start].find(',') == std::string::npos) {
-                    if (eg_poly_dim == 0) {
-                        const std::string& dt = line.tokens[value_start];
-                        size_t close = dt.find(')');
-                        if (close != std::string::npos && close > 1)
-                            eg_poly_dim = std::stoi(dt.substr(1, close - 1));
-                    }
-                    new_line.tokens.push_back(line.tokens[value_start]);
-                    value_start++;
-                }
-                // Substitute control node pairs — each may be (cp,cn) or two separate tokens
-                for (int k = 0; k < eg_poly_dim && value_start < line.tokens.size(); ++k) {
-                    const std::string& ctrl_tok = line.tokens[value_start];
-                    if (ctrl_tok.find(',') != std::string::npos) {
-                        // One-token pair: "(cp,cn)" or bare "cp,cn" — strip parens,
-                        // split the comma, substitute each node. Must stay in sync
-                        // with the node-collection pass above (consumes 1 token).
-                        std::string inner = ctrl_tok;
-                        inner.erase(std::remove(inner.begin(), inner.end(), '('), inner.end());
-                        inner.erase(std::remove(inner.begin(), inner.end(), ')'), inner.end());
-                        auto comma = inner.find(',');
-                        std::string cp_sub = subst_node(inner.substr(0, comma));
-                        std::string cn_sub = subst_node(inner.substr(comma + 1));
-                        new_line.tokens.push_back("(" + cp_sub + "," + cn_sub + ")");
-                        value_start++;
-                    } else {
-                        // Two separate node tokens
-                        if (value_start < line.tokens.size()) {
-                            new_line.tokens.push_back(subst_node(line.tokens[value_start]));
-                            value_start++;
-                        }
-                        if (value_start < line.tokens.size()) {
-                            new_line.tokens.push_back(subst_node(line.tokens[value_start]));
-                            value_start++;
-                        }
-                    }
+            if (fh_paren_out) {
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, 1, 2, consumed);
+                for (const auto& a : atoms)
+                    new_line.tokens.push_back(subst_node(a));
+                value_start = 1 + consumed;
+            } else {
+                // Tokens 1..ncount: node names — substitute
+                for (int i = 1; i <= ncount && static_cast<size_t>(i) < line.tokens.size(); ++i) {
+                    new_line.tokens.push_back(subst_node(line.tokens[i]));
                 }
             }
 
-            // E/G linear form with parenthesized control nodes: substitute nodes inside (nc+,nc-)
+            // E/G POLY form: emit "POLY(N)", substitute the 2*N control node
+            // atoms, then let remaining coefficients fall through to the normal
+            // value-evaluation path below. Handles the comma-glued
+            // "POLY(N),(cp,cn),..." form where control nodes are stuck onto the
+            // POLY token.
+            if (eg_poly && value_start < line.tokens.size()) {
+                const std::string& poly_tok = line.tokens[value_start];
+                std::string poly_lc = to_lower(poly_tok);
+                size_t close = poly_lc.find(')');
+                bool dim_in_token = (poly_lc.find('(') != std::string::npos &&
+                                     close != std::string::npos);
+                size_t scan_tok = value_start;
+                size_t scan_off = 0;
+                if (dim_in_token) {
+                    if (eg_poly_dim == 0) {
+                        size_t op = poly_lc.find('(');
+                        eg_poly_dim = std::stoi(poly_lc.substr(op + 1, close - op - 1));
+                    }
+                    // Emit just "POLY(N)" — drop any glued control nodes.
+                    new_line.tokens.push_back(poly_tok.substr(0, close + 1));
+                    scan_off = close + 1;  // resume after the count in same token
+                } else {
+                    new_line.tokens.push_back(poly_tok);  // "POLY"
+                    value_start++;
+                    scan_tok = value_start;
+                    // Separate "(N)" dimension token (number only, no comma).
+                    if (value_start < line.tokens.size() &&
+                        line.tokens[value_start].front() == '(' &&
+                        line.tokens[value_start].find(',') == std::string::npos) {
+                        if (eg_poly_dim == 0) {
+                            const std::string& dt = line.tokens[value_start];
+                            size_t c2 = dt.find(')');
+                            if (c2 != std::string::npos && c2 > 1)
+                                eg_poly_dim = std::stoi(dt.substr(1, c2 - 1));
+                        }
+                        new_line.tokens.push_back(line.tokens[value_start]);
+                        value_start++;
+                        scan_tok = value_start;
+                    }
+                }
+                // Substitute the 2*N control node atoms.
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, scan_tok,
+                                                2 * eg_poly_dim, consumed, scan_off);
+                for (const auto& a : atoms)
+                    new_line.tokens.push_back(subst_node(a));
+                value_start = scan_tok + consumed;
+            }
+
+            // E/G linear form with parenthesized control nodes: read the 2
+            // control node atoms (handling comma "(nc+,nc-)" and space-in-parens
+            // "(nc+ nc-)" forms) and emit them as bare substituted nodes. The
+            // gain/gm token(s) follow at the resume index.
             if (eg_paren_ctrl && value_start < line.tokens.size()) {
-                const std::string& ctrl_tok = line.tokens[value_start];
-                std::string inner = ctrl_tok.substr(1);
-                if (!inner.empty() && inner.back() == ')') inner.pop_back();
-                auto comma = inner.find(',');
-                std::string cp_sub = subst_node(inner.substr(0, comma));
-                std::string cn_sub = subst_node(inner.substr(comma + 1));
-                new_line.tokens.push_back("(" + cp_sub + "," + cn_sub + ")");
-                value_start++;
+                size_t consumed = 0;
+                auto atoms = extract_node_atoms(line.tokens, value_start, 2, consumed);
+                for (const auto& a : atoms)
+                    new_line.tokens.push_back(subst_node(a));
+                value_start += consumed;
             }
 
             // E/G ABM (VALUE=/TABLE) form: substitute node references

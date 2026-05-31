@@ -47,6 +47,62 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+// Scanner that yields "node atoms" from a whitespace-split token stream while
+// following ngspice gettok_node semantics: '(', ')', ',' and whitespace ALL act
+// as delimiters. This makes every controlled-source node-list form parse
+// identically — e.g. "(np,nn)", "(np nn)", "np nn", two separate parenthesized
+// groups "(out+,out-) (nc+,nc-)", and even "POLY(1),(2,3)" where control nodes
+// are glued onto the POLY token after its count.
+//
+// `tok_index` is where scanning begins; `char_offset` is an offset into that
+// first token (used to resume scanning past "POLY(n)" inside the same token).
+// After construction, `next()` returns successive atoms and advances state.
+class NodeAtomScanner {
+public:
+    NodeAtomScanner(const std::vector<std::string>& tokens, size_t tok_index,
+                    size_t char_offset = 0)
+        : tokens_(tokens), idx_(tok_index), off_(char_offset) {}
+
+    // Fetch the next node atom. Returns false when the token stream is
+    // exhausted with no further atom.
+    bool next(std::string& out) {
+        out.clear();
+        while (idx_ < tokens_.size()) {
+            const std::string& tok = tokens_[idx_];
+            while (off_ < tok.size()) {
+                char c = tok[off_];
+                if (c == '(' || c == ')' || c == ',') {
+                    ++off_;
+                    if (!out.empty()) return true;
+                    continue;  // skip leading delimiters
+                }
+                out += c;
+                ++off_;
+            }
+            // End of this token == whitespace delimiter; advance to next token.
+            ++idx_;
+            off_ = 0;
+            if (!out.empty()) return true;
+        }
+        return !out.empty();
+    }
+
+    // Index of the next token not yet (fully) consumed. After reading the node
+    // list, scanning of remaining numeric data (coeffs/gain) resumes here.
+    // If we are mid-token, point at the next whole token so the consumer (which
+    // works on whole tokens) does not re-read partially-consumed node data.
+    size_t resume_token_index() const {
+        if (idx_ < tokens_.size() && off_ > 0 && off_ < tokens_[idx_].size())
+            return idx_ + 1;
+        return idx_;
+    }
+
+private:
+    const std::vector<std::string>& tokens_;
+    size_t idx_;
+    size_t off_;
+};
+
 // Parse the PWL point list of an E/G TABLE form. ngspice's gettok_node treats
 // '(', ')', ',', and whitespace all as delimiters, so the parenthesized comma
 // form "(x,y) (x,y)", the parenthesized space form "(x y) (x y)", and the bare
@@ -1914,43 +1970,34 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         }
                     }
                 }
-                // Now parse 2*poly_dim control node pairs, then coefficients
-                size_t idx = 4 - e_tok_offset;
-                // Skip past "(N)" token only when POLY and dimension were separate tokens
-                if (!poly_dim_in_token && idx < tokens.size() && tokens[idx].front() == '(') ++idx;
-
+                // Now parse 2*poly_dim control node atoms with the gettok_node
+                // scanner so (cp,cn), (cp cn), bare cp cn, and the comma-glued
+                // "POLY(N),(cp,cn),..." form all parse identically. When the
+                // count is glued in the POLY token, resume scanning right after
+                // its ')'; otherwise start at the token after POLY[/ "(N)"].
+                size_t scan_tok = 3 - e_tok_offset;
+                size_t scan_off = 0;
+                if (poly_dim_in_token) {
+                    scan_off = tok3.find(')') + 1;  // resume after the count
+                } else {
+                    scan_tok = 4 - e_tok_offset;
+                    if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
+                        ++scan_tok;  // skip separate "(N)" token
+                }
+                NodeAtomScanner psc(tokens, scan_tok, scan_off);
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
                 bool poly_ok = true;
-                {
-                    // Read 2*poly_dim control-node atoms treating '(' ')' ',' as
-                    // delimiters (ngspice gettok_node semantics), so (cp,cn),
-                    // (cp cn), bare cp,cn and cp cn all parse identically.
-                    std::vector<std::string> atoms;
-                    auto next_atom = [&](std::string& out) -> bool {
-                        while (atoms.empty() && idx < tokens.size()) {
-                            std::string cur;
-                            for (char c : tokens[idx]) {
-                                if (c=='('||c==')'||c==',') {
-                                    if (!cur.empty()) { atoms.push_back(cur); cur.clear(); }
-                                } else cur += c;
-                            }
-                            if (!cur.empty()) atoms.push_back(cur);
-                            ++idx;
-                        }
-                        if (atoms.empty()) return false;
-                        out = atoms.front(); atoms.erase(atoms.begin()); return true;
-                    };
-                    for (int k = 0; k < poly_dim; ++k) {
-                        std::string sp, sn;
-                        if (!next_atom(sp) || !next_atom(sn)) {
-                            fprintf(stderr, "Warning: Line %d: POLY VCVS: not enough control node pairs — skipping\n", line.line_number);
-                            poly_ok = false;
-                            break;
-                        }
-                        ctrl_pairs.push_back({node_raw(sp), node_raw(sn)});
+                for (int k = 0; k < poly_dim; ++k) {
+                    std::string sp, sn;
+                    if (!psc.next(sp) || !psc.next(sn)) {
+                        fprintf(stderr, "Warning: Line %d: POLY VCVS: not enough control node pairs — skipping\n", line.line_number);
+                        poly_ok = false;
+                        break;
                     }
+                    ctrl_pairs.push_back({node_raw(sp), node_raw(sn)});
                 }
+                size_t idx = psc.resume_token_index();
                 if (!poly_ok) continue;
                 // Remaining tokens are polynomial coefficients
                 std::vector<double> coeffs;
@@ -2027,11 +2074,21 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 ckt.add_device(std::make_unique<TableVCVS>(
                     name, np, nn, ctrl_pos, ctrl_neg, std::move(pts)));
 
-            } else if (tok3 == "value" || tok3.substr(0, 6) == "value=") {
+            } else if (tok3 == "value" || tok3.substr(0, 6) == "value=" ||
+                       tok3.substr(0, 6) == "value{") {
                 // PSpice VALUE={expr} form — lower to ASRCDevice with VOLTAGE mode
                 // Extract expression from VALUE={expr} or VALUE = {expr} or VALUE ={expr}
                 std::string expr_str;
-                if (tok3.substr(0, 6) == "value=") {
+                if (tok3.substr(0, 6) == "value{") {
+                    // VALUE{expr} — brace attached directly; join remaining
+                    // tokens from the first '{' (original case preserved).
+                    std::string rest;
+                    for (size_t i = 3 - e_tok_offset; i < tokens.size(); ++i) {
+                        if (!rest.empty()) rest += ' ';
+                        rest += tokens[i];
+                    }
+                    expr_str = rest.substr(rest.find('{'));
+                } else if (tok3.substr(0, 6) == "value=") {
                     // VALUE={expr} as single token or VALUE=... — existing path
                     std::string rest;
                     for (size_t i = 3 - e_tok_offset; i < tokens.size(); ++i) {
@@ -2165,28 +2222,21 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 deferred_asrcs.push_back(std::move(bd));
 
             } else {
-                // Linear form: E name np nn nc+ nc- gain  OR  E name np nn (nc+,nc-) gain
+                // Linear form. Control nodes follow gettok_node semantics, so
+                // all of "nc+ nc-", "(nc+,nc-)" and "(nc+ nc-)" parse alike.
                 int32_t ncp, ncn;
                 double gain;
                 size_t gain_idx;
-
-                if (tok3.size() > 1 && tok3[0] == '(' && tok3.find(',') != std::string::npos) {
-                    // Parenthesized control nodes: (nc+,nc-)
-                    std::string inner = tok3;
-                    if (inner.front() == '(') inner.erase(0, 1);
-                    if (inner.back() == ')') inner.pop_back();
-                    auto comma = inner.find(',');
-                    ncp = node_raw(inner.substr(0, comma));
-                    ncn = node_raw(inner.substr(comma + 1));
-                    gain_idx = 4 - e_tok_offset;
-                } else {
-                    if (tokens.size() < 6 - e_tok_offset) {
+                {
+                    NodeAtomScanner csc(tokens, 3 - e_tok_offset);
+                    std::string s_ncp, s_ncn;
+                    if (!csc.next(s_ncp) || !csc.next(s_ncn)) {
                         fprintf(stderr, "Warning: Line %d: VCVS requires name, np, nn, nc+, nc-, gain — skipping\n", line.line_number);
                         continue;
                     }
-                    ncp = node_raw(tokens[3 - e_tok_offset]);
-                    ncn = node_raw(tokens[4 - e_tok_offset]);
-                    gain_idx = 5 - e_tok_offset;
+                    ncp = node_raw(s_ncp);
+                    ncn = node_raw(s_ncn);
+                    gain_idx = csc.resume_token_index();
                 }
 
                 if (gain_idx >= tokens.size()) {
@@ -2252,41 +2302,31 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         }
                     }
                 }
-                size_t idx = 4 - g_tok_offset;
-                if (!poly_dim_in_token && idx < tokens.size() && tokens[idx].front() == '(') ++idx;
-
+                // Parse 2*poly_dim control node atoms via the gettok_node
+                // scanner; handles the comma-glued "POLY(N),(cp,cn),..." form.
+                size_t scan_tok = 3 - g_tok_offset;
+                size_t scan_off = 0;
+                if (poly_dim_in_token) {
+                    scan_off = tok3g.find(')') + 1;
+                } else {
+                    scan_tok = 4 - g_tok_offset;
+                    if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
+                        ++scan_tok;
+                }
+                NodeAtomScanner psc(tokens, scan_tok, scan_off);
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
                 bool poly_ok = true;
-                {
-                    // Read 2*poly_dim control-node atoms treating '(' ')' ',' as
-                    // delimiters (ngspice gettok_node semantics), so (cp,cn),
-                    // (cp cn), bare cp,cn and cp cn all parse identically.
-                    std::vector<std::string> atoms;
-                    auto next_atom = [&](std::string& out) -> bool {
-                        while (atoms.empty() && idx < tokens.size()) {
-                            std::string cur;
-                            for (char c : tokens[idx]) {
-                                if (c=='('||c==')'||c==',') {
-                                    if (!cur.empty()) { atoms.push_back(cur); cur.clear(); }
-                                } else cur += c;
-                            }
-                            if (!cur.empty()) atoms.push_back(cur);
-                            ++idx;
-                        }
-                        if (atoms.empty()) return false;
-                        out = atoms.front(); atoms.erase(atoms.begin()); return true;
-                    };
-                    for (int k = 0; k < poly_dim; ++k) {
-                        std::string sp, sn;
-                        if (!next_atom(sp) || !next_atom(sn)) {
-                            fprintf(stderr, "Warning: Line %d: POLY VCCS: not enough control node pairs — skipping\n", line.line_number);
-                            poly_ok = false;
-                            break;
-                        }
-                        ctrl_pairs.push_back({node_raw(sp), node_raw(sn)});
+                for (int k = 0; k < poly_dim; ++k) {
+                    std::string sp, sn;
+                    if (!psc.next(sp) || !psc.next(sn)) {
+                        fprintf(stderr, "Warning: Line %d: POLY VCCS: not enough control node pairs — skipping\n", line.line_number);
+                        poly_ok = false;
+                        break;
                     }
+                    ctrl_pairs.push_back({node_raw(sp), node_raw(sn)});
                 }
+                size_t idx = psc.resume_token_index();
                 if (!poly_ok) continue;
                 std::vector<double> coeffs;
                 parse_poly_coeffs(tokens, idx, coeffs);
@@ -2415,11 +2455,19 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     deferred_table_vccs.push_back(std::move(td));
                 }
 
-            } else if (tok3g == "value" || tok3g.substr(0, 6) == "value=") {
+            } else if (tok3g == "value" || tok3g.substr(0, 6) == "value=" ||
+                       tok3g.substr(0, 6) == "value{") {
                 // PSpice VALUE={expr} form — lower to ASRCDevice with CURRENT mode
                 // Extract expression from VALUE={expr} or VALUE = {expr} or VALUE ={expr}
                 std::string expr_str;
-                if (tok3g.substr(0, 6) == "value=") {
+                if (tok3g.substr(0, 6) == "value{") {
+                    std::string rest;
+                    for (size_t i = 3 - g_tok_offset; i < tokens.size(); ++i) {
+                        if (!rest.empty()) rest += ' ';
+                        rest += tokens[i];
+                    }
+                    expr_str = rest.substr(rest.find('{'));
+                } else if (tok3g.substr(0, 6) == "value=") {
                     // VALUE={expr} as single token or VALUE=... — existing path
                     std::string rest;
                     for (size_t i = 3 - g_tok_offset; i < tokens.size(); ++i) {
@@ -2547,28 +2595,21 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 deferred_asrcs.push_back(std::move(bd));
 
             } else {
-                // Linear form: G name np nn nc+ nc- gm  OR  G name np nn (nc+,nc-) gm
+                // Linear form. Control nodes follow gettok_node semantics, so
+                // all of "nc+ nc-", "(nc+,nc-)" and "(nc+ nc-)" parse alike.
                 int32_t ncp, ncn;
                 double gm;
                 size_t gm_idx;
-
-                if (tok3g.size() > 1 && tok3g[0] == '(' && tok3g.find(',') != std::string::npos) {
-                    // Parenthesized control nodes: (nc+,nc-)
-                    std::string inner = tok3g;
-                    if (inner.front() == '(') inner.erase(0, 1);
-                    if (inner.back() == ')') inner.pop_back();
-                    auto comma = inner.find(',');
-                    ncp = node_raw(inner.substr(0, comma));
-                    ncn = node_raw(inner.substr(comma + 1));
-                    gm_idx = 4 - g_tok_offset;
-                } else {
-                    if (tokens.size() < 6 - g_tok_offset) {
+                {
+                    NodeAtomScanner csc(tokens, 3 - g_tok_offset);
+                    std::string s_ncp, s_ncn;
+                    if (!csc.next(s_ncp) || !csc.next(s_ncn)) {
                         fprintf(stderr, "Warning: Line %d: VCCS requires name, np, nn, nc+, nc-, gm — skipping\n", line.line_number);
                         continue;
                     }
-                    ncp = node_raw(tokens[3 - g_tok_offset]);
-                    ncn = node_raw(tokens[4 - g_tok_offset]);
-                    gm_idx = 5 - g_tok_offset;
+                    ncp = node_raw(s_ncp);
+                    ncn = node_raw(s_ncn);
+                    gm_idx = csc.resume_token_index();
                 }
 
                 if (gm_idx >= tokens.size()) {
@@ -2596,6 +2637,22 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 fprintf(stderr, "Warning: Line %d: CCVS requires name, np, nn, Vsense, transresistance — skipping\n", line.line_number);
                 continue;
             }
+            // Output nodes may be a parenthesized group "(n+,n-)" — flatten.
+            std::vector<std::string> htoks_storage;
+            const std::vector<std::string>* htoks = &tokens;
+            if (tokens[1].size() > 1 && tokens[1][0] == '(') {
+                NodeAtomScanner hsc(tokens, 1);
+                std::string hnp, hnn;
+                if (hsc.next(hnp) && hsc.next(hnn)) {
+                    htoks_storage.push_back(tokens[0]);
+                    htoks_storage.push_back(hnp);
+                    htoks_storage.push_back(hnn);
+                    for (size_t i = hsc.resume_token_index(); i < tokens.size(); ++i)
+                        htoks_storage.push_back(tokens[i]);
+                    htoks = &htoks_storage;
+                }
+            }
+            const std::vector<std::string>& tokens = *htoks;
             std::string tok3h = to_lower(tokens[3]);
             if (tok3h.substr(0, 4) == "poly") {
                 // POLY(N) form
@@ -2664,6 +2721,24 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 fprintf(stderr, "Warning: Line %d: CCCS requires name, np, nn, Vsense, gain — skipping\n", line.line_number);
                 continue;
             }
+            // Output nodes may be a parenthesized group "(n+,n-)" (cadlab). When
+            // so, build a flattened token list with the two output node atoms
+            // spliced in as separate tokens so the by-position logic below works.
+            std::vector<std::string> ftoks_storage;
+            const std::vector<std::string>* ftoks = &tokens;
+            if (tokens[1].size() > 1 && tokens[1][0] == '(') {
+                NodeAtomScanner fsc(tokens, 1);
+                std::string fnp, fnn;
+                if (fsc.next(fnp) && fsc.next(fnn)) {
+                    ftoks_storage.push_back(tokens[0]);
+                    ftoks_storage.push_back(fnp);
+                    ftoks_storage.push_back(fnn);
+                    for (size_t i = fsc.resume_token_index(); i < tokens.size(); ++i)
+                        ftoks_storage.push_back(tokens[i]);
+                    ftoks = &ftoks_storage;
+                }
+            }
+            const std::vector<std::string>& tokens = *ftoks;
             std::string tok3f = to_lower(tokens[3]);
             if (tok3f.substr(0, 4) == "poly") {
                 // POLY(N) form
@@ -2891,17 +2966,32 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
         } else if (elem_type == 's') {
             // S name n+ n- nc+ nc- modelname
+            // Node lists may use ngspice gettok_node forms: bare "n+ n-",
+            // comma/paren pairs "(n+,n-)", space-in-parens "(n+ n-)", or two
+            // separate parenthesized groups "(n+,n-) (nc+,nc-)" (cadlab VSWITCH).
             if (tokens.size() < 6) {
                 fprintf(stderr, "Warning: Line %d: S element requires name, n+, n-, nc+, nc-, modelname — skipping\n", line.line_number);
                 continue;
             }
+            NodeAtomScanner s_scan(tokens, 1);
+            std::string s_np, s_nn, s_ncp, s_ncn;
+            if (!s_scan.next(s_np) || !s_scan.next(s_nn) ||
+                !s_scan.next(s_ncp) || !s_scan.next(s_ncn)) {
+                fprintf(stderr, "Warning: Line %d: S element requires name, n+, n-, nc+, nc-, modelname — skipping\n", line.line_number);
+                continue;
+            }
+            size_t s_model_idx = s_scan.resume_token_index();
+            if (s_model_idx >= tokens.size()) {
+                fprintf(stderr, "Warning: Line %d: S element requires a model name — skipping\n", line.line_number);
+                continue;
+            }
             DeferredVSwitch sd;
             sd.name       = tokens[0];
-            sd.np         = node_raw(tokens[1]);
-            sd.nn         = node_raw(tokens[2]);
-            sd.ncp        = node_raw(tokens[3]);
-            sd.ncn        = node_raw(tokens[4]);
-            sd.model_name = tokens[5];
+            sd.np         = node_raw(s_np);
+            sd.nn         = node_raw(s_nn);
+            sd.ncp        = node_raw(s_ncp);
+            sd.ncn        = node_raw(s_ncn);
+            sd.model_name = tokens[s_model_idx];
             sd.line_number = line.line_number;
             deferred_vswitches.push_back(std::move(sd));
 
