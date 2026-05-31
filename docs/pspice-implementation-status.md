@@ -67,10 +67,10 @@
 | `AKO:` inheritance                                    | **DONE**             | Multi-pass chain resolution, cycle detection                            |
 | `DEV`/`LOT` tolerance annotations                     | **DONE**             | Parsed and preserved; not used in simulation                            |
 | Distribution name on DEV/LOT                          | **DONE**             | Preserved as metadata                                                   |
-| T_MEASURED, T_ABS, T_REL_GLOBAL, T_REL_LOCAL          | **DONE**             | Parsed and stored                                                       |
+| T_MEASURED, T_ABS                                     | **DONE**             | Applied: T_ABS forces device operating temp, T_MEASURED sets TNOM (diode/JFET/BJT). T_REL_GLOBAL/LOCAL parsed, not yet applied |
 | PSpice model types: GASFET                            | **DIFFERENT SYNTAX** | Device exists as Z-prefix MESFET/HFET, not as PSpice `B` prefix GaAsFET |
 | PSpice model types: NIGBT                             | **NOT IMPL**         | No IGBT device                                                          |
-| PSpice model types: LPNP                              | **NOT IMPL**         | No lateral PNP keyword                                                  |
+| PSpice model types: LPNP                              | **DONE**             | Lateral PNP → PNP polarity + lateral substrate                          |
 | PSpice model types: DINPUT, DOUTPUT, UIO              | **NOT IMPL**         | Digital interface models                                                |
 | PSpice model types: CORE, TRN                         | **NOT IMPL**         | Nonlinear core; TRN transmission line model                             |
 
@@ -161,7 +161,7 @@
 | **C** (Capacitor)         | **PARTIAL**          | **VC1/VC2** parsed but not applied in simulation                                                                           |
 | **L** (Inductor)          | **PARTIAL**          | Missing: **IL1/IL2** (current coefficients), **winding form** (TURNS, RESIS)                                               |
 | **D** (Diode)             | **DONE**             | Full ngspice diode model                                                                                                   |
-| **Q** (BJT)               | **DONE**             | Level 1 GP + VBIC. Missing: **LPNP** type keyword, **Level 2 Mextram**                                                     |
+| **Q** (BJT)               | **DONE**             | Level 1 GP (incl. Kull quasi-saturation) + VBIC + LPNP type. Missing: **Level 2 Mextram**                                  |
 | **J** (JFET)              | **DONE**             | Level 1 + Level 2 PS. Missing: **BETATCE**                                                                                 |
 | **M** (MOSFET)            | **DONE**             | Levels 1,3,8,9,10,14,49,58,61,68,73. Missing: **Level 2** (MOS2), **Level 5** (EKV), **Level 6** (BSIM1)                   |
 | **B** (GaAsFET)           | **DIFFERENT SYNTAX** | Exists as **Z-prefix** MESFET/HFET (ngspice convention); PSpice uses B-prefix which conflicts with ASRC                    |
