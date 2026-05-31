@@ -2296,6 +2296,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                 }
                 std::string ctrl_expr = table_ctrl_token;
+                // The '=' separator between {expr} and the table points can be
+                // glued to the control token (e.g. "{V(14,15)}="); strip it so
+                // the braces below are removed and simple V() detection works.
+                if (!ctrl_expr.empty() && ctrl_expr.back() == '=') ctrl_expr.pop_back();
                 if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
                 if (!ctrl_expr.empty() && ctrl_expr.back() == '}') ctrl_expr.pop_back();
                 std::string ctrl_lower = to_lower(ctrl_expr);
