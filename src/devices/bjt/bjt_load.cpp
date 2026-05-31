@@ -120,6 +120,10 @@ auto &mat = *ckt->mat;
     double vbx=0.0;
     double vce;
     double vsub=0.0;
+    /* Quasi-saturation (Kull) working variables */
+    double vbcx=0.0, vrci=0.0;
+    double Irci=0.0, Irci_Vrci=0.0, Irci_Vbci=0.0, Irci_Vbcx=0.0;
+    double cbcx=0.0, gbcx=0.0;
     double vt;
     double vtc;
     double vte;
@@ -238,6 +242,8 @@ auto &mat = *ckt->mat;
             if(ckt->CKTmode & MODEINITSMSIG) {
                 vbe= *(ckt->CKTstate0 + here->BJTvbe);
                 vbc= *(ckt->CKTstate0 + here->BJTvbc);
+                vbcx= *(ckt->CKTstate0 + here->BJTvbcx);
+                vrci= *(ckt->CKTstate0 + here->BJTvrci);
                 vbx=model->BJTtype*(
                     *(ckt->CKTrhsOld+here->BJTbaseNode)-
                     *(ckt->CKTrhsOld+here->BJTcolPrimeNode));
@@ -247,6 +253,8 @@ auto &mat = *ckt->mat;
             } else if(ckt->CKTmode & MODEINITTRAN) {
                 vbe = *(ckt->CKTstate1 + here->BJTvbe);
                 vbc = *(ckt->CKTstate1 + here->BJTvbc);
+                vbcx = *(ckt->CKTstate1 + here->BJTvbcx);
+                vrci = *(ckt->CKTstate1 + here->BJTvrci);
                 vbx=model->BJTtype*(
                     *(ckt->CKTrhsOld+here->BJTbaseNode)-
                     *(ckt->CKTrhsOld+here->BJTcolPrimeNode));
@@ -262,17 +270,23 @@ auto &mat = *ckt->mat;
                 vbe=model->BJTtype*here->BJTicVBE;
                 vce=model->BJTtype*here->BJTicVCE;
                 vbc=vbe-vce;
+                vbcx=vbc;
+                vrci=0.0;
                 vbx=vbc;
                 vsub=0;
             } else if((ckt->CKTmode & MODEINITJCT) && (here->BJToff==0)) {
                 vbe=here->BJTtVcrit;
                 vbc=0;
+                vbcx=0;
+                vrci=0.0;
                 /* ERROR:  need to initialize VSUB, VBX here */
                 vsub=vbx=0;
             } else if((ckt->CKTmode & MODEINITJCT) ||
                     ( (ckt->CKTmode & MODEINITFIX) && (here->BJToff!=0))) {
                 vbe=0;
                 vbc=0;
+                vbcx=0;
+                vrci=0.0;
                 /* ERROR:  need to initialize VSUB, VBX here */
                 vsub=vbx=0;
             } else {
@@ -287,6 +301,14 @@ auto &mat = *ckt->mat;
                             *(ckt->CKTstate1 + here->BJTvbc);
                     vbc = (1+xfact)**(ckt->CKTstate1 + here->BJTvbc)-
                             xfact* *(ckt->CKTstate2 + here->BJTvbc);
+                    *(ckt->CKTstate0 + here->BJTvbcx) =
+                            *(ckt->CKTstate1 + here->BJTvbcx);
+                    vbcx = (1+xfact)**(ckt->CKTstate1 + here->BJTvbcx)-
+                            xfact* *(ckt->CKTstate2 + here->BJTvbcx);
+                    *(ckt->CKTstate0 + here->BJTvrci) =
+                            *(ckt->CKTstate1 + here->BJTvrci);
+                    vrci = (1+xfact)**(ckt->CKTstate1 + here->BJTvrci)-
+                            xfact* *(ckt->CKTstate2 + here->BJTvrci);
                     *(ckt->CKTstate0 + here->BJTcc) =
                             *(ckt->CKTstate1 + here->BJTcc);
                     *(ckt->CKTstate0 + here->BJTcb) =
@@ -315,6 +337,12 @@ auto &mat = *ckt->mat;
                         *(ckt->CKTrhsOld+here->BJTemitPrimeNode));
                     vbc=model->BJTtype*(
                         *(ckt->CKTrhsOld+here->BJTbasePrimeNode)-
+                        *(ckt->CKTrhsOld+here->BJTcolPrimeNode));
+                    vbcx=model->BJTtype*(
+                        *(ckt->CKTrhsOld+here->BJTbasePrimeNode)-
+                        *(ckt->CKTrhsOld+here->BJTcollCXNode));
+                    vrci=model->BJTtype*(
+                        *(ckt->CKTrhsOld+here->BJTcollCXNode)-
                         *(ckt->CKTrhsOld+here->BJTcolPrimeNode));
                     vsub=model->BJTtype*model->BJTsubs*(
                         *(ckt->CKTrhsOld+here->BJTsubstNode)-
@@ -366,6 +394,8 @@ auto &mat = *ckt->mat;
                      */
                     vbe = *(ckt->CKTstate0 + here->BJTvbe);
                     vbc = *(ckt->CKTstate0 + here->BJTvbc);
+                    vbcx = *(ckt->CKTstate0 + here->BJTvbcx);
+                    vrci = *(ckt->CKTstate0 + here->BJTvrci);
                     cc = *(ckt->CKTstate0 + here->BJTcc);
                     cb = *(ckt->CKTstate0 + here->BJTcb);
                     gpi = *(ckt->CKTstate0 + here->BJTgpi);
@@ -379,6 +409,12 @@ auto &mat = *ckt->mat;
                     vsub = *(ckt->CKTstate0 + here->BJTvsub);
                     gdsub = *(ckt->CKTstate0 + here->BJTgdsub);
                     cdsub = *(ckt->CKTstate0 + here->BJTcdsub);
+                    Irci      = *(ckt->CKTstate0 + here->BJTirci);
+                    Irci_Vrci = *(ckt->CKTstate0 + here->BJTirci_Vrci);
+                    Irci_Vbci = *(ckt->CKTstate0 + here->BJTirci_Vbci);
+                    Irci_Vbcx = *(ckt->CKTstate0 + here->BJTirci_Vbcx);
+                    gbcx = *(ckt->CKTstate0 + here->BJTgbcx);
+                    cbcx = *(ckt->CKTstate0 + here->BJTcqbcx);
                     goto load;
                 }
 #endif /*NOBYPASS*/
@@ -394,6 +430,7 @@ auto &mat = *ckt->mat;
                 vsub = DEVpnjlim(vsub,*(ckt->CKTstate0 + here->BJTvsub),vt,
                         here->BJTtSubVcrit,&ichk1);
                 if (ichk1 == 1) icheck=1;
+                vrci = vbc - vbcx; /* keep vrci consistent if vbc was limited */
             }
             /*
              *   determine dc current and derivitives
@@ -469,6 +506,55 @@ next1:      vtn=vt*here->BJTtemissionCoeffF;
                 evsub = exp(MIN(MAX_EXP_ARG,vsub/vts));
                 gdsub = csubsat*evsub/vts + ckt->CKTgmin;
                 cdsub = csubsat*(evsub-1) + ckt->CKTgmin*vsub;
+            }
+            /*
+             *   Kull's quasi-saturation model — epi (intrinsic collector)
+             *   current Irci and its derivatives. Mirrors ngspice
+             *   bjtload.c:507-560. The Qbci/Qbcx epi charge terms are a
+             *   transient-only refinement and are omitted; the DC operating
+             *   point is unaffected. The rKp1_Vbci expression is copied
+             *   verbatim from ngspice to reproduce its results exactly.
+             */
+            if (model->BJTintCollResistGiven) {
+                if (vrci > 0.) {
+                    double Kbci,Kbci_Vbci,Kbcx,Kbcx_Vbcx;
+                    double rKp1,rKp1_Vbci,rKp1_Vbcx,xvar1,xvar1_Vbci,xvar1_Vbcx;
+                    double Vcorr,Vcorr_Vbci,Vcorr_Vbcx;
+                    double Iohm,Iohm_Vrci,Iohm_Vbci,Iohm_Vbcx,quot,quot_Vrci;
+                    Kbci = sqrt(1+here->BJTtepiDoping*exp(vbc/vt));
+                    Kbci_Vbci = here->BJTtepiDoping*exp(vbc/vt)/(2*vt*Kbci);
+                    Kbcx = sqrt(1+here->BJTtepiDoping*exp(vbcx/vt));
+                    Kbcx_Vbcx = here->BJTtepiDoping*exp(vbcx/vt)/(2*vt*Kbcx);
+
+                    rKp1 = (1+Kbci)/(1+Kbcx);
+                    rKp1_Vbci = Kbci_Vbci/(1+Kbci);
+                    rKp1_Vbcx = -(1+Kbci)*Kbcx_Vbcx/((Kbcx+1)*(Kbcx+1));
+                    xvar1 = log(rKp1);
+                    xvar1_Vbci = rKp1_Vbci/rKp1;
+                    xvar1_Vbcx = rKp1_Vbcx/rKp1;
+
+                    Vcorr = vt*(Kbci - Kbcx - xvar1);
+                    Vcorr_Vbci = vt*(Kbci_Vbci - xvar1_Vbci);
+                    Vcorr_Vbcx = vt*(-Kbcx_Vbcx - xvar1_Vbcx);
+
+                    Iohm = (vrci+Vcorr)/here->BJTtintCollResist;
+                    Iohm_Vrci = 1/here->BJTtintCollResist;
+                    Iohm_Vbci = Vcorr_Vbci/here->BJTtintCollResist;
+                    Iohm_Vbcx = Vcorr_Vbcx/here->BJTtintCollResist;
+
+                    quot = 1+fabs(vrci)/here->BJTtepiSatVoltage;
+                    quot_Vrci = vrci/(here->BJTtepiSatVoltage*fabs(vrci));
+
+                    Irci = Iohm/quot + ckt->CKTgmin*vrci;
+                    Irci_Vrci = Iohm_Vrci/quot-Iohm*quot_Vrci/(quot*quot) + ckt->CKTgmin;
+                    Irci_Vbci = Iohm_Vbci/quot;
+                    Irci_Vbcx = Iohm_Vbcx/quot;
+                } else {
+                    Irci = vrci/here->BJTtintCollResist + ckt->CKTgmin*vrci;
+                    Irci_Vrci = 1/here->BJTtintCollResist + ckt->CKTgmin;
+                    Irci_Vbci = 0.0;
+                    Irci_Vbcx = 0.0;
+                }
             }
             /*
              *   determine base charge terms
@@ -752,6 +838,8 @@ next1:      vtn=vt*here->BJTtemissionCoeffF;
 next2:
             *(ckt->CKTstate0 + here->BJTvbe) = vbe;
             *(ckt->CKTstate0 + here->BJTvbc) = vbc;
+            *(ckt->CKTstate0 + here->BJTvbcx) = vbcx;
+            *(ckt->CKTstate0 + here->BJTvrci) = vrci;
             *(ckt->CKTstate0 + here->BJTcc) = cc;
             *(ckt->CKTstate0 + here->BJTcb) = cb;
             *(ckt->CKTstate0 + here->BJTgpi) = gpi;
@@ -765,6 +853,12 @@ next2:
             *(ckt->CKTstate0 + here->BJTvsub) = vsub;
             *(ckt->CKTstate0 + here->BJTgdsub) = gdsub;
             *(ckt->CKTstate0 + here->BJTcdsub) = cdsub;
+            *(ckt->CKTstate0 + here->BJTirci)      = Irci;
+            *(ckt->CKTstate0 + here->BJTirci_Vrci) = Irci_Vrci;
+            *(ckt->CKTstate0 + here->BJTirci_Vbci) = Irci_Vbci;
+            *(ckt->CKTstate0 + here->BJTirci_Vbcx) = Irci_Vbcx;
+            *(ckt->CKTstate0 + here->BJTgbcx)       = gbcx;
+            *(ckt->CKTstate0 + here->BJTcqbcx)      = cbcx;
 
             /* Do not load the Jacobian and the rhs if
                perturbation is being carried out */
@@ -800,14 +894,19 @@ load:
             mat.add(here->BJTcolColPtr, m * (gcpr));
             mat.add(here->BJTbaseBasePtr, m * (gx+geqbx));
             mat.add(here->BJTemitEmitPtr, m * (gepr));
-            mat.add(here->BJTcolPrimeColPrimePtr, m * (gmu+go+gcpr+geqbx));
+            /* gcpr (extrinsic RC) now lives on the collCX node; the intrinsic
+             * colPrime diagonal carries only the transistor terms. When RCO is
+             * not given collCX aliases colPrime, so the two add back to the
+             * historical gmu+go+gcpr+geqbx on the same matrix entry. */
+            mat.add(here->BJTcolPrimeColPrimePtr, m * (gmu+go+geqbx));
+            mat.add(here->BJTcollCXcollCXPtr, m * (gcpr));
             mat.add(here->BJTsubstConSubstConPtr, m * (geqsub));
             mat.add(here->BJTbasePrimeBasePrimePtr, m * (gx +gpi+gmu+geqcb));
             mat.add(here->BJTemitPrimeEmitPrimePtr, m * (gpi+gepr+gm+go));
-            mat.add(here->BJTcolColPrimePtr, m * (-gcpr));
+            mat.add(here->BJTcollCollCXPtr, m * (-gcpr));
             mat.add(here->BJTbaseBasePrimePtr, m * (-gx));
             mat.add(here->BJTemitEmitPrimePtr, m * (-gepr));
-            mat.add(here->BJTcolPrimeColPtr, m * (-gcpr));
+            mat.add(here->BJTcollCXCollPtr, m * (-gcpr));
             mat.add(here->BJTcolPrimeBasePrimePtr, m * (-gmu+gm));
             mat.add(here->BJTcolPrimeEmitPrimePtr, m * (-gm-go));
             mat.add(here->BJTbasePrimeBasePtr, m * (-gx));
@@ -821,6 +920,37 @@ load:
             mat.add(here->BJTsubstSubstConPtr, m * (-geqsub));
             mat.add(here->BJTbaseColPrimePtr, m * (-geqbx));
             mat.add(here->BJTcolPrimeBasePtr, m * (-geqbx));
+
+            /*
+             *   Stamp the quasi-saturation epi current Irci between collCX and
+             *   colPrime (mirrors ngspice bjtload.c:933-959). cbcx/gbcx are the
+             *   epi-junction charge terms, zero at DC.
+             */
+            if (model->BJTintCollResistGiven) {
+                double rhs_current = model->BJTtype * m *
+                    (Irci - Irci_Vrci*vrci - Irci_Vbci*vbc - Irci_Vbcx*vbcx);
+                *(ckt->CKTrhs + here->BJTcollCXNode)  += -rhs_current;
+                mat.add(here->BJTcollCXcollCXPtr,    m *  Irci_Vrci);
+                mat.add(here->BJTcollCXColPrimePtr,  m * -Irci_Vrci);
+                mat.add(here->BJTcollCXBasePrimePtr, m *  Irci_Vbci);
+                mat.add(here->BJTcollCXColPrimePtr,  m * -Irci_Vbci);
+                mat.add(here->BJTcollCXBasePrimePtr, m *  Irci_Vbcx);
+                mat.add(here->BJTcollCXcollCXPtr,    m * -Irci_Vbcx);
+                *(ckt->CKTrhs + here->BJTcolPrimeNode) += rhs_current;
+                mat.add(here->BJTcolPrimeCollCXPtr,    m * -Irci_Vrci);
+                mat.add(here->BJTcolPrimeColPrimePtr,  m *  Irci_Vrci);
+                mat.add(here->BJTcolPrimeBasePrimePtr, m * -Irci_Vbci);
+                mat.add(here->BJTcolPrimeColPrimePtr,  m *  Irci_Vbci);
+                mat.add(here->BJTcolPrimeBasePrimePtr, m * -Irci_Vbcx);
+                mat.add(here->BJTcolPrimeCollCXPtr,    m *  Irci_Vbcx);
+
+                *(ckt->CKTrhs + here->BJTbasePrimeNode) += m * -cbcx;
+                *(ckt->CKTrhs + here->BJTcollCXNode)    += m *  cbcx;
+                mat.add(here->BJTbasePrimeBasePrimePtr, m *  gbcx);
+                mat.add(here->BJTcollCXcollCXPtr,       m *  gbcx);
+                mat.add(here->BJTbasePrimeCollCXPtr,    m * -gbcx);
+                mat.add(here->BJTcollCXBasePrimePtr,    m * -gbcx);
+            }
         }
     }
     return 0;

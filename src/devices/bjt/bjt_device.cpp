@@ -115,10 +115,10 @@ void BJTDevice::assign_offsets(const SparsityPattern& pattern) {
             inst_.f = offsets[inst_.f];                                  \
     } while (0)
 
-    RESOLVE(BJTcolColPrimePtr);
+    RESOLVE(BJTcollCollCXPtr);
     RESOLVE(BJTbaseBasePrimePtr);
     RESOLVE(BJTemitEmitPrimePtr);
-    RESOLVE(BJTcolPrimeColPtr);
+    RESOLVE(BJTcollCXCollPtr);
     RESOLVE(BJTcolPrimeBasePrimePtr);
     RESOLVE(BJTcolPrimeEmitPrimePtr);
     RESOLVE(BJTbasePrimeBasePtr);
@@ -139,6 +139,11 @@ void BJTDevice::assign_offsets(const SparsityPattern& pattern) {
     RESOLVE(BJTbaseColPrimePtr);
     RESOLVE(BJTcolPrimeBasePtr);
     RESOLVE(BJTsubstConSubstConPtr);
+    RESOLVE(BJTcollCXcollCXPtr);
+    RESOLVE(BJTcollCXBasePrimePtr);
+    RESOLVE(BJTbasePrimeCollCXPtr);
+    RESOLVE(BJTcolPrimeCollCXPtr);
+    RESOLVE(BJTcollCXColPrimePtr);
 
 #undef RESOLVE
 }
@@ -339,16 +344,19 @@ void BJTDevice::ac_stamp(const std::vector<double>& /*voltages*/,
     const double cmcb = state0_[inst.BJTstate + 17];  // BJTcexbc
 
     // --- G matrix stamps ---
+    // The extrinsic RC conductance gcpr lives on the collCX node (it aliases
+    // colPrime when RCO is not given, reproducing the historical stamps).
     G.add(inst.BJTcolColPtr,               m * gcpr);
     G.add(inst.BJTbaseBasePtr,             m * gx);
     G.add(inst.BJTemitEmitPtr,             m * gepr);
-    G.add(inst.BJTcolPrimeColPrimePtr,     m * (gmu + go + gcpr));
+    G.add(inst.BJTcolPrimeColPrimePtr,     m * (gmu + go));
+    G.add(inst.BJTcollCXcollCXPtr,         m * gcpr);
     G.add(inst.BJTbasePrimeBasePrimePtr,   m * (gx + gpi + gmu));
     G.add(inst.BJTemitPrimeEmitPrimePtr,   m * (gpi + gepr + gm + go));
-    G.add(inst.BJTcolColPrimePtr,          m * (-gcpr));
+    G.add(inst.BJTcollCollCXPtr,           m * (-gcpr));
     G.add(inst.BJTbaseBasePrimePtr,        m * (-gx));
     G.add(inst.BJTemitEmitPrimePtr,        m * (-gepr));
-    G.add(inst.BJTcolPrimeColPtr,          m * (-gcpr));
+    G.add(inst.BJTcollCXCollPtr,           m * (-gcpr));
     G.add(inst.BJTcolPrimeBasePrimePtr,    m * (-gmu + gm));
     G.add(inst.BJTcolPrimeEmitPrimePtr,    m * (-gm - go));
     G.add(inst.BJTbasePrimeBasePtr,        m * (-gx));
@@ -357,6 +365,20 @@ void BJTDevice::ac_stamp(const std::vector<double>& /*voltages*/,
     G.add(inst.BJTemitPrimeEmitPtr,        m * (-gepr));
     G.add(inst.BJTemitPrimeColPrimePtr,    m * (-go));
     G.add(inst.BJTemitPrimeBasePrimePtr,   m * (-gpi - gm));
+
+    // Quasi-saturation epi conductance (small-signal) between collCX and
+    // colPrime, so collCX is not left floating in AC when RCO is given.
+    if (model->BJTintCollResistGiven) {
+        const double girci_vrci = state0_[inst.BJTstate + 27]; // BJTirci_Vrci
+        const double girci_vbci = state0_[inst.BJTstate + 28]; // BJTirci_Vbci
+        const double girci_vbcx = state0_[inst.BJTstate + 29]; // BJTirci_Vbcx
+        G.add(inst.BJTcollCXcollCXPtr,    m * (girci_vrci - girci_vbcx));
+        G.add(inst.BJTcollCXColPrimePtr,  m * (-girci_vrci - girci_vbci));
+        G.add(inst.BJTcollCXBasePrimePtr, m * (girci_vbci + girci_vbcx));
+        G.add(inst.BJTcolPrimeCollCXPtr,  m * (-girci_vrci + girci_vbcx));
+        G.add(inst.BJTcolPrimeColPrimePtr, m * (girci_vrci + girci_vbci));
+        G.add(inst.BJTcolPrimeBasePrimePtr, m * (-girci_vbci - girci_vbcx));
+    }
 
     // --- C matrix stamps ---
     C.add(inst.BJTbaseBasePtr,             m * cbx);

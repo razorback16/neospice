@@ -51,6 +51,16 @@ BJTsetup(Shim::Matrix *matrix, BJTModel *inModel, Shim::Ckt *ckt, int *states)
         if(!model->BJTsatCurGiven) {
             model->BJTsatCur = 1e-16;
         }
+        /* SPICE2 legacy rule (matches ngspice bjtsetup.c:62-75): a B-E/B-C
+         * leakage saturation current given > 1e-4 is interpreted as a
+         * multiplier of IS, not an absolute current. (The not-given default
+         * and the C2/C4 paths are handled later in bjt_temp.cpp.) */
+        if(model->BJTleakBEcurrentGiven && model->BJTleakBEcurrent > 1e-04) {
+            model->BJTleakBEcurrent = model->BJTsatCur * model->BJTleakBEcurrent;
+        }
+        if(model->BJTleakBCcurrentGiven && model->BJTleakBCcurrent > 1e-04) {
+            model->BJTleakBCcurrent = model->BJTsatCur * model->BJTleakBCcurrent;
+        }
         if(!model->BJTbetaFGiven) {
             model->BJTbetaF = 100;
         }
@@ -77,6 +87,33 @@ BJTsetup(Shim::Matrix *matrix, BJTModel *inModel, Shim::Ckt *ckt, int *states)
         }
         if(!model->BJTcollectorResistGiven) {
             model->BJTcollectorResist = 0;
+        }
+        /* Quasi-saturation (Kull) parameter defaults — match ngspice bjtsetup.c.
+         * RCO is clamped to >= 0.01; the rest default to ngspice's values. The
+         * temperature exponents reduce these to identity at nominal temp. */
+        if((!model->BJTintCollResistGiven) || (model->BJTintCollResist < 0.01)) {
+            model->BJTintCollResist = 0.01;
+        }
+        if(!model->BJTepiSatVoltageGiven) {
+            model->BJTepiSatVoltage = 10.0;
+        }
+        if(!model->BJTepiDopingGiven) {
+            model->BJTepiDoping = 1.0e-11;
+        }
+        if(!model->BJTepiChargeGiven) {
+            model->BJTepiCharge = 0.0;
+        }
+        if(!model->BJTquasimodGiven) {
+            model->BJTquasimod = 0;
+        }
+        if(!model->BJTenergyGapQSGiven) {
+            model->BJTenergyGapQS = 1.206;
+        }
+        if(!model->BJTtempExpRCIGiven) {
+            model->BJTtempExpRCI = (model->BJTtype == NPN) ? 2.42 : 2.2;
+        }
+        if(!model->BJTtempExpVOGiven) {
+            model->BJTtempExpVO = (model->BJTtype == NPN) ? 0.87 : 0.52;
         }
         if(!model->BJTdepletionCapBEGiven) {
             model->BJTdepletionCapBE = 0;
@@ -373,12 +410,14 @@ BJTsetup(Shim::Matrix *matrix, BJTModel *inModel, Shim::Ckt *ckt, int *states)
                 *states += 8 * (ckt->CKTsenInfo->SENparms);
             }
 
+            /* collCX: internal collector node after the extrinsic resistance RC.
+             * This is neospice's historical single internal collector node. */
             if(model->BJTcollectorResist == 0) {
-                here->BJTcolPrimeNode = here->BJTcolNode;
-            } else if(here->BJTcolPrimeNode == 0) {
+                here->BJTcollCXNode = here->BJTcolNode;
+            } else if(here->BJTcollCXNode == 0) {
                 error = Shim::CKTmkVolt(ckt,&tmp,here->BJTname,"collector");
                 if(error) return(error);
-                here->BJTcolPrimeNode = tmp->number;
+                here->BJTcollCXNode = tmp->number;
                 if (ckt->CKTcopyNodesets) {
                   if (Shim::CKTinst2Node(ckt,here,1,&tmpNode,&tmpName)==OK) {
                      if (tmpNode->nsGiven) {
@@ -391,6 +430,17 @@ BJTsetup(Shim::Matrix *matrix, BJTModel *inModel, Shim::Ckt *ckt, int *states)
                      }
                   }
                 }
+            }
+            /* colPrime: intrinsic collector where the transistor attaches. It
+             * aliases collCX unless quasi-saturation (RCO) is given, in which
+             * case the epi resistance separates them. Aliasing keeps the matrix
+             * footprint identical to the non-quasi-sat case. */
+            if(!model->BJTintCollResistGiven) {
+                here->BJTcolPrimeNode = here->BJTcollCXNode;
+            } else if(here->BJTcolPrimeNode == 0) {
+                error = Shim::CKTmkVolt(ckt,&tmp,here->BJTname,"collEpi");
+                if(error) return(error);
+                here->BJTcolPrimeNode = tmp->number;
             }
             if(model->BJTbaseResist == 0) {
                 here->BJTbasePrimeNode = here->BJTbaseNode;
@@ -435,10 +485,13 @@ BJTsetup(Shim::Matrix *matrix, BJTModel *inModel, Shim::Ckt *ckt, int *states)
 #define TSTALLOC(ptr,first,second) \
 { here->ptr = matrix->make_elt(here->first, here->second); }
 
-            TSTALLOC(BJTcolColPrimePtr,BJTcolNode,BJTcolPrimeNode);
+            /* Extrinsic collector resistance RC connects the external collector
+             * to collCX (ngspice naming). When RCO is not given, collCX aliases
+             * colPrime so these reduce to the historical col<->colPrime stamps. */
+            TSTALLOC(BJTcollCollCXPtr,BJTcolNode,BJTcollCXNode);
             TSTALLOC(BJTbaseBasePrimePtr,BJTbaseNode,BJTbasePrimeNode);
             TSTALLOC(BJTemitEmitPrimePtr,BJTemitNode,BJTemitPrimeNode);
-            TSTALLOC(BJTcolPrimeColPtr,BJTcolPrimeNode,BJTcolNode);
+            TSTALLOC(BJTcollCXCollPtr,BJTcollCXNode,BJTcolNode);
             TSTALLOC(BJTcolPrimeBasePrimePtr,BJTcolPrimeNode,BJTbasePrimeNode);
             TSTALLOC(BJTcolPrimeEmitPrimePtr,BJTcolPrimeNode,BJTemitPrimeNode);
             TSTALLOC(BJTbasePrimeBasePtr,BJTbasePrimeNode,BJTbaseNode);
@@ -465,6 +518,15 @@ BJTsetup(Shim::Matrix *matrix, BJTModel *inModel, Shim::Ckt *ckt, int *states)
             TSTALLOC(BJTsubstSubstConPtr,BJTsubstNode,BJTsubstConNode);
             TSTALLOC(BJTbaseColPrimePtr,BJTbaseNode,BJTcolPrimeNode);
             TSTALLOC(BJTcolPrimeBasePtr,BJTcolPrimeNode,BJTbaseNode);
+            /* RC diagonal lives on collCX (aliases colPrimeColPrime when no RCO). */
+            TSTALLOC(BJTcollCXcollCXPtr,BJTcollCXNode,BJTcollCXNode);
+            /* Quasi-saturation epi-current couplings — only when RCO given. */
+            if(model->BJTintCollResistGiven) {
+                TSTALLOC(BJTcollCXBasePrimePtr,BJTcollCXNode,BJTbasePrimeNode);
+                TSTALLOC(BJTbasePrimeCollCXPtr,BJTbasePrimeNode,BJTcollCXNode);
+                TSTALLOC(BJTcolPrimeCollCXPtr,BJTcolPrimeNode,BJTcollCXNode);
+                TSTALLOC(BJTcollCXColPrimePtr,BJTcollCXNode,BJTcolPrimeNode);
+            }
         }
     }
     return 0;

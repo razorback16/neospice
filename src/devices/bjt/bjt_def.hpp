@@ -33,6 +33,7 @@ struct BJTInstance {
     int BJTemitNode;    /* number of emitter node of bjt */
     int BJTsubstNode;   /* number of substrate node of bjt */
     int BJTcolPrimeNode;    /* number of internal collector node of bjt */
+    int BJTcollCXNode;      /* internal collector node after extrinsic RC (quasi-sat) */
     int BJTbasePrimeNode;   /* number of internal base node of bjt */
     int BJTemitPrimeNode;   /* number of internal emitter node of bjt */
     int BJTsubstConNode;   /* number of node which substrate is connected to */
@@ -85,9 +86,12 @@ struct BJTInstance {
     double BJTtjunctionExpBC;   /* temperature adjusted MJC */
     double BJTtjunctionExpSub;   /* temperature adjusted MJS */
     double BJTtemissionCoeffS;   /* temperature adjusted NS */
+    double BJTtintCollResist;   /* temperature adjusted QS RCO */
+    double BJTtepiSatVoltage;   /* temperature adjusted QS VO */
+    double BJTtepiDoping;       /* temperature adjusted QS GAMMA */
 
-    neospice::MatrixOffset BJTcolColPrimePtr{-1};  /* pointer to sparse matrix at
-                             * (collector,collector prime) */
+    neospice::MatrixOffset BJTcolColPrimePtr{-1};  /* superseded by BJTcollCollCXPtr
+                             * (RC now stamps to collCX); kept for ABI stability */
     neospice::MatrixOffset BJTbaseBasePrimePtr{-1};    /* pointer to sparse matrix at
                              * (base,base prime) */
     neospice::MatrixOffset BJTemitEmitPrimePtr{-1};    /* pointer to sparse matrix at
@@ -137,6 +141,16 @@ struct BJTInstance {
                              * (base,collector prime) */
     neospice::MatrixOffset BJTcolPrimeBasePtr{-1}; /* pointer to sparse matrix at
                              * (collector prime,base) */
+    /* Quasi-saturation (Kull) extra collector node couplings. The first three
+     * are always allocated (collCX carries the extrinsic RC, aliasing colPrime
+     * when RCO is not given); the last four only when RCO is given. */
+    neospice::MatrixOffset BJTcollCollCXPtr{-1};   /* (collector, collCX) */
+    neospice::MatrixOffset BJTcollCXCollPtr{-1};   /* (collCX, collector) */
+    neospice::MatrixOffset BJTcollCXcollCXPtr{-1}; /* (collCX, collCX) */
+    neospice::MatrixOffset BJTcollCXBasePrimePtr{-1}; /* (collCX, base prime) */
+    neospice::MatrixOffset BJTbasePrimeCollCXPtr{-1}; /* (base prime, collCX) */
+    neospice::MatrixOffset BJTcolPrimeCollCXPtr{-1};  /* (collector prime, collCX) */
+    neospice::MatrixOffset BJTcollCXColPrimePtr{-1};  /* (collCX, collector prime) */
 
     unsigned BJToff         :1;   /* 'off' flag for bjt */
     unsigned BJTtempGiven   :1; /* temperature given  for bjt instance*/
@@ -315,14 +329,17 @@ struct BJTInstance {
 #define BJTvsub BJTstate+21
 #define BJTcdsub BJTstate+22
 #define BJTgdsub BJTstate+23
-#define BJTnumStates 24
-
-#define BJTsensxpbe BJTstate+24 /* charge sensitivities and their
-                   derivatives. +25 for the derivatives -
-                   pointer to the beginning of the array */
-#define BJTsensxpbc BJTstate+26
-#define BJTsensxpsub BJTstate+28
-#define BJTsensxpbx BJTstate+30
+/* Quasi-saturation (Kull) state variables */
+#define BJTvbcx BJTstate+24       /* extrinsic base-collector voltage */
+#define BJTvrci BJTstate+25       /* voltage across intrinsic coll. resistance */
+#define BJTirci BJTstate+26       /* epi (quasi-sat) collector current */
+#define BJTirci_Vrci BJTstate+27  /* d(Irci)/d(vrci) */
+#define BJTirci_Vbci BJTstate+28  /* d(Irci)/d(vbc) */
+#define BJTirci_Vbcx BJTstate+29  /* d(Irci)/d(vbcx) */
+#define BJTqbcx BJTstate+30       /* extrinsic base-collector charge */
+#define BJTcqbcx BJTstate+31      /* extrinsic base-collector charge current */
+#define BJTgbcx BJTstate+32       /* extrinsic base-collector capacitance */
+#define BJTnumStates 33
 
 #define BJTnumSenStates 8
 
@@ -380,6 +397,15 @@ struct BJTModel {          /* model structure for a bjt */
     double BJTbetaExp;
     double BJTenergyGap;
     double BJTtempExpIS;
+    /* Quasi-saturation (Kull) model parameters */
+    double BJTintCollResist;    /* RCO   intrinsic collector resistance */
+    double BJTepiSatVoltage;    /* VO    epi drift saturation voltage */
+    double BJTepiDoping;        /* GAMMA epi doping parameter */
+    double BJTepiCharge;        /* QCO   epi charge factor */
+    double BJTtempExpRCI;       /* RCO temperature exponent */
+    double BJTtempExpVO;        /* VO  temperature exponent */
+    double BJTenergyGapQS;      /* QS energy gap */
+    int    BJTquasimod;         /* QUASIMOD temperature-equation selector */
     double BJTdepletionCapCoeff;
     double BJTfNcoef;
     double BJTfNexp;
@@ -501,6 +527,14 @@ struct BJTModel {          /* model structure for a bjt */
     unsigned BJTbetaExpGiven : 1;
     unsigned BJTenergyGapGiven : 1;
     unsigned BJTtempExpISGiven : 1;
+    unsigned BJTintCollResistGiven : 1;
+    unsigned BJTepiSatVoltageGiven : 1;
+    unsigned BJTepiDopingGiven : 1;
+    unsigned BJTepiChargeGiven : 1;
+    unsigned BJTtempExpRCIGiven : 1;
+    unsigned BJTtempExpVOGiven : 1;
+    unsigned BJTenergyGapQSGiven : 1;
+    unsigned BJTquasimodGiven : 1;
     unsigned BJTdepletionCapCoeffGiven : 1;
     unsigned BJTfNcoefGiven : 1;
     unsigned BJTfNexpGiven :1;
@@ -765,6 +799,11 @@ struct BJTModel {          /* model structure for a bjt */
 #define BJT_MOD_EXCESSPHASEFACTOR     308
 #define BJT_MOD_TYPE                  309
 #define BJT_MOD_QUEST_SUBS            310
+#define BJT_MOD_RCO                   311
+#define BJT_MOD_VO                    312
+#define BJT_MOD_GAMMA                 313
+#define BJT_MOD_QCO                   314
+#define BJT_MOD_QUASIMOD              315
 
 // --- Parameter tables and dispatchers (defined in devsup/mpar) ------
 namespace Shim { struct IfParm; struct IfValue; }

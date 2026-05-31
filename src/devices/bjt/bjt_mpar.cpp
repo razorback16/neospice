@@ -471,6 +471,26 @@ BJTmParam(int param, Shim::IfValue *value, BJTModel *inModel)
             mods->BJTvceMax = value->rValue;
             mods->BJTvceMaxGiven = TRUE;
             break;
+        case BJT_MOD_RCO:
+            mods->BJTintCollResist = value->rValue;
+            mods->BJTintCollResistGiven = TRUE;
+            break;
+        case BJT_MOD_VO:
+            mods->BJTepiSatVoltage = value->rValue;
+            mods->BJTepiSatVoltageGiven = TRUE;
+            break;
+        case BJT_MOD_GAMMA:
+            mods->BJTepiDoping = value->rValue;
+            mods->BJTepiDopingGiven = TRUE;
+            break;
+        case BJT_MOD_QCO:
+            mods->BJTepiCharge = value->rValue;
+            mods->BJTepiChargeGiven = TRUE;
+            break;
+        case BJT_MOD_QUASIMOD:
+            mods->BJTquasimod = value->iValue;
+            mods->BJTquasimodGiven = TRUE;
+            break;
         default:
             return Shim::E_BADPARM;
     }

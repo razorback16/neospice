@@ -223,7 +223,12 @@ Shim::IfParm BJTmPTable[] = { /* model parameters */
  IOP("tisc2", BJT_MOD_TISC2, IF_REAL, "ISC 2. temperature coefficient"),
  IOP("vbe_max", BJT_MOD_VBE_MAX, IF_REAL, "maximum voltage B-E junction"),
  IOP("vbc_max", BJT_MOD_VBC_MAX, IF_REAL, "maximum voltage B-C junction"),
- IOP("vce_max", BJT_MOD_VCE_MAX, IF_REAL, "maximum voltage C-E branch")
+ IOP("vce_max", BJT_MOD_VCE_MAX, IF_REAL, "maximum voltage C-E branch"),
+ IOP("rco",   BJT_MOD_RCO,   IF_REAL,    "Intrinsic coll. resistance (quasi-sat)"),
+ IOP("vo",    BJT_MOD_VO,    IF_REAL,    "Epi drift saturation voltage (quasi-sat)"),
+ IOP("gamma", BJT_MOD_GAMMA, IF_REAL,    "Epi doping parameter (quasi-sat)"),
+ IOP("qco",   BJT_MOD_QCO,   IF_REAL,    "Epi charge parameter (quasi-sat)"),
+ IOP("quasimod", BJT_MOD_QUASIMOD, IF_INTEGER, "Quasi-sat temperature equation selector")
 };
 
 const char *BJTnames[] = {

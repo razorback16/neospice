@@ -170,6 +170,27 @@ BJTtemp(BJTModel *inModel, Shim::Ckt *ckt)
             ratio1 = here->BJTtemp/model->BJTtnom -1;
             factlog = ratio1 * model->BJTenergyGap/vt +
                     model->BJTtempExpIS*ratlog;
+
+            /* Quasi-saturation temperature scaling (matches ngspice
+             * bjttemp.c:215-229). Only used when RCO is given; with quasimod==1
+             * it scales RCO/VO/GAMMA, reducing to identity at nominal temp. */
+            if (model->BJTintCollResistGiven) {
+                if (model->BJTquasimod == 1) {
+                    double rT = here->BJTtemp/model->BJTtnom;
+                    here->BJTtintCollResist =
+                        model->BJTintCollResist*pow(rT,model->BJTtempExpRCI);
+                    here->BJTtepiSatVoltage =
+                        model->BJTepiSatVoltage*pow(rT,model->BJTtempExpVO);
+                    double xvar1 = pow(rT,model->BJTtempExpIS);
+                    double xvar2 = -model->BJTenergyGapQS*(1.0-rT)/vt;
+                    double xvar3 = exp(xvar2);
+                    here->BJTtepiDoping = model->BJTepiDoping*xvar1*xvar3;
+                } else {
+                    here->BJTtintCollResist = model->BJTintCollResist;
+                    here->BJTtepiSatVoltage = model->BJTepiSatVoltage;
+                    here->BJTtepiDoping     = model->BJTepiDoping;
+                }
+            }
             if ((model->BJTtlev == 0) || (model->BJTtlev == 1)) {
               factor = exp(factlog);
               here->BJTtSatCur = model->BJTsatCur * factor;
