@@ -47,6 +47,35 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+// Parse the PWL point list of an E/G TABLE form. ngspice's gettok_node treats
+// '(', ')', ',', and whitespace all as delimiters, so the parenthesized comma
+// form "(x,y) (x,y)", the parenthesized space form "(x y) (x y)", and the bare
+// newline-separated form "x y\n x y" all tokenize identically. We collect the
+// numeric tokens and pair them up. Non-numeric tokens are skipped (table data
+// is purely numeric once the control expression has been separated out).
+std::vector<TablePoint> parse_table_points(const std::string& joined) {
+    std::vector<TablePoint> pts;
+    std::vector<double> nums;
+    std::string cur;
+    auto flush = [&]() {
+        if (!cur.empty()) {
+            try { nums.push_back(parse_spice_number(cur)); } catch (...) {}
+            cur.clear();
+        }
+    };
+    for (char ch : joined) {
+        if (ch == '(' || ch == ')' || ch == ',' ||
+            std::isspace(static_cast<unsigned char>(ch)))
+            flush();
+        else
+            cur += ch;
+    }
+    flush();
+    for (size_t i = 0; i + 1 < nums.size(); i += 2)
+        pts.push_back({nums[i], nums[i + 1]});
+    return pts;
+}
+
 // Case-insensitive equality of a token against a lowercase literal, without
 // allocating a lowercased copy. Used in the hot per-line directive dispatch
 // loops (pass025 / pass04 / pass1) which would otherwise lowercase tokens[0]
@@ -1974,29 +2003,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     joined += tokens[i];
                     joined += ' ';
                 }
-                std::vector<TablePoint> pts;
-                size_t pos = 0;
-                while (pos < joined.size()) {
-                    // Skip whitespace and extra parentheses
-                    while (pos < joined.size() && (std::isspace(static_cast<unsigned char>(joined[pos])) ||
-                           joined[pos] == ')')) ++pos;
-                    if (pos >= joined.size()) break;
-                    if (joined[pos] != '(') { ++pos; continue; }
-                    ++pos;  // skip '('
-                    // Skip any additional opening parens (double-paren wrapping)
-                    while (pos < joined.size() && joined[pos] == '(') ++pos;
-                    size_t close = joined.find(')', pos);
-                    if (close == std::string::npos) break;
-                    std::string pair_str = joined.substr(pos, close - pos);
-                    pos = close + 1;
-                    size_t comma = pair_str.find(',');
-                    if (comma == std::string::npos) continue;
-                    try {
-                        double px = parse_spice_number(pair_str.substr(0, comma));
-                        double py = parse_spice_number(pair_str.substr(comma + 1));
-                        pts.push_back({px, py});
-                    } catch (...) {}
-                }
+                std::vector<TablePoint> pts = parse_table_points(joined);
                 if (pts.empty()) {
                     fprintf(stderr, "Warning: Line %d: TABLE VCVS: no table points found — skipping\n", line.line_number);
                     continue;
@@ -2331,27 +2338,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     joined += tokens[i];
                     joined += ' ';
                 }
-                std::vector<TablePoint> pts;
-                size_t pos = 0;
-                while (pos < joined.size()) {
-                    while (pos < joined.size() && (std::isspace(static_cast<unsigned char>(joined[pos])) ||
-                           joined[pos] == ')')) ++pos;
-                    if (pos >= joined.size()) break;
-                    if (joined[pos] != '(') { ++pos; continue; }
-                    ++pos;
-                    while (pos < joined.size() && joined[pos] == '(') ++pos;
-                    size_t close = joined.find(')', pos);
-                    if (close == std::string::npos) break;
-                    std::string pair_str = joined.substr(pos, close - pos);
-                    pos = close + 1;
-                    size_t comma = pair_str.find(',');
-                    if (comma == std::string::npos) continue;
-                    try {
-                        double px = parse_spice_number(pair_str.substr(0, comma));
-                        double py = parse_spice_number(pair_str.substr(comma + 1));
-                        pts.push_back({px, py});
-                    } catch (...) {}
-                }
+                std::vector<TablePoint> pts = parse_table_points(joined);
                 if (pts.empty()) {
                     fprintf(stderr, "Warning: Line %d: TABLE VCCS: no table points found — skipping\n", line.line_number);
                     continue;
