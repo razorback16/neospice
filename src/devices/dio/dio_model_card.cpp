@@ -14,6 +14,18 @@ std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card) {
         card, ucb, dio::DIOmPTable, dio::DIOmPTSize,
         dio::DIOmParam, "DIO");
 
+    // PSpice per-device temperature (ngspice rewrites these to temp/tnom on the
+    // model card, inpcompat.c:1014): T_ABS forces the operating temperature of
+    // all instances; T_MEASURED is the parameter-measurement temperature (TNOM).
+    if (card.t_abs) {
+        ucb.DIOtempModel = *card.t_abs + 273.15;
+        ucb.DIOtempModelGiven = 1;
+    }
+    if (card.t_measured) {
+        ucb.DIOnomTemp = *card.t_measured + 273.15;
+        ucb.DIOnomTempGiven = 1;
+    }
+
     return out;
 }
 

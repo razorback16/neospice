@@ -358,6 +358,7 @@ struct BJTModel {          /* model structure for a bjt */
     int BJTsubs;
 
     double BJTtnom; /* nominal temperature */
+    double BJTtempModel; /* PSpice T_ABS: forced operating temp for all insts (K) */
     double BJTsatCur;   /* input - don't use */
     double BJTbetaF;    /* input - don't use */
     double BJTemissionCoeffF;
@@ -488,6 +489,7 @@ struct BJTModel {          /* model structure for a bjt */
 
     unsigned BJTsubsGiven : 1;
     unsigned BJTtnomGiven : 1;
+    unsigned BJTtempModelGiven : 1; /* PSpice T_ABS given on model */
     unsigned BJTsatCurGiven : 1;
     unsigned BJTbetaFGiven : 1;
     unsigned BJTemissionCoeffFGiven : 1;

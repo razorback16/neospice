@@ -20,6 +20,17 @@ std::unique_ptr<BJTModelCard> to_bjt_card(const ModelCard& card) {
         card, ucb, bjt::BJTmPTable, bjt::BJTmPTSize,
         bjt::BJTmParam, "BJT");
 
+    // PSpice per-device temperature (see to_dio_card): T_ABS forces operating
+    // temperature for all instances; T_MEASURED is the measurement temp (TNOM).
+    if (card.t_abs) {
+        ucb.BJTtempModel = *card.t_abs + 273.15;
+        ucb.BJTtempModelGiven = 1;
+    }
+    if (card.t_measured) {
+        ucb.BJTtnom = *card.t_measured + 273.15;
+        ucb.BJTtnomGiven = 1;
+    }
+
     return out;
 }
 

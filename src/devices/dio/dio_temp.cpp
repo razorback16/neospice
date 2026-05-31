@@ -88,7 +88,9 @@ DIOtemp(DIOModel *inModel, Shim::Ckt *ckt)
             if(!here->DIOdtempGiven) here->DIOdtemp = 0.0;
 
             if(!here->DIOtempGiven)
-                here->DIOtemp = ckt->CKTtemp + here->DIOdtemp;
+                here->DIOtemp = (model->DIOtempModelGiven
+                                 ? model->DIOtempModel : ckt->CKTtemp)
+                                + here->DIOdtemp;
 
             dt = here->DIOtemp - model->DIOnomTemp;
 

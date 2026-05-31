@@ -229,6 +229,7 @@ struct JFETModel {       /* model structure for a jfet */
     double JFETbFac;  /* internal derived doping profile parameter */
     /* end Sydney University mod */
     double JFETtnom;    /* temperature at which parameters were measured */
+    double JFETtempModel; /* PSpice T_ABS: forced operating temp for all insts (K) */
     double JFETtcv;
     double JFETbex;
 
@@ -246,6 +247,7 @@ struct JFETModel {       /* model structure for a jfet */
     unsigned JFETbGiven : 1;
     /* end Sydney University mod */
     unsigned JFETtnomGiven : 1; /* user specified Tnom for model */
+    unsigned JFETtempModelGiven : 1; /* PSpice T_ABS given on model */
     unsigned JFETfNcoefGiven : 1;
     unsigned JFETfNexpGiven : 1;
     unsigned JFETnlevGiven : 1;

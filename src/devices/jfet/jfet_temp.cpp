@@ -89,7 +89,9 @@ JFETtemp(JFETModel *inModel, Shim::Ckt *ckt)
                 here->JFETdtemp = 0.0;
             }
             if(!(here->JFETtempGiven)) {
-                here->JFETtemp = ckt->CKTtemp + here->JFETdtemp;
+                here->JFETtemp = (model->JFETtempModelGiven
+                                  ? model->JFETtempModel : ckt->CKTtemp)
+                                 + here->JFETdtemp;
             }
             vt = here->JFETtemp * CONSTKoverQ;
             fact2 = here->JFETtemp/REFTEMP;

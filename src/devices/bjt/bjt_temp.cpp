@@ -108,7 +108,9 @@ BJTtemp(BJTModel *inModel, Shim::Ckt *ckt)
                 here->BJTdtemp = 0.0;
 
             if(!here->BJTtempGiven)
-                here->BJTtemp = ckt->CKTtemp + here->BJTdtemp;
+                here->BJTtemp = (model->BJTtempModelGiven
+                                 ? model->BJTtempModel : ckt->CKTtemp)
+                                + here->BJTdtemp;
 
             dt = here->BJTtemp - model->BJTtnom;
 

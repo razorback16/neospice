@@ -138,10 +138,14 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
                     i += 3;
                     continue;
                 }
-                card.params[key] = val;
+                // PSpice temperature metadata goes to dedicated fields only,
+                // not the generic param map — the per-device parameter tables
+                // don't know t_abs/t_measured/etc. and would warn "unknown".
+                bool is_temp_meta = (key == "t_measured" || key == "t_abs" ||
+                                     key == "t_rel_global" || key == "t_rel_local");
+                if (!is_temp_meta) card.params[key] = val;
                 i += 3;
 
-                // Store PSpice temperature metadata in dedicated fields
                 if (key == "t_measured")        card.t_measured = val;
                 else if (key == "t_abs")        card.t_abs = val;
                 else if (key == "t_rel_global") card.t_rel_global = val;

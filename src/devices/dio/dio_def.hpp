@@ -217,6 +217,7 @@ struct DIOModel {       /* model structure for a diode */
     unsigned DIObreakdownCurrentGiven : 1;
     unsigned DIOtcvGiven : 1;
     unsigned DIOnomTempGiven : 1;
+    unsigned DIOtempModelGiven : 1;
     unsigned DIOfNcoefGiven : 1;
     unsigned DIOfNexpGiven : 1;
     unsigned DIOfNfreqExpGiven : 1;
@@ -276,6 +277,7 @@ struct DIOModel {       /* model structure for a diode */
     double DIOpj;       /* perimeter for the diode */
 
     double DIOnomTemp;  /* nominal temperature at which parms measured */
+    double DIOtempModel; /* PSpice T_ABS: forced operating temp for all insts (K) */
     double DIOfNcoef;
     double DIOfNexp;
     double DIOfNfreqExp;
