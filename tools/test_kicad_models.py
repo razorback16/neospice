@@ -24,6 +24,30 @@ from pathlib import Path
 
 KICAD_LIB = Path(__file__).parent.parent / "third_party" / "KiCad-Spice-Library" / "Models"
 
+# Per-part fixture role overrides for complex multi-pin parts whose extra pins
+# (REF/FB/SHDN/fader controls) leave the generic auto-generated fixture
+# under-driven, so both simulators float to different operating points. Keyed by
+# exact subckt name (case-insensitive) -> one role per port. Roles map to nets
+# in make_subcircuit_test (gnd->0, vcc->vcc_net, vee->vee_net, inp->in_p,
+# inm->in_m, out->out_net, generic->net_<port>). Tying FB->out closes the loop,
+# SHDN->vcc enables the part, and grounding fader control pins makes the fader
+# well-conditioned. Goal: a driven, closed-loop fixture both simulators agree on.
+SUBCKT_ROLE_OVERRIDES = {
+    # 1 2 3 4 5 6  (IN+ IN- V+ V- OUT SHDN): enable the part via SHDN->V+
+    'LT1398_MD': ['inp', 'inm', 'vcc', 'vee', 'out', 'vcc'],
+    'LT1399_MD': ['inp', 'inm', 'vcc', 'vee', 'out', 'vcc'],
+    # 3 2 7 4 6 1 8  (op-amp + reference): test the op-amp, leave ref pins open
+    'LM10C': ['inp', 'inm', 'vcc', 'vee', 'out', 'generic', 'generic'],
+    # NOT overridden (genuinely need a datasheet-specific application circuit a
+    # generic .op harness cannot synthesize, and forcing one is no better):
+    #   LT1187/LT1193 — current-feedback difference amps: the FB pin needs a
+    #     gain-setting Rf/Rg network, not a direct tie (a generic closed loop
+    #     still left them 350-1000% off).
+    #   LT1251/LT1256 — 14-pin video faders: their control-voltage and
+    #     gain-set-resistor pins (RC, RFS) expect external resistors; grounding
+    #     them shorts internal nodes and breaks convergence in BOTH simulators.
+}
+
 def is_binary_file(filepath):
     """Check if a file is binary by looking for null bytes in the first 8KB."""
     try:
@@ -356,13 +380,17 @@ def extract_subcircuits(filepath):
         if roles is None and len(ports) == 5:
             roles = ['inp', 'inm', 'vcc', 'vee', 'out']
 
-        # NOTE: auto-biasing >5-pin parts that lead with the canonical op-amp
-        # pin prefix [3,2,7,4,6] (LT1187/LT1193/LM10C etc.) was tried and
-        # discarded: it fixed only LM10C while regressing LT1028N/LT1806/LT1809
-        # (forcing supplies on 5 of their pins pushed ngspice into
-        # non-convergence), and left LT1187/LT1193 still ill-posed because
-        # their REF/FB feedback pins need a datasheet-specific network. These
-        # complex multi-pin parts are genuinely ill-posed for generic fixtures.
+        # Part-specific fixture overrides for complex multi-pin parts that the
+        # generic heuristics cannot bias (extra REF/FB/SHDN/control pins). These
+        # are keyed by exact subckt name, so they can only ever affect the named
+        # parts (a generic prefix heuristic was tried and discarded — it
+        # regressed LT1028N/LT1806/LT1809). Roles reuse make_subcircuit_test's
+        # mapping: gnd->0, vcc->vcc_net, out->out_net, etc. The goal is a
+        # well-conditioned (driven, closed-loop) fixture both simulators agree
+        # on, not the exact datasheet application circuit.
+        ov = SUBCKT_ROLE_OVERRIDES.get(name.upper())
+        if ov is not None and len(ov) == len(ports):
+            roles = list(ov)
 
         subcircuits.append((name, ports, str(filepath.resolve()), roles, params))
     return subcircuits
