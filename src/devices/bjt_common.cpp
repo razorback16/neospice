@@ -52,7 +52,13 @@ std::unique_ptr<ParsedElement> parse_bjt_element(
         q->model_name = tok4;
         param_start = 5;
     } else if (tokens.size() >= 6) {
-        q->ns = ctx.node(tok4);
+        // Substrate node, which may use the [node] bracket syntax
+        // (ngspice/PSpice), e.g. "Q1 c b e [4] MODEL". Strip the brackets so
+        // it resolves to the real node instead of a literal "[4]" node.
+        std::string sub_tok = tok4;
+        sub_tok.erase(std::remove(sub_tok.begin(), sub_tok.end(), '['), sub_tok.end());
+        sub_tok.erase(std::remove(sub_tok.begin(), sub_tok.end(), ']'), sub_tok.end());
+        q->ns = ctx.node(sub_tok);
         q->model_name = tokens[5];
         param_start = 6;
     } else {
