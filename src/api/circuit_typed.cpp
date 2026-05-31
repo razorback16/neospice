@@ -272,7 +272,7 @@ DevId Circuit::B(std::string_view name, NodeId np, NodeId nn,
     int nv = compiled.num_vars();
     std::vector<int32_t> node_indices(nv, -1);
     std::vector<int32_t> node_indices2(nv, -1);
-    std::vector<const VSource*> vsource_ptrs(nv, nullptr);
+    std::vector<const Device*> vsource_ptrs(nv, nullptr);
 
     for (int i = 0; i < nv; ++i) {
         const auto& ref = refs[i];
@@ -293,8 +293,12 @@ DevId Circuit::B(std::string_view name, NodeId np, NodeId nn,
             node_indices2[i] = resolve_b_node(*this, ref.name2);
             break;
         case asrc::VarKind::BRANCH_CURRENT: {
+            // Bind I() to an independent V source, or any branch-owning device
+            // (E/VCVS, H/CCVS, inductor, voltage-mode behavioral source).
             auto* dev = find_device_ptr(ref.name1);
-            auto* vs = dev ? dynamic_cast<const VSource*>(dev) : nullptr;
+            const Device* vs = nullptr;
+            if (dev && (dynamic_cast<const VSource*>(dev) || dev->extra_vars() > 0))
+                vs = dev;
             if (!vs)
                 throw std::invalid_argument(
                     "B device '" + std::string(name) +

@@ -41,12 +41,14 @@ public:
     ///   expression:  the compiled expression AST
     ///   resolved_node_indices: per-variable node index (for V() refs)
     ///   resolved_node_indices2: second node (for V(n1,n2) diff refs)
-    ///   vsource_ptrs: per-variable VSource* (for I() refs, nullptr otherwise)
+    ///   vsource_ptrs: per-variable branch-current provider for I() refs
+    ///                  (any Device with a branch variable: V/E/H/L or a
+    ///                  voltage-mode behavioral source), nullptr otherwise
     ASRCDevice(std::string name, int32_t node_pos, int32_t node_neg,
                Mode mode, asrc::CompiledExpression expression,
                std::vector<int32_t> resolved_node_indices,
                std::vector<int32_t> resolved_node_indices2,
-               std::vector<const VSource*> vsource_ptrs);
+               std::vector<const Device*> vsource_ptrs);
 
     // -- Device interface --
 
@@ -108,8 +110,10 @@ private:
     std::vector<int32_t> var_indices_;    // primary node index
     std::vector<int32_t> var_indices2_;   // second node (DIFF_VOLTAGE only)
 
-    // For I() refs: pointer to VSource device (branch_index read lazily)
-    std::vector<const VSource*> vsource_ptrs_;
+    // For I() refs: pointer to a branch-current-carrying device (VSource,
+    // VCVS/E, CCVS/H, inductor, or a voltage-mode behavioral source); its
+    // branch_index() is read lazily after branch indices are assigned.
+    std::vector<const Device*> vsource_ptrs_;
 
     // Working buffers (reused between evaluations)
     mutable std::vector<double> var_values_;

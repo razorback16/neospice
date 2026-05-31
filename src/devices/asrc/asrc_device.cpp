@@ -16,7 +16,7 @@ ASRCDevice::ASRCDevice(std::string name, int32_t node_pos, int32_t node_neg,
                        Mode mode, asrc::CompiledExpression expression,
                        std::vector<int32_t> resolved_node_indices,
                        std::vector<int32_t> resolved_node_indices2,
-                       std::vector<const VSource*> vsource_ptrs)
+                       std::vector<const Device*> vsource_ptrs)
     : Device(std::move(name))
     , np_(node_pos)
     , nn_(node_neg)

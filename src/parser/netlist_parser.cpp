@@ -3471,25 +3471,36 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         }
         return nullptr;
     };
+    // Resolve I(name) to a branch-current-carrying device. Search order matches
+    // ngspice: an independent voltage source, then any device that owns an MNA
+    // branch variable (E/VCVS, H/CCVS, voltage-mode behavioral B/E/G sources,
+    // inductors), and finally fall back to splicing a 0V sense source in series
+    // with a 2-terminal device (e.g. a resistor) that has no branch of its own.
+    auto branch_provider_for = [&](const std::string& name) -> const Device* {
+        std::string key = to_lower(name);
+        const Device* vsrc = nullptr;     // independent V source has priority
+        const Device* branchdev = nullptr;  // any other branch-carrying device
+        for (const auto& dev : ckt.devices()) {
+            if (to_lower(dev->name()) != key) continue;
+            if (dynamic_cast<const VSource*>(dev.get())) { vsrc = dev.get(); break; }
+            // Owns a branch variable (E/H/L/voltage-mode B). branch_index() is
+            // not yet assigned here, but extra_vars()>0 marks branch ownership.
+            if (dev->extra_vars() > 0) branchdev = dev.get();
+        }
+        if (vsrc) return vsrc;
+        if (branchdev) return branchdev;
+        return sense_source_for(name);  // splice 0V sense (resistor fallback)
+    };
     for (auto& bd : deferred_asrcs) {
         const auto& refs = bd.expr.var_refs();
         int nv = bd.expr.num_vars();
-        std::vector<const VSource*> vsource_ptrs(nv, nullptr);
+        std::vector<const Device*> vsource_ptrs(nv, nullptr);
 
         bool asrc_ok = true;
         for (int i = 0; i < nv; ++i) {
             if (refs[i].kind == asrc::VarKind::BRANCH_CURRENT &&
                 !bd.vsrc_names[i].empty()) {
-                const VSource* vs = nullptr;
-                for (const auto& dev : ckt.devices()) {
-                    if (auto* v = dynamic_cast<const VSource*>(dev.get())) {
-                        if (to_lower(v->name()) == to_lower(bd.vsrc_names[i])) {
-                            vs = v;
-                            break;
-                        }
-                    }
-                }
-                if (!vs) vs = sense_source_for(bd.vsrc_names[i]);
+                const Device* vs = branch_provider_for(bd.vsrc_names[i]);
                 if (!vs) {
                     fprintf(stderr, "Warning: Line %d: B element '%s' references unknown voltage source '%s' in I() — skipping\n",
                             bd.line_number, bd.name.c_str(), bd.vsrc_names[i].c_str());
