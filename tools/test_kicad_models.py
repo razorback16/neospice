@@ -356,6 +356,14 @@ def extract_subcircuits(filepath):
         if roles is None and len(ports) == 5:
             roles = ['inp', 'inm', 'vcc', 'vee', 'out']
 
+        # NOTE: auto-biasing >5-pin parts that lead with the canonical op-amp
+        # pin prefix [3,2,7,4,6] (LT1187/LT1193/LM10C etc.) was tried and
+        # discarded: it fixed only LM10C while regressing LT1028N/LT1806/LT1809
+        # (forcing supplies on 5 of their pins pushed ngspice into
+        # non-convergence), and left LT1187/LT1193 still ill-posed because
+        # their REF/FB feedback pins need a datasheet-specific network. These
+        # complex multi-pin parts are genuinely ill-posed for generic fixtures.
+
         subcircuits.append((name, ports, str(filepath.resolve()), roles, params))
     return subcircuits
 
