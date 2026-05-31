@@ -18,7 +18,7 @@ void DeviceRegistry::add_element_parser(ElementParserEntry entry) {
 
 static std::string normalize_type_group(const std::string& type) {
     if (type == "nmos" || type == "pmos") return "mos";
-    if (type == "npn"  || type == "pnp")  return "bjt";
+    if (type == "npn"  || type == "pnp" || type == "lpnp")  return "bjt";
     if (type == "njf"  || type == "pjf")  return "jfet";
     if (type == "nhfet"|| type == "phfet") return "hfet";
     if (type == "nmf"  || type == "pmf")  return "mes";

@@ -121,9 +121,10 @@ void resolve_bjts(
             }
             it = it2;
         }
-        // Check that the model type is NPN or PNP
+        // Check that the model type is NPN, PNP, or LPNP (lateral PNP, which
+        // ngspice treats as PNP polarity with a lateral substrate).
         std::string model_type = to_lower(it->second.type);
-        if (model_type != "npn" && model_type != "pnp") {
+        if (model_type != "npn" && model_type != "pnp" && model_type != "lpnp") {
             fprintf(stderr, "Warning: Line %d: Q card references non-BJT model '%s' — skipping\n",
                     q.line_number, q.model_name.c_str());
             continue;
