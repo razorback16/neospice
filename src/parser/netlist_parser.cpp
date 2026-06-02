@@ -92,7 +92,13 @@ public:
     // If we are mid-token, point at the next whole token so the consumer (which
     // works on whole tokens) does not re-read partially-consumed node data.
     size_t resume_token_index() const {
-        if (idx_ < tokens_.size() && off_ > 0 && off_ < tokens_[idx_].size())
+        // Once any char of the current token has been consumed (off_ > 0), that
+        // token's content has been read as node atoms — whether consumption
+        // stopped mid-token or exactly at its end (e.g. the trailing ')' of
+        // "(3,4)"). Either way, whole-token resumption must skip it. When
+        // off_ == 0 the scanner advanced cleanly to a fresh token, so idx_
+        // already points at the next unread token.
+        if (idx_ < tokens_.size() && off_ > 0)
             return idx_ + 1;
         return idx_;
     }
