@@ -159,7 +159,17 @@ void ISource::evaluate(const std::vector<double>& /*voltages*/,
     // Convention: current flows from np to nn through the source.
     // KCL: current leaves np  -> -I at np
     //      current enters nn  -> +I at nn
-    double I = value_at(current_time_);
+    // Match ngspice isrcload.c: in the DC operating-point and DC-transfer-curve
+    // solves, a source with an explicit DC value uses that value instead of the
+    // transient waveform's time=0 value. MODEDCOP=0x10, MODEDCTRANCURVE=0x40.
+    double I;
+    if (dc_given_ && func_ != SourceFunction::DC &&
+        tls_integrator_ctx &&
+        (tls_integrator_ctx->mode & (0x10 | 0x40))) {
+        I = dc_value_;
+    } else {
+        I = value_at(current_time_);
+    }
     if (tls_integrator_ctx && tls_integrator_ctx->options)
         I *= tls_integrator_ctx->options->src_fact;
     add_rhs_if_valid(rhs, np_, -I);

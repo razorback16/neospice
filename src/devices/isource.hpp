@@ -25,6 +25,12 @@ public:
     void set_dc_value(double v) { dc_value_ = v; }
     double dc_value() const { return dc_value_; }
 
+    /// Whether an explicit DC value was given (ngspice ISRCdcGiven). When true,
+    /// the DC operating point and DC-transfer-curve solves use dc_value_ rather
+    /// than the transient waveform's time=0 value.
+    void set_dc_given(bool b) { dc_given_ = b; }
+    bool dc_given() const { return dc_given_; }
+
     std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
     std::optional<double> primary_value() const override { return dc_value_; }
     bool set_value(double value) override { dc_value_ = value; return true; }
@@ -64,6 +70,7 @@ private:
     int32_t np_;       // positive node (conventional current exits here)
     int32_t nn_;       // negative node (conventional current enters here)
     double  dc_value_;
+    bool    dc_given_ = false;  // ngspice ISRCdcGiven
 
     // AC
     double ac_mag_       = 0.0;

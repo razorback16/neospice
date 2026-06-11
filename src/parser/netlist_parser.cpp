@@ -219,6 +219,7 @@ std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
 // Parse a source line (VSource or ISource) for DC, AC, PULSE, SIN keywords
 struct ParsedSourceSpec {
     double dc_val = 0.0;
+    bool   dc_given = false;  // ngspice VSRCdcGiven: explicit "DC x" or bare leading value
     double ac_mag = 0.0;
     double ac_phase = 0.0;
     SourceFunction func = SourceFunction::DC;
@@ -268,6 +269,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             if (i < tokens.size()) {
                 try { spec.dc_val = parse_spice_number(tokens[i]); }
                 catch (...) { spec.dc_val = 0; }
+                spec.dc_given = true;
                 ++i;
             }
         } else if (lower == "ac") {
@@ -344,9 +346,11 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             if (vals.size() >= 4) spec.am.fc = vals[3];
             if (vals.size() >= 5) spec.am.td = vals[4];
         } else {
-            // Try to parse as a bare DC value (no "DC" keyword)
+            // Try to parse as a bare DC value (no "DC" keyword).
+            // ngspice treats a bare leading numeric value as VSRCdcGiven=TRUE.
             try {
                 spec.dc_val = parse_spice_number(tokens[i]);
+                spec.dc_given = true;
                 ++i;
             } catch (...) {
                 ++i; // skip unknown token
@@ -1878,6 +1882,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
             ParsedSourceSpec spec = parse_source_spec(tokens, 3);
             auto vs = std::make_unique<VSource>(name, np, nn, spec.dc_val);
+            vs->set_dc_given(spec.dc_given);
             if (spec.ac_mag != 0.0 || spec.ac_phase != 0.0) {
                 vs->set_ac(spec.ac_mag, spec.ac_phase);
             }
@@ -1900,6 +1905,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
             ParsedSourceSpec spec = parse_source_spec(tokens, 3);
             auto is = std::make_unique<ISource>(name, np, nn, spec.dc_val);
+            is->set_dc_given(spec.dc_given);
             if (spec.ac_mag != 0.0 || spec.ac_phase != 0.0) {
                 is->set_ac(spec.ac_mag, spec.ac_phase);
             }

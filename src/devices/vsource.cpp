@@ -190,9 +190,21 @@ void VSource::evaluate(const std::vector<double>& /*voltages*/,
     // Branch equation: V(np) - V(nn) = V_source
     add_if_valid(mat, off_branch_np_,  1.0);
     add_if_valid(mat, off_branch_nn_, -1.0);
-    // RHS for the branch equation row
+    // RHS for the branch equation row.
+    // Match ngspice vsrcload.c: in the DC operating-point and DC-transfer-curve
+    // solves, a source with an explicit DC value uses that value instead of the
+    // transient waveform's time=0 value. MODEDCOP=0x10, MODEDCTRANCURVE=0x40.
+    // MODETRANOP (0x20) is intentionally excluded: ngspice evaluates the
+    // transient function at time=0 for the transient preamble.
     if (branch_idx_ >= 0) {
-        double val = value_at(current_time_);
+        double val;
+        if (dc_given_ && func_ != SourceFunction::DC &&
+            tls_integrator_ctx &&
+            (tls_integrator_ctx->mode & (0x10 | 0x40))) {
+            val = dc_value_;
+        } else {
+            val = value_at(current_time_);
+        }
         if (tls_integrator_ctx && tls_integrator_ctx->options)
             val *= tls_integrator_ctx->options->src_fact;
         rhs[branch_idx_] += val;

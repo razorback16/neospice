@@ -1,8 +1,19 @@
 #include <gtest/gtest.h>
 #include "devices/vsource.hpp"
 #include "core/neo_solver.hpp"
+#include "core/circuit.hpp"   // tls_integrator_ctx, IntegratorCtx
+#include "core/types.hpp"
 
 using namespace neospice;
+
+// Helper RAII guard for setting up integrator context in unit tests.
+namespace {
+struct VSrcIntegratorGuard {
+    IntegratorCtx ctx;
+    explicit VSrcIntegratorGuard(int mode) { ctx.mode = mode; tls_integrator_ctx = &ctx; }
+    ~VSrcIntegratorGuard() { tls_integrator_ctx = nullptr; }
+};
+} // namespace
 
 // ---------------------------------------------------------------------------
 // stamp_pattern — with node0 and GROUND, branch=1 → 2x2 MNA
@@ -73,6 +84,59 @@ TEST(VSource, Evaluate) {
     EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 1)),  1.0);
     EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 0)),  1.0);
     EXPECT_DOUBLE_EQ(rhs[1], 5.0);
+}
+
+// ---------------------------------------------------------------------------
+// ngspice VSRCdcGiven: in the DC operating point (MODEDCOP) and DC-transfer-
+// curve (MODEDCTRANCURVE) solves, a source with an explicit DC value and a
+// transient waveform must stamp the DC value, NOT the waveform's time=0 value.
+// Repro: "V1 n1 0 DC 0 PULSE 0.68 ..." — OP must use 0, not 0.68.
+// ---------------------------------------------------------------------------
+namespace {
+double op_rhs_for(VSource& vs, int mode) {
+    SparsityBuilder builder(2);
+    vs.stamp_pattern(builder);
+    builder.add(0, 0);
+    auto pattern = builder.build();
+    NumericMatrix mat(pattern);
+    vs.assign_offsets(pattern);
+    std::vector<double> voltages(2, 0.0);
+    std::vector<double> rhs(2, 0.0);
+    VSrcIntegratorGuard guard(mode);
+    vs.evaluate(voltages, mat, rhs);
+    return rhs[1];
+}
+} // namespace
+
+TEST(VSource, DcGivenUsesDcValueAtOperatingPoint) {
+    constexpr int MODEDCOP = 0x10;
+    constexpr int MODETRANOP = 0x20;
+    constexpr int MODEDCTRANCURVE = 0x40;
+
+    PulseParams p;
+    p.v1 = 0.68; p.v2 = -0.02; p.td = 0.0;
+    p.tr = 0.29e-6; p.tf = 0.29e-6; p.pw = 4.5e-6; p.per = 5.08e-6;
+
+    // dc_given = true (explicit "DC 0"): OP/DCTRANCURVE use the DC value (0).
+    {
+        VSource vs("V1", 0, GROUND_INTERNAL, 0.0);
+        vs.set_branch_index(1);
+        vs.set_pulse(p);
+        vs.set_dc_given(true);
+        EXPECT_DOUBLE_EQ(op_rhs_for(vs, MODEDCOP), 0.0);
+        EXPECT_DOUBLE_EQ(op_rhs_for(vs, MODEDCTRANCURVE), 0.0);
+        // MODETRANOP must still evaluate the waveform at t=0 -> v1 (0.68).
+        EXPECT_DOUBLE_EQ(op_rhs_for(vs, MODETRANOP), 0.68);
+    }
+
+    // dc_given = false (no DC value): OP uses the waveform t=0 value (0.68).
+    {
+        VSource vs("V1", 0, GROUND_INTERNAL, 0.0);
+        vs.set_branch_index(1);
+        vs.set_pulse(p);
+        vs.set_dc_given(false);
+        EXPECT_DOUBLE_EQ(op_rhs_for(vs, MODEDCOP), 0.68);
+    }
 }
 
 // ---------------------------------------------------------------------------
