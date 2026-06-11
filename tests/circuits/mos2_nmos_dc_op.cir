@@ -1,0 +1,8 @@
+MOS2 NMOS DC Operating Point
+Vdd vdd 0 1.8
+Vgs gate 0 0.9
+Rd vdd drain 1k
+M1 drain gate 0 0 NMOD W=10u L=1u
+.model NMOD NMOS LEVEL=2
+.op
+.end

@@ -70,6 +70,7 @@ InductorModel to_inductor_model(const ModelCard& card);
 // ---------------------------------------------------------------------------
 struct BSIM4v7ModelCard;
 struct MOS1ModelCard;
+struct MOS2ModelCard;
 struct MOS3ModelCard;
 struct MOS9ModelCard;
 struct BSIM3ModelCard;
@@ -82,6 +83,7 @@ struct HFET2ModelCard;
 
 std::unique_ptr<BSIM4v7ModelCard> to_bsim4_card(const ModelCard& card);
 std::unique_ptr<MOS1ModelCard> to_mos1_card(const ModelCard& card);
+std::unique_ptr<MOS2ModelCard> to_mos2_card(const ModelCard& card);
 std::unique_ptr<MOS3ModelCard> to_mos3_card(const ModelCard& card);
 std::unique_ptr<MOS9ModelCard> to_mos9_card(const ModelCard& card);
 std::unique_ptr<BSIM3ModelCard> to_bsim3_card(const ModelCard& card);

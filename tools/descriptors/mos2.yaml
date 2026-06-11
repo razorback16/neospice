@@ -1,0 +1,70 @@
+model:
+  ngspice_prefix: "MOS2"
+  neospice_name: "mos2"
+  neospice_namespace: "mos2"
+  instance_struct: "MOS2instance"
+  model_struct: "MOS2model"
+  instance_tag: "sMOS2instance"
+  model_tag: "sMOS2model"
+  cpp_instance: "MOS2Instance"
+  cpp_model: "MOS2Model"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "MOS2dNode" }
+    - { name: "g", field: "MOS2gNode" }
+    - { name: "s", field: "MOS2sNode" }
+    - { name: "b", field: "MOS2bNode" }
+  state_count: 17
+  state_base_field: "MOS2states"
+  next_instance_field: "MOS2nextInstance"
+  instances_field: "MOS2instances"
+  next_model_field: "MOS2nextModel"
+  model_ptr_field: "MOS2modPtr"
+  name_field: "MOS2name"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "mos2set.c"
+    load: "mos2load.c"
+    temp: "mos2temp.c"
+    param: "mos2par.c"
+    mpar: "mos2mpar.c"
+    devsup: "mos2.c"
+  skip_files:
+    - "mos2acld.c"
+    - "mos2ask.c"
+    - "mos2bindCSC.c"
+    - "mos2conv.c"
+    - "mos2del.c"
+    - "mos2dist.c"
+    - "mos2dset.c"
+    - "mos2ic.c"
+    - "mos2init.c"
+    - "mos2mask.c"
+    - "mos2noi.c"
+    - "mos2pzld.c"
+    - "mos2sacl.c"
+    - "mos2sld.c"
+    - "mos2sprt.c"
+    - "mos2sset.c"
+    - "mos2supd.c"
+    - "mos2trun.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "MOS2setup"
+  temp_function: "MOS2temp"
+  load_function: "MOS2load"
+  geometry:
+    - { name: "W", field: "MOS2w", given: "MOS2wGiven", default: "1e-6" }
+    - { name: "L", field: "MOS2l", given: "MOS2lGiven", default: "1e-4" }
+    - { name: "AD", field: "MOS2drainArea", given: "MOS2drainAreaGiven", default: "0.0" }
+    - { name: "AS", field: "MOS2sourceArea", given: "MOS2sourceAreaGiven", default: "0.0" }
+    - { name: "PD", field: "MOS2drainPerimiter", given: "MOS2drainPerimiterGiven", default: "0.0" }
+    - { name: "PS", field: "MOS2sourcePerimiter", given: "MOS2sourcePerimiterGiven", default: "0.0" }
+    - { name: "NRD", field: "MOS2drainSquares", given: "MOS2drainSquaresGiven", default: "0.0" }
+    - { name: "NRS", field: "MOS2sourceSquares", given: "MOS2sourceSquaresGiven", default: "0.0" }
+    - { name: "M", field: "MOS2m", given: "MOS2mGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "nmos", flag_field: "MOS2type", flag_value: 1 }
+    - { spice_name: "pmos", flag_field: "MOS2type", flag_value: -1 }
+  charge_states: [5, 8, 11, 13, 15]  # qgs, qgd, qgb, qbd, qbs

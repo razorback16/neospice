@@ -4,6 +4,8 @@
 #include "parser/tokenizer.hpp"
 #include "devices/mos1/mos1_device.hpp"
 #include "devices/mos1/mos1_model_card.hpp"
+#include "devices/mos2/mos2_device.hpp"
+#include "devices/mos2/mos2_model_card.hpp"
 #include "devices/mos3/mos3_device.hpp"
 #include "devices/mos3/mos3_model_card.hpp"
 #include "devices/mos9/mos9_device.hpp"
@@ -147,6 +149,7 @@ void resolve_mosfets(
     //   LEVEL=10 or 58     -> BSIMSOI  (6-terminal SOI MOSFET)
     std::unordered_map<std::string, std::unique_ptr<BSIM4v7ModelCard>> bsim4_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS1ModelCard>> mos1_cards;
+    std::unordered_map<std::string, std::unique_ptr<MOS2ModelCard>> mos2_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS3ModelCard>> mos3_cards;
     std::unordered_map<std::string, std::unique_ptr<MOS9ModelCard>> mos9_cards;
     std::unordered_map<std::string, std::unique_ptr<BSIM3ModelCard>> bsim3_cards;
@@ -208,6 +211,39 @@ void resolve_mosfets(
             mos1_geom.lGiven = m.lGiven;
             auto dev = MOS1Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos1_geom, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
+                dev->set_ic(m.ic_vds, m.ic_vds_given,
+                            m.ic_vgs, m.ic_vgs_given,
+                            m.ic_vbs, m.ic_vbs_given);
+            }
+            ckt.add_device(std::move(dev));
+        } else if (level == 2) {
+            // MOS2 Level 2 MOSFET (Grove-Frohman analytic model)
+            auto card_it = mos2_cards.find(m.model_name);
+            if (card_it == mos2_cards.end()) {
+                try {
+                    card_it = mos2_cards.emplace(m.model_name,
+                                                  to_mos2_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            MOS2Device::Geom mos2_geom;
+            mos2_geom.W   = m.geom.W;
+            mos2_geom.L   = m.geom.L;
+            mos2_geom.AD  = m.geom.AD;
+            mos2_geom.AS  = m.geom.AS;
+            mos2_geom.PD  = m.geom.PD;
+            mos2_geom.PS  = m.geom.PS;
+            mos2_geom.NRD = m.geom.NRD;
+            mos2_geom.NRS = m.geom.NRS;
+            mos2_geom.M   = m.geom.M;
+            mos2_geom.wGiven = m.wGiven;
+            mos2_geom.lGiven = m.lGiven;
+            auto dev = MOS2Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
+                                        mos2_geom, *card_it->second);
             dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
@@ -498,6 +534,9 @@ void resolve_mosfets(
         ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : mos1_cards) {
+        ckt.add_model_card(std::move(card));
+    }
+    for (auto& [name, card] : mos2_cards) {
         ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : mos3_cards) {
