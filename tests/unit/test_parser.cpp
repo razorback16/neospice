@@ -408,3 +408,39 @@ R1 98 0 1k
     }
     EXPECT_TRUE(found_poly_vcvs) << "Expected NonlinearVCVS device to be parsed correctly";
 }
+
+TEST(Parser, EElementPolyStrayLeadingParen) {
+    // Some ADI macromodels (OP191/OP291/OP491 in OpAmp_AD.lib) glue a stray
+    // '(' onto the POLY keyword: "E4 97 22 (POLY(1) (99,98) -0.765 1".
+    // The leading '(' must not defeat POLY detection (which previously dropped
+    // the device, leaving floating nodes and a singular DC system).
+    std::string netlist = R"(
+VCVS stray-paren POLY
+R97 97 0 1k
+R22 22 0 1k
+R99 99 0 1k
+R98 98 0 1k
+E4 97 22 (POLY(1) (99,98) -0.765 1
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    const NonlinearVCVS* poly = nullptr;
+    for (const auto& dev : ckt.devices()) {
+        if (auto* p = dynamic_cast<const NonlinearVCVS*>(dev.get())) {
+            poly = p;
+            break;
+        }
+    }
+    ASSERT_NE(poly, nullptr) << "E4 (POLY(1) was dropped instead of parsed";
+
+    // external_nodes() returns {np, nn, ctrl_pos, ctrl_neg, ...}.
+    auto nodes = poly->external_nodes();
+    ASSERT_EQ(nodes.size(), 4u);
+    EXPECT_EQ(nodes[0], ckt.node_index("97"));  // np
+    EXPECT_EQ(nodes[1], ckt.node_index("22"));  // nn
+    EXPECT_EQ(nodes[2], ckt.node_index("99"));  // ctrl pos
+    EXPECT_EQ(nodes[3], ckt.node_index("98"));  // ctrl neg
+}

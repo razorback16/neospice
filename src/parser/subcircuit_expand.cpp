@@ -717,6 +717,20 @@ std::vector<TokenizedLine> expand_instance(
     std::vector<TokenizedLine> body_lines;
     extract_nested_defs(def.body, nested_defs, body_lines);
 
+    // Normalize a stray leading '(' glued onto the POLY keyword of an E/G
+    // element (e.g. "E4 97 22 (POLY(1) (99,98) ..." in some ADI macromodels).
+    // Strip it once here so both the internal-node collection pass and the
+    // emit pass below see a clean "POLY(1)" token and take the POLY path.
+    for (auto& bl : body_lines) {
+        if (bl.tokens.size() <= 3 || bl.tokens[0].empty()) continue;
+        char et = std::tolower(static_cast<unsigned char>(bl.tokens[0][0]));
+        if (et != 'e' && et != 'g') continue;
+        std::string& t3 = bl.tokens[3];
+        if (t3.size() > 1 && t3[0] == '(' &&
+            to_lower(t3).compare(1, 4, "poly") == 0)
+            t3.erase(0, 1);
+    }
+
     // Merge nested defs with all_defs (nested take precedence locally)
     auto merged_defs = all_defs;
     for (auto& [name, ndef] : nested_defs) {

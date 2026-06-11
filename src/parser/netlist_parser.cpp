@@ -1975,6 +1975,15 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
             // Detect POLY or TABLE keyword at token[3] (adjusted for parenthesized nodes)
             std::string tok3 = to_lower(tokens[3 - e_tok_offset]);
+            // Tolerate a stray leading '(' glued onto the POLY keyword (e.g.
+            // "(POLY(1)" in some ADI macromodels). Strip it for keyword/dim
+            // detection; the scanner below reads the ORIGINAL token, so track
+            // the strip offset to keep scan_off aligned to the original string.
+            size_t e_kw_strip = 0;
+            if (tok3.size() > 1 && tok3[0] == '(' && tok3.compare(1, 4, "poly") == 0) {
+                tok3.erase(0, 1);
+                e_kw_strip = 1;
+            }
 
             if (tok3.substr(0, 4) == "poly") {
                 // POLY(N) form
@@ -2007,7 +2016,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 size_t scan_tok = 3 - e_tok_offset;
                 size_t scan_off = 0;
                 if (poly_dim_in_token) {
-                    scan_off = tok3.find(')') + 1;  // resume after the count
+                    // +e_kw_strip re-aligns to the original (unstripped) token.
+                    scan_off = tok3.find(')') + 1 + e_kw_strip;  // resume after the count
                 } else {
                     scan_tok = 4 - e_tok_offset;
                     if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
@@ -2309,6 +2319,13 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             }
 
             std::string tok3g = to_lower(tokens[3 - g_tok_offset]);
+            // Tolerate a stray leading '(' glued onto the POLY keyword (see the
+            // E-element handling above for the rationale).
+            size_t g_kw_strip = 0;
+            if (tok3g.size() > 1 && tok3g[0] == '(' && tok3g.compare(1, 4, "poly") == 0) {
+                tok3g.erase(0, 1);
+                g_kw_strip = 1;
+            }
 
             if (tok3g.substr(0, 4) == "poly") {
                 // POLY(N) form for VCCS
@@ -2336,7 +2353,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 size_t scan_tok = 3 - g_tok_offset;
                 size_t scan_off = 0;
                 if (poly_dim_in_token) {
-                    scan_off = tok3g.find(')') + 1;
+                    scan_off = tok3g.find(')') + 1 + g_kw_strip;
                 } else {
                     scan_tok = 4 - g_tok_offset;
                     if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
