@@ -185,6 +185,7 @@ void DIODevice::evaluate(const std::vector<double>& voltages,
     ckt.CKTreltol  = sim_opts->reltol;
     ckt.CKTabstol  = sim_opts->abstol;
     ckt.CKTvoltTol = sim_opts->vntol;
+    ckt.CKTpspiceCompat = sim_opts->pspice_compat;
     ckt.CKTbypass  = 0;
     ckt.CKTnoncon  = 0;
 

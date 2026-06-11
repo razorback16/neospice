@@ -105,6 +105,10 @@ namespace Shim {
         int CKTinternalNodeCounter = 1000;
         int CKTcopyNodesets = 0;
 
+        // PSpice/LTspice compat mode (ngspice newcompat.ps || newcompat.lt).
+        // Gates compat-only behavior such as the RS=0 virtual series conductance.
+        bool CKTpspiceCompat = false;
+
         // Stub for sensitivity gating (CKTcurJob->JOBtype check)
         struct { int JOBtype = 0; } *CKTcurJob = nullptr;
 

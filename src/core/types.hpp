@@ -48,6 +48,13 @@ struct SimOptions {
     double xmu = 0.5;  // .option xmu: integration damping (0=BE, 0.5=trap)
     bool newtrunc = false; // .option newtrunc: global node-voltage LTE
 
+    // PSpice/LTspice compatibility mode (ngspice newcompat.ps || newcompat.lt,
+    // selected via -D ngbehavior=ps/lt/psa). When set, devices apply the same
+    // compat-only tweaks ngspice does, e.g. the diode RS=0 virtual series
+    // conductance of 1e4 S (diosetup.c:199). Auto-detected from the netlist
+    // dialect (PSpice constructs) by the parser.
+    bool pspice_compat = false;
+
     // Pseudo-transient continuation: backward Euler companion model.
     // When ptc_g > 0, newton_solve injects ptc_g * ptc_prev[i] into rhs[i]
     // for each node (in addition to diag_gmin adding ptc_g to the diagonal).

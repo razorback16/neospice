@@ -273,3 +273,65 @@ TEST_F(DiodeValidation, TransientSwitchingNgspice) {
     EXPECT_NEAR(v_out[idx_low], 0.0, 0.1)
         << "Diode should be off during pulse low";
 }
+
+// ============================================================================
+// 5.  PSpice-compat RS=0 virtual series conductance (DIOconductance=1e4)
+//
+// ngspice diosetup.c:199-205 sets DIOconductance=1e4 (100 microOhm) for diodes
+// with RS unspecified/zero, but only under -D ngbehavior=ps/lt/psa. The KiCad
+// model test harness runs ngspice with ngbehavior=psa. For undriven GenSemiTVS2
+// TVS networks this 1e4 conductance introduces a tiny IEEE-754 Jacobian
+// perturbation (gd=gmin swallowed inside gd+1e4) that tips the degenerate
+// near-zero DC equilibrium to the side ngspice-psa converges to (v(net_2) ~
+// -1.0073e-06). neospice auto-detects PSpice dialect from the netlist (the RES
+// model card) and must reproduce that equilibrium. Outside compat mode the
+// value stays 0 (matching default/libngspice behavior).
+//
+// This is a self-contained equilibrium check (the libngspice runner used by the
+// other tests does not run in psa mode, so the reference number is the verified
+// ngspice -D ngbehavior=psa output, not a live comparison).
+// ============================================================================
+TEST_F(DiodeValidation, PspiceCompatRsZeroEquilibrium) {
+    // GenSemiTVS2 1_5ke100a TVS model, reduced to the undriven two-resistor
+    // fixture the KiCad harness builds. The ".MODEL RLMOD RES" card forces
+    // PSpice-dialect auto-detection -> pspice_compat=true.
+    const std::string netlist =
+        "* gensemi tvs rs=0 compat equilibrium\n"
+        ".subckt onefiveke100a 9 2\n"
+        "DF 9 90 DFMOD\n"
+        ".MODEL DFMOD D N=1.82488 IS=5.01399E-008 RS=0.00763893 EG=1.11 XTI=3 CJO=4E-010 VJ=1.43005 M=0.35 FC=0.5 TT=1E-008 TNOM=25\n"
+        "RL 9 90 RLMOD 1.026E+008\n"
+        ".MODEL RLMOD RES TC1=0 TC2=0\n"
+        "RBD 90 4 3.35237\n"
+        "EBD 4 3 10 20 1\n"
+        "DBD 3 9 DBDMOD\n"
+        ".MODEL DBDMOD D IS=1E-015 N=0.5 T_ABS=25 TNOM=25\n"
+        "IBVC 0 10 0.001\n"
+        "RBVC 10 0 RBVCMOD 100000\n"
+        ".MODEL RBVCMOD RES TC1=0.00106\n"
+        "RBDX 20 23 3.35237\n"
+        "DBVC 23 0 DBDMOD\n"
+        "IBVD 0 20 0.001\n"
+        "L1 90 2 1E-015\n"
+        ".ends onefiveke100a\n"
+        "X1 net_9 net_2 onefiveke100a\n"
+        "R_9 net_9 0 100k\n"
+        "R_2 net_2 0 100k\n"
+        ".op\n"
+        ".end\n";
+
+    auto ckt = sim_.parse(netlist);
+    // PSpice constructs (RES model card) must auto-select compat mode so the
+    // diode RS=0 conductance becomes 1e4 like ngspice-psa.
+    EXPECT_TRUE(ckt.options.pspice_compat)
+        << "PSpice-dialect netlist should enable pspice_compat";
+
+    auto dc = sim_.run_dc(ckt);
+    double v_net2 = dc.voltage("net_2");
+
+    // Verified ngspice -D ngbehavior=psa reference: v(net_2) = -1.00726e-06.
+    EXPECT_NEAR(v_net2, -1.00726e-06, 1e-7)
+        << "v(net_2)=" << v_net2 << " should match ngspice-psa equilibrium "
+        << "(-1.00726e-06); a positive value means the RS=0 compat conductance "
+        << "was not applied";
+}

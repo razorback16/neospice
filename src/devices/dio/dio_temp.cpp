@@ -73,7 +73,18 @@ DIOtemp(DIOModel *inModel, Shim::Ckt *ckt)
             model->DIOdepletionSWcapCoeff=.95;
         }
         if((!model->DIOresistGiven) || (model->DIOresist==0)) {
-            model->DIOconductance = 0.0;
+            // ngspice diosetup.c:199-205: in PSpice/LTspice compat mode (selected via
+            // -D ngbehavior=ps/lt/psa, which the KiCad model test harness uses) ngspice
+            // sets DIOconductance=1e4 (100 microOhm virtual series resistance) for diodes
+            // with RS unspecified/zero, "for improved convergence". DIOposPrimeNode still
+            // collapses onto DIOposNode (gated on DIOresist==0, not the conductance), so
+            // the four gspr stamps algebraically cancel — but in IEEE-754 double the
+            // intermediate gd+gspr swallows the tiny gd=gmin term (1e-12 < ulp(1e4)),
+            // perturbing the Jacobian just enough to select the same near-zero DC
+            // equilibrium as ngspice for undriven TVS networks (GenSemiTVS2 family).
+            // Outside compat mode (plain ngspice / the libngspice unit-test runner) the
+            // value stays 0 so we keep matching ngspice's default behavior too.
+            model->DIOconductance = ckt->CKTpspiceCompat ? 1e4 : 0.0;
         } else {
             model->DIOconductance = 1/model->DIOresist;
         }
