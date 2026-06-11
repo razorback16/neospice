@@ -39,6 +39,12 @@ std::unique_ptr<ParsedElement> parse_jfet_element(
         if (eq != std::string::npos) {
             std::string key = to_lower(tokens[i].substr(0, eq));
             std::string valstr = tokens[i].substr(eq + 1);
+            // Handle "key= <value>" where whitespace split put value in next token
+            if (valstr.empty() && i + 1 < tokens.size() &&
+                tokens[i + 1].find('=') == std::string::npos) {
+                ++i;
+                valstr = tokens[i];
+            }
             if (key == "area") {
                 j->geom.area = parse_spice_number(valstr);
                 j->geom.area_given = true;

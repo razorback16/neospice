@@ -100,6 +100,12 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
         if (key == "ic") {
             // ic=VDS,VGS,VBS  or  ic=VDS,VGS  or  ic=VDS
             std::string valstr = tokens[i].substr(eq + 1);
+            // Handle "ic= <value>" where whitespace split put value in next token
+            if (valstr.empty() && i + 1 < tokens.size() &&
+                tokens[i + 1].find('=') == std::string::npos) {
+                ++i;
+                valstr = tokens[i];
+            }
             std::vector<double> icvals;
             size_t start = 0;
             while (start < valstr.size()) {
@@ -115,7 +121,14 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
             if (icvals.size() >= 3) { m->ic_vbs = icvals[2]; m->ic_vbs_given = true; }
             continue;
         }
-        double val = parse_spice_number(tokens[i].substr(eq + 1));
+        std::string valstr = tokens[i].substr(eq + 1);
+        // Handle "key= <value>" where whitespace split put value in next token
+        if (valstr.empty() && i + 1 < tokens.size() &&
+            tokens[i + 1].find('=') == std::string::npos) {
+            ++i;
+            valstr = tokens[i];
+        }
+        double val = parse_spice_number(valstr);
         if      (key == "w")   { m->geom.W = val; m->wGiven = true; }
         else if (key == "l")   { m->geom.L = val; m->lGiven = true; }
         else if (key == "nf")  m->geom.NF  = val;

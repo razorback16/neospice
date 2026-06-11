@@ -60,3 +60,27 @@ TEST(ParserMosfet, UnsupportedLevelThrows) {
     NetlistParser p;
     EXPECT_THROW(p.parse(netlist), neospice::ParseError);
 }
+
+// Regression test: M-card params like "W=   6E-6" (spaces between '=' and value)
+// cause the whitespace tokenizer to split into tokens ["W=", "6E-6"].  The parser
+// must peek at the next token when the value portion is empty.
+TEST(ParserMosfet, SpacedEqualsInParamsDoesNotWarn) {
+    // The netlist mirrors the BF904/BF904R pattern: W=   6E-6 with spaces.
+    const std::string netlist =
+        "* BF904-style MOSFET with spaces between '=' and value\n"
+        "VDD d 0 1.0\n"
+        "VGS g 0 0.8\n"
+        "M1 d g 0 0 M1MOD L=1.1E-6 W=   6E-6\n"
+        ".model M1MOD NMOS LEVEL=1 VTO=0.7 KP=110e-6\n"
+        ".op\n.end\n";
+
+    NetlistParser p;
+    // Must not throw and must instantiate a MOS1Device with W=6e-6 and L=1.1e-6
+    Circuit ckt = p.parse(netlist);
+
+    int mos1_count = 0;
+    for (auto& d : ckt.devices()) {
+        if (dynamic_cast<MOS1Device*>(d.get())) ++mos1_count;
+    }
+    EXPECT_EQ(1, mos1_count);
+}
