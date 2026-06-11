@@ -94,18 +94,54 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
     }
 
     for (size_t i = param_start; i < tokens.size(); ++i) {
+        // Reconstruct a "key", "valstr" pair from the token stream, tolerating
+        // every whitespace split around '=' that ngspice's character-pointer
+        // gettok() would naturally absorb:
+        //   "key=value"   (glued)        -> one token
+        //   "key="  "value"              -> '=' glued left, value next token
+        //   "key"  "=value"              -> '=' glued right, key its own token
+        //   "key"  "="  "value"          -> all three separate
+        // A bare token with no '=' anywhere is an extra positional/flag token
+        // and is skipped (preserves prior behaviour for unknown bare tokens).
+        std::string key, valstr;
         auto eq = tokens[i].find('=');
-        if (eq == std::string::npos) continue;
-        std::string key = to_lower(tokens[i].substr(0, eq));
-        if (key == "ic") {
-            // ic=VDS,VGS,VBS  or  ic=VDS,VGS  or  ic=VDS
-            std::string valstr = tokens[i].substr(eq + 1);
-            // Handle "ic= <value>" where whitespace split put value in next token
+        if (eq != std::string::npos) {
+            key = to_lower(tokens[i].substr(0, eq));
+            valstr = tokens[i].substr(eq + 1);
             if (valstr.empty() && i + 1 < tokens.size() &&
                 tokens[i + 1].find('=') == std::string::npos) {
+                // "key=" <value>
                 ++i;
                 valstr = tokens[i];
+            } else if (key.empty()) {
+                // Bare "=" token: this is the separator of a "key" "=" "value"
+                // triple whose key was the previous bare token; that previous
+                // token was already skipped, so skip the value here too.
+                if (valstr.empty() && i + 1 < tokens.size())
+                    ++i;
+                continue;
             }
+        } else if (i + 1 < tokens.size() &&
+                   (tokens[i + 1] == "=" ||
+                    (!tokens[i + 1].empty() && tokens[i + 1][0] == '='))) {
+            // "key" "=" "value"  or  "key" "=value"
+            key = to_lower(tokens[i]);
+            std::string nxt = tokens[i + 1];
+            if (nxt == "=") {
+                if (i + 2 >= tokens.size()) continue;
+                ++i;            // consume '='
+                ++i;            // consume value
+                valstr = tokens[i];
+            } else {
+                // "=value" glued onto the separator token
+                ++i;
+                valstr = nxt.substr(1);
+            }
+        } else {
+            continue;  // bare token, no associated value
+        }
+        if (key == "ic") {
+            // ic=VDS,VGS,VBS  or  ic=VDS,VGS  or  ic=VDS
             std::vector<double> icvals;
             size_t start = 0;
             while (start < valstr.size()) {
@@ -121,13 +157,7 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
             if (icvals.size() >= 3) { m->ic_vbs = icvals[2]; m->ic_vbs_given = true; }
             continue;
         }
-        std::string valstr = tokens[i].substr(eq + 1);
-        // Handle "key= <value>" where whitespace split put value in next token
-        if (valstr.empty() && i + 1 < tokens.size() &&
-            tokens[i + 1].find('=') == std::string::npos) {
-            ++i;
-            valstr = tokens[i];
-        }
+        if (valstr.empty()) continue;
         double val = parse_spice_number(valstr);
         if      (key == "w")   { m->geom.W = val; m->wGiven = true; }
         else if (key == "l")   { m->geom.L = val; m->lGiven = true; }

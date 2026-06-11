@@ -130,3 +130,38 @@ TEST(ParserMosfet, ModelCardWLDefaultsAppliedToInstance) {
     EXPECT_LT(v_drain, 5.0)
         << "V(drain) should be below Vdd";
 }
+
+// Regression test (cluster B1, SSM3J133TU family): W and L given with
+// whitespace on BOTH sides of '=' ("W = 0.3") tokenize to three separate
+// tokens [W] [=] [0.3].  The param loop previously required '=' inside a
+// single token, so W/L silently fell back to the 100u default — for the
+// BSIM3 (LEVEL=49) Toshiba models this drove the effective C-V width
+// negative and aborted the op.  The reconstruction must absorb every
+// whitespace split around '=' (matching ngspice's gettok()).
+TEST(ParserMosfet, FullySpacedEqualsAppliesWidthAndLength) {
+    const std::string netlist =
+        "* MOSFET with whitespace on both sides of '='\n"
+        "Vdd vdd 0 5\n"
+        "Vgs gate 0 1.5\n"
+        "Rload vdd drain 1k\n"
+        "M1 drain gate 0 0 DRVMOS L = 1.0U W = 55U\n"
+        ".MODEL DRVMOS NMOS LEVEL=1 KP=100U VTO=1.0\n"
+        ".op\n.end\n";
+
+    NetlistParser p;
+    Circuit ckt = p.parse(netlist);
+
+    int mos1_count = 0;
+    for (auto& d : ckt.devices()) {
+        if (dynamic_cast<MOS1Device*>(d.get())) ++mos1_count;
+    }
+    ASSERT_EQ(1, mos1_count);
+
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged) << "DC should converge";
+    // W=55u/L=1u gives V(drain) ~ 4.31V; the 100u/100u default (W unparsed)
+    // would give ~5V (W/L = 1, much weaker drive at these dims -> near Vdd).
+    double v_drain = result.voltage("drain");
+    EXPECT_GT(v_drain, 4.0) << "spaced W=55U should be applied";
+    EXPECT_LT(v_drain, 4.7) << "spaced W=55U/L=1U drive should pull drain below Vdd";
+}

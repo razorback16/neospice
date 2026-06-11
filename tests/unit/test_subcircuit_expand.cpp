@@ -1113,3 +1113,42 @@ TEST(SubcircuitExpand, TableContinuationInSubcktReEmits) {
     // v(a,c) = v(1,0) = 4; identity table passes it through.
     EXPECT_NEAR(result.voltage("x1.drv"), 4.0, 1e-3);
 }
+
+// -----------------------------------------------------------------------
+// Regression test (cluster B2, ina250 CMRR subckt): a subcircuit invoked
+// with a PSpice "PARAMS:" section whose first parameter KEY happens to share
+// the subcircuit's name, e.g.
+//     XU5 a b c CMRR PARAMS: CMRR=150 FCMRR=2
+// The X-element parser scans from the line end for a known subckt name.
+// Without a parameter-section boundary it latched onto the "CMRR" param key
+// instead of the real subckt-name token, mis-counting connections (3 -> 5)
+// and either truncating or mis-wiring the instance.  The scan must stop at
+// the PARAMS: keyword so the true subckt name token (before PARAMS:) is used.
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, ParamKeyNameMatchesSubcktName) {
+    std::string netlist =
+        "Test netlist\n"
+        ".subckt cmrr vi vo gndf params: cmrr=130 fcmrr=1.6k\n"
+        "R1 vi vo {cmrr}\n"
+        ".ends\n"
+        "X1 in out 0 cmrr params: cmrr=150 fcmrr=2\n"
+        "V1 in 0 DC 10\n"
+        "Rload out 0 1k\n"
+        ".op\n"
+        ".end\n";
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
+
+    // The 3-port subckt must expand cleanly: R1 maps vi->in, vo->out, with
+    // resistance from the override cmrr=150.  A voltage divider in -> out:
+    //   V(out) = V1 * Rload / (R1 + Rload) = 10 * 1000 / (150 + 1000).
+    bool found_r1 = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dev->name() == "x1.r1") found_r1 = true;
+    }
+    EXPECT_TRUE(found_r1) << "x1.r1 missing — subckt expansion failed";
+    EXPECT_NEAR(result.voltage("out"), 10.0 * 1000.0 / (150.0 + 1000.0), 1e-3);
+}

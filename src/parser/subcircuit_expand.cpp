@@ -17,6 +17,22 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+/// Return the index of the first PSpice parameter-section keyword
+/// (PARAMS:/OPTIONAL:/TEXT:) in an X-element token list, or tokens.size()
+/// if none.  The subcircuit name and connection nodes precede this boundary;
+/// everything at or after it is a parameter assignment.  Without this boundary
+/// the "scan from end for a known subckt name" loop can latch onto a parameter
+/// key that happens to share a name with a defined subcircuit (e.g. a CMRR
+/// subckt invoked as "X a b c CMRR PARAMS: CMRR=150 ...").
+size_t x_param_section_start(const std::vector<std::string>& tokens) {
+    for (size_t i = 1; i < tokens.size(); ++i) {
+        std::string lt = to_lower(tokens[i]);
+        if (lt == "params:" || lt == "optional:" || lt == "text:")
+            return i;
+    }
+    return tokens.size();
+}
+
 /// Check whether a node name is global (ground or declared via .global).
 /// Global nodes are never substituted during subcircuit expansion.
 bool is_global_node(const std::string& name,
@@ -529,10 +545,11 @@ std::unordered_set<std::string> collect_internal_nodes(
 
         if (elem_type == 'x') {
             // X instance: Xname n1 n2 ... subckt_name [key=val ...]
-            // Find subcircuit name: last token without '=' that's a known subcircuit
+            // Find subcircuit name: last token without '=' that's a known
+            // subcircuit, searching only before any PSpice parameter section.
             std::string subckt_name;
             size_t subckt_pos = 0;
-            for (size_t i = line.tokens.size(); i > 1; --i) {
+            for (size_t i = x_param_section_start(line.tokens); i > 1; --i) {
                 const std::string& tok = line.tokens[i - 1];
                 if (tok.find('=') != std::string::npos) continue;
                 std::string lower_tok = to_lower(tok);
@@ -956,11 +973,11 @@ std::vector<TokenizedLine> expand_instance(
             // Parse: Xname n1 n2 ... subckt_name [key=val ...]
             std::string x_name = to_lower(line.tokens[0]);
 
-            // Find subcircuit name: scan from end, first token without '='
-            // that matches a known subcircuit
+            // Find subcircuit name: scan from end (before any PSpice parameter
+            // section), first token without '=' that matches a known subcircuit
             std::string subckt_name;
             size_t subckt_pos = 0;
-            for (size_t i = line.tokens.size(); i > 1; --i) {
+            for (size_t i = x_param_section_start(line.tokens); i > 1; --i) {
                 const std::string& tok = line.tokens[i - 1];
                 if (tok.find('=') != std::string::npos) continue;
                 std::string lower_tok = to_lower(tok);
@@ -1403,11 +1420,14 @@ std::vector<TokenizedLine> expand_all_instances(
             // Parse X element: Xname n1 n2 ... subckt_name [key=val ...]
             std::string x_name = to_lower(line.tokens[0]);
 
-            // Find subcircuit name: scan from end, first token without '='
-            // that's a known subcircuit
+            // Find subcircuit name: scan from the parameter-section boundary
+            // backward, first token without '=' that's a known subcircuit.
+            // Tokens at/after PARAMS:/OPTIONAL:/TEXT: are parameter
+            // assignments and must never be treated as the subckt name (e.g.
+            // a "CMRR" subckt called as "X a b c CMRR PARAMS: CMRR=150 ...").
             std::string subckt_name;
             size_t subckt_pos = 0;
-            for (size_t i = line.tokens.size(); i > 1; --i) {
+            for (size_t i = x_param_section_start(line.tokens); i > 1; --i) {
                 const std::string& tok = line.tokens[i - 1];
                 if (tok.find('=') != std::string::npos) continue;
                 std::string lower_tok = to_lower(tok);
