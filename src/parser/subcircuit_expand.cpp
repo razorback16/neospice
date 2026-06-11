@@ -770,6 +770,60 @@ std::vector<TokenizedLine> expand_instance(
         }
     }
 
+    // PRE-SCAN: collect all body .param lines into the params map before
+    // processing any element or .model lines.  SPICE defines .param as
+    // order-independent within a subcircuit scope; ngspice pre-scans all
+    // params before evaluating elements.  Without this, elements that appear
+    // textually before the defining .param line (e.g. DB3, TSV731, TL598,
+    // Integral) produce "Unknown parameter 'X' — defaulting to 0" warnings.
+    {
+        std::vector<std::pair<std::string, std::string>> body_raw;
+        for (const auto& bline : body_lines) {
+            if (bline.tokens.empty()) continue;
+            if (to_lower(bline.tokens[0]) != ".param") continue;
+            for (size_t i = 1; i < bline.tokens.size(); ++i) {
+                auto eq = bline.tokens[i].find('=');
+                if (eq != std::string::npos) {
+                    std::string key = to_lower(bline.tokens[i].substr(0, eq));
+                    std::string val = bline.tokens[i].substr(eq + 1);
+                    if (val.empty() && i + 1 < bline.tokens.size())
+                        val = bline.tokens[++i];
+                    if (!key.empty() && !val.empty())
+                        body_raw.emplace_back(key, val);
+                } else if (bline.tokens[i] != "=" &&
+                           i + 1 < bline.tokens.size() &&
+                           bline.tokens[i + 1] == "=" &&
+                           i + 2 < bline.tokens.size()) {
+                    body_raw.emplace_back(to_lower(bline.tokens[i]), bline.tokens[i + 2]);
+                    i += 2;
+                }
+            }
+        }
+        if (!body_raw.empty()) {
+            // Build a combined raw list: current params (as numeric strings)
+            // followed by body params.  resolve_params() topo-sorts them so
+            // forward references among body params (e.g. .param af=bf/(bf+1)
+            // before .param BF=5) are handled correctly.
+            std::vector<std::pair<std::string, std::string>> combined_raw;
+            for (const auto& [k, v] : params) {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%.15g", v);
+                combined_raw.emplace_back(k, std::string(buf));
+            }
+            for (auto& pr : body_raw)
+                combined_raw.push_back(pr);
+            try {
+                auto resolved = resolve_params(combined_raw);
+                for (auto& [k, v] : resolved)
+                    params[k] = v;
+            } catch (...) {
+                // resolve_params may throw on genuine circular dependencies;
+                // fall back to sequential evaluation (existing behaviour in
+                // the main loop below will handle them one-by-one).
+            }
+        }
+    }
+
     // Helper: substitute a node name using the node_map
     auto subst_node = [&](const std::string& name) -> std::string {
         std::string lower = to_lower(name);

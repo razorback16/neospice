@@ -211,8 +211,23 @@ void resolve_mosfets(
                 }
             }
             MOS1Device::Geom mos1_geom;
-            mos1_geom.W   = m.geom.W;
-            mos1_geom.L   = m.geom.L;
+            // Apply model-card W/L defaults when not given on the instance.
+            // ngspice inpgmod.c:146-157 stores W/L from the .MODEL card in
+            // model->defaults and applies them at device creation time.
+            if (m.wGiven) {
+                mos1_geom.W = m.geom.W; mos1_geom.wGiven = true;
+            } else if (card_it->second->defaultWGiven) {
+                mos1_geom.W = card_it->second->defaultW; mos1_geom.wGiven = true;
+            } else {
+                mos1_geom.W = m.geom.W; mos1_geom.wGiven = false;
+            }
+            if (m.lGiven) {
+                mos1_geom.L = m.geom.L; mos1_geom.lGiven = true;
+            } else if (card_it->second->defaultLGiven) {
+                mos1_geom.L = card_it->second->defaultL; mos1_geom.lGiven = true;
+            } else {
+                mos1_geom.L = m.geom.L; mos1_geom.lGiven = false;
+            }
             mos1_geom.AD  = m.geom.AD;
             mos1_geom.AS  = m.geom.AS;
             mos1_geom.PD  = m.geom.PD;
@@ -220,8 +235,6 @@ void resolve_mosfets(
             mos1_geom.NRD = m.geom.NRD;
             mos1_geom.NRS = m.geom.NRS;
             mos1_geom.M   = m.geom.M;
-            mos1_geom.wGiven = m.wGiven;
-            mos1_geom.lGiven = m.lGiven;
             auto dev = MOS1Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos1_geom, *card_it->second);
             dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);

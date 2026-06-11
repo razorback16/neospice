@@ -7,6 +7,7 @@
 #include "parser/netlist_parser.hpp"
 #include "devices/bsim4v7/bsim4v7_device.hpp"
 #include "devices/mos1/mos1_device.hpp"
+#include "core/dc.hpp"
 #include "core/types.hpp"
 
 using namespace neospice;
@@ -83,4 +84,49 @@ TEST(ParserMosfet, SpacedEqualsInParamsDoesNotWarn) {
         if (dynamic_cast<MOS1Device*>(d.get())) ++mos1_count;
     }
     EXPECT_EQ(1, mos1_count);
+}
+
+// Regression test: W=Xu and L=Xu on the .MODEL card (not on the M instance)
+// must be applied as instance-parameter defaults, matching ngspice behavior
+// (inpgmod.c:146-157).  Before the fix, W/L on .MODEL emitted "unknown
+// parameter" warnings and were silently discarded, leaving every instance
+// with the hardcoded 100u/100u defaults.
+TEST(ParserMosfet, ModelCardWLDefaultsAppliedToInstance) {
+    // W=55u on the .MODEL card; NO W/L on the M line.
+    // Circuit: Vdd(5V) -> Rload(1k) -> drain, M1(drain,gate,0,0)
+    // KP=100u, Vto=1.0, Vgs=1.5V.
+    // Id_sat = KP/2 * W/L * (Vgs-Vto)^2 = 50e-6 * 55 * (0.5)^2 ~ 0.6875mA
+    // V(drain) = 5 - Id * 1k ~ 5 - 0.688 = 4.31V
+    // With default W=100u: Id_sat ~ 1.25mA, V(drain) ~ 3.75V
+    const std::string netlist =
+        "* MOS1 W/L from .MODEL card test\n"
+        "Vdd vdd 0 5\n"
+        "Vgs gate 0 1.5\n"
+        "Rload vdd drain 1k\n"
+        "M1 drain gate 0 0 DRVMOS\n"
+        ".MODEL DRVMOS NMOS LEVEL=1 L=1.0U W=55U KP=100U VTO=1.0\n"
+        ".op\n.end\n";
+
+    NetlistParser p;
+    Circuit ckt = p.parse(netlist);
+
+    // Verify a MOS1 device was created
+    int mos1_count = 0;
+    for (auto& d : ckt.devices()) {
+        if (dynamic_cast<MOS1Device*>(d.get())) ++mos1_count;
+    }
+    ASSERT_EQ(1, mos1_count);
+
+    // Simulate and check that W=55u is in effect.
+    // With W=55u: V(drain) ~ 4.31V; with W=100u: V(drain) ~ 3.75V
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged) << "DC should converge";
+
+    double v_drain = result.voltage("drain");
+    // Threshold: if v_drain > 4.0, W=55u was applied (not 100u default)
+    EXPECT_GT(v_drain, 4.0)
+        << "V(drain) should be >4V, indicating W=55u from .MODEL was applied "
+           "(W=100u default would give ~3.75V)";
+    EXPECT_LT(v_drain, 5.0)
+        << "V(drain) should be below Vdd";
 }

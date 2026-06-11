@@ -938,6 +938,65 @@ Rload outp 0 1
 }
 
 // -----------------------------------------------------------------------
+// Body .param lines that appear AFTER the element that uses them must
+// still be resolved correctly.  Without the pre-scan fix, the element
+// value {R_VALUE} would evaluate to 0 (unknown parameter) because the
+// params map did not yet contain R_VALUE when the element line was
+// processed sequentially.
+//
+// Regression targets: DB3, TSV731, TSZ18X, Integral (TransferFunctions),
+// TL598 — all have body .param lines that appear after the elements that
+// reference them.
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, BodyParamPreScanForwardRef) {
+    // R_VALUE is defined on body line 2, but consumed on body line 1 ({R_VALUE}).
+    std::string netlist = wrap(R"(
+.subckt early_param_use A B
+R1 A B {R_VALUE}
+.param R_VALUE=1k
+.ends early_param_use
+
+V1 n1 0 1
+X1 n1 0 early_param_use
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
+    // V=1V through R=1k => I = 1mA; V(n1) = 1V
+    EXPECT_NEAR(result.voltage("n1"), 1.0, 1e-6);
+}
+
+// -----------------------------------------------------------------------
+// Body .param forward reference with cross-param dependency:
+// .param af={BF/(BF+1)} defined before .param BF=5.
+// With a topological-sort pre-scan this resolves correctly.
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, BodyParamPreScanCrossRef) {
+    // R1 uses {af}, .param af={BF/(BF+1)}, .param BF=5 (textually later)
+    std::string netlist = wrap(R"(
+.subckt cross_param A B
+R1 A B {af}
+.param af={BF/(BF+1)}
+.param BF=5
+.ends cross_param
+
+V1 n1 0 1
+X1 n1 0 cross_param
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
+    // af = 5/6; I = 1/(5/6) = 6/5 = 1.2A; V(n1) = 1V
+    EXPECT_NEAR(result.voltage("n1"), 1.0, 1e-6);
+}
+
+// -----------------------------------------------------------------------
 // Whitespace-indented '+' continuation lines must be merged.
 //
 // Regression: the tokenizer only treated a line as a continuation when

@@ -24,8 +24,16 @@ void register_mos1(DeviceRegistry& reg) {
             auto* h = dynamic_cast<Circuit::TypedModelCardHolder<MOS1ModelCard>*>(&holder);
             if (!h) return nullptr;
             MOS1Device::Geom geom;
-            if (auto it = params.find("w"); it != params.end()) { geom.W = it->second; geom.wGiven = true; }
-            if (auto it = params.find("l"); it != params.end()) { geom.L = it->second; geom.lGiven = true; }
+            if (auto it = params.find("w"); it != params.end()) {
+                geom.W = it->second; geom.wGiven = true;
+            } else if (h->card->defaultWGiven) {
+                geom.W = h->card->defaultW; geom.wGiven = true;
+            }
+            if (auto it = params.find("l"); it != params.end()) {
+                geom.L = it->second; geom.lGiven = true;
+            } else if (h->card->defaultLGiven) {
+                geom.L = h->card->defaultL; geom.lGiven = true;
+            }
             return MOS1Device::make(std::string(name), nodes[0], nodes[1],
                                     nodes[2], nodes[3], geom, *h->card);
         }

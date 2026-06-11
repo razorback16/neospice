@@ -14,6 +14,14 @@ namespace neospice {
 struct MOS1ModelCard {
     mos1::MOS1Model ucb{};   // aggregate UCB model fields
 
+    // Instance-parameter defaults stored via .MODEL card (W=Xu L=Xu).
+    // ngspice inpgmod.c:146-157 stores these in model->defaults and applies
+    // them to every instance that did not specify its own W/L (inpdpar.c:63-97).
+    double defaultW      = 0.0;
+    double defaultL      = 0.0;
+    bool   defaultWGiven = false;
+    bool   defaultLGiven = false;
+
     MOS1ModelCard() = default;
     ~MOS1ModelCard();
 
