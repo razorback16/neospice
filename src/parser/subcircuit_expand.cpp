@@ -1258,29 +1258,53 @@ std::vector<TokenizedLine> expand_instance(
                 value_start < line.tokens.size()) {
                 std::string tok3 = to_lower(line.tokens[value_start]);
                 if (tok3.substr(0, 4) == "poly") {
-                    // POLY(N) form: pass POLY token through, then prefix N
-                    // Vsense names
-                    new_line.tokens.push_back(line.tokens[value_start]);
-                    value_start++;
-                    // Handle split "(N)" token
-                    if (value_start < line.tokens.size() &&
-                        line.tokens[value_start].front() == '(') {
+                    // POLY(N) form. The N Vsense names may be plain space-
+                    // separated tokens, or glued onto / parenthesised around the
+                    // POLY keyword via commas and parens (e.g. "POLY(1),(V1)" or
+                    // "POLY(1) (V1)"). ngspice's MIFgettok treats ( ) , as
+                    // whitespace, so collect the VS names with extract_node_atoms
+                    // (which mirrors that) and emit each one prefixed as a clean
+                    // separate token, preceded by a bare "POLY(N)" keyword.
+                    int poly_dim = 1;
+                    bool dim_in_token = false;
+                    size_t paren = tok3.find('(');
+                    size_t close = tok3.find(')');
+                    if (paren != std::string::npos && close != std::string::npos &&
+                        close > paren) {
+                        poly_dim = std::stoi(tok3.substr(paren + 1,
+                                                         close - paren - 1));
+                        dim_in_token = true;
+                    }
+                    size_t scan_tok = value_start;
+                    size_t scan_off = 0;
+                    if (dim_in_token) {
+                        // Emit just "POLY(N)" — drop any glued VS names.
+                        new_line.tokens.push_back(
+                            line.tokens[value_start].substr(0, close + 1));
+                        scan_off = close + 1;  // resume after ')' in same token
+                    } else {
                         new_line.tokens.push_back(line.tokens[value_start]);
                         value_start++;
+                        scan_tok = value_start;
+                        // Separate "(N)" dimension token.
+                        if (value_start < line.tokens.size() &&
+                            !line.tokens[value_start].empty() &&
+                            line.tokens[value_start].front() == '(') {
+                            const std::string& dt = line.tokens[value_start];
+                            size_t c2 = dt.find(')');
+                            if (c2 != std::string::npos && c2 > 1)
+                                poly_dim = std::stoi(dt.substr(1, c2 - 1));
+                            new_line.tokens.push_back(dt);
+                            value_start++;
+                            scan_tok = value_start;
+                        }
                     }
-                    int poly_dim = 1;
-                    size_t paren = tok3.find('(');
-                    if (paren != std::string::npos) {
-                        size_t close = tok3.find(')');
-                        if (close != std::string::npos && close > paren)
-                            poly_dim = std::stoi(tok3.substr(paren + 1,
-                                                             close - paren - 1));
-                    }
-                    for (int k = 0; k < poly_dim && value_start < line.tokens.size(); ++k) {
-                        std::string vs = to_lower(line.tokens[value_start]);
-                        new_line.tokens.push_back(instance_prefix + "." + vs);
-                        value_start++;
-                    }
+                    size_t consumed = 0;
+                    auto vs_names = extract_node_atoms(line.tokens, scan_tok,
+                                                       poly_dim, consumed, scan_off);
+                    for (const auto& vs : vs_names)
+                        new_line.tokens.push_back(instance_prefix + "." + to_lower(vs));
+                    value_start = scan_tok + consumed;
                 } else {
                     // Simple form: single Vsense name
                     new_line.tokens.push_back(instance_prefix + "." + tok3);

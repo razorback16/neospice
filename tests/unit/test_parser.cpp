@@ -5,6 +5,8 @@
 #include "devices/vccs.hpp"
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/vccs_nonlinear.hpp"
+#include "devices/cccs_nonlinear.hpp"
+#include "devices/ccvs_nonlinear.hpp"
 #include "devices/switch.hpp"
 
 using namespace neospice;
@@ -443,4 +445,119 @@ E4 97 22 (POLY(1) (99,98) -0.765 1
     EXPECT_EQ(nodes[1], ckt.node_index("22"));  // nn
     EXPECT_EQ(nodes[2], ckt.node_index("99"));  // ctrl pos
     EXPECT_EQ(nodes[3], ckt.node_index("98"));  // ctrl neg
+}
+
+TEST(Parser, FElementPolyCommaGluedVsenseName) {
+    // TI macromodels (TLC3702/TLC3704 in tex_inst.lib) write the F-source
+    // POLY form with the sensing VSource name comma-glued onto the POLY
+    // token: "FOUT 30 5 POLY(1),(V1) 4E-3 -40". ngspice's MIFgettok treats
+    // ( ) , as whitespace and resolves V1; neospice previously consumed the
+    // first coefficient ("4E-3") as the VS name and dropped the element.
+    std::string netlist = R"(
+F POLY comma-glued Vsense
+V1 10 11 DC 0
+R1 11 0 1k
+FOUT 30 5 POLY(1),(V1) 4E-3 -40
+R2 30 0 1k
+R3 5 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    const NonlinearCCCS* poly = nullptr;
+    for (const auto& dev : ckt.devices()) {
+        if (auto* p = dynamic_cast<const NonlinearCCCS*>(dev.get())) {
+            poly = p;
+            break;
+        }
+    }
+    ASSERT_NE(poly, nullptr)
+        << "FOUT POLY(1),(V1) was dropped instead of resolving Vsense V1";
+}
+
+TEST(Parser, FElementPolySpaceSeparatedParenVsenseName) {
+    // ti.lib writes the space-separated parenthesised form:
+    // "FOUT 30 5 POLY(1) (V1) 4E-3 -40". The "(V1)" token must yield V1.
+    std::string netlist = R"(
+F POLY space-paren Vsense
+V1 10 11 DC 0
+R1 11 0 1k
+FOUT 30 5 POLY(1) (V1) 4E-3 -40
+R2 30 0 1k
+R3 5 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    const NonlinearCCCS* poly = nullptr;
+    for (const auto& dev : ckt.devices()) {
+        if (auto* p = dynamic_cast<const NonlinearCCCS*>(dev.get())) {
+            poly = p;
+            break;
+        }
+    }
+    ASSERT_NE(poly, nullptr)
+        << "FOUT POLY(1) (V1) was dropped instead of resolving Vsense V1";
+}
+
+TEST(Parser, FElementPolyCommaGluedVsenseInSubckt) {
+    // Same comma-glued POLY form inside a subckt: the Vsense name must be
+    // prefixed with the instance hierarchy (x1.v1) during expansion so the
+    // deferred F-source resolves against the prefixed VSource device.
+    std::string netlist = R"(
+F POLY comma-glued Vsense in subckt
+.SUBCKT BUF a b
+V1 10 11 DC 0
+R1 11 0 1k
+FOUT a b POLY(1),(V1) 4E-3 -40
+.ENDS
+X1 30 5 BUF
+R2 30 0 1k
+R3 5 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    const NonlinearCCCS* poly = nullptr;
+    for (const auto& dev : ckt.devices()) {
+        if (auto* p = dynamic_cast<const NonlinearCCCS*>(dev.get())) {
+            poly = p;
+            break;
+        }
+    }
+    ASSERT_NE(poly, nullptr)
+        << "Subckt FOUT POLY(1),(V1) was dropped — Vsense x1.v1 unresolved";
+}
+
+TEST(Parser, HElementPolyCommaGluedVsenseName) {
+    // The H-source (CCVS) POLY parser shares the same code path; exercise the
+    // comma-glued form for it too.
+    std::string netlist = R"(
+H POLY comma-glued Vsense
+V1 10 11 DC 0
+R1 11 0 1k
+HOUT 30 5 POLY(1),(V1) 4E-3 -40
+R2 30 0 1k
+R3 5 0 1k
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    const NonlinearCCVS* poly = nullptr;
+    for (const auto& dev : ckt.devices()) {
+        if (auto* p = dynamic_cast<const NonlinearCCVS*>(dev.get())) {
+            poly = p;
+            break;
+        }
+    }
+    ASSERT_NE(poly, nullptr)
+        << "HOUT POLY(1),(V1) was dropped instead of resolving Vsense V1";
 }

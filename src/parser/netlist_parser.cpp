@@ -2721,19 +2721,36 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         }
                     }
                 }
-                size_t idx = 4;
-                if (!poly_dim_in_token && idx < tokens.size() && tokens[idx].front() == '(') ++idx;
-
-                // Parse N VSource names
+                // Parse N VSource names via NodeAtomScanner so that parenthesised
+                // and comma-glued forms (e.g. POLY(1),(V1) or POLY(1) (V1)) are
+                // handled identically to ngspice's MIFgettok, which treats
+                // ( ) , as whitespace.
+                size_t scan_tok, scan_off;
+                if (poly_dim_in_token) {
+                    // VS names may follow immediately after the count inside
+                    // tokens[3]: "POLY(1),(V1)" — scan_off points past the ')'.
+                    scan_tok = 3;
+                    scan_off = tok3h.find(')') + 1;
+                } else {
+                    // Separate "(N)" token already consumed by dim-extraction.
+                    scan_tok = 4;
+                    scan_off = 0;
+                    if (scan_tok < tokens.size() && !tokens[scan_tok].empty()
+                            && tokens[scan_tok].front() == '(')
+                        ++scan_tok;
+                }
+                NodeAtomScanner vsc(tokens, scan_tok, scan_off);
                 std::vector<std::string> vsense_names;
                 vsense_names.reserve(poly_dim);
                 for (int k = 0; k < poly_dim; ++k) {
-                    if (idx >= tokens.size()) {
+                    std::string vs;
+                    if (!vsc.next(vs)) {
                         fprintf(stderr, "Warning: Line %d: POLY CCVS: not enough sensing VSource names — skipping\n", line.line_number);
                         break;
                     }
-                    vsense_names.push_back(tokens[idx++]);
+                    vsense_names.push_back(vs);
                 }
+                size_t idx = vsc.resume_token_index();
                 if ((int)vsense_names.size() < poly_dim) continue;
                 std::vector<double> coeffs;
                 parse_poly_coeffs(tokens, idx, coeffs);
@@ -2807,19 +2824,36 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         }
                     }
                 }
-                size_t idx = 4;
-                if (!poly_dim_in_token && idx < tokens.size() && tokens[idx].front() == '(') ++idx;
-
-                // Parse N VSource names
+                // Parse N VSource names via NodeAtomScanner so that parenthesised
+                // and comma-glued forms (e.g. POLY(1),(V1) or POLY(1) (V1)) are
+                // handled identically to ngspice's MIFgettok, which treats
+                // ( ) , as whitespace.
+                size_t scan_tok, scan_off;
+                if (poly_dim_in_token) {
+                    // VS names may follow immediately after the count inside
+                    // tokens[3]: "POLY(1),(V1)" — scan_off points past the ')'.
+                    scan_tok = 3;
+                    scan_off = tok3f.find(')') + 1;
+                } else {
+                    // Separate "(N)" token already consumed by dim-extraction.
+                    scan_tok = 4;
+                    scan_off = 0;
+                    if (scan_tok < tokens.size() && !tokens[scan_tok].empty()
+                            && tokens[scan_tok].front() == '(')
+                        ++scan_tok;
+                }
+                NodeAtomScanner vsc(tokens, scan_tok, scan_off);
                 std::vector<std::string> vsense_names;
                 vsense_names.reserve(poly_dim);
                 for (int k = 0; k < poly_dim; ++k) {
-                    if (idx >= tokens.size()) {
+                    std::string vs;
+                    if (!vsc.next(vs)) {
                         fprintf(stderr, "Warning: Line %d: POLY CCCS: not enough sensing VSource names — skipping\n", line.line_number);
                         break;
                     }
-                    vsense_names.push_back(tokens[idx++]);
+                    vsense_names.push_back(vs);
                 }
+                size_t idx = vsc.resume_token_index();
                 if ((int)vsense_names.size() < poly_dim) continue;
                 std::vector<double> coeffs;
                 parse_poly_coeffs(tokens, idx, coeffs);
