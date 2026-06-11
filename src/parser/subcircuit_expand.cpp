@@ -318,21 +318,36 @@ void emit_abm_expr_tokens(
     }
     joined = subst_param_names(joined, params);
 
-    // Re-split so the leading keyword stays a distinct token. The downstream
-    // E/G/B parser identifies the source form by inspecting the FIRST value
-    // token (e.g. "VALUE", "VALUE=", "VALUE{...}", "I=", "TABLE"). The PSpice
-    // "VALUE {expr}" form separates the keyword from the brace body with
-    // whitespace, so we must not glue them. Split on the first whitespace run:
-    // the keyword becomes one token and the (possibly space-containing)
-    // expression body becomes the rest, which the downstream parser rejoins.
-    size_t ws = joined.find_first_of(" \t");
-    if (ws == std::string::npos) {
-        new_line.tokens.push_back(joined);
-    } else {
-        new_line.tokens.push_back(joined.substr(0, ws));
-        size_t rest = joined.find_first_not_of(" \t", ws);
-        if (rest != std::string::npos)
-            new_line.tokens.push_back(joined.substr(rest));
+    // Re-split into the same token structure the original tokenizer produced,
+    // so the downstream E/G/B parser sees the keyword, the braced expression,
+    // and any following table-point tokens as distinct tokens.
+    //
+    // The downstream parser identifies the source form by the FIRST value token
+    // ("VALUE", "VALUE=", "TABLE", "I=", ...). Crucially, the E/G TABLE form
+    //   E name np nn TABLE {expr} (x1,y1) (x2,y2) ...
+    // requires the keyword, the {expr} body, and each (x,y) point to remain
+    // separate whitespace-delimited tokens (it counts tokens and scans points
+    // positionally). A whole-line join with only a leading-keyword split would
+    // glue every table point into one token and the TABLE parse would fail.
+    //
+    // Re-split on whitespace but keep any {...} brace group as a single token
+    // (the braced expression may contain spaces, e.g. "{ v(a) + v(b) }"),
+    // matching split_tokens() in the tokenizer.
+    size_t i = 0;
+    const size_t n = joined.size();
+    while (i < n) {
+        while (i < n && (joined[i] == ' ' || joined[i] == '\t')) ++i;
+        if (i >= n) break;
+        size_t start = i;
+        int brace_depth = 0;
+        while (i < n) {
+            char c = joined[i];
+            if (c == '{') ++brace_depth;
+            else if (c == '}') { if (brace_depth > 0) --brace_depth; }
+            else if ((c == ' ' || c == '\t') && brace_depth == 0) break;
+            ++i;
+        }
+        new_line.tokens.push_back(joined.substr(start, i - start));
     }
 }
 

@@ -1026,3 +1026,90 @@ TEST(SubcircuitExpand, IndentedContinuationLineIsMerged) {
     // continuation were dropped, r2 would default to 1 and give 4*1/(1000+1).
     EXPECT_NEAR(result.voltage("x1.m"), 3.0, 1e-3);
 }
+
+// -----------------------------------------------------------------------
+// E-element TABLE form inside a subckt must survive ABM token re-emission.
+//
+// Regression (f574ed9): emit_abm_expr_tokens joined all value tokens to inline
+// subckt-local .func calls, then re-split only on the FIRST whitespace. That
+// glued the TABLE control expression and every (x,y) point into one token, so
+// the downstream parser saw too few tokens and skipped the source with
+// "TABLE VCVS requires control expression and table points". The cadlab.lib
+// Scr/Triac SCR models (and 2N6344, 2N4444, ...) regressed MATCH -> NG_ONLY.
+//
+// The fix re-tokenizes the re-emitted value brace-aware (keeping {...} whole
+// but splitting whitespace-separated table points), so TABLE parses again.
+// A .func is present in the subckt to exercise the inlining path f574ed9 added.
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, TableInSubcktWithFuncReEmits) {
+    // A subckt-local .func is present, so emit_abm_expr_tokens takes the
+    // func-inlining branch f574ed9 added (join value tokens -> expand_funcs ->
+    // subst nodes/params -> re-split). The regression was that the re-split
+    // glued the TABLE control expression and every (x,y) point into ONE token,
+    // so the TABLE form was skipped with "requires control expression and table
+    // points". The TABLE here uses a plain V(a,c) control (the form neospice's
+    // TableVCVS evaluates), letting us assert both that the source survived and
+    // that it evaluates correctly through the re-emission path.
+    std::string netlist =
+        "Test netlist\n"
+        ".subckt scrlike a c\n"
+        ".func dbl(x) {2*x}\n"
+        "Edrv drv 0 TABLE {v(a,c)} (0 0) (10 10)\n"
+        "Rd  drv 0 1k\n"
+        ".ends\n"
+        "X1 1 2 scrlike\n"
+        "V1 1 0 DC 7\n"
+        "V2 2 0 DC 0\n"
+        ".op\n"
+        ".end\n";
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
+
+    // The TABLE source must exist (not be skipped during expansion).
+    bool found_table = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dev->name() == "x1.edrv") found_table = true;
+    }
+    EXPECT_TRUE(found_table) << "E TABLE source x1.edrv was skipped during expansion";
+
+    // v(a,c) = v(1,2) = 7; identity table (0 0)(10 10) over [0,10] passes the
+    // control value through, so V(x1.drv) == 7.
+    EXPECT_NEAR(result.voltage("x1.drv"), 7.0, 1e-3);
+}
+
+// -----------------------------------------------------------------------
+// Multi-line (continuation) E TABLE form inside a subckt, as written in the
+// cadlab.lib Scr subckt ("Elin ... TABLE" then "+ {expr} (0 0) (2 10)").
+// The continuation merges into the value tokens; re-emission must still split
+// keyword / brace-expr / points correctly.
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, TableContinuationInSubcktReEmits) {
+    std::string netlist =
+        "Test netlist\n"
+        ".subckt scrlike a c\n"
+        "Edrv drv 0 TABLE\n"
+        "+ {v(a,c)} (0 0) (10 10)\n"
+        "Rd  drv 0 1k\n"
+        ".ends\n"
+        "X1 1 0 scrlike\n"
+        "V1 1 0 DC 4\n"
+        ".op\n"
+        ".end\n";
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
+
+    bool found_table = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dev->name() == "x1.edrv") found_table = true;
+    }
+    EXPECT_TRUE(found_table) << "continuation E TABLE source x1.edrv was skipped";
+
+    // v(a,c) = v(1,0) = 4; identity table passes it through.
+    EXPECT_NEAR(result.voltage("x1.drv"), 4.0, 1e-3);
+}
