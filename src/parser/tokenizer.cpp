@@ -118,7 +118,14 @@ static bool should_skip_title(const std::string& netlist) {
             line.pop_back();
         }
         if (line.empty()) continue;
-        if (line[0] == '+') continue;
+        // Skip past leading whitespace: a '+' continuation marker may be
+        // indented (matching the main tokenize loop), and such a line is not a
+        // standalone statement for title-detection purposes.
+        size_t fnw = 0;
+        while (fnw < line.size() &&
+               std::isspace(static_cast<unsigned char>(line[fnw])))
+            ++fnw;
+        if (fnw >= line.size() || line[fnw] == '+') continue;
         count++;
         if (count > 1) return true;
     }
@@ -151,22 +158,36 @@ std::vector<TokenizedLine> tokenize(const std::string& netlist) {
         }
 
         if (raw_line.empty()) continue;
-        if (raw_line[0] == '*') continue;
+
+        // Find the first non-whitespace character. SPICE allows leading
+        // whitespace before the significant token, including before a '+'
+        // continuation marker or a '*' comment — ngspice strips it. Vendor
+        // libraries frequently indent continuation lines (e.g.
+        // "        +Rmax={...}"), so the comment / .end / continuation checks
+        // below must look past that leading whitespace, not at raw_line[0].
+        size_t fnw = 0;
+        while (fnw < raw_line.size() &&
+               std::isspace(static_cast<unsigned char>(raw_line[fnw])))
+            ++fnw;
+        char first_ch = raw_line[fnw];
+
+        if (first_ch == '*') continue;
 
         // Check for .end directive (case-insensitive) without lowercasing the
         // whole line: only lines starting with '.' can be ".end".
-        if (raw_line[0] == '.' && raw_line.size() >= 4) {
-            char c1 = raw_line[1], c2 = raw_line[2], c3 = raw_line[3];
+        if (first_ch == '.' && raw_line.size() >= fnw + 4) {
+            char c1 = raw_line[fnw + 1], c2 = raw_line[fnw + 2], c3 = raw_line[fnw + 3];
             auto lc = [](char c) { return (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c; };
             if (lc(c1) == 'e' && lc(c2) == 'n' && lc(c3) == 'd' &&
-                (raw_line.size() == 4 || std::isspace(static_cast<unsigned char>(raw_line[4])))) {
+                (raw_line.size() == fnw + 4 ||
+                 std::isspace(static_cast<unsigned char>(raw_line[fnw + 4])))) {
                 continue;
             }
         }
 
         // Line continuation: append tokens to current line
-        if (raw_line[0] == '+') {
-            auto toks = split_tokens(raw_line, 1);
+        if (first_ch == '+') {
+            auto toks = split_tokens(raw_line, fnw + 1);
             current.tokens.insert(current.tokens.end(),
                                   std::make_move_iterator(toks.begin()),
                                   std::make_move_iterator(toks.end()));

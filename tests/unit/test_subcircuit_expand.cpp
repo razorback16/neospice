@@ -870,3 +870,100 @@ R_load2 bot 0 1k
     EXPECT_TRUE(result.node_voltages.count("v(xouter.xin.vdd)") == 0)
         << "Global node vdd should NOT be prefixed in nested hierarchy";
 }
+
+// -----------------------------------------------------------------------
+// Subcircuit-local .func calls are inlined into device VALUE expressions.
+//
+// Regression: expand_instance previously dropped every '.func' line in a
+// subckt body at the "skip dot commands" continue, so a G/B/E VALUE
+// expression that called a subckt-local user function reached the ASRC
+// parser unexpanded and was skipped with "unknown function", leaving the
+// source electrically dead. (Infineon OptiMOS3_80V: G_chan/G_diode use
+// .FUNC J / .FUNC Idiod defined inside the same subckt.)
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, LocalFuncInlinedIntoGSource) {
+    // jj(d,g) = d*g+1. With V(din)=3, the G source drives 3*2+1 = 7 A into the
+    // 'dout' port, which the test wires to a 1 ohm load to ground => V=7. If
+    // the subckt-local .func were dropped, the G source would be skipped and
+    // V(dout) would be 0.
+    std::string netlist = wrap(R"(
+.subckt mysub din dout
+.func jj(d,g) {d*g+1}
+G1 0 dout VALUE={jj(V(din),2)}
+.ends
+V1 n1 0 3
+X1 n1 out mysub
+Rload out 0 1
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
+    EXPECT_NEAR(result.voltage("out"), 7.0, 1e-6);
+}
+
+// -----------------------------------------------------------------------
+// Hygienic func substitution: a formal parameter's actual argument text must
+// not be re-scanned for *other* formal parameter names.
+//
+// Regression: expand_funcs substituted formals sequentially, so for
+// f(g,s) = g + s with call f(V(a,s), x), substituting g -> (V(a,s)) inserted
+// an 's' that the subsequent 's' pass then captured, corrupting the
+// expression into V(a,(x)). The single-pass substitution fixes this.
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, FuncSubstitutionIsHygienic) {
+    // f(g,s) = g + s. Call f(V(a,b), 10). When g -> (V(a,b)) is substituted,
+    // the 'b' inside the inserted V(a,b) must NOT be re-captured by the later
+    // 's' substitution (the old sequential pass corrupted V(a,b) -> V(a,(10))).
+    // Result current = V(a,b) + 10 = (5-0) + 10 = 15, driven into a 1 ohm load.
+    std::string netlist = wrap(R"(
+.subckt mysub a b out
+.func f(g,s) {g+s}
+G1 0 out VALUE={f(V(a,b),10)}
+.ends
+V1 n1 0 5
+X1 n1 0 outp mysub
+Rload outp 0 1
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
+    // V(a,b) = V(n1)-V(0) = 5; current = 5 + 10 = 15 into 1 ohm => 15 V.
+    EXPECT_NEAR(result.voltage("outp"), 15.0, 1e-6);
+}
+
+// -----------------------------------------------------------------------
+// Whitespace-indented '+' continuation lines must be merged.
+//
+// Regression: the tokenizer only treated a line as a continuation when
+// raw_line[0] == '+', so vendor libraries that indent continuations
+// (e.g. "        +Rmax=...") silently dropped every parameter on the
+// continuation, leaving subcircuit defaults in force. Here the second
+// resistor value lives on an indented continuation of the X-line params.
+// -----------------------------------------------------------------------
+TEST(SubcircuitExpand, IndentedContinuationLineIsMerged) {
+    std::string netlist =
+        "Test netlist\n"
+        ".subckt rr a b PARAMS: r1=1 r2=1\n"
+        "Ra a m {r1}\n"
+        "Rb m b {r2}\n"
+        ".ends\n"
+        "V1 inp 0 4\n"
+        "X1 inp 0 rr PARAMS: r1=1k\n"
+        "          +r2=3k\n"
+        ".op\n"
+        ".end\n";
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    DCResult result = solve_dc(ckt);
+    EXPECT_TRUE(result.status.converged);
+    // Divider: V(x1.m) = 4 * r2/(r1+r2) = 4 * 3k/4k = 3.0. If the indented
+    // continuation were dropped, r2 would default to 1 and give 4*1/(1000+1).
+    EXPECT_NEAR(result.voltage("x1.m"), 3.0, 1e-3);
+}

@@ -28,6 +28,22 @@ TEST(Tokenizer, LineContinuation) {
     EXPECT_EQ(lines[0].tokens.size(), 4u);
 }
 
+// SPICE allows leading whitespace before the '+' continuation marker; vendor
+// libraries frequently indent continuation lines. The tokenizer must look past
+// the indentation, not at raw_line[0].
+TEST(Tokenizer, IndentedLineContinuation) {
+    auto lines = tokenize("R1 net1\n        + 0 1k\n");
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0].tokens.size(), 4u);
+}
+
+// Leading whitespace before a '*' comment must also be recognised.
+TEST(Tokenizer, IndentedComment) {
+    auto lines = tokenize("    * indented comment\nR1 net1 0 1k\n");
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0].tokens.size(), 4u);
+}
+
 TEST(Tokenizer, Comments) {
     auto lines = tokenize("* This is a comment\nR1 net1 0 1k\n");
     ASSERT_EQ(lines.size(), 1u);

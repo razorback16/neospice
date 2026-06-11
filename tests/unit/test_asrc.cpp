@@ -303,6 +303,23 @@ TEST(ASRCExpr, PowFunction) {
     EXPECT_NEAR(derivs[0], 12.0, 1e-12);  // 3*x^2 = 3*4 = 12
 }
 
+// x**0.5 has an infinite analytic slope at x=0. The raw derivative
+// b*x^(b-1) = 0.5*0^(-0.5) is +inf, which poisons the Newton Jacobian and
+// stalls the solve (seen on Infineon OptiMOS3 J(): da**0.5 with da==0 at the
+// all-zero DC start). ngspice (PSpice/psa mode) nudges the zero base by a tiny
+// PTfudge_factor so the derivative stays large-but-finite. The value must stay
+// exactly 0.
+TEST(ASRCExpr, PowFractionalExponentAtZeroBaseHasFiniteDerivative) {
+    auto expr = CompiledExpression::compile("V(x) ** 0.5");
+    std::vector<double> vals = {0.0};
+    std::vector<double> derivs;
+    double v = expr.evaluate(vals, derivs);
+    EXPECT_DOUBLE_EQ(v, 0.0);
+    EXPECT_TRUE(std::isfinite(derivs[0]))
+        << "derivative of x**0.5 at x=0 must be finite, got " << derivs[0];
+    EXPECT_GT(derivs[0], 0.0);
+}
+
 // ===========================================================================
 // ASRC device integration tests via API
 // ===========================================================================

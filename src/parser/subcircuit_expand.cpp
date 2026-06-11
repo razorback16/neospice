@@ -282,6 +282,60 @@ std::string subst_expr_nodes(
     return result;
 }
 
+/// Emit the value/expression tokens of an E/G-ABM (VALUE=/TABLE) or B-source
+/// line, inlining subcircuit-local .func calls and substituting node and
+/// parameter references.
+///
+/// The value tokens (line.tokens[value_start..]) are joined into a single
+/// expression string first, because a user-function call (and the braced
+/// VALUE={...} body) can be split across several whitespace-separated tokens.
+/// Per-token func expansion would miss those split calls and leave dangling
+/// V(.,.) fragments. Operating on the joined string lets expand_funcs match
+/// whole `fname(...)` calls, after which node refs that came from the inlined
+/// func arguments still flow through subst_expr_nodes (so they get the
+/// instance prefix) and subckt-local params are replaced numerically.
+void emit_abm_expr_tokens(
+    TokenizedLine& new_line,
+    const TokenizedLine& line,
+    size_t value_start,
+    const std::unordered_map<std::string, FuncDef>& local_funcs,
+    const std::function<std::string(const std::string&)>& subst_node,
+    const std::string& instance_prefix,
+    const std::unordered_map<std::string, double>& params) {
+    if (value_start >= line.tokens.size()) return;
+
+    std::string joined;
+    for (size_t i = value_start; i < line.tokens.size(); ++i) {
+        if (!joined.empty()) joined += ' ';
+        joined += line.tokens[i];
+    }
+
+    if (!local_funcs.empty()) {
+        joined = expand_funcs(joined, local_funcs);
+    }
+    if (joined.find('(') != std::string::npos) {
+        joined = subst_expr_nodes(joined, subst_node, instance_prefix);
+    }
+    joined = subst_param_names(joined, params);
+
+    // Re-split so the leading keyword stays a distinct token. The downstream
+    // E/G/B parser identifies the source form by inspecting the FIRST value
+    // token (e.g. "VALUE", "VALUE=", "VALUE{...}", "I=", "TABLE"). The PSpice
+    // "VALUE {expr}" form separates the keyword from the brace body with
+    // whitespace, so we must not glue them. Split on the first whitespace run:
+    // the keyword becomes one token and the (possibly space-containing)
+    // expression body becomes the rest, which the downstream parser rejoins.
+    size_t ws = joined.find_first_of(" \t");
+    if (ws == std::string::npos) {
+        new_line.tokens.push_back(joined);
+    } else {
+        new_line.tokens.push_back(joined.substr(0, ws));
+        size_t rest = joined.find_first_not_of(" \t", ws);
+        if (rest != std::string::npos)
+            new_line.tokens.push_back(joined.substr(rest));
+    }
+}
+
 bool is_param_expr(const std::string& token,
                    const std::unordered_map<std::string, double>& params) {
     if (token.find('{') != std::string::npos) return true;
@@ -735,6 +789,19 @@ std::vector<TokenizedLine> expand_instance(
         }
     }
 
+    // Pre-collect subcircuit-local .func definitions so that user-function
+    // calls inside device VALUE/expression tokens (E/G ABM, B-sources) can be
+    // textually inlined here — the downstream ASRC expression parser has no
+    // user-func concept. Without this, subckt-local .func lines are dropped at
+    // the "skip dot commands" continue below and the calls reach the runtime
+    // unexpanded, killing the affected sources.
+    std::unordered_map<std::string, FuncDef> local_funcs;
+    for (const auto& line : body_lines) {
+        if (!line.tokens.empty() && to_lower(line.tokens[0]) == ".func") {
+            parse_func_def(line.tokens, local_funcs);
+        }
+    }
+
     std::vector<TokenizedLine> result;
 
     for (const auto& line : body_lines) {
@@ -1097,14 +1164,8 @@ std::vector<TokenizedLine> expand_instance(
             // E/G ABM (VALUE=/TABLE) form: substitute node references
             // inside the expression, then pass through.
             if (eg_abm) {
-                for (size_t i = value_start; i < line.tokens.size(); ++i) {
-                    std::string tok = line.tokens[i];
-                    if (tok.find('(') != std::string::npos) {
-                        tok = subst_expr_nodes(tok, subst_node, instance_prefix);
-                    }
-                    tok = subst_param_names(tok, params);
-                    new_line.tokens.push_back(tok);
-                }
+                emit_abm_expr_tokens(new_line, line, value_start, local_funcs,
+                                     subst_node, instance_prefix, params);
                 result.push_back(new_line);
                 continue;  // skip the normal value-evaluation loop below
             }
@@ -1114,14 +1175,8 @@ std::vector<TokenizedLine> expand_instance(
             // Substitute node names (so v(local) -> v(x1.local)) and inline
             // local params so the runtime expression evaluator resolves them.
             if (elem_type == 'b') {
-                for (size_t i = value_start; i < line.tokens.size(); ++i) {
-                    std::string tok = line.tokens[i];
-                    if (tok.find('(') != std::string::npos) {
-                        tok = subst_expr_nodes(tok, subst_node, instance_prefix);
-                    }
-                    tok = subst_param_names(tok, params);
-                    new_line.tokens.push_back(tok);
-                }
+                emit_abm_expr_tokens(new_line, line, value_start, local_funcs,
+                                     subst_node, instance_prefix, params);
                 result.push_back(new_line);
                 continue;  // skip the normal value-evaluation loop below
             }

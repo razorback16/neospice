@@ -514,45 +514,49 @@ std::string expand_funcs(const std::string& expr,
                     continue;
                 }
 
-                // Build substituted body
-                std::string sub_body = fdef.body;
+                // Build the substituted body with a SINGLE simultaneous pass
+                // over identifiers. Doing per-formal sequential passes is
+                // unhygienic: substituting one formal arg's text (e.g. g ->
+                // (V(g,s))) inserts characters (here, 's') that a later formal
+                // pass would wrongly capture, corrupting the expression. We
+                // instead scan the body once, and whenever an identifier
+                // matches a formal parameter name, emit that formal's actual
+                // argument verbatim (never re-scanning inserted argument text).
+                const std::string& body = fdef.body;
+                // Prepare trimmed, parenthesized replacements for each formal.
+                std::unordered_map<std::string, std::string> arg_map;
                 for (size_t i = 0; i < fdef.args.size(); ++i) {
-                    const std::string& param = fdef.args[i];
                     std::string arg_val = call_args[i];
-                    // Trim whitespace from argument value
                     while (!arg_val.empty() && std::isspace(static_cast<unsigned char>(arg_val.front())))
                         arg_val.erase(0, 1);
                     while (!arg_val.empty() && std::isspace(static_cast<unsigned char>(arg_val.back())))
                         arg_val.pop_back();
-
-                    // Replace formal param with parenthesized actual arg (word-boundary)
-                    std::string replacement = "(" + arg_val + ")";
-                    std::string body_lower;
-                    size_t bp = 0;
-                    while (bp < sub_body.size()) {
-                        // Rebuild lowercase version each iteration since body changes
-                        body_lower.resize(sub_body.size());
-                        std::transform(sub_body.begin(), sub_body.end(), body_lower.begin(), ::tolower);
-
-                        size_t found = body_lower.find(param, bp);
-                        if (found == std::string::npos) break;
-
-                        bool is_word = true;
-                        if (found > 0 && (std::isalnum(static_cast<unsigned char>(sub_body[found - 1])) ||
-                                          sub_body[found - 1] == '_'))
-                            is_word = false;
-                        size_t end_pos = found + param.size();
-                        if (end_pos < sub_body.size() &&
-                            (std::isalnum(static_cast<unsigned char>(sub_body[end_pos])) ||
-                             sub_body[end_pos] == '_'))
-                            is_word = false;
-
-                        if (is_word) {
-                            sub_body.replace(found, param.size(), replacement);
-                            bp = found + replacement.size();
+                    arg_map[fdef.args[i]] = "(" + arg_val + ")";
+                }
+                std::string sub_body;
+                sub_body.reserve(body.size() * 2);
+                size_t bp = 0;
+                while (bp < body.size()) {
+                    char c = body[bp];
+                    if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+                        size_t id_start = bp;
+                        while (bp < body.size() &&
+                               (std::isalnum(static_cast<unsigned char>(body[bp])) ||
+                                body[bp] == '_'))
+                            ++bp;
+                        std::string ident = body.substr(id_start, bp - id_start);
+                        std::string ident_lower = ident;
+                        std::transform(ident_lower.begin(), ident_lower.end(),
+                                       ident_lower.begin(), ::tolower);
+                        auto it = arg_map.find(ident_lower);
+                        if (it != arg_map.end()) {
+                            sub_body += it->second;
                         } else {
-                            bp = found + param.size();
+                            sub_body += ident;
                         }
+                    } else {
+                        sub_body += c;
+                        ++bp;
                     }
                 }
 

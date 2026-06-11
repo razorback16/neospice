@@ -157,67 +157,9 @@ inline bool iequals(const std::string& tok, const char* lit) {
 // The tokenizer splits on whitespace, so tokens will be like:
 //   [".func", "name(arg1,arg2,...)", "{body}"] or with spaces in body
 //   [".func", "name(arg1,", "arg2,...)", "{body}"]
-void parse_func_def(const std::vector<std::string>& tokens,
-                    std::unordered_map<std::string, FuncDef>& func_defs) {
-    if (tokens.size() < 3) return;
-
-    // Join tokens 1..end to reconstruct the full signature + body string,
-    // since the tokenizer may have split the signature across multiple tokens.
-    std::string joined;
-    for (size_t i = 1; i < tokens.size(); ++i) {
-        if (!joined.empty()) joined += ' ';
-        joined += tokens[i];
-    }
-
-    // Find the function name: everything before '('
-    auto paren = joined.find('(');
-    if (paren == std::string::npos) return;
-    std::string fname = to_lower(joined.substr(0, paren));
-    // Trim trailing whitespace from fname
-    while (!fname.empty() && std::isspace(static_cast<unsigned char>(fname.back())))
-        fname.pop_back();
-    if (fname.empty()) return;
-
-    // Find closing ')' for the argument list
-    auto close_paren = joined.find(')', paren);
-    if (close_paren == std::string::npos) return;
-
-    // Extract argument names
-    std::string args_str = joined.substr(paren + 1, close_paren - paren - 1);
-    FuncDef def;
-    std::istringstream argss(args_str);
-    std::string arg;
-    while (std::getline(argss, arg, ',')) {
-        auto s = arg.find_first_not_of(" \t");
-        auto e = arg.find_last_not_of(" \t");
-        if (s != std::string::npos)
-            def.args.push_back(to_lower(arg.substr(s, e - s + 1)));
-    }
-
-    // Body is everything after ')' — skip optional '=' and whitespace
-    std::string body = joined.substr(close_paren + 1);
-    // Trim leading whitespace
-    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
-        body.erase(0, 1);
-    // Skip optional '='
-    if (!body.empty() && body.front() == '=') {
-        body.erase(0, 1);
-        while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
-            body.erase(0, 1);
-    }
-    // Strip surrounding braces if present
-    if (body.size() >= 2 && body.front() == '{' && body.back() == '}')
-        body = body.substr(1, body.size() - 2);
-    // Trim whitespace from body
-    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
-        body.erase(0, 1);
-    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.back())))
-        body.pop_back();
-
-    if (body.empty()) return;
-    def.body = body;
-    func_defs[fname] = std::move(def);
-}
+// (definition moved below the anonymous namespace so it has external linkage
+//  and can be reused from subcircuit_expand.cpp — see parse_func_def near the
+//  end of the anonymous namespace block.)
 
 // Parse content between parentheses from token list starting at position idx.
 // Returns the values as doubles. Advances idx past the closing ')'.
@@ -511,6 +453,75 @@ static std::string extract_lib_section(const std::string& content,
 }
 
 } // anonymous namespace
+
+// Parse a .func directive from a tokenized line and add to func_defs.
+// .func name(arg1, arg2, ...) {body}
+// The tokenizer splits on whitespace, so tokens will be like:
+//   [".func", "name(arg1,arg2,...)", "{body}"] or with spaces in body
+//   [".func", "name(arg1,", "arg2,...)", "{body}"]
+// Declared in expression.hpp; external linkage so subcircuit_expand.cpp can
+// reuse it to inline subckt-local funcs.
+void parse_func_def(const std::vector<std::string>& tokens,
+                    std::unordered_map<std::string, FuncDef>& func_defs) {
+    if (tokens.size() < 3) return;
+
+    // Join tokens 1..end to reconstruct the full signature + body string,
+    // since the tokenizer may have split the signature across multiple tokens.
+    std::string joined;
+    for (size_t i = 1; i < tokens.size(); ++i) {
+        if (!joined.empty()) joined += ' ';
+        joined += tokens[i];
+    }
+
+    // Find the function name: everything before '('
+    auto paren = joined.find('(');
+    if (paren == std::string::npos) return;
+    std::string fname = to_lower(joined.substr(0, paren));
+    // Trim trailing whitespace from fname
+    while (!fname.empty() && std::isspace(static_cast<unsigned char>(fname.back())))
+        fname.pop_back();
+    if (fname.empty()) return;
+
+    // Find closing ')' for the argument list
+    auto close_paren = joined.find(')', paren);
+    if (close_paren == std::string::npos) return;
+
+    // Extract argument names
+    std::string args_str = joined.substr(paren + 1, close_paren - paren - 1);
+    FuncDef def;
+    std::istringstream argss(args_str);
+    std::string arg;
+    while (std::getline(argss, arg, ',')) {
+        auto s = arg.find_first_not_of(" \t");
+        auto e = arg.find_last_not_of(" \t");
+        if (s != std::string::npos)
+            def.args.push_back(to_lower(arg.substr(s, e - s + 1)));
+    }
+
+    // Body is everything after ')' — skip optional '=' and whitespace
+    std::string body = joined.substr(close_paren + 1);
+    // Trim leading whitespace
+    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
+        body.erase(0, 1);
+    // Skip optional '='
+    if (!body.empty() && body.front() == '=') {
+        body.erase(0, 1);
+        while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
+            body.erase(0, 1);
+    }
+    // Strip surrounding braces if present
+    if (body.size() >= 2 && body.front() == '{' && body.back() == '}')
+        body = body.substr(1, body.size() - 2);
+    // Trim whitespace from body
+    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.front())))
+        body.erase(0, 1);
+    while (!body.empty() && std::isspace(static_cast<unsigned char>(body.back())))
+        body.pop_back();
+
+    if (body.empty()) return;
+    def.body = body;
+    func_defs[fname] = std::move(def);
+}
 
 Circuit NetlistParser::parse(const std::string& netlist) {
     Circuit ckt;

@@ -905,13 +905,23 @@ CompiledExpression::eval_node(const ASTNode* node,
     case NodeType::POW_FN: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
         auto b = eval_node(node->right.get(), var_values, nv, need_grad);
+        // d(a^b)/da = b * a^(b-1). When a == 0 and (b-1) < 0 this is a true
+        // infinity, which would poison the Jacobian and stall Newton. ngspice
+        // (PSpice/psa mode, ptfuncs.c PTpwr) nudges a zero base by a tiny
+        // PTfudge_factor (= gmin*1e-20, default ~1e-32) so the derivative stays
+        // large-but-finite instead of inf. We mirror that here: the value path
+        // is unaffected (0^positive == 0), only the derivative base is fudged.
+        // This matters for models like Infineon OptiMOS3 (J(...) uses da**0.5
+        // with da == 0 at the all-zero DC start).
+        constexpr double kPowFudge = 1e-32;
         if (a.val < 0.0) {
             // Negative base: use |base|^exp with sign preservation
             double abs_base = std::abs(a.val);
             double raw = std::pow(abs_base, b.val);
             result.val = std::copysign(raw, a.val);
             if (need_grad) {
-                double da_coeff = b.val * std::pow(abs_base, b.val - 1.0);
+                double grad_base = (abs_base == 0.0 && b.val < 1.0) ? kPowFudge : abs_base;
+                double da_coeff = b.val * std::pow(grad_base, b.val - 1.0);
                 // db_coeff uses log(|base|) for negative base
                 double db_coeff = (abs_base > 0.0) ? raw * std::log(abs_base) : 0.0;
                 // Sign of da_coeff follows sign of result
@@ -922,7 +932,8 @@ CompiledExpression::eval_node(const ASTNode* node,
             result.val = std::pow(a.val, b.val);
             if (need_grad) {
                 // d(a^b)/dx = a^b * (b * a'/a + b' * ln(a))
-                double da_coeff = b.val * std::pow(a.val, b.val - 1.0);
+                double grad_base = (a.val == 0.0 && b.val < 1.0) ? kPowFudge : a.val;
+                double da_coeff = b.val * std::pow(grad_base, b.val - 1.0);
                 double db_coeff = (a.val > 0.0) ? result.val * std::log(a.val) : 0.0;
                 for (int i = 0; i < nv; ++i)
                     result.grad[i] = da_coeff * a.grad[i] + db_coeff * b.grad[i];

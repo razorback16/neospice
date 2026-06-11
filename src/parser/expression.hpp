@@ -12,6 +12,12 @@ struct FuncDef {
     std::string body;               // expression body (without braces)
 };
 
+/// Parse a `.func` definition from its token list (tokens[0] == ".func")
+/// into the func_defs map. Joins tokens 1..end to reconstruct the signature
+/// and body, so it works for both single-line and continuation forms.
+void parse_func_def(const std::vector<std::string>& tokens,
+                    std::unordered_map<std::string, FuncDef>& func_defs);
+
 /// Expand user-defined function calls in an expression string.
 /// Performs textual substitution: replaces `fname(arg1, arg2)` with the
 /// function body, substituting formal parameters with actual arguments.
