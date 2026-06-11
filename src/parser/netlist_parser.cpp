@@ -2975,7 +2975,11 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             // Node lists may use ngspice gettok_node forms: bare "n+ n-",
             // comma/paren pairs "(n+,n-)", space-in-parens "(n+ n-)", or two
             // separate parenthesized groups "(n+,n-) (nc+,nc-)" (cadlab VSWITCH).
-            if (tokens.size() < 6) {
+            // Minimum valid paren form is "name (n+,n-) (nc+,nc-) model" = 4
+            // tokens; the NodeAtomScanner below extracts the four node atoms and
+            // errors out itself if it cannot, so this guard only rejects
+            // hopelessly short lines. (The W element below uses the same logic.)
+            if (tokens.size() < 4) {
                 fprintf(stderr, "Warning: Line %d: S element requires name, n+, n-, nc+, nc-, modelname — skipping\n", line.line_number);
                 continue;
             }

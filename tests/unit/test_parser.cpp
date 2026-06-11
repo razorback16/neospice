@@ -5,6 +5,7 @@
 #include "devices/vccs.hpp"
 #include "devices/vcvs_nonlinear.hpp"
 #include "devices/vccs_nonlinear.hpp"
+#include "devices/switch.hpp"
 
 using namespace neospice;
 
@@ -335,6 +336,53 @@ R1 2 0 1k
         }
     }
     EXPECT_TRUE(found_vccs) << "Expected VCCS device to be parsed correctly";
+}
+
+TEST(Parser, SElementParenthesizedNodePairsTopLevel) {
+    // S1 (n+,n-) (nc+,nc-) model — fully parenthesized form at top level.
+    // Tokenizes to 4 whitespace tokens; must not be rejected by the size guard.
+    std::string netlist = R"(
+VSWITCH paren node pairs
+V1 10 0 DC 10
+V40 40 0 DC 8
+S1 (10,11) (40,0) SwModel
+RL 11 0 1k
+.MODEL SwModel VSWITCH (Ron=1 Roff=1MEG Von=5 Voff=0)
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    bool found_vswitch = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dynamic_cast<const VSwitch*>(dev.get()) != nullptr) {
+            found_vswitch = true;
+        }
+    }
+    EXPECT_TRUE(found_vswitch) << "Expected VSwitch device to be parsed from fully-paren form";
+}
+
+TEST(Parser, SElementMixedFlatAndParenNodes) {
+    // S1 n+ n- (nc+,nc-) model — flat output, parenthesized control pair.
+    std::string netlist = R"(
+VSWITCH mixed node forms
+V1 10 0 DC 10
+V40 40 0 DC 8
+S1 10 11 (40,0) SwModel
+RL 11 0 1k
+.MODEL SwModel VSWITCH (Ron=1 Roff=1MEG Von=5 Voff=0)
+.op
+.end
+)";
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+    bool found_vswitch = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dynamic_cast<const VSwitch*>(dev.get()) != nullptr) {
+            found_vswitch = true;
+        }
+    }
+    EXPECT_TRUE(found_vswitch) << "Expected VSwitch device from mixed flat/paren form";
 }
 
 TEST(Parser, EElementPolyParenthesizedNodes) {
