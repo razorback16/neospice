@@ -24,19 +24,88 @@ solver hardening, parser gaps, and structural issues.
 
 ## Current State
 
-**Certified 2026-06-11** (`results/compare_full_certified.json`, full suite of
-34,908 models, value-matched against `ngspice -D ngbehavior=psa`):
+**Certified 2026-06-12** (`results/compare_full_pifix.json`, full suite of
+34,908 models, value-matched against `ngspice -D ngbehavior=psa`, with the
+NEO_ONLY/NEO_TRIVIAL split, the **isolated+driven fallback**, the
+**nested-brace model-param fix**, and the **`pi`/`e` built-in constants** applied):
 
 | Status | Count | Meaning |
 |---|---|---|
-| MATCH | 20,761 (59.5%) | both converge, values agree |
-| MISMATCH | 1,508 | both converge, values differ — ~794 XSPICE digital (out of scope), 434 proven-ngspice-bug MOV varistors, rest adjudicated artifacts + ~120 open |
+| MATCH | 24,199 (69.3%) | both converge, values agree |
+| MISMATCH | 1,638 | both converge, values differ — ~794 XSPICE digital (out of scope), proven-ngspice-bug MOV varistors, rest adjudicated artifacts (Boyle-macromodel cancellation, saturation-knee, basin selection) |
 | NG_ONLY | **21** | neospice fails, ngspice passes (was 801 on 2026-05-30) — all adjudicated residuals |
-| NEO_ONLY | 9,059 | neospice converges where ngspice-psa fails (≈2,000 recovered by OPtran) |
+| NEO_ONLY | 2,118 | neospice produces a **non-trivial** solve where ngspice-psa *genuinely cannot* parse the deck even isolated (undefined PSpice params, param-nested subckts) |
+| NEO_TRIVIAL | 3,373 | neospice solves an **unexcited** fixture to ~0 V while ngspice can't parse it even isolated — *not a win* |
 | BOTH_FAIL | 3,559 | neither converges |
 
-**Agreement rate:** 95.6%. Devices migrated from ngspice: MOS2 (LEVEL=2), VDMOS.
-Unit tests: 1105/1105.
+**`pi`/`e` built-in constants (2026-06-12):** neospice's expression evaluator
+treated `pi`/`e` as unknown params → 0, so models with `wo=2*pi*fo`,
+`S=pi*d*d/4` (e.g. emic.sub) hit division-by-zero → divergence. Added both
+constants to `ExprParser` in `expression.cpp`, matching ngspice's
+`.param`/B-source evaluator (`inpptree.c` predefines exactly `e` and `pi`; a
+user param of the same name still takes precedence). Recovered the 2 emic.sub
+cases (BOTH_FAIL→NEO_ONLY); no regressions. Regression test:
+`Expression.BuiltinConstants`.
+
+**Nested-brace model-param fix (2026-06-12):** vendor MOSFET libraries write
+temperature formulas with NESTED braces, e.g. `VTO={2.1*{-0.0016*TEMP+1.04}}`.
+Two parser layers mishandled the inner brace: `subst_brace_params`
+(`subcircuit_expand.cpp`) matched the first `}` instead of the balanced one, and
+`strip_braces` (`expression.cpp`) removed only the outer pair. The truncated
+expression failed to evaluate, fell through to `parse_spice_number` which can't
+read `{...}`, and the parameter was silently skipped — so `VTO` collapsed to its
+default of 0 and the MOSFET conducted ~0.5 µA in cut-off. Fixed both layers
+(depth-aware brace matching + normalizing `{`→`(`, `}`→`)` since `{expr}`≡`(expr)`
+in SPICE). **Impact: 220 MISMATCH→MATCH** (vendor power-MOSFET off-state
+leakage). Regressions: none (the 2 emic.sub cases that went NEO_TRIVIAL→BOTH_FAIL
+were never valid comparisons — ngspice fails them too; the fix merely unmasks a
+*separate* pre-existing gap, the undefined `pi` constant in neospice's `.param`
+evaluator). Unit regressions: `Expression.NestedBraces`,
+`SubcircuitExpand.NestedBracedParameterExpressions`.
+
+**Isolated+driven fallback (2026-06-12):** when ngspice fails on a subckt test
+(almost always a whole-library `.include` parse abort caused by one unrelated bad
+construct elsewhere in the file), the harness now retries with the target subckt
+extracted into a clean, dependency-closed library (so ngspice can parse it) and a
+5 V / 1 kΩ stimulus injected on the first generic pin (so an unexcited fixture
+actually exercises the device). The isolated run is adopted only if **both**
+simulators then succeed. This rescued **3,568** former NEO_ONLY/NEO_TRIVIAL
+non-comparisons into real comparisons — **3,218 MATCH (90.2%)** confirming
+neospice was right, **350 MISMATCH** (small real diffs: off-state MOSFET leakage,
+~0.4 % tolerance exceedances; a few dies replicated across many part numbers).
+**Zero regression:** the main path is untouched (the fallback only fires when
+ngspice originally failed), so NG_ONLY and BOTH_FAIL are unchanged and no prior
+MATCH could flip. The ~5,500 still in NEO_ONLY/NEO_TRIVIAL are the genuine
+robustness gap — ngspice-psa cannot evaluate them even isolated. Implementation:
+`make_isolated_driven_netlist()` / `build_isolated_lib()` in
+`tools/compare_kicad_models.py`; per-result `isolated` flag marks rescued cases.
+
+**NEO_ONLY adjudication (2026-06-11):** the original 9,059 NEO_ONLY count was
+inflated. Re-running neospice on all of them and using a gold-standard isolation
+test (extract the target subckt into a clean lib so ngspice can parse it, then
+compare) shows: **4,637 (51%) are trivial undriven-fixture solves** — now split
+out as `NEO_TRIVIAL`, neither a win nor a bug (ngspice agrees to ~1e-19 V on
+undriven decks; it merely failed earlier, at parse). Of the **4,422 non-trivial**
+cases, where an ngspice reference is obtainable **~95% are genuine wins** (e.g.
+isolated `LF155` matches ngspice to 10 sig figs: 1.004201527804348 vs
+1.004201527777758) and **~5% disagree** (mostly near-zero reference-node
+artifacts; a thin residue of real basin/cancellation bugs — MC33170, 4N40, a few
+comparators). Root cause of ngspice's failures is **parser fragility**, not bad
+circuits: ngspice-psa aborts the whole `.include` on one unrelated construct
+anywhere in the file (unknown device in another subckt, a stray UTF-8 byte, an
+undefined PSpice param/built-in, even 22× "double free" crashes), while
+neospice's fault-tolerant parser simulates the requested device. This is a
+parse-robustness story, **not** the "~2,000 OPtran convergence wins" implied
+earlier — only ~1% of sampled NEO_ONLY were genuine ngspice *convergence*
+failures. **Caveat:** ~1,240 non-trivial wins involved neospice silently dropping
+a device/param; those DISAGREE with ngspice at ~21% (vs 4.7% base) and are the
+main place latent bugs hide. (Classifier: `is_trivial_solution()` in
+`tools/compare_kicad_models.py`; data: `results/compare_full_reclassified.json`.)
+
+**Value-agreement rate:** of the **25,837 real two-simulator comparisons**
+(MATCH + MISMATCH — up from 22,269 before the isolated+driven fallback),
+**93.7 % MATCH** (24,199 / 25,837). Devices migrated from ngspice: MOS2
+(LEVEL=2), VDMOS. Unit tests: 1108/1108.
 
 **Current convergence flow** (matches ngspice `CKTop` in `cktop.c`):
 
