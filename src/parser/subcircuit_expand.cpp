@@ -146,7 +146,18 @@ std::string subst_brace_params(
     size_t i = 0;
     while (i < token.size()) {
         if (token[i] == '{') {
-            size_t close = token.find('}', i + 1);
+            // Find the MATCHING close brace, not the first one: braces nest in
+            // vendor model temperature formulas, e.g. {2.1*{-0.0016*TEMP+1.04}}.
+            // A naive find('}') stops at the inner brace, yielding a truncated
+            // unbalanced expression that fails to evaluate — the parameter then
+            // falls back to a wrong default (e.g. MOSFET VTO -> 0, conducting in
+            // cut-off). Track depth to capture the full braced group.
+            int depth = 0;
+            size_t close = std::string::npos;
+            for (size_t j = i; j < token.size(); ++j) {
+                if (token[j] == '{') ++depth;
+                else if (token[j] == '}' && --depth == 0) { close = j; break; }
+            }
             if (close == std::string::npos) {
                 result += token.substr(i);
                 break;

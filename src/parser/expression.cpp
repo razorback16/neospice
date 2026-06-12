@@ -385,6 +385,11 @@ private:
             std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
             auto it = params_.find(lname);
             if (it == params_.end()) {
+                // Built-in constants. ngspice's .param/B-source evaluator
+                // (inpptree.c) predefines exactly `e` and `pi`; a user param of
+                // the same name takes precedence (handled by the lookup above).
+                if (lname == "pi") return M_PI;
+                if (lname == "e")  return M_E;
                 fprintf(stderr, "Warning: Unknown parameter '%s' — defaulting to 0\n", name.c_str());
                 return 0.0;
             }
@@ -410,13 +415,25 @@ const std::unordered_set<std::string> kBuiltinFunctions = {
 };
 
 // ---------------------------------------------------------------------------
-// Strip optional surrounding braces from an expression string.
-// ---------------------------------------------------------------------------
+// Normalize brace grouping in an expression string.
+//
+// In SPICE, `{expr}` is a grouped sub-expression, exactly equivalent to
+// `(expr)`, and braces may be NESTED — vendor MOSFET temperature formulas write
+// e.g. VTO={2.1*{-0.0016*TEMP+1.04}}. The expression lexer only understands
+// parentheses, so map every brace to the equivalent paren. (This previously
+// stripped only the outermost pair; any inner `{` then aborted evaluation with
+// "Unexpected character", and the parameter silently fell back to a wrong
+// default — e.g. a MOSFET VTO collapsing toward 0 and conducting in cut-off.
+// Regression: Expression.NestedBraces.)
 std::string strip_braces(const std::string& s) {
-    if (s.size() >= 2 && s.front() == '{' && s.back() == '}') {
-        return s.substr(1, s.size() - 2);
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == '{') out.push_back('(');
+        else if (c == '}') out.push_back(')');
+        else out.push_back(c);
     }
-    return s;
+    return out;
 }
 
 /// Return the set of parameter names referenced in `expr`.

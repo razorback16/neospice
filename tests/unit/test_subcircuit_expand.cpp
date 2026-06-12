@@ -298,6 +298,39 @@ R_load outp 0 1Meg
     }
 }
 
+// Nested braces in a subckt body value. SPICE `{...}` grouping nests, and vendor
+// MOSFET models write temperature formulas like VTO={2.1*{-0.0016*TEMP+1.04}}.
+// subst_brace_params must capture the FULL braced group (depth-aware), not stop
+// at the first inner '}'. Regression: a truncated/unevaluated expression fell
+// through to parse_spice_number, which skipped the parameter and left it at its
+// (often wrong) default — e.g. a MOSFET VTO collapsing to 0 and conducting in
+// cut-off.
+TEST(SubcircuitExpand, NestedBracedParameterExpressions) {
+    std::string netlist = wrap(R"(
+.subckt rdiv in out r=1k
+R1 in mid {2*{r+500}}
+R2 mid out {r}
+.ends rdiv
+
+V1 inp 0 10
+X1 inp outp rdiv r=1k
+R_load outp 0 1Meg
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    // R1 should be {2*{1000+500}} = 3000
+    for (const auto& dev : ckt.devices()) {
+        auto* r = dynamic_cast<const Resistor*>(dev.get());
+        if (r && r->name() == "x1.r1") {
+            EXPECT_NEAR(r->resistance(), 3000.0, 1e-6)
+                << "R1 should be {2*{r+500}} = 3000 (nested braces)";
+        }
+    }
+}
+
 // Instance-prefix / param-name collision: an inner subckt instantiated as x1
 // inside an outer x1 has a local .param also named x1. A behavioral source
 // reading I(v_sense) must resolve to the scoped device name x1.x1.v_sense,

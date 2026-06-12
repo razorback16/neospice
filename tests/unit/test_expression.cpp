@@ -188,6 +188,32 @@ TEST(Expression, NoBraces) {
     EXPECT_DOUBLE_EQ(eval("2+3"), 5.0);
 }
 
+// Nested braces: in SPICE `{...}` is grouping, exactly like `(...)`, and may be
+// nested. Vendor MOSFET models (e.g. fairchild_NMOS.lib) write temperature
+// formulas like VTO={2.1*{-0.0016*TEMP+1.04}}. The inner brace must parse as a
+// grouped sub-expression, not abort evaluation. Regression for the off-state
+// MOSFET leakage where a failed VTO eval fell back to ~0 and turned the device on.
+TEST(Expression, NestedBraces) {
+    EXPECT_DOUBLE_EQ(eval("{2.1*{3+4}}"), 14.7);
+    EXPECT_DOUBLE_EQ(eval("{2*{3*{4+1}}}"), 30.0);
+    std::unordered_map<std::string, double> p = {{"temp", 27.0}};
+    EXPECT_NEAR(eval("{2.1*{-0.0016*temp+1.04}}", p), 2.093280, 1e-6);
+}
+
+// Built-in constants pi and e, matching ngspice's .param/B-source evaluator
+// (inpptree.c defines exactly these two). A user param of the same name takes
+// precedence. Vendor models use them in temperature/geometry formulas
+// (e.g. emic.sub: wo=2*pi*fo, S=pi*diametro*diametro/4).
+TEST(Expression, BuiltinConstants) {
+    EXPECT_NEAR(eval("pi"), M_PI, 1e-12);
+    EXPECT_NEAR(eval("2*pi"), 2.0 * M_PI, 1e-12);
+    EXPECT_NEAR(eval("e"), M_E, 1e-12);
+    EXPECT_NEAR(eval("{pi*4}"), M_PI * 4.0, 1e-12);
+    // User param overrides the constant.
+    std::unordered_map<std::string, double> p = {{"pi", 7.0}};
+    EXPECT_DOUBLE_EQ(eval("pi", p), 7.0);
+}
+
 // ============================================================
 // SPICE number suffixes in expressions
 // ============================================================
