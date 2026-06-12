@@ -46,7 +46,12 @@ static std::vector<std::string> split_tokens(const std::string& line, size_t pos
     std::string brace_accum;
 
     while (next_ws_token(line, pos, tok)) {
-        if (brace_depth == 0 && tok[0] == '$') break;
+        // A '$'-led token starts a comment ONLY when it is the first token of
+        // the line. Mid-line, '$' is a valid identifier character (ngspice
+        // ngbehavior=psa: newcompat.ps treats '$' as an ordinary id char, see
+        // inpcom.c:3194 / inpcompat.c:77). PSpice auto-named nodes like
+        // "$N_0002" must survive as node names.
+        if (brace_depth == 0 && tok[0] == '$' && tokens.empty()) break;
         // An inline ';' comment may be glued mid-token (e.g. "NOUT;OFF" or
         // "5;note") — ngspice ends the line at ';' anywhere. Honor it at
         // brace-depth 0, tracking braces within the token so a ';' inside a
