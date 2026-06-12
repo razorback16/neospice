@@ -168,7 +168,17 @@ void fill_optran_integrator_context(Circuit& ckt, double t, double dt,
     ckt.integrator_ctx.integrate_method = method;
     ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
 
-    if (order <= 1) {
+    if (first_step) {
+        // ngspice optran.c:407 forces CKTag[0]=CKTag[1]=0 on the very first
+        // MODEINITTRAN step: reactive companions contribute nothing, so the
+        // first OPtran point is a pure DC solve with caps held open / inductors
+        // shorted at their seeded state.  Using 1/dt here (a near-short for tiny
+        // dt) destabilises the first solve and diverges macromodels like LM1875.
+        ckt.integrator_ctx.ag[0] = 0.0;
+        ckt.integrator_ctx.ag[1] = 0.0;
+        ckt.integrator_ctx.ag[2] = 0.0;
+        ckt.integrator_ctx.xmu_ratio = 0.0;
+    } else if (order <= 1) {
         ckt.integrator_ctx.ag[0] = 1.0 / dt;
         ckt.integrator_ctx.ag[1] = -1.0 / dt;
         ckt.integrator_ctx.ag[2] = 0.0;
@@ -722,8 +732,19 @@ NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
     StateCheckpoint accepted_state = save_state(ckt);
     NewtonWorkspace workspace(ckt.pattern());
     SimOptions step_opts = opts;
+    // ngspice's OPtran runs NIiter with CKTtranMaxIter (default 10) per step.
+    // Keep that per-step budget: the genuinely-converging steps (Integral,
+    // OPA170) settle well within it, and circuits that instead enter a Newton
+    // limit cycle (e.g. AP2127_ADJ's RS=0 diode junction) never converge no
+    // matter how many iterations are granted.
     step_opts.max_iter = std::min(opts.itl4, 10);
-    step_opts.diag_gmin = std::max(opts.gshunt, 0.0);
+    // ngspice keeps CKTgmin on the matrix diagonal throughout the op solve.
+    // With the first OPtran step holding reactive companions at ag=0 (caps
+    // open, inductors short), a node whose only DC path is through such a
+    // companion would otherwise yield a structurally singular matrix (e.g.
+    // the LTspice "Integral" idt cell — a 1F cap on a node fed only by a
+    // VCCS).  A small diagonal gmin regularises it exactly as ngspice does.
+    step_opts.diag_gmin = std::max(opts.gshunt, opts.gmin);
 
     double time = 0.0;
     double prev_dt = dt;

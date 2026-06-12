@@ -206,3 +206,80 @@ R1 q 0 100k
     EXPECT_TRUE(state_a || state_b)
         << "Expected latch to converge, got v(q)=" << vq << " v(qb)=" << vqb;
 }
+
+TEST(Convergence, OpTransientDirectCall) {
+    // transient_operating_point() (OPtran) is the final fallback in the DC
+    // convergence chain (mirrors ngspice CKTop -> OPtran).  Verify it runs a
+    // minimal transient to a relaxed operating point on a circuit it can solve.
+    std::string netlist = R"(
+OPtran Direct
+V1 top 0 DC 5.0
+R1 top mid 1k
+D1 mid 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.op
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+
+    const int32_t n = ckt.num_vars();
+    std::vector<double> solution(n, 0.0);
+
+    auto solver = std::make_unique<NeoSolver>();
+    solver->symbolic(ckt.pattern());
+    ckt.integrator_ctx.options = &ckt.options;
+    ckt.integrator_ctx.mode = 0x10 | 0x200;  // MODEDCOP | MODEINITJCT
+
+    auto result = transient_operating_point(ckt, *solver, solution, ckt.options);
+    EXPECT_TRUE(result.converged);
+    EXPECT_EQ(solution.size(), static_cast<size_t>(n));
+}
+
+TEST(Convergence, OpTransientRescuesIntegratorCell) {
+    // The LTspice "Integral" idt cell: a VCCS charging a 1F capacitor whose
+    // node has no resistive DC path (only the cap + an .ic).  Direct Newton
+    // and the gmin/source aids cannot settle it, but the OPtran fallback
+    // relaxes the capacitor from its initial condition to the DC equilibrium.
+    // ngspice resolves this exact circuit only via its OPtran (Transient op).
+    std::string netlist = R"(
+OPtran Integrator Cell
+G1 0 n1 u 0 1
+C1 n1 0 1
+R1 n1 n2 1
+E1 n2 0 n1 0 1
+Eout y 0 n1 0 1
+Vu u 0 DC 0
+RLoad y 0 10k
+.ic V(n1)=0
+.op
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+    DCResult result = sim.run_dc(ckt);
+    // With zero input the integrator output relaxes to 0 V.
+    EXPECT_NEAR(result.voltage("y"), 0.0, 1e-6);
+    EXPECT_EQ(result.status.convergence_method, ConvergenceMethod::OP_TRANSIENT);
+}
+
+TEST(Convergence, OpTransientDoesNotPerturbSimpleCircuit) {
+    // Regression: OPtran is the last fallback and must never run (nor alter the
+    // result) for a circuit that already converges via direct Newton.
+    std::string netlist = R"(
+OPtran No-Perturb
+V1 vdd 0 DC 3.3
+R1 vdd out 1k
+D1 out 0 DMOD
+.model DMOD D(IS=1e-14 N=1)
+.op
+.end
+)";
+    Simulator sim;
+    auto ckt = sim.parse(netlist);
+    DCResult result = sim.run_dc(ckt);
+    EXPECT_NEAR(result.voltage("vdd"), 3.3, 1e-6);
+    EXPECT_GT(result.voltage("out"), 0.5);
+    EXPECT_LT(result.voltage("out"), 0.8);
+    EXPECT_EQ(result.status.convergence_method, ConvergenceMethod::DIRECT);
+}

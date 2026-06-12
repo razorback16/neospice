@@ -228,7 +228,59 @@ DCResult solve_dc(Circuit& ckt) {
             }
         }
         if (!result.converged) {
-            // 7. All failed
+            if (ckt.options.verbose)
+                std::cerr << "[dc] trying op-transient (OPtran)\n";
+            // 7. Final fallback: OPtran — run a minimal transient from t=0 and
+            // take the relaxed final state as the operating point.  Mirrors
+            // ngspice CKTop's last resort (cktop.c:94-103 -> optran.c).  Runs
+            // only when every other aid has failed, so it costs nothing for
+            // circuits that already converge.
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+            try {
+                result = transient_operating_point(ckt, *solver, solution, ckt.options);
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] op-transient: converged=" << result.converged
+                              << " iters=" << result.iterations
+                              << " residual=" << result.residual << "\n";
+            } catch (const std::runtime_error& e) {
+                result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] op-transient threw: " << e.what() << "\n";
+            }
+            if (result.converged) {
+                // OPtran leaves reactive companions reset (cleanup_optran_devices)
+                // and the solution at the relaxed final state.  Re-solve one DC
+                // Newton in MODEDCOP from that point so branch currents/charges
+                // reflect a true DC operating point, not a transient step.  Seeded
+                // at equilibrium this converges trivially.
+                const std::vector<double> op_solution = solution;
+                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+                NewtonResult dc_resolve;
+                try {
+                    dc_resolve = newton_solve(ckt, *solver, solution,
+                                              direct_attempt_options(ckt.options));
+                } catch (const std::runtime_error&) {
+                    dc_resolve.converged = false;
+                }
+                if (dc_resolve.converged) {
+                    result = dc_resolve;
+                } else {
+                    // The DC re-solve diverged (e.g. multiple DC roots, or a
+                    // device whose DC and transient-relaxed states differ).
+                    // Keep the OPtran solution — it is the converged operating
+                    // point ngspice reports.
+                    solution = op_solution;
+                }
+                sim_status.iterations = result.iterations;
+                sim_status.convergence_method = ConvergenceMethod::OP_TRANSIENT;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.warnings.push_back("op-transient (OPtran) used");
+                result.converged = true;
+            }
+        }
+        if (!result.converged) {
+            // 8. All failed
             sim_status.converged = false;
             sim_status.iterations = result.iterations;
             sim_status.residual = result.residual;
@@ -489,6 +541,19 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = pseudo_transient(ckt, *solver, solution, ckt.options);
         if (res.converged) {
+            first_point = false;
+            return;
+        }
+        // Final fallback: OPtran (see solve_dc).  Re-solve one DC Newton from
+        // the relaxed final state so device loads reflect a DC operating point.
+        ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
+        res = transient_operating_point(ckt, *solver, solution, ckt.options);
+        if (res.converged) {
+            const std::vector<double> op_solution = solution;
+            ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITFIX_BIT;
+            auto re = newton_solve(ckt, *solver, solution, ckt.options);
+            if (re.converged) res = re;
+            else solution = op_solution;
             first_point = false;
             return;
         }

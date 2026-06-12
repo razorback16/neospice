@@ -11,7 +11,8 @@ enum class ConvergenceMethod {
     DIRECT,
     GMIN_STEPPING,
     SOURCE_STEPPING,
-    PSEUDO_TRANSIENT
+    PSEUDO_TRANSIENT,
+    OP_TRANSIENT
 };
 
 inline const char* convergence_method_name(ConvergenceMethod m) {
@@ -20,6 +21,7 @@ inline const char* convergence_method_name(ConvergenceMethod m) {
     case ConvergenceMethod::GMIN_STEPPING:      return "gmin-stepping";
     case ConvergenceMethod::SOURCE_STEPPING:    return "source-stepping";
     case ConvergenceMethod::PSEUDO_TRANSIENT:   return "pseudo-transient";
+    case ConvergenceMethod::OP_TRANSIENT:       return "op-transient";
     default:                                     return "unknown";
     }
 }
