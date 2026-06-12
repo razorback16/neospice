@@ -1,0 +1,7 @@
+VDMOS N-channel Id-Vds IV curve
+.model DMOSN VDMOS (Vto=1.8772 Rd=50m Rs=60m Kp=12.5 Lambda=0.05)
+Vds d 0 5
+Vgs g 0 5
+M1 d g 0 0 DMOSN
+.dc Vds 0 10 0.5
+.end

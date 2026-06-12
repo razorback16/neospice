@@ -1,0 +1,61 @@
+model:
+  ngspice_prefix: "VDMOS"
+  neospice_name: "vdmos"
+  neospice_namespace: "vdmos"
+  instance_struct: "VDMOSinstance"
+  model_struct: "VDMOSmodel"
+  instance_tag: "sVDMOSinstance"
+  model_tag: "sVDMOSmodel"
+  cpp_instance: "VDMOSInstance"
+  cpp_model: "VDMOSModel"
+  gen_instance: "GENinstance"
+  gen_model: "GENmodel"
+  terminals:
+    - { name: "d", field: "VDMOSdNode" }
+    - { name: "g", field: "VDMOSgNode" }
+    - { name: "s", field: "VDMOSsNode" }
+    - { name: "tj", field: "VDMOStempNode" }
+    - { name: "tc", field: "VDMOStcaseNode" }
+  state_count: 18
+  state_base_field: "VDMOSstates"
+  next_instance_field: "VDMOSnextInstance"
+  instances_field: "VDMOSinstances"
+  next_model_field: "VDMOSnextModel"
+  model_ptr_field: "VDMOSmodPtr"
+  name_field: "VDMOSname"
+  matrix_ptr_suffix: "Ptr"
+  source_files:
+    setup: "vdmosset.c"
+    load: "vdmosload.c"
+    temp: "vdmostemp.c"
+    param: "vdmospar.c"
+    mpar: "vdmosmpar.c"
+    devsup: "vdmos.c"
+  skip_files:
+    - "vdmosacld.c"
+    - "vdmosask.c"
+    - "vdmosbindCSC.c"
+    - "vdmosconv.c"
+    - "vdmosdist.c"
+    - "vdmosdset.c"
+    - "vdmosic.c"
+    - "vdmosinit.c"
+    - "vdmosmask.c"
+    - "vdmosnoi.c"
+    - "vdmospzld.c"
+    - "vdmossoachk.c"
+    - "vdmostrun.c"
+  defines: []
+  has_internal_nodes: true
+  setup_function: "VDMOSsetup"
+  temp_function: "VDMOStemp"
+  load_function: "VDMOSload"
+  geometry:
+    - { name: "M", field: "VDMOSm", given: "VDMOSmGiven", default: "1.0" }
+  model_types:
+    - { spice_name: "vdmos",  flag_field: "VDMOStype", flag_value: 1, has_type_given: true, flag_given_field: "VDMOStypeGiven" }
+    - { spice_name: "vdmosn", flag_field: "VDMOStype", flag_value: 1, has_type_given: true, flag_given_field: "VDMOStypeGiven" }
+    - { spice_name: "vdmosp", flag_field: "VDMOStype", flag_value: -1, has_type_given: true, flag_given_field: "VDMOStypeGiven" }
+  charge_states: [4, 7, 12, 15]  # qgs, qgd, VDIOcapCharge, qth
+  levels: [0]
+  spice_prefix: "M"

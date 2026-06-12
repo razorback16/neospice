@@ -155,6 +155,7 @@ add_subdirectory(devices/bsim3v32)
 add_subdirectory(devices/hisim2)
 add_subdirectory(devices/hisimhv)
 add_subdirectory(devices/bsimsoi)
+add_subdirectory(devices/vdmos)
 
 # Performance benchmarks (requires: apt install libngspice0-dev)
 add_executable(bench_ths4131

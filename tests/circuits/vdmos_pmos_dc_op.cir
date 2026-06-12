@@ -1,0 +1,8 @@
+VDMOS P-channel DC operating point
+.model DMOSP VDMOSP (Vto=-2 Rd=80m Rs=70m Kp=10)
+Vss ss 0 -12
+Rd ss d 1k
+Vgs g 0 -4
+M1 d g 0 0 DMOSP
+.op
+.end

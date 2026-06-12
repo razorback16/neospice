@@ -17,6 +17,8 @@
 #include "devices/bsim4v7/bsim4v7_model_card.hpp"
 #include "devices/bsimsoi/bsimsoi_device.hpp"
 #include "devices/bsimsoi/bsimsoi_model_card.hpp"
+#include "devices/vdmos/vdmos_device.hpp"
+#include "devices/vdmos/vdmos_model_card.hpp"
 #include "devices/hisim2/hisim2_device.hpp"
 #include "devices/hisim2/hisim2_model_card.hpp"
 #include "devices/hisimhv/hisimhv_device.hpp"
@@ -200,6 +202,7 @@ void resolve_mosfets(
     std::unordered_map<std::string, std::unique_ptr<HSM2ModelCard>> hisim2_cards;
     std::unordered_map<std::string, std::unique_ptr<HSMHVModelCard>> hisimhv_cards;
     std::unordered_map<std::string, std::unique_ptr<B4SOIModelCard>> bsimsoi_cards;
+    std::unordered_map<std::string, std::unique_ptr<VDMOSModelCard>> vdmos_cards;
     std::unordered_map<std::string, int> mosfet_levels;
 
     for (const auto& elem : elements) {
@@ -217,6 +220,37 @@ void resolve_mosfets(
         }
 
         try {
+
+        // VDMOS is dispatched by model *type* string, not by LEVEL.  A
+        // ".MODEL name VDMOS(...)" card carries type "vdmos"/"vdmosn"/"vdmosp".
+        const std::string& mtype = it->second.type;
+        if (mtype == "vdmos" || mtype == "vdmosn" || mtype == "vdmosp") {
+            auto card_it = vdmos_cards.find(m.model_name);
+            if (card_it == vdmos_cards.end()) {
+                try {
+                    card_it = vdmos_cards.emplace(m.model_name,
+                                                   to_vdmos_card(it->second)).first;
+                } catch (const ParseError& e) {
+                    throw ParseError("Line " + std::to_string(m.line_number) +
+                                     ": " + e.what());
+                }
+            }
+            VDMOSDevice::Geom vdmos_geom;
+            vdmos_geom.M = m.geom.M;
+            // ngspice VDMOS M-card node order: drain, gate, source, [Tj], [Tcase].
+            // neospice's M-card parser always captures a 4th positional (nb) and
+            // an optional 5th (nsub).  Map the 4th positional to the junction-
+            // temperature node and the optional 5th to the case node.  When the
+            // thermal model is off (default) VDMOSsetup force-grounds these, so
+            // the bound nodes are harmless — matching ngspice exactly.
+            int32_t n_tj = m.nb;
+            int32_t n_tc = m.nsub_given ? m.nsub : GROUND_INTERNAL;
+            auto dev = VDMOSDevice::make(m.name, m.nd, m.ng, m.ns, n_tj, n_tc,
+                                         vdmos_geom, *card_it->second);
+            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            ckt.add_device(std::move(dev));
+            continue;
+        }
 
         // Detect MOSFET level (cached per model name)
         int level;
@@ -614,6 +648,9 @@ void resolve_mosfets(
         ckt.add_model_card(std::move(card));
     }
     for (auto& [name, card] : bsimsoi_cards) {
+        ckt.add_model_card(std::move(card));
+    }
+    for (auto& [name, card] : vdmos_cards) {
         ckt.add_model_card(std::move(card));
     }
 }

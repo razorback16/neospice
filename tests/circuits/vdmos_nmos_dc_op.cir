@@ -1,0 +1,8 @@
+VDMOS N-channel DC operating point
+.model DMOSN VDMOS (Vto=1.8772 Rd=50m Rs=60m Kp=12.5 Lambda=0.05)
+Vdd dd 0 12
+Rd dd d 1k
+Vgs g 0 4
+M1 d g 0 0 DMOSN
+.op
+.end

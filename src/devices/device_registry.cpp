@@ -23,6 +23,7 @@ static std::string normalize_type_group(const std::string& type) {
     if (type == "nhfet"|| type == "phfet") return "hfet";
     if (type == "nmf"  || type == "pmf")  return "mes";
     if (type == "d")                      return "d";
+    if (type == "vdmos"|| type == "vdmosn" || type == "vdmosp") return "vdmos";
     return type;
 }
 
@@ -115,6 +116,7 @@ void register_hisimhv(DeviceRegistry&);
 void register_hfet1(DeviceRegistry&);
 void register_hfet2(DeviceRegistry&);
 void register_mes(DeviceRegistry&);
+void register_vdmos(DeviceRegistry&);
 
 // Forward declarations for element parser registration functions
 void register_dio_parser(DeviceRegistry&);
@@ -141,6 +143,7 @@ void DeviceRegistry::register_all() {
     register_hfet1(*this);
     register_hfet2(*this);
     register_mes(*this);
+    register_vdmos(*this);
 
     // Register element parsers for semiconductor device families
     register_dio_parser(*this);
