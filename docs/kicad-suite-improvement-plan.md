@@ -24,9 +24,19 @@ solver hardening, parser gaps, and structural issues.
 
 ## Current State
 
-**Pass rate:** 98.4% (34,345/34,911) on KiCad SPICE Library test suite.
+**Certified 2026-06-11** (`results/compare_full_certified.json`, full suite of
+34,908 models, value-matched against `ngspice -D ngbehavior=psa`):
 
-**Remaining failures:** 566 total across all categories.
+| Status | Count | Meaning |
+|---|---|---|
+| MATCH | 20,761 (59.5%) | both converge, values agree |
+| MISMATCH | 1,508 | both converge, values differ — ~794 XSPICE digital (out of scope), 434 proven-ngspice-bug MOV varistors, rest adjudicated artifacts + ~120 open |
+| NG_ONLY | **21** | neospice fails, ngspice passes (was 801 on 2026-05-30) — all adjudicated residuals |
+| NEO_ONLY | 9,059 | neospice converges where ngspice-psa fails (≈2,000 recovered by OPtran) |
+| BOTH_FAIL | 3,559 | neither converges |
+
+**Agreement rate:** 95.6%. Devices migrated from ngspice: MOS2 (LEVEL=2), VDMOS.
+Unit tests: 1105/1105.
 
 **Current convergence flow** (matches ngspice `CKTop` in `cktop.c`):
 
@@ -34,6 +44,8 @@ solver hardening, parser gaps, and structural issues.
 2. Dynamic gmin stepping (Gillespie algorithm with adaptive factor)
 3. Source stepping (Gillespie variant with adaptive ramp)
 4. Pseudo-transient continuation (fictitious capacitor decay)
+5. OPtran — real transient startup with ramped sources as final fallback
+   (mirrors ngspice `optran.c`; only runs when 1–4 fail)
 
 **Full failure breakdown:**
 
