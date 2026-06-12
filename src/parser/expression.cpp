@@ -235,6 +235,9 @@ private:
         if (lname == "sqrt")   { require(1); return std::sqrt(args[0]); }
         if (lname == "abs")    { require(1); return std::abs(args[0]); }
         if (lname == "log")    { require(1); return std::log(args[0]); }
+        // ngspice maps BOTH `ln` and `log` to natural log (PTlog); see
+        // spicelib/parser/inpptree.c. Keep them identical here.
+        if (lname == "ln")     { require(1); return std::log(args[0]); }
         if (lname == "log10")  { require(1); return std::log10(args[0]); }
         if (lname == "exp")    { require(1); return std::exp(args[0]); }
         if (lname == "sin")    { require(1); return std::sin(args[0]); }

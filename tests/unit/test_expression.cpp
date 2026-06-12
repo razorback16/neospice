@@ -109,6 +109,17 @@ TEST(Expression, FuncLog10) {
     EXPECT_NEAR(eval("log10(1000)"), 3.0, 1e-12);
 }
 
+// ngspice maps BOTH `ln` and `log` to natural log (spicelib/parser/inpptree.c),
+// so `ln` must be accepted by the .param/expression evaluator and equal `log`.
+// (Bordodynovs MOV-07D.lib '.param n={ln(Vclamp/V1ma_nom)/ln(1000*iclc)}'
+// previously failed to evaluate and defaulted n to 0.)
+TEST(Expression, FuncLn) {
+    EXPECT_NEAR(eval("ln(1)"), 0.0, 1e-12);
+    EXPECT_NEAR(eval("ln(2.718281828459045)"), 1.0, 1e-10);
+    EXPECT_NEAR(eval("ln(7)"), eval("log(7)"), 1e-12);
+    EXPECT_NEAR(eval("ln(1000)/ln(10)"), 3.0, 1e-10);
+}
+
 TEST(Expression, FuncExp) {
     EXPECT_NEAR(eval("exp(0)"), 1.0, 1e-12);
     EXPECT_NEAR(eval("exp(1)"), std::exp(1.0), 1e-12);
