@@ -346,20 +346,55 @@ bool is_param_expr(const std::string& token,
 
 /// Try to evaluate a value token. If it contains a parameter reference or
 /// braced expression, evaluate it. Otherwise return the token as-is.
+static std::string format_param_value(double val) {
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.15g", val);
+    return std::string(buf);
+}
+
 std::string eval_value_token(const std::string& token,
                              const std::unordered_map<std::string, double>& params) {
     if (!is_param_expr(token, params)) {
         return token;
     }
+    // If the token contains '{...}' groups embedded in other text (e.g. a
+    // source-function arg glued to its keyword like "PULSE({Ua/Ri}" or a
+    // brace with a trailing ')'), evaluating the whole token as one expression
+    // fails. Substitute each balanced '{...}' group in place instead, leaving
+    // the surrounding keyword/paren text intact so the downstream parser sees
+    // numeric arguments.
+    if (token.find('{') != std::string::npos) {
+        std::string out;
+        out.reserve(token.size());
+        size_t i = 0;
+        bool any_fail = false;
+        while (i < token.size()) {
+            if (token[i] == '{') {
+                int depth = 0;
+                size_t j = i;
+                for (; j < token.size(); ++j) {
+                    if (token[j] == '{') ++depth;
+                    else if (token[j] == '}') { if (--depth == 0) { ++j; break; } }
+                }
+                std::string group = token.substr(i, j - i); // includes braces
+                try {
+                    out += format_param_value(eval_expression(group, params));
+                } catch (...) {
+                    out += group;
+                    any_fail = true;
+                }
+                i = j;
+            } else {
+                out += token[i++];
+            }
+        }
+        (void)any_fail;
+        return out;
+    }
+    // Bare parameter name (no braces): evaluate the whole token.
     try {
-        double val = eval_expression(token, params);
-        // Format without trailing zeros but with enough precision
-        // Use scientific notation for very small/large values
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "%.15g", val);
-        return std::string(buf);
+        return format_param_value(eval_expression(token, params));
     } catch (...) {
-        // If evaluation fails, return token unchanged
         return token;
     }
 }

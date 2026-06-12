@@ -170,7 +170,21 @@ inline bool is_param_card(const std::string& tok) {
 // Parse content between parentheses from token list starting at position idx.
 // Returns the values as doubles. Advances idx past the closing ')'.
 std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
-                                       size_t& idx) {
+                                       size_t& idx,
+                                       const std::unordered_map<std::string, double>* params = nullptr) {
+    // Evaluate a single source-function argument token: a plain SPICE number,
+    // or a {expr}/param-reference resolved against `params`. PSpice/ngspice
+    // allow {Ua/Ri} etc. as PULSE/EXP/SIN args; without resolution they must
+    // not silently become 0.
+    auto eval_arg = [&](const std::string& t) -> double {
+        try { return parse_spice_number(t); }
+        catch (...) {}
+        if (params) {
+            try { return eval_expression(t, *params); }
+            catch (...) {}
+        }
+        return 0.0;
+    };
     // Join tokens from idx onward to find (...) content
     std::string joined;
     for (size_t i = idx; i < tokens.size(); ++i) {
@@ -194,6 +208,10 @@ std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
             if (tl == "dc" || tl == "ac" || tl == "pulse" || tl == "sin" ||
                 tl == "pwl" || tl == "exp" || tl == "sffm" || tl == "am")
                 break;
+            // A {expr} or known-param token is a valid arg — evaluate it.
+            bool is_brace = !t.empty() && t.front() == '{';
+            bool is_param = params && params->count(tl) != 0;
+            if (is_brace || is_param) { values.push_back(eval_arg(t)); continue; }
             try { values.push_back(parse_spice_number(t)); }
             catch (...) { break; }
         }
@@ -216,8 +234,7 @@ std::vector<double> parse_paren_params(const std::vector<std::string>& tokens,
     std::istringstream iss(content);
     std::string tok;
     while (iss >> tok) {
-        try { values.push_back(parse_spice_number(tok)); }
-        catch (...) { values.push_back(0); }
+        values.push_back(eval_arg(tok));
     }
     return values;
 }
@@ -263,7 +280,8 @@ static void parse_poly_coeffs(const std::vector<std::string>& tokens, size_t& id
     }
 }
 
-ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t start_idx) {
+ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_t start_idx,
+                                   const std::unordered_map<std::string, double>* params = nullptr) {
     ParsedSourceSpec spec;
     size_t i = start_idx;
 
@@ -302,7 +320,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             }
         } else if (lower == "pulse" || lower.substr(0, 5) == "pulse") {
             // PULSE(...) — could be "PULSE(..." or "PULSE" "(" ...
-            auto vals = parse_paren_params(tokens, i);
+            auto vals = parse_paren_params(tokens, i, params);
             spec.func = SourceFunction::PULSE;
             if (vals.size() >= 1) spec.pulse.v1  = vals[0];
             if (vals.size() >= 2) spec.pulse.v2  = vals[1];
@@ -312,7 +330,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             if (vals.size() >= 6) spec.pulse.pw  = vals[5];
             if (vals.size() >= 7) spec.pulse.per = vals[6];
         } else if (lower == "sin" || lower.substr(0, 3) == "sin") {
-            auto vals = parse_paren_params(tokens, i);
+            auto vals = parse_paren_params(tokens, i, params);
             spec.func = SourceFunction::SIN;
             if (vals.size() >= 1) spec.sin.v0    = vals[0];
             if (vals.size() >= 2) spec.sin.va    = vals[1];
@@ -321,13 +339,13 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             if (vals.size() >= 5) spec.sin.theta = vals[4];
             if (vals.size() >= 6) spec.sin.phase = vals[5];
         } else if (lower == "pwl" || lower.substr(0, 3) == "pwl") {
-            auto vals = parse_paren_params(tokens, i);
+            auto vals = parse_paren_params(tokens, i, params);
             spec.func = SourceFunction::PWL;
             for (size_t j = 0; j + 1 < vals.size(); j += 2) {
                 spec.pwl.points.emplace_back(vals[j], vals[j + 1]);
             }
         } else if (lower == "exp" || lower.substr(0, 3) == "exp") {
-            auto vals = parse_paren_params(tokens, i);
+            auto vals = parse_paren_params(tokens, i, params);
             spec.func = SourceFunction::EXP;
             if (vals.size() >= 1) spec.exp.v1   = vals[0];
             if (vals.size() >= 2) spec.exp.v2   = vals[1];
@@ -336,7 +354,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             if (vals.size() >= 5) spec.exp.td2  = vals[4];
             if (vals.size() >= 6) spec.exp.tau2 = vals[5];
         } else if (lower == "sffm" || lower.substr(0, 4) == "sffm") {
-            auto vals = parse_paren_params(tokens, i);
+            auto vals = parse_paren_params(tokens, i, params);
             spec.func = SourceFunction::SFFM;
             if (vals.size() >= 1) spec.sffm.vo  = vals[0];
             if (vals.size() >= 2) spec.sffm.va  = vals[1];
@@ -344,7 +362,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             if (vals.size() >= 4) spec.sffm.mdi = vals[3];
             if (vals.size() >= 5) spec.sffm.fs  = vals[4];
         } else if (lower == "am" || lower.substr(0, 2) == "am") {
-            auto vals = parse_paren_params(tokens, i);
+            auto vals = parse_paren_params(tokens, i, params);
             spec.func = SourceFunction::AM;
             if (vals.size() >= 1) spec.am.sa = vals[0];
             if (vals.size() >= 2) spec.am.oc = vals[1];
@@ -1909,7 +1927,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             int32_t np = node_raw(tokens[1]);
             int32_t nn = node_raw(tokens[2]);
 
-            ParsedSourceSpec spec = parse_source_spec(tokens, 3);
+            ParsedSourceSpec spec = parse_source_spec(tokens, 3, &state.params);
             auto vs = std::make_unique<VSource>(name, np, nn, spec.dc_val);
             vs->set_dc_given(spec.dc_given);
             if (spec.ac_mag != 0.0 || spec.ac_phase != 0.0) {
@@ -1932,7 +1950,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             int32_t np = node_raw(tokens[1]);
             int32_t nn = node_raw(tokens[2]);
 
-            ParsedSourceSpec spec = parse_source_spec(tokens, 3);
+            ParsedSourceSpec spec = parse_source_spec(tokens, 3, &state.params);
             auto is = std::make_unique<ISource>(name, np, nn, spec.dc_val);
             is->set_dc_given(spec.dc_given);
             if (spec.ac_mag != 0.0 || spec.ac_phase != 0.0) {
