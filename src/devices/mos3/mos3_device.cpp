@@ -200,6 +200,7 @@ void MOS3Device::evaluate(const std::vector<double>& voltages,
     ckt.CKTtemp    = sim_opts->temp;
     ckt.CKTnomTemp = sim_opts->tnom;
     ckt.CKTgmin    = sim_opts->gmin;
+    ckt.CKTdeviceGainFact = sim_opts->device_gain_fact; // [3B] variable-gain homotopy
     ckt.CKTreltol  = sim_opts->reltol;
     ckt.CKTabstol  = sim_opts->abstol;
     ckt.CKTvoltTol = sim_opts->vntol;

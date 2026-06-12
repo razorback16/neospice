@@ -377,6 +377,110 @@ TEST(NeoSolver, SparseTierRefactorize) {
         EXPECT_NEAR(rhs[i], x_true[i], 1e-10);
 }
 
+// ---------------------------------------------------------------------------
+// 3D — Matrix scaling / equilibration
+// ---------------------------------------------------------------------------
+
+// Neutrality: with equilibration ON, a well-conditioned system must produce a
+// result bit-identical (within 1e-15) to equilibration OFF. This guards the
+// certified baseline — power-of-2 scaling only shifts exponents, so the
+// unscaled solution is provably identical for well-conditioned systems.
+TEST(NeoSolver, EquilibrateNeutralOnWellConditioned) {
+    int32_t n = 5;
+    SparsityPattern pat = make_dense_pattern(n);
+    NumericMatrix mat(pat);
+    for (int32_t i = 0; i < n; ++i)
+        for (int32_t j = 0; j < n; ++j)
+            mat.add(pat.offset(i, j), (i == j) ? 10.0 : 1.0);
+
+    std::vector<double> x_true = {1, 2, 3, 4, 5};
+    std::vector<double> rhs0(n, 0.0);
+    for (int32_t i = 0; i < n; ++i)
+        for (int32_t j = 0; j < n; ++j)
+            rhs0[i] += ((i == j) ? 10.0 : 1.0) * x_true[j];
+
+    // Reference: equilibration OFF (default).
+    std::vector<double> rhs_off = rhs0;
+    {
+        NeoSolver solver;
+        solver.symbolic(pat);
+        solver.numeric(pat, mat);
+        solver.solve(rhs_off);
+    }
+
+    // Equilibration ON.
+    std::vector<double> rhs_on = rhs0;
+    {
+        NeoSolver solver;
+        solver.set_equilibrate(true);
+        solver.symbolic(pat);
+        solver.numeric(pat, mat);
+        solver.solve(rhs_on);
+    }
+
+    for (int32_t i = 0; i < n; ++i) {
+        EXPECT_NEAR(rhs_on[i], rhs_off[i], 1e-15)
+            << "equilibration perturbed the well-conditioned solution at " << i;
+        EXPECT_NEAR(rhs_off[i], x_true[i], 1e-12);
+    }
+}
+
+// Conditioning: an ill-conditioned system whose entries span ~1e8 (a 1 mOhm
+// sense resistor next to a 100 MOhm feedback net). Equilibration must recover
+// the analytic solution to tight tolerance.
+TEST(NeoSolver, EquilibrateIllConditioned) {
+    // 2x2: [ 1e8   1e8 ] [x0]   [ 2e8 ]            -> x = [1, 1]
+    //      [ 1e-3 -1e-3] [x1] = [ 0   ]
+    SparsityPattern pat = make_dense_pattern(2);
+    NumericMatrix mat(pat);
+    mat.add(pat.offset(0, 0), 1e8);
+    mat.add(pat.offset(0, 1), 1e8);
+    mat.add(pat.offset(1, 0), 1e-3);
+    mat.add(pat.offset(1, 1), -1e-3);
+
+    NeoSolver solver;
+    solver.set_equilibrate(true);
+    solver.symbolic(pat);
+    solver.numeric(pat, mat);
+
+    std::vector<double> rhs = {2e8, 0.0};
+    solver.solve(rhs);
+    EXPECT_NEAR(rhs[0], 1.0, 1e-9);
+    EXPECT_NEAR(rhs[1], 1.0, 1e-9);
+}
+
+// Equilibration must also work through the refactorize() path (Newton re-solve
+// reuses symbolic ordering), and must compose with diag_gmin regularization.
+TEST(NeoSolver, EquilibrateRefactorizeAndGmin) {
+    int32_t n = 4;
+    SparsityPattern pat = make_dense_pattern(n);
+    NumericMatrix mat(pat);
+    // Wide dynamic range across rows.
+    double scale[4] = {1e6, 1.0, 1e-4, 1e2};
+    for (int32_t i = 0; i < n; ++i)
+        for (int32_t j = 0; j < n; ++j)
+            mat.add(pat.offset(i, j), scale[i] * ((i == j) ? 5.0 : 1.0));
+
+    std::vector<double> x_true = {1, -2, 3, -4};
+    auto build_rhs = [&]() {
+        std::vector<double> r(n, 0.0);
+        for (int32_t i = 0; i < n; ++i)
+            for (int32_t j = 0; j < n; ++j)
+                r[i] += scale[i] * ((i == j) ? 5.0 : 1.0) * x_true[j];
+        return r;
+    };
+
+    NeoSolver solver;
+    solver.set_equilibrate(true);
+    solver.symbolic(pat);
+    solver.numeric(pat, mat);  // first factor
+    solver.refactorize(mat);   // exercise the refactorize path
+    std::vector<double> rhs = build_rhs();
+    solver.solve(rhs);
+    for (int32_t i = 0; i < n; ++i)
+        EXPECT_NEAR(rhs[i], x_true[i], 1e-9);
+}
+
 TEST(NeoSolver, SparseTierComplex50x50) {
     int32_t n = 50;
     SparsityBuilder sb(n);

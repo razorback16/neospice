@@ -2,6 +2,7 @@
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/neo_solver.hpp"
+#include "core/node_classify.hpp"
 #include "core/solver_iface.hpp"
 #include "core/topology.hpp"
 #include "devices/vsource.hpp"
@@ -280,6 +281,99 @@ DCResult solve_dc(Circuit& ckt) {
             }
         }
         if (!result.converged) {
+            // [3C node-classify fallback] Last resort: retry direct Newton from a
+            // physics-informed guess that seeds power-rail nodes to their rail
+            // voltages.  Placed AFTER the entire existing cascade (incl. OPtran)
+            // so a circuit that converges via any baseline method takes the
+            // identical path and is never perturbed — only genuinely-failing
+            // circuits reach here.  (Inserting it before the cascade flipped the
+            // basin of ~130 op-amp macromodels via stale device limiting-state.)
+            if (ckt.options.verbose)
+                std::cerr << "[dc] trying node-classification initial guess\n";
+            auto guess = compute_initial_guess(ckt);
+            for (int32_t i = 0; i < n; ++i)
+                if (pinned[i]) guess[i] = solution[i];
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+            NewtonResult nc_result;
+            try {
+                nc_result = newton_solve(ckt, *solver, guess,
+                                         direct_attempt_options(ckt.options));
+            } catch (const std::runtime_error& e) {
+                nc_result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] node-classify Newton threw: " << e.what() << "\n";
+            }
+            if (nc_result.converged) {
+                solution = guess;
+                result = nc_result;
+                sim_status.iterations = result.iterations;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.warnings.push_back("node-classification initial guess used");
+            }
+        }
+        if (!result.converged) {
+            if (ckt.options.verbose)
+                std::cerr << "[dc] trying variable-gain homotopy\n";
+            // [3B gain-homotopy fallback] Ramp device_gain_fact 0->1 to scale
+            // semiconductor-device nonlinearity (MOSFET/BJT) from ~0 (passive
+            // network) to full. Distinct from gain stepping (which scales E/G/F/H
+            // controlled-source gains via dep_src_fact). Placed after the full
+            // cascade so converging circuits are never perturbed.
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+            try {
+                result = variable_gain_homotopy(ckt, *solver, solution, ckt.options);
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] variable-gain homotopy: converged=" << result.converged
+                              << " iters=" << result.iterations
+                              << " residual=" << result.residual << "\n";
+            } catch (const std::runtime_error& e) {
+                result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] variable-gain homotopy threw: " << e.what() << "\n";
+            }
+            if (result.converged) {
+                sim_status.iterations = result.iterations;
+                sim_status.convergence_method = ConvergenceMethod::GAIN_HOMOTOPY;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.warnings.push_back("variable-gain homotopy used");
+            }
+        }
+        if (!result.converged) {
+            // [3D equilibration fallback] Last resort: re-run a direct DC Newton
+            // with row/column matrix equilibration enabled. Equilibration is OFF
+            // for every path above (so converging circuits are bit-identical to
+            // the certified baseline); it only ever runs here, after the full
+            // cascade has failed. It rescales the Jacobian to power-of-2 row/col
+            // norms, cutting the condition number for circuits whose impedances
+            // span many decades (e.g. mOhm sense resistors next to 100 MOhm
+            // feedback nets) — the ~77 "residual-zero" DC failures.
+            if (ckt.options.verbose)
+                std::cerr << "[dc] trying matrix equilibration\n";
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+            solver->set_equilibrate(true);
+            try {
+                result = newton_solve(ckt, *solver, solution,
+                                      direct_attempt_options(ckt.options));
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] matrix equilibration: converged="
+                              << result.converged << " iters=" << result.iterations
+                              << " residual=" << result.residual << "\n";
+            } catch (const std::runtime_error& e) {
+                result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] matrix equilibration threw: " << e.what() << "\n";
+            }
+            solver->set_equilibrate(false);
+            if (result.converged) {
+                sim_status.iterations = result.iterations;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.warnings.push_back("matrix equilibration used");
+            }
+        }
+        if (!result.converged) {
             // 8. All failed
             sim_status.converged = false;
             sim_status.iterations = result.iterations;
@@ -554,6 +648,16 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
             auto re = newton_solve(ckt, *solver, solution, ckt.options);
             if (re.converged) res = re;
             else solution = op_solution;
+            first_point = false;
+            return;
+        }
+        // [3B gain-homotopy fallback] last resort: ramp device_gain_fact 0->1
+        // (semiconductor nonlinearity). Placed after OPtran so sweep points that
+        // converge via any baseline method take the identical path and are never
+        // perturbed.
+        ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
+        res = variable_gain_homotopy(ckt, *solver, solution, ckt.options);
+        if (res.converged) {
             first_point = false;
             return;
         }

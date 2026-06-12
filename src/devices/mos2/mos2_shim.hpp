@@ -74,6 +74,7 @@ namespace Shim {
         double CKTtemp       = 300.15;
         double CKTnomTemp    = 300.15;
         double CKTgmin       = 1e-12;
+        double CKTdeviceGainFact = 1.0;  // [3B] variable-gain homotopy: nonlinear-device scaling
         double CKTreltol     = 1e-3;
         double CKTabstol     = 1e-12;
         double CKTvoltTol    = 1e-6;

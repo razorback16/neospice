@@ -32,6 +32,7 @@ add_library(neospice_lib
     core/circuit.cpp
     core/newton.cpp
     core/convergence.cpp
+    core/node_classify.cpp
     core/dc.cpp
     core/topology.cpp
     core/tf.cpp

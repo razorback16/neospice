@@ -1144,6 +1144,30 @@ bypass:
              */
 
 
+            /* [3B gain-homotopy] Scale nonlinear channel + junction current and the
+             * matching Jacobian conductances by the same device_gain_fact lambda so
+             * the stamp stays consistent (matrix = lambda*dI/dV, rhs = lambda*I).
+             * Parasitic series resistances and gate caps (zero at DC) stay unscaled.
+             * lambda==1.0 is a bit-identical no-op; here->MOS9g* state is restored
+             * after stamping so convergence testing and AC see true conductances. */
+            const double mos9_lambda = ckt->CKTdeviceGainFact;
+            const double mos9_sav_gm   = here->MOS9gm;
+            const double mos9_sav_gds  = here->MOS9gds;
+            const double mos9_sav_gmbs = here->MOS9gmbs;
+            const double mos9_sav_gbd  = here->MOS9gbd;
+            const double mos9_sav_gbs  = here->MOS9gbs;
+            const double mos9_sav_cbd  = here->MOS9cbd;
+            const double mos9_sav_cbs  = here->MOS9cbs;
+            if (mos9_lambda != 1.0) {
+                here->MOS9gm   *= mos9_lambda;
+                here->MOS9gds  *= mos9_lambda;
+                here->MOS9gmbs *= mos9_lambda;
+                here->MOS9gbd  *= mos9_lambda;
+                here->MOS9gbs  *= mos9_lambda;
+                here->MOS9cbd  *= mos9_lambda;
+                here->MOS9cbs  *= mos9_lambda;
+                cdrain        *= mos9_lambda;
+            }
             /*
              *  load current vector
              */
@@ -1206,6 +1230,17 @@ bypass:
             ckt->mat->add(here->MOS9SPbPtr, (-here->MOS9gbs-(xnrm-xrev)*here->MOS9gmbs));
             ckt->mat->add(here->MOS9SPdpPtr, (-here->MOS9gds-
                     xrev*(here->MOS9gm+here->MOS9gmbs)));
+        /* [3B gain-homotopy] restore unscaled small-signal device state */
+        if (mos9_lambda != 1.0) {
+            here->MOS9gm   = mos9_sav_gm;
+            here->MOS9gds  = mos9_sav_gds;
+            here->MOS9gmbs = mos9_sav_gmbs;
+            here->MOS9gbd  = mos9_sav_gbd;
+            here->MOS9gbs  = mos9_sav_gbs;
+            here->MOS9cbd  = mos9_sav_cbd;
+            here->MOS9cbs  = mos9_sav_cbs;
+        }
+
         }
     }
     return 0;

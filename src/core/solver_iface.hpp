@@ -27,6 +27,11 @@ public:
     virtual bool refactorize_complex(const std::vector<double>& ax) = 0;
     virtual void solve_complex(std::vector<double>& rhs) = 0;
 
+    // [3D] Toggle row/column equilibration (matrix scaling / equilibration).
+    // Default no-op so callers holding an ISolver* can toggle it generically;
+    // only NeoSolver implements it. OFF by default — see NeoSolver.
+    virtual void set_equilibrate(bool /*on*/) {}
+
     // Stable identifier of the concrete solver actually doing the work, for
     // diagnostics and selection-policy tests. Wrappers (e.g. the auto-fallback
     // solver) report the engine currently in use.

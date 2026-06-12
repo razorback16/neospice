@@ -867,6 +867,37 @@ next2:
 #ifndef NOBYPASS
 load:
 #endif
+            /* [3B gain-homotopy] Scale the intrinsic Gummel-Poon nonlinear
+             * conductances (gpi, gmu, gm, go, geqcb), the terminal currents
+             * (cc, cb) and the quasi-saturation epi current (Irci and its
+             * derivatives) by the same device_gain_fact lambda. Because the
+             * RHS excitation (ceqbe/ceqbc/the Irci rhs_current below) is built
+             * from these same scaled locals, the stamp stays consistent:
+             * matrix = lambda*dI/dV, rhs = lambda*I, so Newton stays quadratic
+             * and H = lambda*F_device + F_passive is realized exactly at
+             * lambda==1.0 (a bit-identical no-op). Parasitic series resistances
+             * (gx base R, gepr emitter R, gcpr collector R), depletion/substrate
+             * terms (geqbx, geqsub, ceqbx, ceqsub) and charge-storage caps
+             * (gbcx/cbcx, zero at DC) are linear/passive and stay unscaled.
+             * gm/go/gpi/gmu/geqcb/cc/cb are function locals already saved to
+             * CKTstate0 above, so scaling them here leaves device state pristine
+             * for convergence testing and AC analysis. */
+            {
+                const double bjt_lambda = ckt->CKTdeviceGainFact;
+                if (bjt_lambda != 1.0) {
+                    gpi  *= bjt_lambda;
+                    gmu  *= bjt_lambda;
+                    gm   *= bjt_lambda;
+                    go   *= bjt_lambda;
+                    geqcb*= bjt_lambda;
+                    cc   *= bjt_lambda;
+                    cb   *= bjt_lambda;
+                    Irci      *= bjt_lambda;
+                    Irci_Vrci *= bjt_lambda;
+                    Irci_Vbci *= bjt_lambda;
+                    Irci_Vbcx *= bjt_lambda;
+                }
+            }
             /*
              *  load current excitation vector
              */

@@ -157,7 +157,6 @@ main place latent bugs hide. (Classifier: `is_trivial_solution()` in
 | **Node damping** | `niiter.c:296-323` | High | Low |
 | **True gmin stepping** (`new_gmin`) | `cktop.c:349-466` | Medium | Low |
 | **SPICE3 gmin stepping** | `cktop.c:289-346` | Low | Low |
-| **OPtran** (full transient startup) | `optran.c` | High | High |
 | **CKTsrcFact** (source scaling in device evaluate) | Throughout devices | Medium | Medium |
 | **NISHOULDREORDER** on singular pivot | `niiter.c:113,220` | Medium | Low |
 | **ipass logic** for nodeset release | `niiter.c:326-329` | Low | Low |
@@ -308,7 +307,7 @@ When the residual drops fast, dt grows aggressively (approaching pure Newton). W
 
 ### Priority 3: High Impact, High Effort (Future Work)
 
-#### 3A. Full Transient Startup (OPtran)
+#### 3A. Full Transient Startup (OPtran) — ✓ IMPLEMENTED
 
 **What:** When all algebraic methods fail, run a true transient simulation with sources ramped from zero, using the transient engine's time-stepping, integration, and convergence logic. Extract the final state as the DC operating point.
 
@@ -316,11 +315,36 @@ When the residual drops fast, dt grows aggressively (approaching pure Newton). W
 
 **Why it's different from pseudo-transient:** Pseudo-transient adds a fictitious conductance G=C/dt to the diagonal and does Newton at each step. OPtran runs the *real* transient integrator with actual device capacitances, actual integration order control, and actual LTE checking. This means it captures real circuit dynamics — a voltage regulator's soft-start, a bandgap's startup sequence, an oscillator's self-excitation — that pseudo-transient with fictitious capacitors cannot.
 
-**Where:** New file `src/core/optran.cpp` that reuses the transient engine.
+**Status (implemented):** Lives in `src/core/convergence.cpp` as `transient_operating_point()`
+(plus the `*_optran_devices` / `fill_optran_integrator_context` helpers), reusing the
+existing transient engine rather than a separate `optran.cpp`. Wired as the final DC
+fallback in `solve_dc()` (`src/core/dc.cpp`), running only after direct Newton, gmin
+stepping, source stepping, and pseudo-transient have all failed — so it costs nothing
+for circuits that already converge. Matches ngspice's defaults (`1 1 1 100n 10u 0`),
+forces `CKTag[0]=CKTag[1]=0` on the first point (pure-DC, caps open / inductors shorted,
+per `optran.c:407`), and follows a successful OPtran relaxation with one DC Newton
+re-solve in `MODEDCOP` so branch currents/charges reflect a true operating point.
+Reported via `ConvergenceMethod::OP_TRANSIENT` and the "op-transient (OPtran) used"
+warning. Already part of the certified 2026-06-12 baseline.
 
-**Expected impact:** This is the ultimate fallback. In ngspice, OPtran resolves most of the remaining DC failures after gmin/source stepping. However, it's expensive (full transient simulation) and requires a working transient engine.
+#### 3B. Variable-Gain Homotopy — ✓ IMPLEMENTED (2026-06-12)
 
-#### 3B. Variable-Gain Homotopy
+**Status (implemented):** `variable_gain_homotopy()` in `src/core/convergence.cpp`
+(declared in `convergence.hpp`), mirroring the existing `gain_stepping` structure
+(adaptive λ step, grow-on-success / shrink-on-fail with a `1e-7` floor,
+MODEINITJCT→MODEINITFLOAT, gmin fallback at λ=0, save/restore). It ramps a new
+`SimOptions.device_gain_fact` (λ, default **1.0**) from 0→1, seeding each Newton from
+the previous λ's solution. Semiconductor devices read it the same way controlled
+sources read `dep_src_fact` (`tls_integrator_ctx->options->device_gain_fact`) and scale
+the nonlinear current **and** its matching Jacobian stamps by the same λ — realizing
+`H(x,λ) = λ·F_device(x) + F_passive(x) = 0`, exact at λ=1, so Newton stays quadratic.
+Covered families: **MOS1/2/3/9 and BJT** (Gummel-Poon); JFET/VDMOS/diode not yet
+scaled (they behave as plain Newton under the homotopy, never a regression). Wired as a
+late DC fallback in `solve_dc` after gain-stepping / before pseudo-transient, reported
+via `ConvergenceMethod::GAIN_HOMOTOPY`. Guarded by `if (λ != 1.0)`, so the default path
+is bit-identical and the certified baseline is untouched. Tests: `GainHomotopy.*` in
+`tests/unit/test_gain_homotopy.cpp`. This is distinct from the pre-existing
+`gain_stepping`, which scales only *controlled sources* (E/G/F/H), not semiconductors.
 
 **What:** Instead of scaling sources, scale device nonlinearity. Start with MOSFETs having near-zero transconductance (almost resistive) and BJTs with β≈0 (almost open), then gradually ramp gains to true values.
 
@@ -340,7 +364,21 @@ for λ = 0 to 1:
 
 **Risk:** The homotopy path can still have turning points if gain scaling interacts with protection diodes or clamp circuits. May need pseudo-arclength continuation for pathological cases.
 
-#### 3C. Automatic Node Classification and Initial Guess
+#### 3C. Automatic Node Classification and Initial Guess — ✓ IMPLEMENTED (2026-06-12)
+
+**Status (implemented):** `compute_initial_guess(const Circuit&)` in
+`src/core/node_classify.cpp` (header `node_classify.hpp`). Implemented as a strict
+**fallback**, not a replacement for the primary guess: the existing zeros + `.nodeset`
++ `.ic` seed is unchanged, and `compute_initial_guess` is only used to *retry* direct
+Newton when the primary attempt fails (wired in `solve_dc` right after the first Newton
+fails, before `true_gmin_stepping`). So currently-converging circuits never see the new
+guess and the certified baseline is untouched. Heuristics implemented: a fixed-point
+relaxation that anchors ground at 0 V and propagates DC independent-voltage-source
+constraints `V(np)−V(nn)=dc` one hop at a time — capturing VDD→+V, VSS→−V, and
+reversed-polarity rails. `.nodeset`/`.ic` pins are always preserved; everything else
+stays 0 (mid-supply seeding of high-impedance analog nodes deliberately omitted for
+now). Reported via the "node-classification initial guess used" warning. Tests:
+`NodeClassify.*` in `tests/unit/test_node_classify.cpp`.
 
 **What:** Before Newton, analyze the netlist to identify power rails, ground references, high-impedance nodes, and feedback networks. Set initial guesses based on expected bias conditions.
 
@@ -355,7 +393,20 @@ for λ = 0 to 1:
 
 **Expected impact:** Good initial guesses are the single most important factor for Newton convergence. A guess within the basin of attraction of the correct operating point will converge in a few iterations without needing any continuation methods.
 
-#### 3D. Matrix Scaling and Equilibration
+#### 3D. Matrix Scaling and Equilibration — ✓ IMPLEMENTED (2026-06-12)
+
+**Status (implemented):** row/column equilibration in `NeoSolver` (the Markowitz solver
+used for nonlinear circuits; AMD-LU is linear-only and out of scope), gated by a new
+`NeoSolver::set_equilibrate(bool)` (virtual no-op on `ISolver`) plus a
+`SimOptions.equilibrate` flag — **default off**. Scale factors are rounded to exact
+**powers of two** (via `frexp`/`ldexp`), so scaling only shifts exponents and the
+recovered solution is bit-identical on well-conditioned systems while ill-conditioned
+ones (mΩ sense vs 100 MΩ feedback) get better pivoting; `diag_gmin` composes correctly
+under scaling. Wired as the **last-resort** DC fallback in `solve_dc` (after OPtran):
+`set_equilibrate(true)` → one direct Newton → `set_equilibrate(false)`, reported via the
+"matrix equilibration used" warning (no new `ConvergenceMethod`). Default-off ⇒ the
+normal path is bit-for-bit unchanged. Tests: `NeoSolver.Equilibrate*` in
+`tests/unit/test_neo_solver.cpp` (including a neutrality test asserting ON==OFF to 1e-15).
 
 **What:** Before factorizing the Jacobian, apply row and column scaling to reduce the condition number. This improves the accuracy of the Newton step when the matrix has entries spanning many orders of magnitude.
 
@@ -382,11 +433,33 @@ for λ = 0 to 1:
 ### ~~Phase 3: Diagnostics~~ ✓ IMPLEMENTED
 - [x] 2C: Topology checker with actionable warnings
 
-### Phase 4: Advanced Methods (1-2 weeks)
-- [ ] 3A: Full transient startup (OPtran)
-- [ ] 3B: Variable-gain homotopy
-- [ ] 3C: Automatic node classification
-- [ ] 3D: Matrix scaling
+### ~~Phase 4: Advanced Methods~~ ✓ IMPLEMENTED (2026-06-12)
+- [x] 3A: Full transient startup (OPtran) — `transient_operating_point()` in `convergence.cpp`, wired as final DC fallback in `dc.cpp`
+- [x] 3B: Variable-gain homotopy — `variable_gain_homotopy()` in `convergence.cpp`; MOS1/2/3/9 + BJT scaled by `device_gain_fact`
+- [x] 3C: Automatic node classification — `compute_initial_guess()` in `node_classify.cpp`, fallback retry in `dc.cpp`
+- [x] 3D: Matrix scaling — power-of-2 row/col equilibration in `NeoSolver`, last-resort fallback in `dc.cpp`
+
+All four are strict DC-convergence fallbacks placed **after the entire existing cascade
+(incl. OPtran)**, so any circuit that converges via a baseline method takes the identical
+path and is never perturbed. Defaults are no-ops (`device_gain_fact=1.0`,
+`equilibrate=false`, primary initial guess unchanged). Unit suite after integration:
+**1029/1029** (1016 baseline + 13 new).
+
+**⚠️ Ordering matters — the one trap (found and fixed 2026-06-12).** The first
+integration inserted 3C *before* `true_gmin_stepping` and 3B *before* `pseudo_transient`
+(mid-cascade), reasoning "they only adopt the solution on success." That was wrong: a
+*failed* fallback Newton still mutates device junction/limiting state (`pnjlim`/`fetlim`
+history in `ckt.state`), so the subsequent baseline aid started from perturbed state and
+flipped the basin of **~130 op-amp macromodels** (OPA170, OP07/27/37, LT1007, INA240,
+lmv921 …): **122 NEO_ONLY→BOTH_FAIL + 10 MATCH→fail** on the full gate. Lesson: a
+convergence aid is only safe if it runs **strictly after every baseline method has
+failed** — never interleaved — because the existing cascade must be byte-identical to the
+certified path. After relocating all three to last-resort, the full-gate diff vs the
+certified `compare_full_pifix.json` is **zero regressions** with **6 genuine
+improvements**: **LT1168 ×2 BOTH_FAIL→MATCH** (rescued, agrees with ngspice) and
+**INA250 A1–A4 NG_ONLY→MISMATCH** (now converges; basin still disagrees with ngspice — a
+partial win). Net suite: MATCH 24,199→**24,201**, NG_ONLY 21→**17**, BOTH_FAIL
+3,559→**3,557**. Data: `results/compare_full_3bcd_v2.json`.
 
 **Expected improvement:** ~180 → ~50-80 (further 50-60% reduction)
 

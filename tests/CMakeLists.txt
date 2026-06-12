@@ -33,6 +33,8 @@ add_executable(neospice_tests
     unit/test_diode.cpp
     unit/test_circuit.cpp
     unit/test_convergence.cpp
+    unit/test_node_classify.cpp
+    unit/test_gain_homotopy.cpp
     unit/test_tokenizer.cpp
     unit/test_parser.cpp
     unit/test_ako.cpp

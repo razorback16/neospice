@@ -796,12 +796,41 @@ next1:      if(vbs <= -3*vt) {
              *     store charge storage info for meyer's cap in lx table
              */
 
+            /* [3B gain-homotopy] Scale the nonlinear channel + junction
+             * contributions (current AND matching Jacobian conductances) by
+             * the same device_gain_fact lambda so the stamp stays consistent:
+             * matrix = lambda*dI/dV, rhs = lambda*I, keeping Newton quadratic.
+             * Parasitic series resistances (drain/sourceConductance) and the
+             * gate caps (gcgs/gcgd/gcgb, zero at DC) are linear/passive and are
+             * left unscaled. lambda==1.0 is a no-op (bit-identical default). The
+             * persisted here->MOS1g* device state is restored after stamping so
+             * convergence testing and AC analysis see the true small-signal
+             * conductances. */
+            const double mos1_lambda = ckt->CKTdeviceGainFact;
+            const double mos1_sav_gm   = here->MOS1gm;
+            const double mos1_sav_gds  = here->MOS1gds;
+            const double mos1_sav_gmbs = here->MOS1gmbs;
+            const double mos1_sav_gbd  = here->MOS1gbd;
+            const double mos1_sav_gbs  = here->MOS1gbs;
+            const double mos1_sav_cbd  = here->MOS1cbd;
+            const double mos1_sav_cbs  = here->MOS1cbs;
+            if (mos1_lambda != 1.0) {
+                here->MOS1gm   *= mos1_lambda;
+                here->MOS1gds  *= mos1_lambda;
+                here->MOS1gmbs *= mos1_lambda;
+                here->MOS1gbd  *= mos1_lambda;
+                here->MOS1gbs  *= mos1_lambda;
+                here->MOS1cbd  *= mos1_lambda;
+                here->MOS1cbs  *= mos1_lambda;
+                cdrain         *= mos1_lambda;
+            }
+
             /*
              *  load current vector
              */
-            ceqbs = model->MOS1type * 
+            ceqbs = model->MOS1type *
 		(here->MOS1cbs-(here->MOS1gbs)*vbs);
-            ceqbd = model->MOS1type * 
+            ceqbd = model->MOS1type *
 		(here->MOS1cbd-(here->MOS1gbd)*vbd);
             if (here->MOS1mode >= 0) {
                 xnrm=1;
@@ -852,6 +881,17 @@ next1:      if(vbs <= -3*vt) {
             ckt->mat->add(here->MOS1SPbPtr, (-here->MOS1gbs-(xnrm-xrev)*here->MOS1gmbs));
             ckt->mat->add(here->MOS1SPdpPtr, (-here->MOS1gds-xrev*
 				     (here->MOS1gm+here->MOS1gmbs)));
+
+            /* [3B gain-homotopy] restore unscaled small-signal device state */
+            if (mos1_lambda != 1.0) {
+                here->MOS1gm   = mos1_sav_gm;
+                here->MOS1gds  = mos1_sav_gds;
+                here->MOS1gmbs = mos1_sav_gmbs;
+                here->MOS1gbd  = mos1_sav_gbd;
+                here->MOS1gbs  = mos1_sav_gbs;
+                here->MOS1cbd  = mos1_sav_cbd;
+                here->MOS1cbs  = mos1_sav_cbs;
+            }
         }
     }
     return 0;

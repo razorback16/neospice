@@ -1130,6 +1130,30 @@ innerline1000:;
 		 *     store charge storage info for meyer's cap in lx table
 		 */
 		    
+		/* [3B gain-homotopy] Scale nonlinear channel + junction current and the
+		 * matching Jacobian conductances by the same device_gain_fact lambda so
+		 * the stamp stays consistent (matrix = lambda*dI/dV, rhs = lambda*I).
+		 * Parasitic series resistances and gate caps (zero at DC) stay unscaled.
+		 * lambda==1.0 is a bit-identical no-op; here->MOS3g* state is restored
+		 * after stamping so convergence testing and AC see true conductances. */
+		const double mos3_lambda = ckt->CKTdeviceGainFact;
+		const double mos3_sav_gm   = here->MOS3gm;
+		const double mos3_sav_gds  = here->MOS3gds;
+		const double mos3_sav_gmbs = here->MOS3gmbs;
+		const double mos3_sav_gbd  = here->MOS3gbd;
+		const double mos3_sav_gbs  = here->MOS3gbs;
+		const double mos3_sav_cbd  = here->MOS3cbd;
+		const double mos3_sav_cbs  = here->MOS3cbs;
+		if (mos3_lambda != 1.0) {
+		    here->MOS3gm   *= mos3_lambda;
+		    here->MOS3gds  *= mos3_lambda;
+		    here->MOS3gmbs *= mos3_lambda;
+		    here->MOS3gbd  *= mos3_lambda;
+		    here->MOS3gbs  *= mos3_lambda;
+		    here->MOS3cbd  *= mos3_lambda;
+		    here->MOS3cbs  *= mos3_lambda;
+		    cdrain        *= mos3_lambda;
+		}
 		/*
 		 *  load current vector
 		 */
@@ -1193,6 +1217,17 @@ printf("%g %g %g %g %g\n", -gcgs,-gcgd,0.0,-gcgs,0.0);
 		mat.add(here->MOS3SPbPtr, (-here->MOS3gbs-(xnrm-xrev)*here->MOS3gmbs));
 		mat.add(here->MOS3SPdpPtr, (-here->MOS3gds-
 					 xrev*(here->MOS3gm+here->MOS3gmbs)));
+	    /* [3B gain-homotopy] restore unscaled small-signal device state */
+	    if (mos3_lambda != 1.0) {
+	        here->MOS3gm   = mos3_sav_gm;
+	        here->MOS3gds  = mos3_sav_gds;
+	        here->MOS3gmbs = mos3_sav_gmbs;
+	        here->MOS3gbd  = mos3_sav_gbd;
+	        here->MOS3gbs  = mos3_sav_gbs;
+	        here->MOS3cbd  = mos3_sav_cbd;
+	        here->MOS3cbs  = mos3_sav_cbs;
+	    }
+
 	    }
     }
     return 0;

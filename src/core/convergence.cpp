@@ -683,6 +683,128 @@ NewtonResult gain_stepping(Circuit& ckt, ISolver& solver,
     return result;
 }
 
+// [3B] Variable-gain homotopy. Mirrors gain_stepping(), but ramps
+// ckt.options.device_gain_fact (0->1) to scale *semiconductor device*
+// nonlinearity (MOSFET channel/junction, BJT Gummel-Poon) instead of E/G/F/H
+// controlled-source gains. At device_gain_fact=0 the semiconductor devices
+// contribute ~nothing, so the circuit reduces to its passive network (a unique,
+// easy linear solution); lambda then ramps to 1 and the solution deforms
+// continuously to the true operating point. Realizes the homotopy
+// H(x,lambda) = lambda*F_device(x) + F_passive(x) = 0, exact at lambda=1.
+NewtonResult variable_gain_homotopy(Circuit& ckt, ISolver& solver,
+                                    std::vector<double>& solution,
+                                    const SimOptions& opts) {
+    const double original_device_gain_fact = ckt.options.device_gain_fact;
+
+    double fraction = 0.0;
+    double step = 0.001;
+    const double min_step = 1e-7;
+    int total_iterations = 0;
+    double last_residual = 0.0;
+    int32_t last_worst_idx = -1;
+
+    constexpr int MODEINITJCT_BIT   = 0x200;
+    constexpr int MODEINITFLOAT_BIT = 0x100;
+    constexpr int INITF_MASK        = 0x3F00;
+    int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
+    ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
+
+    // Start with all semiconductor device nonlinearity at zero (passive net).
+    solution.assign(solution.size(), 0.0);
+    clear_state(ckt);
+
+    SimOptions step_opts = opts;
+    step_opts.device_gain_fact = 0.0;
+    ckt.options.device_gain_fact = 0.0;
+
+    NewtonResult result;
+    try {
+        result = newton_solve(ckt, solver, solution, step_opts);
+    } catch (const std::runtime_error&) {
+        result.converged = false;
+    }
+    if (!result.converged) {
+        // Try gmin stepping with devices at zero gain (passive-network solve).
+        double zg = std::max(opts.gmin, opts.gshunt);
+        if (zg == 0.0) zg = opts.gmin;
+        double diag = zg;
+        for (int i = 0; i < 10; ++i) diag *= 10.0;
+        solution.assign(solution.size(), 0.0);
+        clear_state(ckt);
+        ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
+        SimOptions zg_opts = step_opts;
+        bool zg_ok = false;
+        for (int i = 0; i <= 10; ++i) {
+            zg_opts.diag_gmin = diag;
+            NewtonResult zr;
+            try { zr = newton_solve(ckt, solver, solution, zg_opts); }
+            catch (const std::runtime_error&) { zr.converged = false; }
+            if (!zr.converged) break;
+            total_iterations += zr.iterations;
+            diag /= 10.0;
+            ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
+            if (i == 10) zg_ok = true;
+        }
+        if (!zg_ok) {
+            ckt.options.device_gain_fact = original_device_gain_fact;
+            return {false, total_iterations, result.residual, result.worst_node_idx};
+        }
+    }
+    total_iterations += result.iterations;
+    std::vector<double> accepted_solution = solution;
+    StateCheckpoint accepted_state = save_state(ckt);
+
+    ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
+
+    while (fraction < 1.0) {
+        double next_frac = fraction + step;
+        if (next_frac > 1.0) next_frac = 1.0;
+
+        solution = accepted_solution;
+        restore_state(ckt, accepted_state);
+
+        step_opts.device_gain_fact = next_frac;
+        ckt.options.device_gain_fact = next_frac;
+        try {
+            result = newton_solve(ckt, solver, solution, step_opts);
+        } catch (const std::runtime_error&) {
+            result.converged = false;
+        }
+
+        last_residual = result.residual;
+        last_worst_idx = result.worst_node_idx;
+
+        if (result.converged) {
+            total_iterations += result.iterations;
+            fraction = next_frac;
+            accepted_solution = solution;
+            accepted_state = save_state(ckt);
+            if (result.iterations < opts.max_iter / 4) {
+                step = std::min(0.1, step * 1.5);
+            } else if (result.iterations > opts.max_iter / 2) {
+                step = std::max(min_step, step * 0.5);
+            }
+        } else {
+            if (step * (1.0 - fraction) < 1e-8)
+                break;
+            solution = accepted_solution;
+            restore_state(ckt, accepted_state);
+            step_opts.device_gain_fact = fraction;
+            ckt.options.device_gain_fact = fraction;
+            step *= 0.1;
+            if (step > 0.01) step = 0.01;
+            if (step < min_step) {
+                ckt.options.device_gain_fact = original_device_gain_fact;
+                return {false, total_iterations, last_residual, last_worst_idx};
+            }
+        }
+    }
+
+    ckt.options.device_gain_fact = original_device_gain_fact;
+    result.iterations = total_iterations;
+    return result;
+}
+
 NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
                                         std::vector<double>& solution,
                                         const SimOptions& opts) {

@@ -30,6 +30,7 @@ struct SimOptions {
     double gmin   = 1e-12;
     double gshunt = 0.0;      // minimum shunt conductance on all nodes (ngspice CKTgshunt)
     double diag_gmin = 0.0;   // solver diagonal regularization (ngspice CKTdiagGmin), separate from device gmin
+    bool equilibrate = false; // [3D] row/col matrix equilibration in NeoSolver (off => bit-identical baseline)
     double temp   = T_NOMINAL;
     double tnom   = T_NOMINAL; // nominal temperature for model parameters (default 27°C = 300.15K)
     int max_iter  = 100;
@@ -45,6 +46,7 @@ struct SimOptions {
     bool node_damping = false; // .option NODEDAMPING: damp large Newton voltage swings during DC
     double src_fact = 1.0;   // source scaling factor for CKTsrcFact-style source stepping
     double dep_src_fact = 1.0; // dependent-source gain scaling for gain stepping convergence aid
+    double device_gain_fact = 1.0; // semiconductor device-nonlinearity scaling for variable-gain homotopy convergence aid
     double xmu = 0.5;  // .option xmu: integration damping (0=BE, 0.5=trap)
     bool newtrunc = false; // .option newtrunc: global node-voltage LTE
 

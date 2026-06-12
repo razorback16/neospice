@@ -1247,6 +1247,30 @@ bypass:
              *     store charge storage info for meyer's cap in lx table
              */
 
+            /* [3B gain-homotopy] Scale nonlinear channel + junction current and the
+             * matching Jacobian conductances by the same device_gain_fact lambda so
+             * the stamp stays consistent (matrix = lambda*dI/dV, rhs = lambda*I).
+             * Parasitic series resistances and gate caps (zero at DC) stay unscaled.
+             * lambda==1.0 is a bit-identical no-op; here->MOS2g* state is restored
+             * after stamping so convergence testing and AC see true conductances. */
+            const double mos2_lambda = ckt->CKTdeviceGainFact;
+            const double mos2_sav_gm   = here->MOS2gm;
+            const double mos2_sav_gds  = here->MOS2gds;
+            const double mos2_sav_gmbs = here->MOS2gmbs;
+            const double mos2_sav_gbd  = here->MOS2gbd;
+            const double mos2_sav_gbs  = here->MOS2gbs;
+            const double mos2_sav_cbd  = here->MOS2cbd;
+            const double mos2_sav_cbs  = here->MOS2cbs;
+            if (mos2_lambda != 1.0) {
+                here->MOS2gm   *= mos2_lambda;
+                here->MOS2gds  *= mos2_lambda;
+                here->MOS2gmbs *= mos2_lambda;
+                here->MOS2gbd  *= mos2_lambda;
+                here->MOS2gbs  *= mos2_lambda;
+                here->MOS2cbd  *= mos2_lambda;
+                here->MOS2cbs  *= mos2_lambda;
+                cdrain        *= mos2_lambda;
+            }
             /*
              *  load current vector
              */
@@ -1316,6 +1340,17 @@ bypass:
             mat.add(here->MOS2SPbPtr, -(here->MOS2gbs+(xnrm-xrev)*here->MOS2gmbs));
             mat.add(here->MOS2SPdpPtr, -(here->MOS2gds+xrev*(here->MOS2gm+
                     here->MOS2gmbs)));
+        /* [3B gain-homotopy] restore unscaled small-signal device state */
+        if (mos2_lambda != 1.0) {
+            here->MOS2gm   = mos2_sav_gm;
+            here->MOS2gds  = mos2_sav_gds;
+            here->MOS2gmbs = mos2_sav_gmbs;
+            here->MOS2gbd  = mos2_sav_gbd;
+            here->MOS2gbs  = mos2_sav_gbs;
+            here->MOS2cbd  = mos2_sav_cbd;
+            here->MOS2cbs  = mos2_sav_cbs;
+        }
+
         }
     }
     return 0;
