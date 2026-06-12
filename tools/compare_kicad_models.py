@@ -273,6 +273,170 @@ def compare_values(neo_vals, ng_vals, external_only=False):
     return all_match, details
 
 
+# Below this threshold a circuit's entire DC solution is numerical noise: every
+# node sits at ~0 V because nothing drives it (an unexcited fixture). ngspice
+# returns the same ~0 here when it can parse the deck — see undriven-circuit
+# cross-check — so "neospice solved it, ngspice didn't" is NOT a correctness win;
+# ngspice merely failed earlier (at parse). Any deck with a real source has that
+# source's node >= its value, so this reliably flags only dead fixtures.
+TRIVIAL_SOLUTION_V = 1e-6
+
+
+def is_trivial_solution(vals):
+    """True if every node voltage is below TRIVIAL_SOLUTION_V (unexcited deck)."""
+    if not vals:
+        return False
+    vmags = [abs(v) for k, v in vals.items() if k.startswith('v(')]
+    if not vmags:
+        return False
+    return max(vmags) < TRIVIAL_SOLUTION_V
+
+
+# ---------------------------------------------------------------------------
+# Isolated + driven fallback
+#
+# Many subckt tests come back NEO_ONLY/NEO_TRIVIAL purely because ngspice-psa
+# aborts the *entire* .include'd library on one unrelated bad construct
+# elsewhere in the file (an unknown device in another subckt, a stray UTF-8
+# byte, an undefined PSpice param). The requested part is fine. When that
+# happens we retry with (a) the target subckt extracted into a clean,
+# dependency-closed library so ngspice can parse it, and (b) a driving source
+# injected so an otherwise-unexcited fixture actually exercises the device.
+# This rescues the fraction ngspice is technically able to evaluate into real
+# MATCH/MISMATCH comparisons; the rest stay NEO_ONLY/NEO_TRIVIAL (ngspice-psa
+# genuinely can't handle the PSpice syntax — that is the robustness gap itself).
+# ---------------------------------------------------------------------------
+
+def _subckt_blocks(text):
+    """Return ({name_lower: [lines]}, {model_lower: line}) for every .subckt
+    (including nested) and .model in a library file."""
+    blocks, models = {}, {}
+    namestack, bufstack = [], []
+    for ln in text.splitlines():
+        s = ln.strip()
+        low = s.lower()
+        if low.startswith('.subckt'):
+            parts = s.split()
+            if len(parts) >= 2:
+                namestack.append(parts[1])
+                bufstack.append([ln])
+        elif low.startswith('.ends'):
+            if namestack:
+                bufstack[-1].append(ln)
+                nm = namestack.pop()
+                blk = bufstack.pop()
+                blocks[nm.lower()] = blk
+                if bufstack:
+                    bufstack[-1].extend(blk)
+        else:
+            if bufstack:
+                bufstack[-1].append(ln)
+            m = re.match(r'\.model\s+(\S+)', low)
+            if m:
+                models[m.group(1).lower()] = ln
+    return blocks, models
+
+
+def _x_subckt_name(tokens):
+    """The subckt name an X-instance references: the last token before any
+    PARAMS:/key=val tail (NOT tokens[-1], which is a param when PARAMS: is used)."""
+    body = tokens[1:]
+    cut = len(body)
+    for i, t in enumerate(body):
+        if t.upper() == 'PARAMS:' or '=' in t:
+            cut = i
+            break
+    return body[cut - 1].lower() if cut > 0 else None
+
+
+def _block_deps(block):
+    """Subckt/model names referenced by element lines inside a .subckt block."""
+    refs = set()
+    for ln in block:
+        s = ln.strip()
+        if not s or s.startswith('*') or s.startswith('.'):
+            continue
+        toks = s.split()
+        c = s[0].lower()
+        if c == 'x':
+            nm = _x_subckt_name(toks)
+            if nm:
+                refs.add(nm)
+        elif c in 'qmdjzw' and len(toks) >= 3:
+            for t in toks[1:]:
+                if re.match(r'^[a-zA-Z]', t) and '=' not in t:
+                    refs.add(t.lower())
+    return refs
+
+
+def build_isolated_lib(target, lib_path):
+    """Extract `target` subckt + its full dependency closure (nested subckts and
+    referenced models) from `lib_path` into a standalone library string.
+    Returns (lib_text, found)."""
+    try:
+        text = Path(lib_path).read_text(errors='replace')
+    except Exception:
+        return None, False
+    blocks, models = _subckt_blocks(text)
+    tgt = target.lower()
+    if tgt not in blocks:
+        return None, False
+    want, stack = set(), [tgt]
+    while stack:
+        n = stack.pop()
+        if n in want or n not in blocks:
+            continue
+        want.add(n)
+        for dep in _block_deps(blocks[n]):
+            if dep in blocks and dep not in want:
+                stack.append(dep)
+    needed_models = set()
+    for n in want:
+        for dep in _block_deps(blocks[n]):
+            if dep in models:
+                needed_models.add(dep)
+    out = [models[m] for m in sorted(needed_models)]
+    for n in want:
+        out += blocks[n] + ['']
+    return "\n".join(out), True
+
+
+def make_isolated_driven_netlist(netlist):
+    """Transform a generated subckt test into an isolated + driven version:
+      * replace the whole-library .include with an extracted, dependency-closed lib
+      * if the fixture is undriven, inject a 5 V source (through 1k) on the first
+        generic net so the device is actually exercised
+    Returns (new_netlist, iso_lib_text) or (None, None) if it can't be built."""
+    inc = re.search(r'\.include\s+"([^"]+)"', netlist)
+    xline = re.search(r'(?m)^[Xx]\S+\s+(.+)$', netlist)
+    if not inc or not xline:
+        return None, None
+    subname = _x_subckt_name(('X ' + xline.group(1)).split())
+    if not subname:
+        return None, None
+    iso_lib, found = build_isolated_lib(subname, inc.group(1))
+    if not found:
+        return None, None
+
+    lines = netlist.splitlines()
+    out = []
+    already_driven = any(
+        re.match(r'^(VIN|VCC|VEE|VSTIM|ISTIM)\b', l, re.IGNORECASE) for l in lines)
+    injected = False
+    for l in lines:
+        if l.strip().lower().startswith('.include'):
+            out.append('.include "__ISO_LIB__"')
+            continue
+        m = re.match(r'^R_\S+\s+(net_\S+)\s+0\s+100k\s*$', l)
+        if m and not already_driven and not injected:
+            out.append('VSTIM stim 0 DC 5')
+            out.append(f'RSTIM stim {m.group(1)} 1k')
+            injected = True
+            continue
+        out.append(l)
+    return "\n".join(out) + "\n", iso_lib
+
+
 def run_one_test(args_tuple):
     """Worker function for parallel execution. Returns a result dict."""
     kind, name, info, netlist, rel_path, neo_bin, ng_bin, ext_only = args_tuple
@@ -280,12 +444,47 @@ def run_one_test(args_tuple):
     neo_ok, neo_vals, neo_err, neo_time = run_simulator(netlist, neo_bin, is_ngspice=False)
     ng_ok, ng_vals, ng_err, ng_time = run_simulator(netlist, ng_bin, is_ngspice=True)
 
+    # Fallback: if ngspice failed (almost always a whole-library parse abort) on
+    # a subckt test, retry with the target isolated into a clean lib and driven.
+    # Only adopt the isolated run if BOTH simulators then succeed — that turns a
+    # NEO_ONLY/NEO_TRIVIAL non-comparison into a real MATCH/MISMATCH. Otherwise we
+    # keep the original result (ngspice genuinely can't evaluate the PSpice deck).
+    isolated = False
+    if neo_ok and not ng_ok and kind == 'subckt':
+        iso_netlist, iso_lib = make_isolated_driven_netlist(netlist)
+        if iso_netlist and iso_lib:
+            libf = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                        mode='w', suffix='.lib', delete=False, dir='/tmp') as lf:
+                    lf.write(iso_lib)
+                    libf = lf.name
+                iso_netlist = iso_netlist.replace('__ISO_LIB__', libf)
+                i_neo_ok, i_neo_vals, i_neo_err, i_neo_t = run_simulator(
+                    iso_netlist, neo_bin, is_ngspice=False)
+                i_ng_ok, i_ng_vals, i_ng_err, i_ng_t = run_simulator(
+                    iso_netlist, ng_bin, is_ngspice=True)
+                if i_neo_ok and i_ng_ok:
+                    isolated = True
+                    netlist = iso_netlist
+                    neo_ok, neo_vals, neo_err, neo_time = i_neo_ok, i_neo_vals, i_neo_err, i_neo_t
+                    ng_ok, ng_vals, ng_err, ng_time = i_ng_ok, i_ng_vals, i_ng_err, i_ng_t
+            finally:
+                if libf:
+                    try:
+                        os.unlink(libf)
+                    except OSError:
+                        pass
+
     if neo_ok and ng_ok:
         match, details = compare_values(neo_vals, ng_vals, external_only=ext_only)
         status = 'MATCH' if match else 'MISMATCH'
         mismatches = [d for d in details if not d.get('ok', True)]
     elif neo_ok and not ng_ok:
-        status = 'NEO_ONLY'
+        # neospice ran where ngspice failed. Only a real win if neospice
+        # actually simulated something — an all-~0 (unexcited) solution is a
+        # meaningless "win" (ngspice would also return ~0 if it could parse).
+        status = 'NEO_TRIVIAL' if is_trivial_solution(neo_vals) else 'NEO_ONLY'
         details = []
         mismatches = []
     elif not neo_ok and ng_ok:
@@ -303,6 +502,7 @@ def run_one_test(args_tuple):
         'info': info,
         'file': rel_path,
         'status': status,
+        'isolated': isolated,
         'neo_ok': neo_ok,
         'ng_ok': ng_ok,
         'neo_err': neo_err if not neo_ok else '',
@@ -454,7 +654,7 @@ def main():
                 show = True
             elif args.mismatches_only:
                 show = result['status'] in ('MISMATCH', 'NG_ONLY')
-            elif result['status'] not in ('MATCH', 'BOTH_FAIL'):
+            elif result['status'] not in ('MATCH', 'BOTH_FAIL', 'NEO_TRIVIAL'):
                 show = True
 
             if show:
@@ -484,13 +684,17 @@ def main():
     print("=" * 75)
     print("COMPARISON SUMMARY")
     print("=" * 75)
-    for status in ('MATCH', 'MISMATCH', 'NEO_ONLY', 'NG_ONLY', 'BOTH_FAIL'):
+    for status in ('MATCH', 'MISMATCH', 'NEO_ONLY', 'NEO_TRIVIAL',
+                   'NG_ONLY', 'BOTH_FAIL'):
         if stats[status]:
             pct = 100.0 * stats[status] / total
             bar = '#' * int(pct / 2)
             print(f"  {status:11s}: {stats[status]:5d} / {total}  ({pct:5.1f}%)  {bar}")
 
     match_rate = 100.0 * stats['MATCH'] / total if total else 0
+    # NEO_TRIVIAL is excluded from "agreement": it is neither a value match nor a
+    # demonstrated win — neospice merely solved an unexcited deck to ~0 V while
+    # ngspice failed to parse it. Counting it as agreement would inflate the rate.
     agree_rate = 100.0 * (stats['MATCH'] + stats['NEO_ONLY'] + stats['BOTH_FAIL']) / total if total else 0
 
     print()
@@ -500,7 +704,10 @@ def main():
     print(f"NG_ONLY (ngspice passes, neospice fails): {stats['NG_ONLY']}")
     print(f"  These represent genuine neospice gaps.")
     print(f"NEO_ONLY (neospice passes, ngspice fails): {stats['NEO_ONLY']}")
-    print(f"  These represent neospice being more robust than ngspice.")
+    print(f"  Non-trivial solves where neospice is more robust than ngspice.")
+    print(f"NEO_TRIVIAL (neospice solves ~0, ngspice fails): {stats['NEO_TRIVIAL']}")
+    print(f"  Unexcited fixtures (all nodes < {TRIVIAL_SOLUTION_V} V) — not a win:")
+    print(f"  ngspice returns the same ~0 when it can parse; it merely failed at parse.")
 
     # Mismatch breakdown by file
     if mismatch_details:
@@ -593,6 +800,7 @@ def main():
                 'info': r['info'],
                 'file': r['file'],
                 'status': r['status'],
+                'isolated': r.get('isolated', False),
                 'neo_ok': r['neo_ok'],
                 'ng_ok': r['ng_ok'],
                 'neo_err': r['neo_err'],
