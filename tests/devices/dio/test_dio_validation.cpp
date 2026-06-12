@@ -335,3 +335,66 @@ TEST_F(DiodeValidation, PspiceCompatRsZeroEquilibrium) {
         << "(-1.00726e-06); a positive value means the RS=0 compat conductance "
         << "was not applied";
 }
+
+// ============================================================================
+//  IKF/IKK below epsmin -> high-injection rolloff disabled
+//
+// ngspice diosetup.c:93-104 disables the high-injection knee-current effect
+// when IKF (forward) or IKK (reverse) is given but smaller than CKTepsmin
+// (default 1e-28, cktntask.c:141), printing "Warning: IKF too small - model
+// effect disabled!". Some vendor diode models (e.g. ph_diode.lib BAS221) carry
+// an absurd IKF (1.866e-186) that, if applied, collapses the forward current
+// via the sqrt(IKF/(IKF+cd)) rolloff. Without the guard, neospice gave
+// i(V1)=-7.96e-13 instead of ngspice's -2.42478e-04. The guard makes the knee
+// effect disappear so only the diffusion + recombination terms remain.
+//
+// Self-contained: reference value is the verified ngspice -D ngbehavior=psa
+// output for the same .op fixture.
+// ============================================================================
+TEST_F(DiodeValidation, ForwardKneeBelowEpsminDisabled) {
+    // BAS221 recombination diode params with the absurd IKF that must be
+    // disabled. With IKF active the current collapses to ~-8e-13.
+    const std::string netlist =
+        "* bas221 tiny ikf must be disabled\n"
+        "V1 anode 0 0.7\n"
+        "D1 anode 0 DREC\n"
+        ".MODEL DREC D IS=10.010E-21 N=4.995 RS=1.0000E-3 IKF=1.8660E-186 "
+        "ISR=1.3340E-9 NR=2.100 CJO=598e-15 M=.3333 VJ=.75 BV=330.09 "
+        "IBV=2.7225E-3 TT=52.960E-9\n"
+        ".op\n"
+        ".end\n";
+
+    auto ckt = sim_.parse(netlist);
+    auto dc = sim_.run_dc(ckt);
+    double i_v1 = dc.current("v1");
+
+    // Verified ngspice -D ngbehavior=psa reference: i(V1) = -2.42478e-04.
+    EXPECT_NEAR(i_v1, -2.42478e-04, 1e-8)
+        << "i(V1)=" << i_v1 << " should match ngspice-psa (-2.42478e-04); a "
+        << "near-zero value (~-8e-13) means the IKF<epsmin guard was missing "
+        << "and the high-injection rolloff was wrongly applied";
+}
+
+// Sanity: a physically-sized IKF (above epsmin) must still take effect, i.e.
+// the guard must not disable a legitimate knee current.
+TEST_F(DiodeValidation, ForwardKneeAboveEpsminActive) {
+    auto run = [&](const std::string& ikf) {
+        const std::string netlist =
+            "* knee current active check\n"
+            "V1 anode 0 0.8\n"
+            "D1 anode 0 DK\n"
+            ".MODEL DK D IS=1e-14 N=1 RS=0 IKF=" + ikf + "\n"
+            ".op\n.end\n";
+        auto ckt = sim_.parse(netlist);
+        auto dc = sim_.run_dc(ckt);
+        return dc.current("v1");
+    };
+    // A real 1mA knee noticeably limits forward current vs a huge (effectively
+    // disabled) knee; the two must differ -> the guard left the real one alone.
+    double i_small_knee = run("1e-3");
+    double i_no_knee    = run("1e30");
+    EXPECT_NE(i_small_knee, i_no_knee)
+        << "a real IKF=1mA must still roll off forward current";
+    EXPECT_LT(std::abs(i_small_knee), std::abs(i_no_knee))
+        << "the 1mA knee should limit current below the un-kneed case";
+}

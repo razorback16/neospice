@@ -76,6 +76,7 @@ namespace Shim {
         double CKTreltol     = 1e-3;
         double CKTabstol     = 1e-12;
         double CKTvoltTol    = 1e-6;
+        double CKTepsmin     = 1e-28;  // ngspice cktntask.c:141 (TSKepsmin default)
         int    CKTmode       = 0;
         int    CKTbadMos3    = 0;
         int    CKTnumStates  = 0;

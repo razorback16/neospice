@@ -92,9 +92,22 @@ DIOsetup(Shim::Matrix *matrix, DIOModel *inModel, Shim::Ckt *ckt, int *states)
         }
         if(!model->DIOforwardKneeCurrentGiven) {
             model->DIOforwardKneeCurrent = 0.0;
+        } else if (model->DIOforwardKneeCurrent < ckt->CKTepsmin) {
+            /* ngspice diosetup.c:93-98 — disable the high-injection rolloff
+             * when IKF is below epsmin. neospice's load path gates on
+             * DIOforwardKneeCurrent > 0, so zero the value to match the
+             * Given=FALSE effect in ngspice dioload.c. */
+            model->DIOforwardKneeCurrentGiven = 0;
+            model->DIOforwardKneeCurrent = 0.0;
+            printf("Warning: IKF too small - model effect disabled!\n");
         }
         if(!model->DIOreverseKneeCurrentGiven) {
             model->DIOreverseKneeCurrent = 0.0;
+        } else if (model->DIOreverseKneeCurrent < ckt->CKTepsmin) {
+            /* ngspice diosetup.c:99-104 — same guard for IKK (reverse knee). */
+            model->DIOreverseKneeCurrentGiven = 0;
+            model->DIOreverseKneeCurrent = 0.0;
+            printf("Warning: IKK too small - model effect disabled!\n");
         }
         if(!model->DIObrkdEmissionCoeffGiven) {
             model->DIObrkdEmissionCoeff = model->DIOemissionCoeff;
