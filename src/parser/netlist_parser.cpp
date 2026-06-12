@@ -809,6 +809,15 @@ void NetlistParser::pass025_resolve_funcs_params(ParseState& state) {
                         std::string val_str = line.tokens[i + 2];
                         pre_raw_params.emplace_back(key, val_str);
                         i += 2;
+                    } else if (line.tokens[i] != "=" &&
+                               i + 1 < line.tokens.size() &&
+                               line.tokens[i + 1].size() > 1 &&
+                               line.tokens[i + 1].front() == '=') {
+                        // Glued form: "key", "=val"  (e.g. ".param Vpp =525mV")
+                        std::string key = to_lower(line.tokens[i]);
+                        std::string val_str = line.tokens[i + 1].substr(1);
+                        pre_raw_params.emplace_back(key, val_str);
+                        i += 1;
                     }
                 }
             }

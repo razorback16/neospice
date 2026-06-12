@@ -811,6 +811,14 @@ std::vector<TokenizedLine> expand_instance(
                            i + 2 < bline.tokens.size()) {
                     body_raw.emplace_back(to_lower(bline.tokens[i]), bline.tokens[i + 2]);
                     i += 2;
+                } else if (bline.tokens[i] != "=" &&
+                           i + 1 < bline.tokens.size() &&
+                           bline.tokens[i + 1].size() > 1 &&
+                           bline.tokens[i + 1].front() == '=') {
+                    // Glued form: "key", "=val"  (e.g. ".Param Vpp =525mV")
+                    body_raw.emplace_back(to_lower(bline.tokens[i]),
+                                          bline.tokens[i + 1].substr(1));
+                    i += 1;
                 }
             }
         }
@@ -908,6 +916,21 @@ std::vector<TokenizedLine> expand_instance(
                         }
                     }
                     i += 2;
+                } else if (line.tokens[i] != "=" &&
+                           i + 1 < line.tokens.size() &&
+                           line.tokens[i + 1].size() > 1 &&
+                           line.tokens[i + 1].front() == '=') {
+                    // Glued form: "key", "=val"  (e.g. ".Param Vpp =525mV")
+                    std::string key = to_lower(line.tokens[i]);
+                    std::string val_str = line.tokens[i + 1].substr(1);
+                    if (!key.empty() && !val_str.empty()) {
+                        try {
+                            params[key] = eval_expression(val_str, params);
+                        } catch (...) {
+                            try { params[key] = parse_spice_number(val_str); } catch (...) {}
+                        }
+                    }
+                    i += 1;
                 }
             }
             continue;
