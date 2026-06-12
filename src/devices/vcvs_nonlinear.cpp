@@ -284,6 +284,18 @@ TableVCVS::TableVCVS(std::string name,
     derivs_.resize(nv, 0.0);
     std::sort(table_.begin(), table_.end(),
               [](const TablePoint& a, const TablePoint& b) { return a.x < b.x; });
+
+    // Locate special simulator-variable indices (TIME/TEMPER/HERTZ).  These are
+    // surfaced by the ASRC compiler as NODE_VOLTAGE refs with sentinel names and
+    // carry the -2 node index — they are NOT circuit nodes and must be skipped in
+    // stamping / node enumeration and injected with the live value at evaluate.
+    const auto& refs = expr_.var_refs();
+    for (int i = 0; i < nv; ++i) {
+        if (refs[i].kind != asrc::VarKind::NODE_VOLTAGE) continue;
+        if (refs[i].name1 == "__time__")   time_var_idx_   = i;
+        else if (refs[i].name1 == "__temper__") temper_var_idx_ = i;
+        else if (refs[i].name1 == "__hertz__")  hertz_var_idx_  = i;
+    }
 }
 
 void TableVCVS::set_branch_index(int32_t idx) {
@@ -302,6 +314,24 @@ int32_t TableVCVS::var_circuit_index(int i) const {
 void TableVCVS::fill_var_values(const std::vector<double>& voltages) {
     const auto& refs = expr_.var_refs();
     for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
+        // Special simulator variables — injected from the active IntegratorCtx,
+        // never read from the solution vector (their node index is the -2
+        // sentinel).  Mirrors ASRCDevice::fill_var_values.
+        if (i == time_var_idx_) {
+            var_values_[i] = tls_integrator_ctx ? tls_integrator_ctx->current_time : 0.0;
+            continue;
+        }
+        if (i == temper_var_idx_) {
+            double temp_celsius = 27.0;
+            if (tls_integrator_ctx && tls_integrator_ctx->options)
+                temp_celsius = tls_integrator_ctx->options->temp - 273.15;
+            var_values_[i] = temp_celsius;
+            continue;
+        }
+        if (i == hertz_var_idx_) {
+            var_values_[i] = tls_integrator_ctx ? tls_integrator_ctx->ac_freq : 0.0;
+            continue;
+        }
         switch (refs[i].kind) {
         case asrc::VarKind::NODE_VOLTAGE: {
             int32_t ni = var_indices_[i];
@@ -328,7 +358,10 @@ void TableVCVS::fill_var_values(const std::vector<double>& voltages) {
 std::vector<int32_t> TableVCVS::external_nodes() const {
     if (!has_expr_) return {np_, nn_, ncp_, ncn_};
     std::vector<int32_t> nodes = {np_, nn_};
-    for (auto n : var_indices_) nodes.push_back(n);
+    // Skip negative indices: GROUND (-1) and the TIME/TEMPER/HERTZ sentinel (-2)
+    // are not circuit nodes and must not register as device connections (a -2
+    // here surfaced as a spurious floating '__time__' node).
+    for (auto n : var_indices_)  if (n >= 0) nodes.push_back(n);
     for (auto n : var_indices2_) if (n >= 0) nodes.push_back(n);
     return nodes;
 }

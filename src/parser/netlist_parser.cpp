@@ -2122,10 +2122,27 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         }
                     }
                 }
-                // Extract node name from {V(node)}
+                // Extract node name from {V(node)}.
+                // The control expression is brace-delimited; the '=' separator and
+                // even the first table-point pair may be GLUED to the control token
+                // with no surrounding whitespace, e.g. "{ABS(V(a,b))}=(0,0.029)"
+                // (elantec.lib, Sborka.lib).  Split at the first '}' that closes the
+                // control: the remainder (after an optional leading '=') is the lead
+                // chunk of table data that must still be parsed.
                 std::string ctrl_expr = table_ctrl_token;
-                // The '=' separator between {expr} and the table points may be
-                // glued to the control token (e.g. "{V(14,15)}="); strip it.
+                std::string glued_table_data;  // table text glued after the control '}'
+                {
+                    size_t close_brace = ctrl_expr.find('}');
+                    if (close_brace != std::string::npos &&
+                        close_brace + 1 < ctrl_expr.size()) {
+                        std::string tail = ctrl_expr.substr(close_brace + 1);
+                        ctrl_expr.erase(close_brace + 1);
+                        // Drop a leading '=' separator if glued to the control.
+                        if (!tail.empty() && tail.front() == '=') tail.erase(0, 1);
+                        glued_table_data = std::move(tail);
+                    }
+                }
+                // A trailing '=' separator may still be glued (e.g. "{V(14,15)}=").
                 if (!ctrl_expr.empty() && ctrl_expr.back() == '=') ctrl_expr.pop_back();
                 // Strip braces
                 if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
@@ -2160,8 +2177,14 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 if (idx < tokens.size() && tokens[idx] == "=") ++idx;
 
                 // Parse table points: (x,y) may be in one token or spread across tokens
-                // Join remaining tokens and parse (x,y) pairs
+                // Join remaining tokens and parse (x,y) pairs.  Any table data that
+                // was glued to the control token ("{...}=(0,0.029)") is the first
+                // chunk and must be prepended.
                 std::string joined;
+                if (!glued_table_data.empty()) {
+                    joined += glued_table_data;
+                    joined += ' ';
+                }
                 for (size_t i = idx; i < tokens.size(); ++i) {
                     joined += tokens[i];
                     joined += ' ';
@@ -2195,6 +2218,21 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
                     for (int i = 0; i < nv; ++i) {
                         const auto& ref = refs[i];
+                        // Special simulator variables (TIME/TEMPER/HERTZ) are
+                        // surfaced by the ASRC compiler as NODE_VOLTAGE refs with
+                        // sentinel names.  They are NOT circuit nodes — route them
+                        // to the -2 sentinel so the device injects the live value
+                        // (mirrors the E/G VALUE paths); creating a literal
+                        // '__time__'/'__temper__'/'__hertz__' node would leave a
+                        // floating one-terminal node and break DC convergence
+                        // (e.g. fairch.lib 'E_rjc ... table {TIME} = ...').
+                        if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                            (ref.name1 == "__time__" ||
+                             ref.name1 == "__temper__" ||
+                             ref.name1 == "__hertz__")) {
+                            t_node_indices[i] = -2;
+                            continue;
+                        }
                         switch (ref.kind) {
                         case asrc::VarKind::NODE_VOLTAGE: {
                             std::string lname = ref.name1;
@@ -2540,9 +2578,22 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                 }
                 std::string ctrl_expr = table_ctrl_token;
-                // The '=' separator between {expr} and the table points can be
-                // glued to the control token (e.g. "{V(14,15)}="); strip it so
-                // the braces below are removed and simple V() detection works.
+                // The '=' separator and even the first table-point pair may be
+                // GLUED to the control token ("{...}=(0,0.029)").  Split at the
+                // first '}' closing the control; the remainder (after an optional
+                // leading '=') is the lead chunk of table data.
+                std::string glued_table_data;
+                {
+                    size_t close_brace = ctrl_expr.find('}');
+                    if (close_brace != std::string::npos &&
+                        close_brace + 1 < ctrl_expr.size()) {
+                        std::string tail = ctrl_expr.substr(close_brace + 1);
+                        ctrl_expr.erase(close_brace + 1);
+                        if (!tail.empty() && tail.front() == '=') tail.erase(0, 1);
+                        glued_table_data = std::move(tail);
+                    }
+                }
+                // A trailing '=' separator may still be glued (e.g. "{V(14,15)}=").
                 if (!ctrl_expr.empty() && ctrl_expr.back() == '=') ctrl_expr.pop_back();
                 if (!ctrl_expr.empty() && ctrl_expr.front() == '{') ctrl_expr.erase(0, 1);
                 if (!ctrl_expr.empty() && ctrl_expr.back() == '}') ctrl_expr.pop_back();
@@ -2571,6 +2622,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 if (idx < tokens.size() && tokens[idx] == "=") ++idx;
 
                 std::string joined;
+                if (!glued_table_data.empty()) {
+                    joined += glued_table_data;
+                    joined += ' ';
+                }
                 for (size_t i = idx; i < tokens.size(); ++i) {
                     joined += tokens[i];
                     joined += ' ';
@@ -2602,6 +2657,21 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
                     for (int i = 0; i < nv; ++i) {
                         const auto& ref = refs[i];
+                        // Special simulator variables (TIME/TEMPER/HERTZ) are
+                        // surfaced by the ASRC compiler as NODE_VOLTAGE refs with
+                        // sentinel names.  They are NOT circuit nodes — route them
+                        // to the -2 sentinel so the device injects the live value
+                        // (mirrors the E/G VALUE paths); creating a literal
+                        // '__time__'/'__temper__'/'__hertz__' node would leave a
+                        // floating one-terminal node and break DC convergence
+                        // (e.g. fairch.lib 'E_rjc ... table {TIME} = ...').
+                        if (ref.kind == asrc::VarKind::NODE_VOLTAGE &&
+                            (ref.name1 == "__time__" ||
+                             ref.name1 == "__temper__" ||
+                             ref.name1 == "__hertz__")) {
+                            t_node_indices[i] = -2;
+                            continue;
+                        }
                         switch (ref.kind) {
                         case asrc::VarKind::NODE_VOLTAGE: {
                             std::string lname = ref.name1;

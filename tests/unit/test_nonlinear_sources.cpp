@@ -280,6 +280,104 @@ R1 out 0 1k
 }
 
 // ---------------------------------------------------------------------------
+// Regression: a compound TABLE control that references the TIME special
+// variable must NOT create a literal circuit node '__time__'.  The ASRC
+// compiler surfaces TIME as a NODE_VOLTAGE ref with the sentinel name
+// '__time__'; the parser must route it to the -2 sentinel and the device must
+// inject the live time value (0 at .op), not enumerate it as a connection.
+// (fairch.lib 'E_rjc 90 40 table {TIME} = ...' floated a one-terminal
+// '__time__' node and broke DC convergence.)
+// ---------------------------------------------------------------------------
+TEST(NonlinearVCVS, TableTimeControlNoFloatingNode) {
+    Simulator sim;
+    std::string netlist = R"(
+* TABLE VCVS controlled by TIME — must not create a '__time__' node.
+* TIME = 0 sits at the mid-point of the (-1,0)..(1,1) segment, so the
+* interpolation is exactly 0.5 with no corner-smoothing ambiguity.
+E_rjc 90 0 table {TIME} = (-1,0.0) (1,1.0)
+R90 90 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    const auto& dc = std::get<DCResult>(result.analysis);
+    // No spurious '__time__' circuit node may exist.
+    EXPECT_THROW(dc.voltage("__time__"), std::out_of_range);
+    // At .op, TIME = 0 → mid-segment interpolation → 0.5.
+    EXPECT_NEAR(dc.voltage("90"), 0.5, 1e-4);
+}
+
+// Same protection for the TEMPER special inside a compound TABLE control
+// (motorsen.lib 'etmult ... table {TEMP} = ...').  At default temperature
+// 27 C the table argument is 27, clamping to the last breakpoint.
+TEST(NonlinearVCVS, TableTemperControlNoFloatingNode) {
+    Simulator sim;
+    std::string netlist = R"(
+* TABLE VCVS controlled by TEMPER — must not create a '__temper__' node.
+* Default TEMPER = 27 C sits mid-segment of (-13,1.0)..(67,3.0): the arg 27
+* maps to 1.0 + (27-(-13))/(67-(-13))*(3.0-1.0) = 1.0 + 0.5*2.0 = 2.0.
+E_t 5 0 table {TEMPER} = (-13,1.0) (67,3.0)
+R5 5 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    const auto& dc = std::get<DCResult>(result.analysis);
+    EXPECT_THROW(dc.voltage("__temper__"), std::out_of_range);
+    // TEMPER = 27 C → mid-segment interpolation → 2.0.
+    EXPECT_NEAR(dc.voltage("5"), 2.0, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
+// Regression: the '=' separator (and even the first table-point pair) may be
+// GLUED to the control braces with no whitespace, e.g.
+//   E1 OUT 0 TABLE {ABS(V(in))}=(0,0.029) (0.25,0.6)
+// (elantec.lib, Sborka.lib).  The parser must split at the control '}' and
+// recover the glued lead chunk of table data; previously the whole token was
+// mis-parsed and the source was dropped.
+// ---------------------------------------------------------------------------
+TEST(NonlinearVCVS, TableGluedEqualsSeparator) {
+    Simulator sim;
+    std::string netlist = R"(
+* Glued '}=(...)' control/table boundary
+Vin in 0 DC 0.5
+Rin in 0 1meg
+E1 out 0 TABLE {ABS(V(in))}=(0,0.0) (0.25,2.5) (1.0,2.5)
+R1 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    // ABS(0.5)=0.5, interpolate between (0.25,2.5) and (1.0,2.5) → 2.5.
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 2.5, 1e-4);
+}
+
+// Same glued-'}=' recovery for the VCCS (G/TABLE) path.
+TEST(NonlinearVCCS, TableGluedEqualsSeparator) {
+    Simulator sim;
+    std::string netlist = R"(
+* Glued '}=(...)' control/table boundary on a G TABLE source
+Vin in 0 DC 0.5
+Rin in 0 1meg
+G1 0 out TABLE {ABS(V(in))}=(0,0.0) (0.25,1m) (1.0,1m)
+R1 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    // ABS(0.5)=0.5 → table 1mA into 1k → v(out) = 1.0 V.
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 1.0, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
 // Parser: verify POLY syntax is correctly parsed
 // ---------------------------------------------------------------------------
 TEST(NonlinearVCVS, ParserPolyLinear) {

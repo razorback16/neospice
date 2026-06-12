@@ -253,6 +253,13 @@ private:
     mutable std::vector<double> var_values_;
     mutable std::vector<double> derivs_;
 
+    // Special simulator-variable indices into var_refs (-1 if unused).  These
+    // are not circuit nodes: TIME/TEMPER/HERTZ are injected at evaluate() from
+    // the active IntegratorCtx and skipped in stamping / node enumeration.
+    int time_var_idx_   = -1;
+    int temper_var_idx_ = -1;
+    int hertz_var_idx_  = -1;
+
     struct VarStamp {
         MatrixOffset off_branch  = -1;  // (branch, var_node1)
         MatrixOffset off_branch2 = -1;  // (branch, var_node2)
