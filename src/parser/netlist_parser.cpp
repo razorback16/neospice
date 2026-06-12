@@ -910,10 +910,19 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
             // order in which models are later materialized.
             if (line.tokens.size() >= 2) {
                 std::string key = to_lower(line.tokens[1]);
-                ParseState::RawModel rm;
-                rm.tokens = line.tokens;
-                rm.source_order = state.next_model_order++;
-                state.model_raw[key] = std::move(rm);
+                // First-wins: ngspice's INPmkMod (inpmkmod.c) silently ignores a
+                // later .model with a name already in the model table — the FIRST
+                // definition wins. Malformed vendor libs (e.g. Pmos_ST.lib) put
+                // duplicate `.MODEL MOS PMOS` / `.MODEL DBS D` cards with DIFFERENT
+                // params at global scope; matching ngspice means keeping the first.
+                // emplace() is a no-op when the key already exists, so neither the
+                // stored tokens nor source_order is overwritten by later dups.
+                if (state.model_raw.find(key) == state.model_raw.end()) {
+                    ParseState::RawModel rm;
+                    rm.tokens = line.tokens;
+                    rm.source_order = state.next_model_order++;
+                    state.model_raw.emplace(key, std::move(rm));
+                }
             }
         } else if (is_param_card(line.tokens[0])) {
             // .param key=value  or  .param key={expr}  or  .param key = value
