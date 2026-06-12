@@ -91,6 +91,15 @@ public:
     Mode mode() const { return mode_; }
     const asrc::CompiledExpression& expression() const { return expr_; }
 
+    /// Patch the branch-current provider for variable i after construction.
+    /// Used to wire a self-referencing I(self) reference to this device's own
+    /// branch (a voltage-mode ASRC owns a branch but cannot be looked up via
+    /// ckt.devices() before it is added).
+    void set_vsource_ptr(int i, const Device* dev) {
+        if (i >= 0 && i < static_cast<int>(vsource_ptrs_.size()))
+            vsource_ptrs_[i] = dev;
+    }
+
 private:
     /// Get the circuit solution vector index for variable i.
     /// For I() refs, reads the VSource's branch_index (valid after finalize step 1).

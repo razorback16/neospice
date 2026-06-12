@@ -452,3 +452,58 @@ TEST(ExpandFuncs, WrongArgCountSkipped) {
     std::string result = expand_funcs("myfunc(3)", fdefs);
     EXPECT_EQ(result, "myfunc(3)");
 }
+
+// Deeply-chained .FUNC definitions (vendor MOSFET models nest 11+ levels).
+// Regression: the old 10-pass cap + one-expansion-per-pass left the deepest
+// helper (e.g. `eg`) unexpanded -> "unknown function 'eg'".
+TEST(ExpandFuncs, DeepNestedChain) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    // f1 -> f2 -> ... -> f12 (12 levels deep)
+    for (int i = 1; i <= 11; ++i) {
+        fdefs["f" + std::to_string(i)] =
+            FuncDef{{"x"}, "f" + std::to_string(i + 1) + "(x)+1"};
+    }
+    fdefs["f12"] = FuncDef{{"x"}, "x*2"};
+    std::string out = expand_funcs("f1(5)", fdefs);
+    // No unexpanded fN( should remain.
+    EXPECT_EQ(out.find("f1("), std::string::npos);
+    EXPECT_EQ(out.find("f12("), std::string::npos);
+    // 5*2 + 11 = 21
+    EXPECT_DOUBLE_EQ(eval(out), 21.0);
+}
+
+// A heavily-reused helper that appears many times after expansion must still
+// fully expand (combinatorial blow-up of occurrences).
+TEST(ExpandFuncs, HeavilyReusedHelperExpandsFully) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["leaf"] = FuncDef{{"x"}, "x+1"};
+    // top calls leaf four times; expanding top then leaf must leave no leaf(.
+    fdefs["top"] = FuncDef{{"x"}, "leaf(x)+leaf(x)+leaf(x)+leaf(x)"};
+    std::string out = expand_funcs("top(0)", fdefs);
+    EXPECT_EQ(out.find("leaf("), std::string::npos);
+    EXPECT_DOUBLE_EQ(eval(out), 4.0);
+}
+
+// ============================================================
+// subst_param_names — bare param substitution with guards
+// ============================================================
+TEST(SubstParamNames, BasicSubstitution) {
+    std::unordered_map<std::string, double> p{{"iee", 1e-5}};
+    EXPECT_EQ(subst_param_names("1.63m - IEE", p), "1.63m - 1e-05");
+}
+
+TEST(SubstParamNames, FunctionCallsLeftAlone) {
+    std::unordered_map<std::string, double> p{{"v", 3.0}};
+    // V(...) is a function call, not the param 'v'.
+    EXPECT_EQ(subst_param_names("V(a) + 1", p), "V(a) + 1");
+}
+
+TEST(SubstParamNames, DottedHierarchicalNameProtected) {
+    // 'x1' is a local param (=34) but must NOT be substituted inside a scoped
+    // device name like x1.x1.v_sense3 — otherwise I() refs get mangled to
+    // 34.34.v_sense3 and resolution fails.
+    std::unordered_map<std::string, double> p{{"x1", 34.0}};
+    EXPECT_EQ(subst_param_names("I(x1.x1.v_sense3)", p), "I(x1.x1.v_sense3)");
+    // A bare, non-dotted x1 still substitutes.
+    EXPECT_EQ(subst_param_names("x1 + 1", p), "34 + 1");
+}

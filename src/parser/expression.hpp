@@ -30,6 +30,17 @@ std::string expand_funcs(const std::string& expr,
 double eval_expression(const std::string& expr,
                        const std::unordered_map<std::string, double>& params);
 
+/// Substitute bare parameter identifiers in an expression string with their
+/// numeric values, preserving expression structure. Identifiers followed by
+/// '(' are treated as function calls and left alone; identifiers that are a
+/// component of a dotted hierarchical name (adjacent to '.') are also left
+/// intact (they are scoped device/node names, never params). Used to resolve
+/// params inside behavioral E/G/B VALUE expressions while keeping arithmetic
+/// (e.g. `{1.63m - IEE}` -> `{1.63m - 1e-05}`) foldable downstream.
+std::string subst_param_names(
+    const std::string& expr,
+    const std::unordered_map<std::string, double>& params);
+
 /// Resolve a list of (name, expression) parameter pairs in dependency order.
 /// Handles forward references and detects circular dependencies.
 /// Throws ParseError on circular dependencies or unknown parameter references.

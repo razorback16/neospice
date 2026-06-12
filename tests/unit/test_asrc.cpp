@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "api/neospice.hpp"
 #include "devices/asrc/expression_ast.hpp"
+#include "core/types.hpp"   // ParseError
 #include <cmath>
 #include <vector>
 
@@ -340,6 +341,25 @@ B1 out 0 V={V(in)*2}
     EXPECT_NEAR(dc.voltage("out"), 2.0, 1e-6);
 }
 
+TEST(ASRC, SelfReferencingBranchCurrent) {
+    // A voltage-mode behavioral source that reads its OWN branch current:
+    //   E_OUT out 0 VALUE={7 + 1k*I(E_OUT)}
+    // The source owns a branch; into a 1k load, I = -V/1k = -out/1k, so
+    //   out = 7 + 1k * (-out/1k) = 7 - out  =>  out = 3.5.
+    // Regression: deferred-ASRC resolution previously failed to find the
+    // not-yet-added device by name and dropped the source.
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Self referencing E source
+R1 out 0 1k
+E_OUT out 0 VALUE={7 + 1k*I(E_OUT)}
+.op
+.end
+)");
+    auto dc = sim.run_dc(ckt);
+    EXPECT_NEAR(dc.voltage("out"), 3.5, 1e-6);
+}
+
 TEST(ASRC, BehavioralVCCS) {
     // B1 0 out I={V(in)*1m}  with V(in)=5V, R=1k
     // Current = 5*1m = 5mA flowing from 0 to out => V(out) = I*R = 5V
@@ -651,4 +671,50 @@ B1 out 0 V={square(V(in))+1}
 )");
     auto dc = sim.run_dc(ckt);
     EXPECT_NEAR(dc.voltage("out"), 17.0, 1e-6);
+}
+
+// ===========================================================================
+// PWL/TABLE breakpoint constant-folding
+// ===========================================================================
+// Breakpoints must be compile-time constants, but vendor PSpice models write
+// them as NEGATE(const) (`-100m`), unary '+', or param-folded arithmetic
+// (`{1.63m - 1e-05}` after IEE substitution). These must fold, not be rejected.
+TEST(ASRCExpr, PwlNegativeBreakpoints) {
+    // -100m and +50m breakpoints (unary minus / plus on a constant).
+    auto expr = CompiledExpression::compile(
+        "TABLE( V(x) , -100m , 1.0 , +50m , 2.0 )");
+    EXPECT_EQ(expr.num_vars(), 1);
+    std::vector<double> derivs;
+    // x = -100m -> y = 1.0 (left endpoint clamp)
+    EXPECT_NEAR(expr.evaluate(std::vector<double>{-0.1}, derivs), 1.0, 1e-9);
+    // x = +50m -> y = 2.0 (right endpoint clamp)
+    EXPECT_NEAR(expr.evaluate(std::vector<double>{0.05}, derivs), 2.0, 1e-9);
+    // midpoint x = -25m -> linear interp halfway -> 1.5
+    EXPECT_NEAR(expr.evaluate(std::vector<double>{-0.025}, derivs), 1.5, 1e-9);
+}
+
+TEST(ASRCExpr, PwlArithmeticBreakpointY) {
+    // y-values are constant arithmetic (param already folded numerically).
+    auto expr = CompiledExpression::compile(
+        "TABLE( V(x) , 3.3 , 1.63m - 1e-05 , 5.0 , 1.81m - 1e-05 )");
+    std::vector<double> derivs;
+    EXPECT_NEAR(expr.evaluate(std::vector<double>{3.3}, derivs), 1.63e-3 - 1e-5, 1e-12);
+    EXPECT_NEAR(expr.evaluate(std::vector<double>{5.0}, derivs), 1.81e-3 - 1e-5, 1e-12);
+}
+
+TEST(ASRCExpr, PwlVariableBreakpointRejected) {
+    // A breakpoint that genuinely depends on a node voltage must still be
+    // rejected (cannot be a compile-time constant).
+    EXPECT_THROW(
+        CompiledExpression::compile("TABLE( V(x) , V(y) , 1.0 , 5.0 , 2.0 )"),
+        ParseError);
+}
+
+// ===========================================================================
+// TEMP alias resolves to circuit temperature (same as TEMPER)
+// ===========================================================================
+TEST(ASRCExpr, TempAliasResolvesLikeTemper) {
+    auto expr = CompiledExpression::compile("TEMP - 27");
+    ASSERT_EQ(expr.num_vars(), 1);
+    EXPECT_EQ(expr.var_refs()[0].name1, "__temper__");
 }

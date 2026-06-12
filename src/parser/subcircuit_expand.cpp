@@ -17,6 +17,12 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+// Accept both `.param` and `.params` — ngspice matches via ciprefix.
+bool is_param_card(const std::string& tok) {
+    std::string l = to_lower(tok);
+    return l == ".param" || l == ".params";
+}
+
 /// Return the index of the first PSpice parameter-section keyword
 /// (PARAMS:/OPTIONAL:/TEXT:) in an X-element token list, or tokens.size()
 /// if none.  The subcircuit name and connection nodes precede this boundary;
@@ -163,46 +169,9 @@ std::string subst_brace_params(
     return result;
 }
 
-/// Substitute bare parameter identifiers in an expression string with their
-/// numeric values.  Identifiers followed by '(' are treated as function calls
-/// (V, I, IF, MIN, MAX, etc.) and are left alone.
-std::string subst_param_names(
-    const std::string& expr,
-    const std::unordered_map<std::string, double>& params) {
-    std::string result;
-    result.reserve(expr.size());
-    size_t i = 0;
-    while (i < expr.size()) {
-        if (std::isalpha(static_cast<unsigned char>(expr[i])) || expr[i] == '_') {
-            size_t start = i;
-            while (i < expr.size() &&
-                   (std::isalnum(static_cast<unsigned char>(expr[i])) || expr[i] == '_'))
-                ++i;
-            std::string name = expr.substr(start, i - start);
-            // Check if followed by '(' — if so, it's a function call, not a param
-            size_t tmp = i;
-            while (tmp < expr.size() && std::isspace(static_cast<unsigned char>(expr[tmp]))) ++tmp;
-            if (tmp < expr.size() && expr[tmp] == '(') {
-                result += name;
-                continue;
-            }
-            // Check if it's a known parameter
-            std::string lname = to_lower(name);
-            auto it = params.find(lname);
-            if (it != params.end()) {
-                char buf[64];
-                std::snprintf(buf, sizeof(buf), "%.15g", it->second);
-                result += buf;
-            } else {
-                result += name;
-            }
-        } else {
-            result += expr[i];
-            ++i;
-        }
-    }
-    return result;
-}
+// subst_param_names — bare-param substitution with dotted-hierarchical-name
+// guard — is shared from parser/expression.{hpp,cpp} (included above) so the
+// top-level E/G VALUE path and this subckt-expansion path stay in lockstep.
 
 /// Check if a token looks like a parameter expression (contains braces or
 /// references a known parameter name).
@@ -826,7 +795,7 @@ std::vector<TokenizedLine> expand_instance(
         std::vector<std::pair<std::string, std::string>> body_raw;
         for (const auto& bline : body_lines) {
             if (bline.tokens.empty()) continue;
-            if (to_lower(bline.tokens[0]) != ".param") continue;
+            if (!is_param_card(bline.tokens[0])) continue;
             for (size_t i = 1; i < bline.tokens.size(); ++i) {
                 auto eq = bline.tokens[i].find('=');
                 if (eq != std::string::npos) {
@@ -909,7 +878,7 @@ std::vector<TokenizedLine> expand_instance(
         std::string first = to_lower(line.tokens[0]);
 
         // Skip .param lines — already resolved into params map
-        if (first == ".param") {
+        if (is_param_card(line.tokens[0])) {
             // But add local .param definitions to params map
             for (size_t i = 1; i < line.tokens.size(); ++i) {
                 auto eq_pos = line.tokens[i].find('=');

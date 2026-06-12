@@ -152,6 +152,12 @@ inline bool iequals(const std::string& tok, const char* lit) {
     return lit[i] == '\0';
 }
 
+// Accept both `.param` and `.params` (and trailing plural) — ngspice matches
+// the directive via ciprefix, so `.params` (source.lib) is treated as `.param`.
+inline bool is_param_card(const std::string& tok) {
+    return iequals(tok, ".param") || iequals(tok, ".params");
+}
+
 // Parse a .func directive from a tokenized line and add to func_defs.
 // .func name(arg1, arg2, ...) {body}
 // The tokenizer splits on whitespace, so tokens will be like:
@@ -784,7 +790,7 @@ void NetlistParser::pass025_resolve_funcs_params(ParseState& state) {
         std::vector<std::pair<std::string, std::string>> pre_raw_params;
         for (const auto& line : state.lines) {
             if (line.tokens.empty()) continue;
-            if (iequals(line.tokens[0], ".param")) {
+            if (is_param_card(line.tokens[0])) {
                 for (size_t i = 1; i < line.tokens.size(); ++i) {
                     auto eq_pos = line.tokens[i].find('=');
                     if (eq_pos != std::string::npos) {
@@ -882,7 +888,7 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
                 rm.source_order = state.next_model_order++;
                 state.model_raw[key] = std::move(rm);
             }
-        } else if (iequals(line.tokens[0], ".param")) {
+        } else if (is_param_card(line.tokens[0])) {
             // .param key=value  or  .param key={expr}  or  .param key = value
             // Collect raw (name, expression) pairs; resolve later in dependency order.
             for (size_t i = 1; i < line.tokens.size(); ++i) {
@@ -2183,8 +2189,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     continue;
                 }
 
-                // Expand .func calls
+                // Expand .func calls, then resolve any bare .param identifiers
+                // so behavioral arithmetic (e.g. {1.63m - IEE}) folds to numeric
+                // values (subckt-internal E/G already do this via the expander;
+                // top-level E elements need it here too).
                 expr_str = expand_funcs(expr_str, func_defs);
+                expr_str = subst_param_names(expr_str, state.params);
 
                 // Compile the expression
                 asrc::CompiledExpression compiled;
@@ -2567,6 +2577,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 }
 
                 expr_str = expand_funcs(expr_str, func_defs);
+                expr_str = subst_param_names(expr_str, state.params);
 
                 asrc::CompiledExpression compiled;
                 try {
@@ -3581,9 +3592,20 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         std::vector<const Device*> vsource_ptrs(nv, nullptr);
 
         bool asrc_ok = true;
+        // Indices whose I() target is this very (voltage-mode) source — a
+        // self-reference. The device cannot be found via ckt.devices() because
+        // it is not yet added; it owns its own branch, so wire it after build.
+        std::vector<int> self_ref_idx;
+        std::string bd_key = to_lower(bd.name);
         for (int i = 0; i < nv; ++i) {
             if (refs[i].kind == asrc::VarKind::BRANCH_CURRENT &&
                 !bd.vsrc_names[i].empty()) {
+                if (bd.mode == ASRCDevice::Mode::VOLTAGE &&
+                    to_lower(bd.vsrc_names[i]) == bd_key) {
+                    // I(self): voltage-mode ASRC owns a branch variable.
+                    self_ref_idx.push_back(i);
+                    continue;
+                }
                 const Device* vs = branch_provider_for(bd.vsrc_names[i]);
                 if (!vs) {
                     fprintf(stderr, "Warning: Line %d: B element '%s' references unknown voltage source '%s' in I() — skipping\n",
@@ -3602,6 +3624,10 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
             std::move(bd.node_indices),
             std::move(bd.node_indices2),
             std::move(vsource_ptrs));
+
+        // Wire self-referencing I(self) branch reads to this device itself.
+        for (int idx : self_ref_idx)
+            asrc_dev->set_vsource_ptr(idx, asrc_dev.get());
 
         // Apply temperature coefficient parameters
         asrc_dev->set_tc1(bd.tc1);

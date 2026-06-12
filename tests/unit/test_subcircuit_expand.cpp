@@ -298,6 +298,72 @@ R_load outp 0 1Meg
     }
 }
 
+// Instance-prefix / param-name collision: an inner subckt instantiated as x1
+// inside an outer x1 has a local .param also named x1. A behavioral source
+// reading I(v_sense) must resolve to the scoped device name x1.x1.v_sense,
+// NOT have its 'x1' components replaced by the param value. Regression: param
+// substitution mangled the dotted name to <val>.<val>.v_sense, dropping the
+// source.
+TEST(SubcircuitExpand, InstancePrefixParamNameCollision) {
+    std::string netlist = wrap(R"(
+.subckt inner a b
+.param x1=34
+V_sense a mid 0
+R1 mid b 1k
+B_eds b 0 V={1 - I(V_sense)*x1}
+.ends inner
+
+.subckt outer p q
+X1 p q inner
+.ends outer
+
+V1 in 0 5
+X1 in out outer
+R_load out 0 1Meg
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    // The behavioral source x1.x1.b_eds must be present (not dropped).
+    bool found_beds = false;
+    for (const auto& dev : ckt.devices()) {
+        if (dev->name() == "x1.x1.b_eds") found_beds = true;
+    }
+    EXPECT_TRUE(found_beds)
+        << "x1.x1.b_eds should resolve I(x1.x1.v_sense) and not be dropped";
+}
+
+// `.params` (plural) must be accepted exactly like `.param` (ngspice ciprefix).
+TEST(SubcircuitExpand, PluralParamsDirectiveAccepted) {
+    std::string netlist = wrap(R"(
+.subckt rblk in out
+.params rval=2k
+R1 in out {rval}
+.ends rblk
+
+V1 inp 0 10
+X1 inp outp rblk
+R_load outp 0 1Meg
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    bool found = false;
+    for (const auto& dev : ckt.devices()) {
+        auto* r = dynamic_cast<const Resistor*>(dev.get());
+        if (r && r->name() == "x1.r1") {
+            found = true;
+            EXPECT_NEAR(r->resistance(), 2000.0, 1e-6)
+                << ".params rval=2k must resolve {rval} to 2k";
+        }
+    }
+    EXPECT_TRUE(found) << "x1.r1 should exist (subckt expanded)";
+}
+
 // -----------------------------------------------------------------------
 // 11. Default parameter (no override) uses subcircuit default
 // -----------------------------------------------------------------------

@@ -459,8 +459,11 @@ std::string expand_funcs(const std::string& expr,
     // Work on a lowercase copy for matching, but substitute in the original
     std::string result = expr;
 
-    // Iterate until no more expansions happen (handles nested func calls)
-    for (int pass = 0; pass < 10; ++pass) {
+    // Iterate until no more expansions happen (handles nested func calls).
+    // Each pass strips one nesting level, so deeply-chained .FUNC definitions
+    // (e.g. a -> b -> c -> ... 11+ deep in vendor MOSFET models) need more than
+    // a handful of passes; the loop terminates early via the `expanded` flag.
+    for (int pass = 0; pass < 64; ++pass) {
         bool expanded = false;
         for (const auto& [fname, fdef] : func_defs) {
             size_t pos = 0;
@@ -565,8 +568,20 @@ std::string expand_funcs(const std::string& expr,
                 std::string expanded_str = "(" + sub_body + ")";
                 result.replace(pos, call_len, expanded_str);
                 expanded = true;
-                // Don't advance pos — re-check for nested expansions at same position
-                break; // restart inner loop since result_lower is now stale
+                // Rebuild the lowercase view (result changed) and continue
+                // scanning for further occurrences of THIS function from the
+                // same position. Restarting from scratch after every single
+                // replacement makes a self-referential / heavily-reused .FUNC
+                // chain (e.g. vendor MOSFET models where one helper is invoked
+                // dozens of times) blow up combinatorially: each pass would
+                // expand only one occurrence per function, needing an
+                // unbounded number of passes. Re-scanning in place keeps the
+                // total work proportional to the (large but finite) fully
+                // expanded string. pos is left unchanged so nested calls
+                // introduced by this body are expanded too.
+                result_lower.resize(result.size());
+                std::transform(result.begin(), result.end(),
+                               result_lower.begin(), ::tolower);
             }
         }
         if (!expanded) break;
@@ -671,6 +686,52 @@ std::unordered_map<std::string, double> resolve_params(
     }
 
     return resolved;
+}
+
+std::string subst_param_names(
+    const std::string& expr,
+    const std::unordered_map<std::string, double>& params) {
+    std::string result;
+    result.reserve(expr.size());
+    size_t i = 0;
+    while (i < expr.size()) {
+        if (std::isalpha(static_cast<unsigned char>(expr[i])) || expr[i] == '_') {
+            size_t start = i;
+            while (i < expr.size() &&
+                   (std::isalnum(static_cast<unsigned char>(expr[i])) || expr[i] == '_'))
+                ++i;
+            std::string name = expr.substr(start, i - start);
+            // Function call? (identifier followed by '(') — leave alone.
+            size_t tmp = i;
+            while (tmp < expr.size() && std::isspace(static_cast<unsigned char>(expr[tmp]))) ++tmp;
+            if (tmp < expr.size() && expr[tmp] == '(') {
+                result += name;
+                continue;
+            }
+            // Component of a dotted hierarchical name? — leave intact.
+            bool dotted = (i < expr.size() && expr[i] == '.') ||
+                          (start > 0 && expr[start - 1] == '.');
+            if (dotted) {
+                result += name;
+                continue;
+            }
+            std::string lname;
+            lname.reserve(name.size());
+            for (char c : name) lname += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            auto it = params.find(lname);
+            if (it != params.end()) {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%.15g", it->second);
+                result += buf;
+            } else {
+                result += name;
+            }
+        } else {
+            result += expr[i];
+            ++i;
+        }
+    }
+    return result;
 }
 
 } // namespace neospice

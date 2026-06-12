@@ -13,6 +13,92 @@
 namespace neospice {
 namespace asrc {
 
+namespace {
+
+// Attempt to evaluate a parsed sub-AST to a constant. Succeeds only when the
+// subtree contains no run-time variable references (V()/I()/TIME/TEMPER/HERTZ/
+// branch currents) — i.e. pure numeric/arithmetic/function expressions, which
+// includes NEGATE(const), unary '+', and param-folded arithmetic such as
+// `1.63m - 1e-05`. Returns true and writes `out` on success; false if any
+// VARIABLE node (or an unsupported stateful node) is encountered.
+//
+// PWL/TABLE breakpoints must be compile-time constants. PSpice vendor models
+// commonly write them as `-100m`, `+50m`, or `{1.63m - IEE}` (param-folded),
+// which the grammar parses into NEGATE/ADD/SUB-of-constants rather than a bare
+// CONSTANT; folding here accepts those while still rejecting any breakpoint
+// that genuinely depends on a node voltage or simulation variable.
+bool try_fold_constant(const ASTNode* node, double& out) {
+    if (!node) return false;
+    double a = 0.0, b = 0.0, c = 0.0;
+    switch (node->type) {
+    case NodeType::CONSTANT:
+        out = node->value;
+        return true;
+    case NodeType::NEGATE:
+        if (!try_fold_constant(node->left.get(), a)) return false;
+        out = -a; return true;
+    case NodeType::LOGICAL_NOT:
+        if (!try_fold_constant(node->left.get(), a)) return false;
+        out = (a != 0.0) ? 0.0 : 1.0; return true;
+    case NodeType::ADD:
+        if (!try_fold_constant(node->left.get(), a) ||
+            !try_fold_constant(node->right.get(), b)) return false;
+        out = a + b; return true;
+    case NodeType::SUB:
+        if (!try_fold_constant(node->left.get(), a) ||
+            !try_fold_constant(node->right.get(), b)) return false;
+        out = a - b; return true;
+    case NodeType::MUL:
+        if (!try_fold_constant(node->left.get(), a) ||
+            !try_fold_constant(node->right.get(), b)) return false;
+        out = a * b; return true;
+    case NodeType::DIV:
+        if (!try_fold_constant(node->left.get(), a) ||
+            !try_fold_constant(node->right.get(), b)) return false;
+        out = a / b; return true;
+    case NodeType::POW:
+    case NodeType::POW_FN:
+        if (!try_fold_constant(node->left.get(), a) ||
+            !try_fold_constant(node->right.get(), b)) return false;
+        out = std::pow(a, b); return true;
+    case NodeType::ABS:
+        if (!try_fold_constant(node->left.get(), a)) return false;
+        out = std::fabs(a); return true;
+    case NodeType::SQRT:
+        if (!try_fold_constant(node->left.get(), a)) return false;
+        out = std::sqrt(a); return true;
+    case NodeType::EXP:
+        if (!try_fold_constant(node->left.get(), a)) return false;
+        out = std::exp(a); return true;
+    case NodeType::LOG:
+        if (!try_fold_constant(node->left.get(), a)) return false;
+        out = std::log(a); return true;
+    case NodeType::LOG10:
+        if (!try_fold_constant(node->left.get(), a)) return false;
+        out = std::log10(a); return true;
+    case NodeType::MIN:
+        if (!try_fold_constant(node->left.get(), a) ||
+            !try_fold_constant(node->right.get(), b)) return false;
+        out = std::min(a, b); return true;
+    case NodeType::MAX:
+        if (!try_fold_constant(node->left.get(), a) ||
+            !try_fold_constant(node->right.get(), b)) return false;
+        out = std::max(a, b); return true;
+    case NodeType::SGN:
+        if (!try_fold_constant(node->left.get(), a)) return false;
+        out = (a > 0.0) ? 1.0 : (a < 0.0 ? -1.0 : 0.0); return true;
+    case NodeType::LIMIT:
+        if (!try_fold_constant(node->left.get(), a) ||
+            !try_fold_constant(node->mid.get(), b) ||
+            !try_fold_constant(node->right.get(), c)) return false;
+        out = std::min(std::max(a, b), c); return true;
+    default:
+        return false;  // VARIABLE / stateful / unsupported — not a constant
+    }
+}
+
+}  // namespace
+
 // ===========================================================================
 // ExpressionParser
 // ===========================================================================
@@ -418,8 +504,13 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_primary() {
             return node;
         }
 
-        // TEMPER (simulation temperature in Celsius) - same sentinel pattern as TIME
-        if (lname == "temper") {
+        // TEMPER / TEMP (simulation temperature in Celsius) - same sentinel
+        // pattern as TIME. ngspice (inpcom.c) wraps a bare `temp` for numparam
+        // so it resolves to the circuit temperature in degC, identical to
+        // `temper`; vendor VALUE expressions (e.g. {DC+POL*DRIFT*(TEMP-27)})
+        // rely on this. A user `.param temp=...` is resolved earlier on the
+        // param path, so this alias only fires for the built-in temperature.
+        if (lname == "temper" || lname == "temp") {
             VarRef ref;
             ref.kind = VarKind::NODE_VOLTAGE;
             ref.name1 = "__temper__";
@@ -752,15 +843,17 @@ std::unique_ptr<ASTNode> ExpressionParser::parse_function(const std::string& nam
             if (!match(','))
                 throw ParseError("ASRC expression: PWL: expected ','");
             auto x_node = parse_logical_or();
-            if (x_node->type != NodeType::CONSTANT)
+            double x_val = 0.0;
+            if (!try_fold_constant(x_node.get(), x_val))
                 throw ParseError("ASRC expression: PWL breakpoint x must be constant");
             skip_ws();
             if (!match(','))
                 throw ParseError("ASRC expression: PWL: expected ',' between x,y pair");
             auto y_node = parse_logical_or();
-            if (y_node->type != NodeType::CONSTANT)
+            double y_val = 0.0;
+            if (!try_fold_constant(y_node.get(), y_val))
                 throw ParseError("ASRC expression: PWL breakpoint y must be constant");
-            points.emplace_back(x_node->value, y_node->value);
+            points.emplace_back(x_val, y_val);
         }
         if (pos_ >= expr_.size() || expr_[pos_] != ')')
             throw ParseError("ASRC expression: PWL: missing ')'");
