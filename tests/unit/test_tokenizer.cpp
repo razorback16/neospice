@@ -49,10 +49,28 @@ TEST(Tokenizer, Comments) {
     ASSERT_EQ(lines.size(), 1u);
 }
 
-TEST(Tokenizer, InlineComment) {
-    auto lines = tokenize("R1 net1 0 1k $ this is inline\n");
+TEST(Tokenizer, InlineCommentSemicolon) {
+    // ';' is an inline comment anywhere on the line (ngspice, all modes).
+    auto lines = tokenize("R1 net1 0 1k ; this is inline\n");
     ASSERT_EQ(lines.size(), 1u);
     EXPECT_EQ(lines[0].tokens.size(), 4u);
+}
+
+TEST(Tokenizer, DollarLineStartComment) {
+    // Under ngbehavior=psa (the mode the comparison harness runs, and the one
+    // neospice targets), '$' begins a comment ONLY when it is the first token
+    // of the line. A mid-line / trailing space-separated '$' is a valid
+    // identifier char (PSpice auto-named nodes like "$N_0002") and is NOT a
+    // comment — ngspice-psa errors on a bare trailing "$" rather than stripping
+    // it. So the trailing tokens must survive.
+    auto c = tokenize("$ this whole line is a comment\nR1 a b 1k\n");
+    ASSERT_EQ(c.size(), 1u);
+    EXPECT_EQ(c[0].tokens[0], "R1");
+
+    auto node = tokenize("* t\nR1 a $N_0002 1k\n");
+    ASSERT_EQ(node.size(), 1u);
+    EXPECT_EQ(node[0].tokens.size(), 4u);
+    EXPECT_EQ(node[0].tokens[2], "$N_0002");
 }
 
 TEST(Tokenizer, DotCommand) {
