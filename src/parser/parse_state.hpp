@@ -171,6 +171,17 @@ struct ParseState {
         int line_number;
     };
 
+    struct DeferredTableVCVS {
+        std::string name;
+        int32_t np, nn;
+        asrc::CompiledExpression expr;
+        std::vector<int32_t> node_indices;
+        std::vector<int32_t> node_indices2;
+        std::vector<std::string> vsrc_names;
+        std::vector<TablePoint> table_points;
+        int line_number;
+    };
+
     // Deferred element vectors
     std::vector<DeferredCCVS> deferred_ccvs;
     std::vector<DeferredCCCS> deferred_cccs;
@@ -182,6 +193,7 @@ struct ParseState {
     std::vector<DeferredLTRA> deferred_ltras;
     std::vector<DeferredASRC> deferred_asrcs;
     std::vector<DeferredTableVCCS> deferred_table_vccs;
+    std::vector<DeferredTableVCVS> deferred_table_vcvs;
 
     // DeviceRegistry parsed elements
     std::unordered_map<char, std::vector<std::unique_ptr<ParsedElement>>> parsed_elements;

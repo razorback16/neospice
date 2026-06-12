@@ -211,6 +211,75 @@ R1 out 0 1k
 }
 
 // ---------------------------------------------------------------------------
+// Expression-controlled TABLE VCVS: the control braces hold a full scalar
+// expression, not a bare V(node). Previously the parser dropped everything
+// but a single V(node) (collapsing scaled/compound controls to ground); the
+// expression must now be evaluated each Newton iteration. The control here is
+// {V(in)*5000}: with V(in)=0.5 the table argument is 2500, well past the last
+// breakpoint, so the output clamps to the last table value. Matches ngspice.
+// ---------------------------------------------------------------------------
+TEST(NonlinearVCVS, TableScaledExpressionControl) {
+    Simulator sim;
+    std::string netlist = R"(
+* Expression-controlled TABLE VCVS — scaled gain inside the control braces
+Vin in 0 DC 0.5
+Rin in 0 1meg
+E1 out 0 TABLE {V(in)*5000} = (0,0) (3.2,3.2)
+R1 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    // V(in)*5000 = 2500 >> 3.2 → clamp to last breakpoint y = 3.2.
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 3.2, 1e-4);
+}
+
+// Compound differential control {(V(inp)-V(inm))*5000} — both control nodes
+// must be carried through the expression (not collapsed to ground). Here the
+// argument 0.5*5000 = 2500 again clamps the high-gain comparator to 3.2.
+TEST(NonlinearVCVS, TableDifferentialExpressionControl) {
+    Simulator sim;
+    std::string netlist = R"(
+* Compound differential expression control
+Vinp inp 0 DC 0.5
+Vinm inm 0 DC 0.0
+Rinp inp 0 1meg
+Rinm inm 0 1meg
+E1 out 0 TABLE {(V(inp)-V(inm))*5000} = (0,0) (3.2,3.2)
+R1 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 3.2, 1e-4);
+}
+
+// Low-gain interpolating case: prove the scale factor is genuinely applied to
+// the table argument (not dropped to the bare V(in)). Gain ×2 with V(in)=1.0
+// gives arg = 2.0, the midpoint of (0,0)-(4,8) → y = 4.0. The dropped-gain bug
+// would use arg = 1.0 → y ≈ 2.0. Mid-segment, so corner smoothing is nil.
+TEST(NonlinearVCVS, TableExpressionInterpolatesWithGain) {
+    Simulator sim;
+    std::string netlist = R"(
+* Low-gain interpolating expression control
+Vin in 0 DC 1.0
+Rin in 0 1meg
+E1 out 0 TABLE {V(in)*2} = (0,0) (4,8)
+R1 out 0 1k
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 4.0, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
 // Parser: verify POLY syntax is correctly parsed
 // ---------------------------------------------------------------------------
 TEST(NonlinearVCVS, ParserPolyLinear) {

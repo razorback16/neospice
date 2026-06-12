@@ -1,9 +1,11 @@
 #include "devices/vcvs_nonlinear.hpp"
 #include "core/circuit.hpp"   // tls_integrator_ctx
+#include "devices/vsource.hpp"
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
 #include <functional>
+#include <cassert>
 
 namespace neospice {
 
@@ -259,8 +261,76 @@ TableVCVS::TableVCVS(std::string name,
               [](const TablePoint& a, const TablePoint& b) { return a.x < b.x; });
 }
 
+// Expression constructor: arbitrary scalar expression control.
+TableVCVS::TableVCVS(std::string name,
+                     int32_t node_pos, int32_t node_neg,
+                     asrc::CompiledExpression expr,
+                     std::vector<int32_t> var_indices,
+                     std::vector<int32_t> var_indices2,
+                     std::vector<const VSource*> vsource_ptrs,
+                     std::vector<TablePoint> table_points)
+    : Device(std::move(name))
+    , np_(node_pos)
+    , nn_(node_neg)
+    , table_(std::move(table_points))
+    , has_expr_(true)
+    , expr_(std::move(expr))
+    , var_indices_(std::move(var_indices))
+    , var_indices2_(std::move(var_indices2))
+    , vsource_ptrs_(std::move(vsource_ptrs))
+{
+    int nv = expr_.num_vars();
+    var_values_.resize(nv, 0.0);
+    derivs_.resize(nv, 0.0);
+    std::sort(table_.begin(), table_.end(),
+              [](const TablePoint& a, const TablePoint& b) { return a.x < b.x; });
+}
+
 void TableVCVS::set_branch_index(int32_t idx) {
     branch_idx_ = idx;
+}
+
+int32_t TableVCVS::var_circuit_index(int i) const {
+    const auto& ref = expr_.var_refs()[i];
+    if (ref.kind == asrc::VarKind::BRANCH_CURRENT) {
+        assert(vsource_ptrs_[i] != nullptr);
+        return vsource_ptrs_[i]->branch_index();
+    }
+    return var_indices_[i];
+}
+
+void TableVCVS::fill_var_values(const std::vector<double>& voltages) {
+    const auto& refs = expr_.var_refs();
+    for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
+        switch (refs[i].kind) {
+        case asrc::VarKind::NODE_VOLTAGE: {
+            int32_t ni = var_indices_[i];
+            var_values_[i] = (ni >= 0) ? voltages[ni] : 0.0;
+            break;
+        }
+        case asrc::VarKind::DIFF_VOLTAGE: {
+            int32_t n1 = var_indices_[i];
+            int32_t n2 = var_indices2_[i];
+            double v1 = (n1 >= 0) ? voltages[n1] : 0.0;
+            double v2 = (n2 >= 0) ? voltages[n2] : 0.0;
+            var_values_[i] = v1 - v2;
+            break;
+        }
+        case asrc::VarKind::BRANCH_CURRENT: {
+            int32_t br = var_circuit_index(i);
+            var_values_[i] = (br >= 0) ? voltages[br] : 0.0;
+            break;
+        }
+        }
+    }
+}
+
+std::vector<int32_t> TableVCVS::external_nodes() const {
+    if (!has_expr_) return {np_, nn_, ncp_, ncn_};
+    std::vector<int32_t> nodes = {np_, nn_};
+    for (auto n : var_indices_) nodes.push_back(n);
+    for (auto n : var_indices2_) if (n >= 0) nodes.push_back(n);
+    return nodes;
 }
 
 std::vector<std::string> TableVCVS::output_currents() const {
@@ -284,13 +354,35 @@ void TableVCVS::stamp_pattern(SparsityBuilder& builder) const {
     if (branch_idx_ < 0)
         throw std::logic_error("TableVCVS::stamp_pattern called before set_branch_index");
 
+    // KCL rows: output nodes couple to branch current
     stamp_if_not_ground(builder, np_, branch_idx_);
     stamp_if_not_ground(builder, nn_, branch_idx_);
 
+    // Branch equation row couples to output nodes
     stamp_if_not_ground(builder, branch_idx_, np_);
     stamp_if_not_ground(builder, branch_idx_, nn_);
-    stamp_if_not_ground(builder, branch_idx_, ncp_);
-    stamp_if_not_ground(builder, branch_idx_, ncn_);
+
+    if (!has_expr_) {
+        stamp_if_not_ground(builder, branch_idx_, ncp_);
+        stamp_if_not_ground(builder, branch_idx_, ncn_);
+        return;
+    }
+    // Expression mode: branch row couples to every referenced variable.
+    const auto& refs = expr_.var_refs();
+    for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
+        switch (refs[i].kind) {
+        case asrc::VarKind::NODE_VOLTAGE:
+            stamp_if_not_ground(builder, branch_idx_, var_indices_[i]);
+            break;
+        case asrc::VarKind::DIFF_VOLTAGE:
+            stamp_if_not_ground(builder, branch_idx_, var_indices_[i]);
+            stamp_if_not_ground(builder, branch_idx_, var_indices2_[i]);
+            break;
+        case asrc::VarKind::BRANCH_CURRENT:
+            stamp_if_not_ground(builder, branch_idx_, var_circuit_index(i));
+            break;
+        }
+    }
 }
 
 void TableVCVS::assign_offsets(const SparsityPattern& pattern) {
@@ -298,58 +390,148 @@ void TableVCVS::assign_offsets(const SparsityPattern& pattern) {
     off_nn_branch_  = offset_if_not_ground(pattern, nn_,         branch_idx_);
     off_branch_np_  = offset_if_not_ground(pattern, branch_idx_, np_);
     off_branch_nn_  = offset_if_not_ground(pattern, branch_idx_, nn_);
-    off_branch_ncp_ = offset_if_not_ground(pattern, branch_idx_, ncp_);
-    off_branch_ncn_ = offset_if_not_ground(pattern, branch_idx_, ncn_);
+
+    if (!has_expr_) {
+        off_branch_ncp_ = offset_if_not_ground(pattern, branch_idx_, ncp_);
+        off_branch_ncn_ = offset_if_not_ground(pattern, branch_idx_, ncn_);
+        return;
+    }
+    const auto& refs = expr_.var_refs();
+    var_stamps_.resize(refs.size());
+    for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
+        switch (refs[i].kind) {
+        case asrc::VarKind::NODE_VOLTAGE:
+            var_stamps_[i].off_branch = offset_if_not_ground(pattern, branch_idx_, var_indices_[i]);
+            break;
+        case asrc::VarKind::DIFF_VOLTAGE:
+            var_stamps_[i].off_branch  = offset_if_not_ground(pattern, branch_idx_, var_indices_[i]);
+            var_stamps_[i].off_branch2 = offset_if_not_ground(pattern, branch_idx_, var_indices2_[i]);
+            break;
+        case asrc::VarKind::BRANCH_CURRENT:
+            var_stamps_[i].off_branch = offset_if_not_ground(pattern, branch_idx_, var_circuit_index(i));
+            break;
+        }
+    }
 }
 
 void TableVCVS::evaluate(const std::vector<double>& voltages,
                           NumericMatrix& mat, std::vector<double>& rhs) {
-    double vp = (ncp_ >= 0) ? voltages[ncp_] : 0.0;
-    double vn = (ncn_ >= 0) ? voltages[ncn_] : 0.0;
-    double vc = vp - vn;
-
-    double slope = 0.0;
-    double f_val = interp(vc, slope);
-
     // Scale by dep_src_fact for gain stepping convergence aid
     double dsf = 1.0;
     if (tls_integrator_ctx && tls_integrator_ctx->options)
         dsf = tls_integrator_ctx->options->dep_src_fact;
-    f_val *= dsf;
-    slope *= dsf;
 
-    // KCL at output nodes
+    // KCL at output nodes (common to both modes)
     add_if_valid(mat, off_np_branch_,  1.0);
     add_if_valid(mat, off_nn_branch_, -1.0);
-
-    // Branch equation Jacobian:
-    //   V(np) - V(nn) - slope*(V(ncp) - V(ncn)) = rhs[branch]
-    //   rhs[branch] = f(Vc_k) - slope * Vc_k   (Newton companion)
     add_if_valid(mat, off_branch_np_,   1.0);
     add_if_valid(mat, off_branch_nn_,  -1.0);
-    add_if_valid(mat, off_branch_ncp_, -slope);
-    add_if_valid(mat, off_branch_ncn_,  slope);
 
-    // RHS: Newton companion
-    double rhs_val = f_val - slope * vc;
+    if (!has_expr_) {
+        double vp = (ncp_ >= 0) ? voltages[ncp_] : 0.0;
+        double vn = (ncn_ >= 0) ? voltages[ncn_] : 0.0;
+        double vc = vp - vn;
+
+        double slope = 0.0;
+        double f_val = interp(vc, slope);
+        f_val *= dsf;
+        slope *= dsf;
+
+        // Branch equation: V(np) - V(nn) - slope*(V(ncp)-V(ncn)) = rhs[branch]
+        add_if_valid(mat, off_branch_ncp_, -slope);
+        add_if_valid(mat, off_branch_ncn_,  slope);
+
+        double rhs_val = f_val - slope * vc;
+        add_rhs_if_valid(rhs, branch_idx_, rhs_val);
+        return;
+    }
+
+    // Expression mode: evaluate control expression x and its gradient,
+    // then chain-rule the table slope onto every referenced variable.
+    fill_var_values(voltages);
+    double ctrl_val = expr_.evaluate(var_values_, derivs_);
+
+    double table_slope = 0.0;
+    double f_val = interp(ctrl_val, table_slope);
+    f_val *= dsf;
+    table_slope *= dsf;
+
+    // Branch equation: V(np) - V(nn) - f(x) = 0, with
+    //   d(f)/d(v_k) = table_slope * d(expr)/d(v_k).
+    // mat[branch, v_k] -= d(f)/d(v_k); rhs companion accumulates slope*var.
+    const auto& refs = expr_.var_refs();
+    double lin_sum = 0.0;
+    for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
+        double jac = table_slope * derivs_[i];
+        switch (refs[i].kind) {
+        case asrc::VarKind::NODE_VOLTAGE: {
+            add_if_valid(mat, var_stamps_[i].off_branch, -jac);
+            int32_t ni = var_indices_[i];
+            lin_sum += jac * ((ni >= 0) ? voltages[ni] : 0.0);
+            break;
+        }
+        case asrc::VarKind::DIFF_VOLTAGE: {
+            add_if_valid(mat, var_stamps_[i].off_branch,  -jac);
+            add_if_valid(mat, var_stamps_[i].off_branch2,  jac);
+            int32_t n1 = var_indices_[i], n2 = var_indices2_[i];
+            double v1 = (n1 >= 0) ? voltages[n1] : 0.0;
+            double v2 = (n2 >= 0) ? voltages[n2] : 0.0;
+            lin_sum += jac * (v1 - v2);
+            break;
+        }
+        case asrc::VarKind::BRANCH_CURRENT: {
+            add_if_valid(mat, var_stamps_[i].off_branch, -jac);
+            int32_t br = var_circuit_index(i);
+            lin_sum += jac * ((br >= 0) ? voltages[br] : 0.0);
+            break;
+        }
+        }
+    }
+
+    // Newton companion: rhs[branch] = f(x) - sum_k(d(f)/d(v_k) * v_k)
+    double rhs_val = f_val - lin_sum;
     add_rhs_if_valid(rhs, branch_idx_, rhs_val);
 }
 
 void TableVCVS::ac_stamp(const std::vector<double>& voltages,
                           NumericMatrix& G, NumericMatrix& /*C*/) {
-    double vp = (ncp_ >= 0) ? voltages[ncp_] : 0.0;
-    double vn = (ncn_ >= 0) ? voltages[ncn_] : 0.0;
-    double vc = vp - vn;
-
-    double slope = 0.0;
-    interp(vc, slope);
-
     add_if_valid(G, off_np_branch_,  1.0);
     add_if_valid(G, off_nn_branch_, -1.0);
     add_if_valid(G, off_branch_np_,   1.0);
     add_if_valid(G, off_branch_nn_,  -1.0);
-    add_if_valid(G, off_branch_ncp_, -slope);
-    add_if_valid(G, off_branch_ncn_,  slope);
+
+    if (!has_expr_) {
+        double vp = (ncp_ >= 0) ? voltages[ncp_] : 0.0;
+        double vn = (ncn_ >= 0) ? voltages[ncn_] : 0.0;
+        double vc = vp - vn;
+        double slope = 0.0;
+        interp(vc, slope);
+        add_if_valid(G, off_branch_ncp_, -slope);
+        add_if_valid(G, off_branch_ncn_,  slope);
+        return;
+    }
+
+    fill_var_values(voltages);
+    double ctrl_val = expr_.evaluate(var_values_, derivs_);
+    double table_slope = 0.0;
+    interp(ctrl_val, table_slope);
+
+    const auto& refs = expr_.var_refs();
+    for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
+        double jac = table_slope * derivs_[i];
+        switch (refs[i].kind) {
+        case asrc::VarKind::NODE_VOLTAGE:
+            add_if_valid(G, var_stamps_[i].off_branch, -jac);
+            break;
+        case asrc::VarKind::DIFF_VOLTAGE:
+            add_if_valid(G, var_stamps_[i].off_branch,  -jac);
+            add_if_valid(G, var_stamps_[i].off_branch2,  jac);
+            break;
+        case asrc::VarKind::BRANCH_CURRENT:
+            add_if_valid(G, var_stamps_[i].off_branch, -jac);
+            break;
+        }
+    }
 }
 
 } // namespace neospice

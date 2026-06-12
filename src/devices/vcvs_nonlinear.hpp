@@ -1,9 +1,12 @@
 #pragma once
 #include "devices/device.hpp"
+#include "devices/asrc/expression_ast.hpp"
 #include <utility>
 #include <vector>
 
 namespace neospice {
+
+class VSource;  // forward declaration for I() refs
 
 // ---------------------------------------------------------------------------
 // NonlinearVCVS — Polynomial VCVS (E element, POLY form)
@@ -183,9 +186,20 @@ inline double pwl_smooth_interp(const std::vector<TablePoint>& tbl,
 class TableVCVS : public Device {
 public:
     bool is_nonlinear() const override { return true; }
+    // Simple form: control is V(ctrl_pos) - V(ctrl_neg)
     TableVCVS(std::string name,
               int32_t node_pos, int32_t node_neg,
               int32_t ctrl_pos, int32_t ctrl_neg,
+              std::vector<TablePoint> table_points);
+
+    // Expression form: control is an arbitrary scalar expression
+    // E1 out 0 TABLE {(V(inp)-V(inm))*5000} = (x1,y1) (x2,y2) ...
+    TableVCVS(std::string name,
+              int32_t node_pos, int32_t node_neg,
+              asrc::CompiledExpression expr,
+              std::vector<int32_t> var_indices,
+              std::vector<int32_t> var_indices2,
+              std::vector<const VSource*> vsource_ptrs,
               std::vector<TablePoint> table_points);
 
     std::string device_type() const override { return "E"; }
@@ -199,7 +213,7 @@ public:
     }
     std::vector<std::string> output_currents() const override;
 
-    std::vector<int32_t> external_nodes() const override { return {np_, nn_, ncp_, ncn_}; }
+    std::vector<int32_t> external_nodes() const override;
 
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
@@ -211,11 +225,13 @@ public:
 private:
     // Returns the interpolated y value and the slope at x.
     double interp(double x, double& slope) const;
+    void fill_var_values(const std::vector<double>& voltages);
+    int32_t var_circuit_index(int i) const;
 
     int32_t np_;
     int32_t nn_;
-    int32_t ncp_;
-    int32_t ncn_;
+    int32_t ncp_ = -1;
+    int32_t ncn_ = -1;
     std::vector<TablePoint> table_;
     int32_t branch_idx_ = -1;
 
@@ -223,8 +239,25 @@ private:
     MatrixOffset off_nn_branch_  = -1;
     MatrixOffset off_branch_np_  = -1;
     MatrixOffset off_branch_nn_  = -1;
+
+    // Simple-mode control offsets
     MatrixOffset off_branch_ncp_ = -1;
     MatrixOffset off_branch_ncn_ = -1;
+
+    // Expression mode
+    bool has_expr_ = false;
+    asrc::CompiledExpression expr_;
+    std::vector<int32_t> var_indices_;
+    std::vector<int32_t> var_indices2_;
+    std::vector<const VSource*> vsource_ptrs_;
+    mutable std::vector<double> var_values_;
+    mutable std::vector<double> derivs_;
+
+    struct VarStamp {
+        MatrixOffset off_branch  = -1;  // (branch, var_node1)
+        MatrixOffset off_branch2 = -1;  // (branch, var_node2)
+    };
+    std::vector<VarStamp> var_stamps_;
 };
 
 } // namespace neospice
