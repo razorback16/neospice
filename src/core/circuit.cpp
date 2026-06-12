@@ -224,6 +224,25 @@ void Circuit::finalize() {
     for (int32_t i = 0; i < num_vars_; ++i)
         organic_diagonal_[i] = builder.has_diagonal(i);
 
+    // ngspice always allocates a per-node diagonal element (CKTsetup binds one
+    // for every node, independent of which devices stamp it).  Mirror that for
+    // STRUCTURALLY ISOLATED node variables only: a "dead" node has NO entry at
+    // all in the device-stamped pattern — neither a diagonal nor any off-diagonal
+    // coupling (e.g. a node connected solely to a zero-valued current source or
+    // an open DC capacitor).  Such a node has no DC current path, so without a
+    // diagonal the Jacobian is structurally singular.  We add a diagonal
+    // placeholder and record it so the Newton loop can pin it with a negligible
+    // gmin, settling it to exactly 0 V like ngspice's direct solver.  Nodes that
+    // ARE coupled to the system — including a node pinned only by a voltage
+    // source, which owns off-diagonal (node,branch) entries — are NOT dead and
+    // are left untouched, so legitimate solutions are never perturbed.
+    dead_nodes_.clear();
+    for (int32_t i = 0; i < next_node_; ++i)
+        if (!builder.has_any_entry(i)) {
+            builder.add(i, i);
+            dead_nodes_.push_back(i);
+        }
+
     pattern_ = std::make_unique<SparsityPattern>(builder.build());
 
     // 4. Assign offsets into the pattern for each device.

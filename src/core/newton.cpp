@@ -52,6 +52,22 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
     }
     workspace.ensure_size(n);
 
+    // Dead-node pin: a "dead" node owns only a structural diagonal placeholder
+    // (no device stamps organic conductance there — e.g. a node connected only
+    // to a zero-valued current source or an open DC capacitor).  Such a node
+    // has no DC current path, so its diagonal is 0 and the Jacobian is
+    // structurally singular.  ngspice's per-node diagonal lets its direct
+    // solver resolve the node to 0 V; we mirror that by stamping a negligible
+    // conductance (CKTgmin, 1e-12) to ground on each dead-node diagonal every
+    // iteration.  This perturbs nothing else (live nodes are never in this set)
+    // and pins the dead node to exactly 0 V, matching ngspice.
+    const auto& dead_nodes = ckt.dead_node_indices();
+    std::vector<MatrixOffset> dead_diag_offsets;
+    dead_diag_offsets.reserve(dead_nodes.size());
+    for (int32_t idx : dead_nodes)
+        dead_diag_offsets.push_back(pattern.offset(idx, idx));
+    const double dead_pin_gmin = (opts.gmin > 0.0) ? opts.gmin : 1e-12;
+
     NumericMatrix& mat = workspace.mat;
     std::vector<double>& rhs = workspace.rhs;
     std::vector<double>& old_solution = workspace.old_solution;
@@ -140,6 +156,12 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         for (int32_t i = 0; i < n; ++i) {
             rhs[i] += one_based_rhs[i + 1];
         }
+
+        // Pin dead nodes (see dead_diag_offsets above): stamp a negligible
+        // conductance to ground so the diagonal is non-zero and the node
+        // settles to 0 V, matching ngspice's always-present per-node diagonal.
+        for (MatrixOffset off : dead_diag_offsets)
+            mat.add(off, dead_pin_gmin);
 
         // Pseudo-transient companion current: inject G*V_old for each node
         // to complete the backward Euler companion model (C/dt shunt + source).

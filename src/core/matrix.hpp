@@ -57,6 +57,11 @@ public:
     /// Check whether a diagonal entry (i,i) has been registered.
     bool has_diagonal(int32_t i) const;
 
+    /// Check whether variable i appears in ANY registered entry (as row or
+    /// column), i.e. the device stamps couple it to the rest of the system.
+    /// A node with no such entry is structurally isolated ("dead").
+    bool has_any_entry(int32_t i) const;
+
 private:
     int32_t n_;
     std::vector<std::pair<int32_t, int32_t>> entries_;

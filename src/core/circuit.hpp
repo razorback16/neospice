@@ -306,6 +306,14 @@ public:
     bool is_internal_node(int32_t idx) const;
     bool has_organic_diagonal(int32_t idx) const;
 
+    /// Node variables whose diagonal is a structural placeholder only (no
+    /// device stamped organic conductance there).  These "dead" nodes have no
+    /// DC current path and would otherwise make the Jacobian structurally
+    /// singular; the DC ladder pins them with a negligible gmin so they settle
+    /// to 0 V, matching ngspice (whose per-node diagonal lets its direct solver
+    /// resolve such nodes to 0 V instead of failing).  Valid after finalize().
+    const std::vector<int32_t>& dead_node_indices() const { return dead_nodes_; }
+
     std::vector<std::string> node_names() const;
     std::vector<std::string> device_names() const;
     DeviceInfo device_info(const std::string& name) const;
@@ -392,6 +400,7 @@ private:
     std::vector<std::string>                 node_names_;
     std::vector<bool>                        internal_nodes_;
     std::vector<bool>                        organic_diagonal_;
+    std::vector<int32_t>                     dead_nodes_;
     int32_t next_node_ = 0;
     int32_t num_vars_  = 0;
     int32_t num_states_ = 0;

@@ -76,6 +76,12 @@ bool SparsityBuilder::has_diagonal(int32_t i) const {
     return false;
 }
 
+bool SparsityBuilder::has_any_entry(int32_t i) const {
+    for (const auto& [r, c] : entries_)
+        if (r == i || c == i) return true;
+    return false;
+}
+
 SparsityPattern SparsityBuilder::build() const {
     auto sorted = entries_;
     // Sort by (col, row) for CSC layout
