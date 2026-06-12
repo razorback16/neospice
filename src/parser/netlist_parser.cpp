@@ -918,6 +918,14 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
                     std::string val_str = line.tokens[i + 2];
                     raw_params.emplace_back(key, val_str);
                     i += 2;
+                } else if (line.tokens[i] != "=" &&
+                           i + 1 < line.tokens.size() &&
+                           line.tokens[i + 1].size() > 1 &&
+                           line.tokens[i + 1].front() == '=') {
+                    // Glued form: "key", "=val"  (e.g. ".param Rv =3k")
+                    raw_params.emplace_back(line.tokens[i],
+                                            line.tokens[i + 1].substr(1));
+                    i += 1;
                 }
             }
         }
