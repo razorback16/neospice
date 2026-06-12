@@ -2307,7 +2307,22 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     fprintf(stderr, "Warning: Line %d: VCVS '%s' has invalid gain — skipping\n", line.line_number, name.c_str());
                     continue;
                 }
-                ckt.add_device(std::make_unique<VCVS>(name, np, nn, ncp, ncn, gain));
+                // PSpice implicit polynomial: "E n+ n- nc+ nc- c0 c1 c2 ..."
+                // with no POLY keyword is POLY(1) — V = c0 + c1·Vc + c2·Vc² + …
+                std::vector<double> e_coeffs;
+                e_coeffs.push_back(gain);
+                for (size_t k = gain_idx + 1; k < tokens.size(); ++k) {
+                    if (to_lower(tokens[k]).starts_with("m=")) break;
+                    try { e_coeffs.push_back(parse_spice_number(tokens[k])); }
+                    catch (...) { break; }
+                }
+                if (e_coeffs.size() > 1) {
+                    std::vector<CtrlPair> ctrl_pairs{ {ncp, ncn} };
+                    ckt.add_device(std::make_unique<NonlinearVCVS>(
+                        name, np, nn, std::move(ctrl_pairs), std::move(e_coeffs)));
+                } else {
+                    ckt.add_device(std::make_unique<VCVS>(name, np, nn, ncp, ncn, gain));
+                }
             }
 
         } else if (elem_type == 'g') {
@@ -2688,13 +2703,30 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     fprintf(stderr, "Warning: Line %d: VCCS '%s' has invalid gm — skipping\n", line.line_number, name.c_str());
                     continue;
                 }
-                auto vccs = std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm);
+                // PSpice implicit polynomial: "G n+ n- nc+ nc- c0 c1 c2 ..."
+                // with no POLY keyword is POLY(1) — I = c0 + c1·Vc + c2·Vc² + …
+                // Collect all trailing numeric coefficients; if more than one,
+                // build a polynomial VCCS instead of a linear (single-gain) one.
+                std::vector<double> g_coeffs;
+                g_coeffs.push_back(gm);
                 for (size_t k = gm_idx + 1; k < tokens.size(); ++k) {
-                    std::string tok = to_lower(tokens[k]);
-                    if (tok.starts_with("m="))
-                        vccs->set_multiplier(parse_spice_number(tok.substr(2)));
+                    if (to_lower(tokens[k]).starts_with("m=")) break;
+                    try { g_coeffs.push_back(parse_spice_number(tokens[k])); }
+                    catch (...) { break; }
                 }
-                ckt.add_device(std::move(vccs));
+                if (g_coeffs.size() > 1) {
+                    std::vector<CtrlPair> ctrl_pairs{ {ncp, ncn} };
+                    ckt.add_device(std::make_unique<NonlinearVCCS>(
+                        name, np, nn, std::move(ctrl_pairs), std::move(g_coeffs)));
+                } else {
+                    auto vccs = std::make_unique<VCCS>(name, np, nn, ncp, ncn, gm);
+                    for (size_t k = gm_idx + 1; k < tokens.size(); ++k) {
+                        std::string tok = to_lower(tokens[k]);
+                        if (tok.starts_with("m="))
+                            vccs->set_multiplier(parse_spice_number(tok.substr(2)));
+                    }
+                    ckt.add_device(std::move(vccs));
+                }
             }
 
         } else if (elem_type == 'h') {
