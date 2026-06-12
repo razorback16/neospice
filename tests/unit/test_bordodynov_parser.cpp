@@ -216,3 +216,35 @@ $ this entire line is a comment and must be ignored
     ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
     EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("a"), 1.0, 1e-6);
 }
+
+// ---------------------------------------------------------------------------
+// E) Forward I(E)-reference: a current-mode behavioral source (G/B) that reads
+//    I() of a VOLTAGE-mode behavioral E-source defined LATER in parse order.
+//    Deferred-ASRC resolution must be order-independent: the E-source owns an
+//    MNA branch, so I(Emeas) is a valid current even though Emeas is added to
+//    the circuit after Glate. Before the two-pass fix, branch_provider_for only
+//    scanned already-added devices, so Glate was dropped with the warning
+//    "B element 'glate' references unknown voltage source 'emeas' in I() —
+//    skipping" and v(out) collapsed to 0. ngspice -D ngbehavior=psa gives
+//    v(out)=0.5 (Emeas branch current -0.5 A * 1m * 1k Rout). This mirrors the
+//    UCC28C42_TRANS GB6->I(EMY19) ordering.
+// ---------------------------------------------------------------------------
+TEST(BordodynovParser, ForwardCurrentRefToLaterVoltageSource) {
+    Simulator sim;
+    std::string netlist = R"(
+* forward I(E) reference
+Vin in 0 2
+Glate out 0 Value = { 1m * I(Emeas) }
+Rout out 0 1k
+Emeas s 0 Value = { V(in) }
+Rsense s 0 4
+.op
+.end
+)";
+    auto ckt = sim.parse(netlist);
+    auto result = sim.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<DCResult>(result.analysis));
+    // Emeas forces V(s)=V(in)=2 across Rsense=4 -> branch current -0.5 A.
+    // Glate = 1m * I(Emeas) = -0.5e-3 A; |v(out)| = 0.5e-3 * 1k = 0.5 V.
+    EXPECT_NEAR(std::get<DCResult>(result.analysis).voltage("out"), 0.5, 1e-6);
+}

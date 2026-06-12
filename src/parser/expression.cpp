@@ -274,7 +274,12 @@ private:
         if (lname == "limit") {
             if (args.size() != 3)
                 throw ParseError("Function limit() requires 3 arguments");
-            return std::clamp(args[0], args[1], args[2]);
+            // min(max(x, lo), hi). std::clamp is UB when lo > hi, which occurs
+            // for models passing reversed bounds (e.g. (IMAX, -IMIN)). Using
+            // explicit min/max never invokes UB and matches the ASRC runtime
+            // LIMIT node (expression_ast.cpp NodeType::LIMIT) exactly; for a
+            // well-ordered range it is identical to std::clamp.
+            return std::min(std::max(args[0], args[1]), args[2]);
         }
         if (lname == "stp") { require(1); return args[0] > 0.0 ? 1.0 : 0.0; }
         if (lname == "pwr") { require(2); return std::pow(std::abs(args[0]), args[1]); }

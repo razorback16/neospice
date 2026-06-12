@@ -3729,26 +3729,117 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         if (branchdev) return branchdev;
         return sense_source_for(name);  // splice 0V sense (resistor fallback)
     };
+    // Deferred-ASRC resolution is two-pass so that I()-references between
+    // behavioral sources are order-independent. A VOLTAGE-mode behavioral
+    // source (E-type) owns an MNA branch variable, so I(name) of such a source
+    // is a valid current. But devices are added in parse order: a CURRENT-mode
+    // G-source (or any source) listed BEFORE the VOLTAGE-mode source it reads
+    // would otherwise fail branch_provider_for (the provider is not yet in
+    // ckt.devices()). Pass 1 adds every VOLTAGE-mode ASRC first (creating all
+    // E-type branches), then Pass 2 resolves all I()/vsource_ptrs wiring for
+    // every ASRC against the now-complete device list.
+    //
+    // Each ASRC's resolved raw pointer is kept so VOLTAGE-mode ones (added in
+    // pass 1 with placeholder vsource_ptrs) can be patched in pass 2.
+    struct PendingAsrc {
+        ASRCDevice* dev;          // non-null once constructed/added (pass-1 E)
+        size_t bd_index;          // index into deferred_asrcs
+    };
+    std::vector<PendingAsrc> voltage_pending;
+    voltage_pending.reserve(deferred_asrcs.size());
+
+    // Names of all deferred VOLTAGE-mode ASRCs (each owns an MNA branch). Used
+    // to recognise a not-yet-added forward reference as resolvable in pass 1,
+    // so a VOLTAGE-mode source whose ref is genuinely unknown is skipped (as
+    // before) instead of being added with a dangling I() pointer.
+    std::unordered_set<std::string> voltage_asrc_names;
+    for (const auto& bd : deferred_asrcs)
+        if (bd.mode == ASRCDevice::Mode::VOLTAGE)
+            voltage_asrc_names.insert(to_lower(bd.name));
+
+    // Pass 1: construct and add all VOLTAGE-mode ASRCs (with placeholder
+    // vsource_ptrs) so every E-type branch exists in ckt.devices(). A source
+    // whose I() reference resolves to neither an existing branch device nor
+    // another deferred VOLTAGE-mode ASRC is unresolvable and is skipped here.
+    for (size_t bi = 0; bi < deferred_asrcs.size(); ++bi) {
+        auto& bd = deferred_asrcs[bi];
+        if (bd.mode != ASRCDevice::Mode::VOLTAGE) continue;
+        int nv = bd.expr.num_vars();
+
+        const auto& refs0 = bd.expr.var_refs();
+        std::string bd_key0 = to_lower(bd.name);
+        bool resolvable = true;
+        for (int i = 0; i < nv; ++i) {
+            if (refs0[i].kind != asrc::VarKind::BRANCH_CURRENT ||
+                bd.vsrc_names[i].empty())
+                continue;
+            std::string rk = to_lower(bd.vsrc_names[i]);
+            if (rk == bd_key0) continue;                 // I(self): own branch
+            if (voltage_asrc_names.count(rk)) continue;   // forward E-ref (pass 2a)
+            if (branch_provider_for(bd.vsrc_names[i])) continue;
+            fprintf(stderr, "Warning: Line %d: B element '%s' references unknown voltage source '%s' in I() — skipping\n",
+                    bd.line_number, bd.name.c_str(), bd.vsrc_names[i].c_str());
+            resolvable = false;
+            break;
+        }
+        if (!resolvable) continue;
+
+        std::vector<const Device*> placeholder(nv, nullptr);
+
+        auto asrc_dev = std::make_unique<ASRCDevice>(
+            bd.name, bd.np, bd.nn, bd.mode,
+            std::move(bd.expr),            // expression() accessor reused in pass 2a
+            std::move(bd.node_indices),
+            std::move(bd.node_indices2),
+            std::move(placeholder));
+
+        asrc_dev->set_tc1(bd.tc1);
+        asrc_dev->set_tc2(bd.tc2);
+        if (bd.temp > 0) asrc_dev->set_temp(bd.temp);
+        asrc_dev->set_dtemp(bd.dtemp);
+
+        ASRCDevice* raw = asrc_dev.get();
+        ckt.add_device(std::move(asrc_dev));
+        voltage_pending.push_back({raw, bi});
+    }
+
+    // Pass 2a: patch I()/vsource_ptrs wiring of the VOLTAGE-mode ASRCs added
+    // in pass 1. All E-type branches now exist, so forward references resolve.
+    for (const auto& pending : voltage_pending) {
+        auto& bd = deferred_asrcs[pending.bd_index];
+        // bd.expr was moved into pending.dev in pass 1; read refs from there.
+        const auto& refs = pending.dev->expression().var_refs();
+        int nv = pending.dev->expression().num_vars();
+        std::string bd_key = to_lower(bd.name);
+        for (int i = 0; i < nv; ++i) {
+            if (refs[i].kind != asrc::VarKind::BRANCH_CURRENT ||
+                bd.vsrc_names[i].empty())
+                continue;
+            if (to_lower(bd.vsrc_names[i]) == bd_key) {
+                // I(self): wire to this device's own branch.
+                pending.dev->set_vsource_ptr(i, pending.dev);
+                continue;
+            }
+            // Pass 1 already verified every ref is resolvable (self, a
+            // pass-1-added VOLTAGE ASRC, or an existing branch device), so this
+            // lookup succeeds; the guard is defensive.
+            const Device* vs = branch_provider_for(bd.vsrc_names[i]);
+            if (vs) pending.dev->set_vsource_ptr(i, vs);
+        }
+    }
+
+    // Pass 2b: resolve and add the CURRENT-mode ASRCs. Their I() targets may be
+    // VOLTAGE-mode sources added in pass 1, so all forward references resolve.
     for (auto& bd : deferred_asrcs) {
+        if (bd.mode == ASRCDevice::Mode::VOLTAGE) continue;  // already handled
         const auto& refs = bd.expr.var_refs();
         int nv = bd.expr.num_vars();
         std::vector<const Device*> vsource_ptrs(nv, nullptr);
 
         bool asrc_ok = true;
-        // Indices whose I() target is this very (voltage-mode) source — a
-        // self-reference. The device cannot be found via ckt.devices() because
-        // it is not yet added; it owns its own branch, so wire it after build.
-        std::vector<int> self_ref_idx;
-        std::string bd_key = to_lower(bd.name);
         for (int i = 0; i < nv; ++i) {
             if (refs[i].kind == asrc::VarKind::BRANCH_CURRENT &&
                 !bd.vsrc_names[i].empty()) {
-                if (bd.mode == ASRCDevice::Mode::VOLTAGE &&
-                    to_lower(bd.vsrc_names[i]) == bd_key) {
-                    // I(self): voltage-mode ASRC owns a branch variable.
-                    self_ref_idx.push_back(i);
-                    continue;
-                }
                 const Device* vs = branch_provider_for(bd.vsrc_names[i]);
                 if (!vs) {
                     fprintf(stderr, "Warning: Line %d: B element '%s' references unknown voltage source '%s' in I() — skipping\n",
@@ -3768,11 +3859,6 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
             std::move(bd.node_indices2),
             std::move(vsource_ptrs));
 
-        // Wire self-referencing I(self) branch reads to this device itself.
-        for (int idx : self_ref_idx)
-            asrc_dev->set_vsource_ptr(idx, asrc_dev.get());
-
-        // Apply temperature coefficient parameters
         asrc_dev->set_tc1(bd.tc1);
         asrc_dev->set_tc2(bd.tc2);
         if (bd.temp > 0) asrc_dev->set_temp(bd.temp);
