@@ -45,11 +45,69 @@ VNTOL  = 1e-6    # 1 uV
 ABSTOL = 1e-9    # 1 nA (SPICE ITOL default)
 
 
-def parse_raw_file(path):
-    """Parse a SPICE binary .raw file (operating point).
+def _parse_raw_plot(header_text, binary):
+    """Parse a single plot's header + binary payload.
 
-    Returns dict mapping variable name (lowercase) to its value,
-    or None if the file can't be parsed.
+    Returns (plotname, flags, values_dict) for the FIRST data point of the
+    plot, or None if it can't be parsed. `binary` must start at the byte
+    immediately following this plot's "Binary:\n" marker.
+    """
+    plotname = ''
+    flags = ''
+    num_vars = 0
+    variables = []
+    in_vars = False
+    for line in header_text.splitlines():
+        if line.startswith('Plotname:'):
+            plotname = line.split(':', 1)[1].strip()
+        elif line.startswith('Flags:'):
+            flags = line.split(':', 1)[1].strip().lower()
+        elif line.startswith('No. Variables:'):
+            num_vars = int(line.split(':')[1].strip())
+        elif line.startswith('Variables:'):
+            in_vars = True
+        elif in_vars:
+            parts = line.strip().split('\t')
+            if len(parts) >= 3:
+                variables.append(parts[1].strip().lower())
+            if num_vars and len(variables) >= num_vars:
+                break
+
+    if not variables:
+        return None
+
+    # Real plots store 8 bytes/value; complex store 16 bytes (re, im).
+    complex_plot = 'complex' in flags
+    stride = 16 if complex_plot else 8
+    values = {}
+    for i, name in enumerate(variables):
+        offset = i * stride
+        if offset + 8 > len(binary):
+            break
+        # For complex data take the real part (first double) — the op-point
+        # path never relies on complex plots, this is only a fallback.
+        val = struct.unpack('d', binary[offset:offset + 8])[0]
+        values[name] = val
+
+    return plotname, flags, values
+
+
+def parse_raw_file(path):
+    """Parse a SPICE binary .raw file, returning the operating-point values.
+
+    A single .raw may contain MULTIPLE plots (ngspice honors stray file-scope
+    .AC/.TRAN cards in included libraries and emits AC + Operating Point +
+    Transient plots in one file). We must select the Operating Point plot, not
+    blindly take the first one (which is often a stimulus-free AC plot full of
+    zeros/denormals).
+
+    Selection order:
+      1. the plot whose Plotname starts with "operating point"
+      2. else the first real-valued (non-complex) plot
+      3. else the first plot
+
+    Returns dict mapping variable name (lowercase) to the first data point's
+    value, or None if the file can't be parsed.
     """
     try:
         with open(path, 'rb') as f:
@@ -57,45 +115,50 @@ def parse_raw_file(path):
     except Exception:
         return None
 
-    # Split header from binary payload at "Binary:\n"
     marker = b'Binary:\n'
-    idx = data.find(marker)
-    if idx < 0:
+    plotname_marker = b'Plotname:'
+
+    # Locate every plot block: each starts at a "Plotname:" line and its
+    # binary payload starts at the next "Binary:\n".
+    plot_starts = [m.start() for m in re.finditer(re.escape(plotname_marker), data)]
+
+    parsed = []  # list of (plotname, flags, values)
+    if plot_starts:
+        for pi, start in enumerate(plot_starts):
+            end = plot_starts[pi + 1] if pi + 1 < len(plot_starts) else len(data)
+            block = data[start:end]
+            bidx = block.find(marker)
+            if bidx < 0:
+                continue
+            header_text = block[:bidx].decode('utf-8', errors='replace')
+            binary = block[bidx + len(marker):]
+            res = _parse_raw_plot(header_text, binary)
+            if res is not None:
+                parsed.append(res)
+    else:
+        # No Plotname line at all — parse the whole file as one plot.
+        idx = data.find(marker)
+        if idx < 0:
+            return None
+        header_text = data[:idx].decode('utf-8', errors='replace')
+        binary = data[idx + len(marker):]
+        res = _parse_raw_plot(header_text, binary)
+        if res is not None:
+            parsed.append(res)
+
+    if not parsed:
         return None
 
-    header = data[:idx].decode('utf-8', errors='replace')
-    binary = data[idx + len(marker):]
-
-    # Parse variable names from header
-    variables = []
-    in_vars = False
-    num_vars = 0
-    for line in header.splitlines():
-        if line.startswith('No. Variables:'):
-            num_vars = int(line.split(':')[1].strip())
-        elif line.startswith('Variables:'):
-            in_vars = True
-        elif in_vars:
-            parts = line.strip().split('\t')
-            if len(parts) >= 3:
-                var_name = parts[1].strip().lower()
-                variables.append(var_name)
-            if len(variables) >= num_vars:
-                break
-
-    if not variables:
-        return None
-
-    # Parse binary doubles (native byte order, 8 bytes each)
-    values = {}
-    for i, name in enumerate(variables):
-        offset = i * 8
-        if offset + 8 > len(binary):
-            break
-        val = struct.unpack('d', binary[offset:offset + 8])[0]
-        values[name] = val
-
-    return values
+    # 1. prefer an Operating Point plot
+    for plotname, flags, values in parsed:
+        if plotname.lower().startswith('operating point'):
+            return values
+    # 2. else first real (non-complex) plot
+    for plotname, flags, values in parsed:
+        if 'complex' not in flags:
+            return values
+    # 3. else first plot
+    return parsed[0][2]
 
 
 def run_simulator(netlist_text, sim_bin, is_ngspice=False, timeout=10):
