@@ -14,7 +14,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04         # Linux x86_64 (native)
+          - os: ubuntu-24.04-arm     # Linux aarch64 (native — no QEMU)
           - os: macos-13
             macosx_deployment_target: "13.0"
           - os: macos-14
@@ -23,19 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU for aarch64
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
       - uses: pypa/cibuildwheel@v2.21
         env:
-          CIBW_ARCHS_LINUX: "x86_64 aarch64"
-          # Build only the runner's native arch: openblas/sleef come from
-          # Homebrew, which only ships single-arch dylibs, so cross-arch
-          # linking fails. macos-13 (Intel) covers x86_64, macos-14 (arm64)
-          # covers arm64.
+          # Build only the runner's native arch. aarch64 builds natively on
+          # ubuntu-24.04-arm instead of under QEMU emulation (~10-30x faster).
+          # On macOS, openblas/sleef come from Homebrew as single-arch dylibs,
+          # so cross-arch linking fails: macos-13 covers x86_64, macos-14 arm64.
+          CIBW_ARCHS_LINUX: "native"
           CIBW_ARCHS_MACOS: "native"
           # Match the wheel floor to the bundled Homebrew dylibs' minimum OS
           # (= the runner's macOS version); otherwise delocate rejects the

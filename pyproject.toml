@@ -21,7 +21,8 @@ classifiers = [
 Homepage = "https://github.com/Razorback16/neospice"
 
 [tool.scikit-build]
-cmake.args = ["-DNEOSPICE_BUILD_PYTHON=ON", "-DNEOSPICE_BUILD_TESTS=OFF"]
+# CLI executable is not part of the wheel — skip it to save a link step.
+cmake.args = ["-DNEOSPICE_BUILD_PYTHON=ON", "-DNEOSPICE_BUILD_TESTS=OFF", "-DNEOSPICE_BUILD_CLI=OFF"]
 wheel.packages = ["python/neospice"]
 
 [tool.cibuildwheel]
@@ -29,10 +30,15 @@ build = "cp310-* cp311-* cp312-* cp313-*"
 skip = "*-musllinux_* *-win*"
 test-requires = "pytest numpy"
 test-command = "pytest {project}/tests/python -v"
+# ccache the C/C++ compiles. The bulk of the C++ tree (device models,
+# parser, solver) is identical across the four Python versions built in
+# each runner, so ccache turns the 2nd-4th builds into near-instant hits.
+environment = { CMAKE_CXX_COMPILER_LAUNCHER = "ccache", CMAKE_C_COMPILER_LAUNCHER = "ccache" }
 
 [tool.cibuildwheel.linux]
 before-all = [
-    "yum install -y openblas-devel cmake",
+    "yum install -y epel-release",
+    "yum install -y openblas-devel cmake ccache",
     "git clone --depth 1 --branch 3.6 https://github.com/shibatch/sleef.git /tmp/sleef",
     "cmake -S /tmp/sleef -B /tmp/sleef/build -DCMAKE_INSTALL_PREFIX=/usr/local -DSLEEF_BUILD_TESTS=OFF -DSLEEF_BUILD_DFT=OFF",
     "cmake --build /tmp/sleef/build --target install",
@@ -41,7 +47,7 @@ manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
-before-all = "brew install openblas sleef"
+before-all = "brew install openblas sleef ccache"
 # MACOSX_DEPLOYMENT_TARGET is set per-runner in .github/workflows/wheels.yml:
 # the bundled Homebrew openblas/sleef dylibs are built for the runner's OS
 # (macos-13 -> 13.0, macos-14 -> 14.0), so the wheel floor must match or
