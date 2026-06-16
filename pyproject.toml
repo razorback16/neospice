@@ -42,6 +42,8 @@ manylinux-aarch64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
 before-all = "brew install openblas sleef"
-# neospice uses C++17 std::filesystem / std::visit, whose libc++ runtime
-# support requires macOS 10.15+. Override cibuildwheel's x86_64 default of 10.9.
-environment = { MACOSX_DEPLOYMENT_TARGET = "10.15" }
+# MACOSX_DEPLOYMENT_TARGET is set per-runner in .github/workflows/wheels.yml:
+# the bundled Homebrew openblas/sleef dylibs are built for the runner's OS
+# (macos-13 -> 13.0, macos-14 -> 14.0), so the wheel floor must match or
+# delocate rejects it. These targets also satisfy C++17 std::filesystem /
+# std::visit, which require >= 10.15.
