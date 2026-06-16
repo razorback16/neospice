@@ -27,7 +27,11 @@ jobs:
       - uses: pypa/cibuildwheel@v2.21
         env:
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
-          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          # Build only the runner's native arch: openblas/sleef come from
+          # Homebrew, which only ships single-arch dylibs, so cross-arch
+          # linking fails. macos-13 (Intel) covers x86_64, macos-14 (arm64)
+          # covers arm64.
+          CIBW_ARCHS_MACOS: "native"
 
       - uses: actions/upload-artifact@v4
         with:
