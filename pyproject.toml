@@ -14,6 +14,11 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: C++",
 ]
 
@@ -26,7 +31,7 @@ cmake.args = ["-DNEOSPICE_BUILD_PYTHON=ON", "-DNEOSPICE_BUILD_TESTS=OFF", "-DNEO
 wheel.packages = ["python/neospice"]
 
 [tool.cibuildwheel]
-build = "cp310-* cp311-* cp312-* cp313-*"
+build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*-musllinux_* *-win*"
 test-requires = "pytest numpy"
 test-command = "pytest {project}/tests/python -v"
@@ -48,8 +53,7 @@ manylinux-aarch64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
 before-all = "brew install openblas sleef ccache"
-# MACOSX_DEPLOYMENT_TARGET is set per-runner in .github/workflows/wheels.yml:
-# the bundled Homebrew openblas/sleef dylibs are built for the runner's OS
-# (macos-13 -> 13.0, macos-14 -> 14.0), so the wheel floor must match or
-# delocate rejects it. These targets also satisfy C++17 std::filesystem /
-# std::visit, which require >= 10.15.
+# MACOSX_DEPLOYMENT_TARGET is set per-runner in .github/workflows/wheels.yml
+# (macos-14 -> 14.0): the bundled Homebrew openblas/sleef dylibs are built for
+# the runner's OS, so the wheel floor must match or delocate rejects it. This
+# target also satisfies C++17 std::filesystem / std::visit, which need >= 10.15.

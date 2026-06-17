@@ -16,15 +16,16 @@ jobs:
         include:
           - os: ubuntu-24.04         # Linux x86_64 (native)
           - os: ubuntu-24.04-arm     # Linux aarch64 (native — no QEMU)
-          - os: macos-13
-            macosx_deployment_target: "13.0"
+          # No Intel macOS: macos-13 is GitHub's only x86_64 image, its runner
+          # pool is scarce (jobs routinely never get scheduled) and it is being
+          # retired. macOS ships arm64-only; Intel users build from the sdist.
           - os: macos-14
             macosx_deployment_target: "14.0"
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pypa/cibuildwheel@v2.21
+      - uses: pypa/cibuildwheel@v3.4.1
         env:
           # Build only the runner's native arch. aarch64 builds natively on
           # ubuntu-24.04-arm instead of under QEMU emulation (~10-30x faster).
