@@ -186,8 +186,8 @@ matrix operations to GPU.
 
 ### Devices — Remaining Gaps
 - BSIM-CMG (FinFET) model — next-gen compact model, industry demand
-- Verilog-A device model compilation (long-term — enables user-defined models)
 - Priority 3 legacy devices (MOS2, MOS6, etc.) — low demand, available via migration tool
+- Verilog-A user-defined models — tracked separately as Phase 11 (syntax not currently supported)
 
 ### Devices — Completed
 MOS1, MOS3, MOS9, BSIM3v32, BSIM3, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV, BJT,
@@ -199,6 +199,88 @@ VBIC, JFET, JFET2, MES, HFET1, HFET2, Diode, LTRA, ASRC, and all passives/source
 ### Netlist Features — Remaining Gaps
 - XSPICE digital/mixed-signal code models
 - Full `.param` function library (most common functions done)
+
+---
+
+## Phase 8: Piecewise-Linear (PWL) Simulation
+
+**Priority: High**
+
+A SIMPLIS-compatible piecewise-linear engine for switching power supplies, running
+alongside the SPICE engine in a unified architecture. Each nonlinear device is
+approximated by straight-line segments; within a segment the circuit is linear and
+solves in one shot, and the simulator steps between linear topologies as devices
+cross segment boundaries. This replaces Newton-Raphson iteration with event-driven
+linear solves — eliminating convergence failures and targeting 10–50x speedups over
+SPICE for switching converters.
+
+### Goals
+- PWL transient engine with topology caching and a SIMPLIS deck parser (`.SIMULATOR SIMPLIS`)
+- POP (Periodic Operating Point) — shooting-method steady state for switching circuits
+- Time-domain AC — Bode plots extracted from the full switching model
+- Reuse of existing NeoSolver, netlist, and result infrastructure (no engine fork)
+
+### Deliverables
+- PWL device primitives and the segment model
+- Per-circuit simulation-domain detection (`ANALOG_NR` vs `ANALOG_PWL`)
+- POP and time-domain AC analyses on the PWL engine
+
+---
+
+## Phase 9: Digital Event Simulation
+
+**Priority: Medium**
+
+A discrete-event digital engine built on the same simulation-domain architecture as
+the PWL engine. Logic is evaluated by event propagation rather than matrix solves.
+
+### Goals
+- Verilog-style gate primitives, flip-flops, and registers
+- Event queue with per-gate delay models
+- Discrete-event scheduler sharing the circuit/netlist infrastructure
+
+### Deliverables
+- `DIGITAL` simulation domain and digital device primitives
+- Event-driven scheduler and digital waveform output
+
+---
+
+## Phase 10: Mixed-Signal Co-Simulation
+
+**Priority: Medium**
+
+Couple the analog (SPICE/PWL) and digital engines so a single netlist can contain
+both, with a coordinator managing the analog/digital boundary and time
+synchronization. Supersedes the XSPICE-style code-model gap noted in Phase 7.
+
+### Goals
+- Analog/digital boundary elements (A2D / D2A) with threshold and slew models
+- Time-synchronization coordinator across analog timesteps and digital events
+- SPICE-to-PWL model extraction (auto-convert SPICE MOSFET/diode to PWL segments)
+
+### Deliverables
+- Co-simulation coordinator for mixed-domain circuits
+- Boundary device primitives and the synchronization scheme
+
+---
+
+## Phase 11: Verilog-A Device Models
+
+**Priority: Lower**
+
+Verilog-A syntax is **not currently supported**. This phase adds a Verilog-A front
+end so users can define their own compact models without modifying neospice,
+compiling Verilog-A modules into the device-evaluation chain. The auto-differentiated
+Jacobians already used for behavioral B-sources extend naturally to compiled models.
+
+### Goals
+- Verilog-A parser and compiler targeting neospice device primitives
+- Auto-differentiated Jacobians for user-defined models
+- Coexistence with the built-in C++ device library
+
+### Deliverables
+- Verilog-A front end and code generator
+- Worked example: a user-supplied compact model loaded from a `.va` file
 
 ---
 
@@ -410,3 +492,7 @@ r = parse_value("4.7k")    # 4700.0
 | 5     | Incremental re-simulation  | Interactivity   | Medium   | Planned |
 | 6     | GPU acceleration           | Large circuits  | High     | Planned |
 | 7     | Extended devices/analyses  | Completeness    | Ongoing  | Active  |
+| 8     | PWL simulation engine      | Switching power | High     | Planned |
+| 9     | Digital event simulation   | Mixed-signal    | High     | Planned |
+| 10    | Mixed-signal co-simulation | Mixed-signal    | High     | Planned |
+| 11    | Verilog-A device models    | Extensibility   | High     | Planned |

@@ -1,10 +1,12 @@
 # neospice
 
 [![CI](https://github.com/razorback16/neospice/actions/workflows/ci.yml/badge.svg)](https://github.com/razorback16/neospice/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/neospice.svg)](https://pypi.org/project/neospice/)
+[![Python versions](https://img.shields.io/pypi/pyversions/neospice.svg)](https://pypi.org/project/neospice/)
 
 A SPICE circuit simulator written from scratch in C++20 -- not a fork of ngspice or any Berkeley SPICE derivative. Clean architecture, native Python bindings, and MIT licensed with no LGPL baggage.
 
-Reads standard SPICE netlists and produces ngspice-compatible results, with up to 8.7x faster per-analysis in-process performance on the benchmark suite, a self-contained Sparse 1.3-compatible solver stack, auto-differentiation in behavioral sources, and a modern embeddable API designed for integration into EDA tools, optimization loops, and notebooks.
+It reads standard SPICE netlists and produces ngspice-compatible results, runs up to 8.6x faster per analysis in-process on the benchmark suite, and pairs a self-contained Sparse 1.3-compatible solver stack and auto-differentiated behavioral sources with a modern embeddable API for EDA tools, optimization loops, and notebooks.
 
 ## Features
 
@@ -179,8 +181,11 @@ auto   dinfo = ckt.device_info(did);       // DeviceInfo struct
 pip install neospice
 ```
 
+Prebuilt wheels are published for **CPython 3.10–3.14** on Linux (x86_64, aarch64) and macOS Apple Silicon (arm64). On other platforms pip builds from the source distribution, which needs a C++20 compiler plus OpenBLAS and SLEEF.
+
 ```python
 import neospice as ns
+import matplotlib.pyplot as plt
 
 # One-liner convenience functions
 dc = ns.dc("amplifier.cir")
@@ -213,7 +218,7 @@ from neospice import parse_value
 r = parse_value("4.7k")                  # 4700.0
 ```
 
-All result vectors are returned as NumPy arrays. Supports Python 3.10+ on Linux (x86_64, aarch64) and macOS (x86_64, arm64).
+All result vectors are returned as NumPy arrays.
 
 ## Performance
 
@@ -240,7 +245,7 @@ See [docs/performance-comparison-with-ngspice.md](docs/performance-comparison-wi
 
 ## Netlist Compatibility
 
-neospice reads standard SPICE netlists:
+Beyond core devices and analyses, neospice handles the usual deck directives and syntax:
 
 - `.param` expressions with arithmetic, functions (`sqrt`, `log`, `exp`, `sin`, `if`, ...)
 - `.subckt` / `.ends` with parameter defaults (recursion limit 100)
@@ -294,7 +299,6 @@ See [docs/building.md](docs/building.md) for platform-specific setup instruction
 - [Device migration status](docs/device-migration-status.md)
 - [Capabilities overview](docs/capabilities.md)
 - [Architecture and design](docs/neospice-design.md)
-- [Roadmap](docs/ROADMAP.md)
 
 ## Roadmap
 
@@ -307,6 +311,10 @@ See [docs/building.md](docs/building.md) for platform-specific setup instruction
 | 4 | Adjoint sensitivity / gradient computation | Planned |
 | 5 | Incremental re-simulation | Planned |
 | 6 | GPU-accelerated simulation (CUDA) | Planned |
-| 7 | Extended devices (BSIM-CMG, Verilog-A) | Ongoing |
+| 7 | Extended devices (BSIM-CMG, legacy MOS) | Ongoing |
+| 8 | PWL (piecewise-linear) simulation for switching converters | Planned |
+| 9 | Digital event simulation | Planned |
+| 10 | Mixed-signal co-simulation | Planned |
+| 11 | Verilog-A device models (syntax not yet supported) | Planned |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for details.
