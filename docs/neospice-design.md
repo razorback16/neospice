@@ -1,11 +1,11 @@
 # NEOSPICE Design Specification
 
-**Date:** 2026-04-15 (created) · 2026-04-25 (updated)
-**Status:** Active — Phases 1–9 complete, Phase 10 (GPU) planned
+**Date:** 2026-04-15 (created) · 2026-06-16 (updated)
+**Status:** Active — analog SPICE core complete and validated at scale; Python bindings shipped (on PyPI); PWL/digital/mixed-signal and GPU on the roadmap
 
 ## Overview
 
-NEOSPICE is a modern SPICE circuit simulator written in C++20. It uses ngspice as ground truth for correctness testing during development. The project is designed for future integration with the `circuit-cpp` framework and eventual GPU acceleration via CUDA.
+NEOSPICE is a modern SPICE circuit simulator written in C++20. It uses ngspice as ground truth for correctness testing during development. It ships with native Python bindings (`pip install neospice`) and a clean embeddable C++ API for EDA tools, optimization loops, and notebooks. The project is designed for future integration with the `circuit-cpp` framework and eventual GPU acceleration via CUDA.
 
 ## Goals
 
@@ -97,7 +97,31 @@ Added typed result accessors (`voltage()`, `current()`, `diff()`, `signal_names(
 
 Modularized all 17 semiconductor device families via `DeviceRegistry` factory pattern. Each device registers its model card factory, device builder, and element parser in a self-contained factory file. Adding a new device requires zero changes to `circuit_typed.cpp` or `netlist_parser.cpp` — just a factory file, one CMake line, and one `register_all()` call. Reduced `circuit_typed.cpp` from 414 to 295 lines and `netlist_parser.cpp` from 3727 to 2696 lines by extracting semiconductor parsing into 5 shared parser modules (`mosfet_common`, `bjt_common`, `jfet_common`, `hfet_common`, `dio_parser`).
 
-## Current State (2026-05-17)
+### Phase 10: Python Bindings + PyPI ✅
+
+Native Python bindings via nanobind (`python/bindings.cpp`), published to PyPI as `neospice`. Convenience one-liners (`ns.transient(...)`, `ns.ac(...)`, `ns.dc(...)`) accept a file path or inline netlist and return results as NumPy arrays. Full `Simulator`/`Circuit` API mirrored, including typed programmatic circuit construction and SPICE engineering-notation parsing. cibuildwheel CI produces wheels for Linux/macOS (native ARM + x86) across CPython 3.x through 3.14.
+
+### Additional Devices ✅
+
+Three more device models auto-migrated from ngspice since the Phase 8 batch:
+
+- **MOS2** (Level 2, Grove-Frohman)
+- **VDMOS** (vertical power MOSFET)
+- **MES** (GaAs MESFET) split into its own model (formerly shared with the HFET parser)
+
+### Solver: AMD-Ordered Sparse LU (KLU-style) ✅
+
+NeoSolver gained a KLU-style left-looking sparse LU with AMD fill-reducing ordering, BTF block triangular pre-ordering, and partial pivoting, auto-selected for large linear circuits. Symbolic analysis runs once; numeric refactorization reuses the pattern per Newton iteration. (See the Sparse Matrix Abstraction section for design detail.)
+
+### Parser Robustness: Vendor-Model Parity ✅
+
+Driven by the KiCad full-suite run, dozens of parser fixes to ingest real vendor `.lib`/`.subckt` models: `E`/`G` `TABLE` controlled sources, compound/nested control expressions, implicit `POLY(1)` forms, space-glued `=value` tokens, first-wins duplicate `.model` resolution (matches ngspice), nested-brace model params, `ln`/`pi`/`e` in expressions, PSpice `T_ABS`/`T_MEASURED` per-device temperature, BJT `LPNP` and Kull quasi-saturation, and order-independent deferred-ASRC `I()` resolution.
+
+### Phase-4 DC Convergence Aids ✅
+
+Extended the convergence cascade beyond gmin/source/pseudo-transient stepping: homotopy continuation, node-classification initial guess, matrix equilibration, and `OPtran` transient-startup as a final DC fallback. Structurally-isolated/dead nodes are pinned so dead-node circuits converge. (New aids are strict last-resort fallbacks, applied only after the full standard cascade.)
+
+## Current State (2026-06-16)
 
 ### Analyses Implemented
 
@@ -160,6 +184,7 @@ Modularized all 17 semiconductor device families via `DeviceRegistry` factory pa
 | Z | HFET1 | ✓ | ✓ | ✓ | ✓ |
 | Z | HFET2 | ✓ | ✓ | ✓ | ✓ |
 | M | MOS1 (Level 1) | ✓ | ✓ | ✓ | ✓ |
+| M | MOS2 (Level 2, Grove-Frohman) | ✓ | ✓ | ✓ | ✓ |
 | M | MOS3 (Level 3) | ✓ | ✓ | ✓ | ✓ |
 | M | MOS9 (Level 9) | ✓ | ✓ | ✓ | ✓ |
 | M | BSIM3 | ✓ | ✓ | ✓ | ✓ |
@@ -168,8 +193,9 @@ Modularized all 17 semiconductor device families via `DeviceRegistry` factory pa
 | M | BSIMSOI (Silicon-On-Insulator) | ✓ | ✓ | ✓ | ✓ |
 | M | HiSIM2 | ✓ | ✓ | ✓ | ✓ |
 | M | HiSIM_HV (High-Voltage) | ✓ | ✓ | ✓ | ✓ |
+| M | VDMOS (vertical power MOSFET) | ✓ | ✓ | ✓ | ✓ |
 
-**Total: 32 device types** (6 passive/source + 7 controlled/switch + 2 transmission line + 17 semiconductor)
+**Total: 34 device types** (6 passive/source + 7 controlled/switch + 2 transmission line + 19 semiconductor)
 
 ### Parser Implemented
 
@@ -190,8 +216,9 @@ Modularized all 17 semiconductor device families via `DeviceRegistry` factory pa
 - `.step` (parameter, source, and temperature sweeps)
 - `.save` and `.print` / `.plot` (output signal selection)
 - `.options` (`reltol`, `abstol`, `vntol`, `gmin`, `trtol`, `chgtol`, `temp`, `tnom`, `method`, `itl1`, `itl4`, `lte_ref_mode`, `restart_step_scale`, `interp`)
-- Controlled source POLY forms (multi-input polynomial)
-- Behavioral expressions (`V=`, `I=`, `ddt()`, `idt()`, `temper`, trig functions, PWL)
+- Controlled source POLY forms (multi-input polynomial), `TABLE` forms, and compound/nested control expressions
+- Behavioral expressions (`V=`, `I=`, `ddt()`, `idt()`, `temper`, trig functions, PWL); auto-differentiated Jacobians
+- Vendor-model robustness: space-glued `=value` tokens, nested-brace params, first-wins duplicate `.model`, `ln`/`pi`/`e`, PSpice `T_ABS`/`T_MEASURED`
 - Source waveforms: DC, AC, PULSE, SIN, PWL, EXP, SFFM, AM
 - Numeric suffixes (`k`, `meg`, `u`, `n`, `p`, `f`, etc.)
 - Line continuations (`+` prefix)
@@ -207,9 +234,9 @@ Unsupported constructs produce a clear error at parse time listing the line numb
 
 ### Test Suite
 
-- **978 C++ tests** (Google Test) across 105 test source files (~25K LOC test code)
-- **173 Python test methods** across 14 test files for the auto-migration tool
-- **124 golden circuit netlists** validated against ngspice, covering:
+- **1,100+ C++ tests** (Google Test) across 132 test source files
+- **173 Python test methods** across 14 test files for the auto-migration tool, plus Python-binding tests
+- **140 golden circuit netlists** validated against ngspice, covering:
   - Passives: resistor divider, RC/RLC filters, coupled inductors, inductor/capacitor/resistor models
   - Sources: PULSE, PWL, EXP, SFFM, AM waveforms
   - Diodes: I-V, DC sweep, rectifier, transient, AC response, noise (thermal + flicker)
@@ -227,7 +254,20 @@ Unsupported constructs produce a clear error at parse time listing the line numb
 
 ## Planned Phases
 
-### Phase 10: GPU Acceleration
+The analog SPICE core and Python bindings are complete. The forward roadmap (see
+[ROADMAP.md](ROADMAP.md) for full detail) extends the engine toward a single open
+tool spanning analog + switching + digital + mixed-signal:
+
+- **Parallel parameter sweeps** — thread-parallel `.step`/Monte-Carlo execution
+- **WebAssembly build** — run neospice in the browser
+- **Incremental re-simulation** — reuse symbolic factorization across parameter edits
+- **GPU-accelerated simulation** (below) — gated by profiling
+- **Piecewise-linear (PWL) simulation** — fast switching-circuit solver (see [pwl-simulation-design.md](pwl-simulation-design.md))
+- **Digital event simulation** and **mixed-signal co-simulation** — supersedes the XSPICE code-model gap (see [mixed-signal-architecture.md](mixed-signal-architecture.md))
+- **Verilog-A device models** — user-defined compact models
+- **ML-guided DC convergence** — learned initial guesses for hard operating points
+
+### GPU Acceleration
 
 Gated by profiling. Only pursue when device evaluation is proven to be the bottleneck on circuits with 500+ MOSFETs.
 
@@ -287,6 +327,8 @@ The matrix system separates **structure** (sparsity pattern) from **values** (nu
 - Wraps pattern's CSC arrays (`col_ptr`, `row_idx`) for sparse LU
 - Values array shared by pointer — no copy
 - Symbolic factorization (AMD ordering, maximum transversal, Markowitz pivoting with Gilbert-Peierls reach) once, numeric refactorization per iteration
+- For large linear circuits, auto-selects a KLU-style left-looking sparse LU with AMD fill-reducing ordering, BTF block-triangular pre-ordering, and partial pivoting
+- Sparse 1.3-compatible and fully self-contained — no external LGPL solver dependency
 
 ### State Management (Transient)
 
@@ -396,6 +438,10 @@ If gmin stepping fails: scale all independent sources from 0→1 in steps, using
 
 If source stepping fails: add C/Δt damping terms to the diagonal, progressively reducing the artificial time constant as the solution stabilizes.
 
+### Last-Resort Fallbacks (Phase-4 aids)
+
+Applied strictly *after* the full standard cascade (a failed Newton mutates limiting state, so these never interleave): homotopy continuation, node-classification initial guess, matrix equilibration, and `OPtran` transient-startup. Structurally-isolated/dead nodes are pinned so dead-node circuits still converge.
+
 ### Initial Conditions
 
 - `.nodeset V(node)=value` — initial guess for DC operating point (preferred)
@@ -487,7 +533,9 @@ neospice/
 │   │   ├── jfet2/                     # JFET2
 │   │   ├── hfet1/                     # HFET1
 │   │   ├── hfet2/                     # HFET2
+│   │   ├── mes/                       # MES (GaAs MESFET)
 │   │   ├── mos1/                      # MOS1 (Level 1)
+│   │   ├── mos2/                      # MOS2 (Level 2, Grove-Frohman)
 │   │   ├── mos3/                      # MOS3 (Level 3)
 │   │   ├── mos9/                      # MOS9 (Level 9)
 │   │   ├── bsim3/                     # BSIM3
@@ -495,7 +543,8 @@ neospice/
 │   │   ├── bsim4v7/                   # BSIM4v7
 │   │   ├── bsimsoi/                   # BSIMSOI
 │   │   ├── hisim2/                    # HiSIM2
-│   │   └── hisimhv/                   # HiSIM_HV
+│   │   ├── hisimhv/                   # HiSIM_HV
+│   │   └── vdmos/                     # VDMOS (vertical power MOSFET)
 │   ├── output/
 │   │   ├── output.hpp/cpp             # Output formatting
 │   │   ├── raw_writer.hpp/cpp         # .raw binary output (ngspice-compatible)
@@ -520,7 +569,7 @@ neospice/
 │   │   ├── gen_cmake.py               #   CMakeLists.txt generator
 │   │   ├── gen_test.py                #   Test scaffolding generator
 │   │   └── validation.py              #   Migration validation
-│   ├── descriptors/                   #   17 device model descriptors
+│   ├── descriptors/                   #   20 device model descriptors
 │   │   ├── asrc.yaml
 │   │   ├── bjt.yaml
 │   │   ├── bsim3.yaml
@@ -548,6 +597,11 @@ neospice/
 │   ├── unit/                          # Unit + integration tests
 │   ├── devices/                       # Device comparison tests
 │   └── bench/                         # Benchmarks
+├── python/                            # Python bindings
+│   ├── bindings.cpp                   #   nanobind module
+│   ├── neospice/                      #   Python package (__init__, circuit.py)
+│   └── tests/                         #   Python binding tests
+├── pyproject.toml                     # scikit-build-core / cibuildwheel config
 └── third_party/                       # BSIM4v7 reference, KiCad SPICE models
 ```
 
@@ -576,13 +630,27 @@ struct StepResult {
 };
 
 // --- Options ---
-struct SimulatorOptions {
+// Tolerances and solver knobs live in SimOptions (src/core/types.hpp), set via
+// netlist `.options` or programmatically on the Circuit. Selected fields:
+struct SimOptions {
     double abstol = 1e-12;
     double reltol = 1e-3;
     double vntol  = 1e-6;
     double trtol  = 7.0;
+    double chgtol = 1e-14;
     double gmin   = 1e-12;
+    double temp   = T_NOMINAL;
+    double tnom   = T_NOMINAL;
+    int    max_iter = 100;       // itl1
+    int    itl4   = 50;          // transient iteration limit
+    std::string method = "trap"; // "trap" or "gear"
+    double xmu = 0.5;            // integration damping (0=BE, 0.5=trap)
+    bool   interp = false;       // .option interp: uniform tstep output grid
+    bool   no_throw = false;     // return partial result instead of throwing
+    bool   pspice_compat = false;
+    // ... plus equilibration, lte_ref_mode, homotopy/source-stepping factors, etc.
 };
+// Python exposes SimOptions as `neospice.SimulatorOptions`.
 
 struct TransientOptions {
     const DCResult* ic_from = nullptr;  // chain DC → transient
@@ -596,9 +664,7 @@ struct ACOptions {
 // --- Simulator ---
 class Simulator {
 public:
-    using Options = SimulatorOptions;
-
-    explicit Simulator(Options opts = Options{});
+    Simulator() = default;
 
     Circuit load(const std::string& filepath);
     Circuit parse(const std::string& netlist_text);
@@ -624,13 +690,25 @@ public:
 };
 
 // --- Result types (all include SimStatus) ---
+//
+// Every series result offers two parallel accessor families:
+//   * String-based — `voltage("out")`, looks up by signal name (works on any circuit)
+//   * Handle-based — `voltage(NodeId)` / `current(DevId)`, O(1) dense-array access
+//     backed by `*_dense` storage; returns std::span for series results.
+// Only the string accessors are shown below for brevity; each struct also has the
+// matching NodeId/DevId overloads.
 
 struct DCResult {
     std::map<std::string, double> node_voltages;
     std::map<std::string, double> branch_currents;
+    std::vector<double> node_voltages_dense;     // indexed by NodeId
+    std::vector<double> branch_currents_dense;    // indexed by DevId
     double voltage(const std::string& node) const;
     double current(const std::string& dev) const;
+    double voltage(NodeId node) const;            // O(1) dense access
+    double current(DevId dev) const;
     double diff(const std::string& node_p, const std::string& node_n) const;
+    double diff(NodeId p, NodeId n) const;
     std::vector<std::string> signal_names() const;
     SimStatus status;
 };
@@ -639,10 +717,16 @@ struct TransientResult {
     std::vector<double> time;
     std::map<std::string, std::vector<double>> voltages;
     std::map<std::string, std::vector<double>> currents;
+    std::vector<std::vector<double>> voltages_dense;   // [NodeId][timepoint]
+    std::vector<std::vector<double>> currents_dense;    // [DevId][timepoint]
     int rejected_steps = 0;
     const std::vector<double>& voltage(const std::string& node) const;
     const std::vector<double>& current(const std::string& dev) const;
+    std::span<const double> voltage(NodeId node) const;   // O(1) dense access
+    std::span<const double> current(DevId dev) const;
+    std::span<const double> time_span() const;
     std::vector<double> diff(const std::string& p, const std::string& n) const;
+    std::vector<double> diff(NodeId p, NodeId n) const;
     std::vector<std::string> signal_names() const;
     SimStatus status;
 };
@@ -651,9 +735,12 @@ struct ACResult {
     std::vector<double> frequency;
     std::map<std::string, std::vector<std::complex<double>>> voltages;
     std::map<std::string, std::vector<std::complex<double>>> currents;
+    std::vector<std::vector<std::complex<double>>> voltages_dense;  // [NodeId][freq]
+    std::vector<std::vector<std::complex<double>>> currents_dense;  // [DevId][freq]
     const std::vector<std::complex<double>>& voltage(const std::string& node) const;
     const std::vector<std::complex<double>>& current(const std::string& dev) const;
-    std::vector<double> magnitude_db(const std::string& node) const;
+    std::span<const std::complex<double>> voltage(NodeId node) const;  // O(1) dense
+    std::vector<double> magnitude_db(const std::string& node) const;   // also magnitude_db(NodeId)
     std::vector<double> phase_deg(const std::string& node) const;
     std::vector<double> magnitude(const std::string& node) const;
     std::vector<std::complex<double>> diff(const std::string& p, const std::string& n) const;
@@ -670,8 +757,12 @@ struct DCSweepResult {
     std::vector<double> sweep_values;
     std::map<std::string, std::vector<double>> voltages;
     std::map<std::string, std::vector<double>> currents;
+    std::vector<std::vector<double>> voltages_dense;   // [NodeId][sweep_point]
+    std::vector<std::vector<double>> currents_dense;    // [DevId][sweep_point]
     const std::vector<double>& voltage(const std::string& node) const;
     const std::vector<double>& current(const std::string& dev) const;
+    std::span<const double> voltage(NodeId node) const;   // O(1) dense access
+    std::span<const double> current(DevId dev) const;
     std::vector<double> diff(const std::string& p, const std::string& n) const;
     std::vector<std::string> signal_names() const;
     SimStatus status;
@@ -797,11 +888,27 @@ auto ckt = sim.parse(netlist);
 auto result = sim.run(ckt);
 ```
 
+### Python Bindings
+
+The full `Simulator`/`Circuit` API is mirrored via nanobind (see the Python Bindings milestone above). Convenience one-liners return results as NumPy arrays:
+
+```python
+import neospice as ns
+
+tran = ns.transient("""RC lowpass
+V1 in 0 SIN(0 1 200)
+R1 in out 1k
+C1 out 0 1u
+.tran 20u 20m
+.end""", tstep=20e-6, tstop=20e-3)
+# tran.time, tran.voltage("out")  -> numpy arrays
+```
+
 ## Auto-Migration Tool
 
 The `tools/ngspice_migrate/` Python package translates ngspice device model C source code into neospice-compatible C++. It is descriptor-driven: each device model has a YAML file (`tools/descriptors/<model>.yaml`) describing its struct names, terminals, source files, and feature flags.
 
-**17 device descriptors** currently available: asrc, bjt, bsim3, bsim3v32, bsim4v7, bsimsoi, dio, hfet1, hfet2, hisim2, hisimhv, jfet, jfet2, ltra, mos1, mos3, mos9, vbic.
+**20 device descriptors** currently available: asrc, bjt, bsim3, bsim3v32, bsim4v7, bsimsoi, dio, hfet1, hfet2, hisim2, hisimhv, jfet, jfet2, ltra, mes, mos1, mos2, mos3, mos9, vbic, vdmos.
 
 ### Pipeline
 
@@ -880,6 +987,8 @@ CMake 3.20+ with C++20. CUDA support is optional and not yet enabled.
 | Google Test | Testing framework | BSD-3 | Tests only |
 | ngspice | Ground truth reference | BSD-3 | Tests only |
 | PyYAML | Migration tool descriptor loading | MIT | Migration tool only |
+| nanobind | Python bindings | BSD-3 | Python wheel only |
+| scikit-build-core | Python build backend | Apache-2.0 | Python wheel only |
 
 ### Build Configurations
 
@@ -907,7 +1016,7 @@ Each phase gated by profiling data.
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| **Auto-migration tool gaps** — new device models may have patterns the transformer doesn't handle | Build errors on migrated code | Tool is extensible (add regex passes). 17 models successfully migrated. |
+| **Auto-migration tool gaps** — new device models may have patterns the transformer doesn't handle | Build errors on migrated code | Tool is extensible (add regex passes). 20 models successfully migrated. |
 | **Convergence differences** — different stepping/limiting than ngspice may produce different paths | Tests fail due to convergence, not math | Match ngspice's convergence aids. Accept wider tolerances on sensitive circuits. |
 | **GPU break-even uncertainty** — circuit matrices may be too small for GPU advantage | GPU investment without speedup | Defer GPU until profiling on real circuits. CPU path is the product. |
 | **PDK netlist compatibility** — real PDKs use complex `.lib`/`.param`/`.subckt` patterns | Can't run production netlists | Subcircuit flattening, expression evaluator, and `.lib` section selection all implemented. |

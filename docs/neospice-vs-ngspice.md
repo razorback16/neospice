@@ -5,26 +5,16 @@ Each entry documents what neospice does differently, why, and the measured impac
 
 ---
 
-## 1. ~~Integration order at source breakpoints~~ (RESOLVED)
-
-**Status:** Aligned with ngspice as of commit `53244e7`.
-
-neospice now resets integration order to 1 at breakpoint crossings, matching
-ngspice `dctran.c:548`. Order is re-promoted via speculative LTE check (see
-item 4).
-
-**Source:** `src/core/transient.cpp:937`
-
----
-
-## 2. Global node-voltage LTE
+## 1. Global node-voltage LTE (opt-in)
 
 **ngspice** controls timestep using only device-level charge truncation error
 (`CKTtrunc` calls each device's `trunc` function, which computes LTE from
 charge state history).
 
-**neospice** adds a second, independent check: global node-voltage LTE using
-second finite differences of the solution vector:
+**neospice** matches ngspice by default (device-level charge LTE only), but
+offers an *optional* second check — global node-voltage LTE using second
+finite differences of the solution vector — gated behind `.option newtrunc`
+or `.option interp`:
 
 ```
 delta2[i] = sol[i] - 2*sol_prev[i] + sol_prev2[i]
@@ -33,47 +23,25 @@ tol[i] = reltol * |sol[i]| + vntol
 accept if max(lte[i]/tol[i]) <= trtol   (default trtol = 7.0)
 ```
 
-This check is skipped for the first 2 steps (need 3 history points) and for
-3 steps after a source breakpoint (history contaminated by pre-edge values).
+When enabled, the check is **proposal-only**: it never rejects a step while
+any device already supplies charge LTE, and only forces a rejection on nodes
+with no device LTE at all (resistor/voltage-source-only nets). It is skipped
+for the first 2 steps (need 3 history points) and for 3 steps after a source
+breakpoint (history contaminated by pre-edge values).
 
 **Why:** Device-level LTE only monitors charge-storing devices. Nodes driven
 purely by resistive networks or voltage sources have no charge LTE. The
-global check catches accumulated integration error on all nodes.
+optional global check catches accumulated integration error on those nodes
+without overriding ngspice-matching device LTE elsewhere.
 
-**Impact:** May reject additional steps during fast transitions that ngspice
-would accept, contributing to the timestep sequence divergence described in
-item 1.
+**Impact:** None by default (off ⇒ identical step-acceptance logic to ngspice).
+When enabled it can only add rejections on otherwise-unmonitored nodes.
 
-**Source:** `src/core/transient.cpp:470-483`, `src/core/timestep.cpp:36-78`
-
----
-
-## 3. ~~Output interpolation~~ (RESOLVED)
-
-**Status:** Aligned with ngspice. neospice now outputs raw adaptive timesteps
-by default, matching ngspice's default behavior. `.option interp` enables
-uniform tstep grid output with quadratic Lagrange interpolation (matching
-ngspice's `.option interp` with linear interpolation). Both Spectre
-(`strobeperiod`) and Xyce offer similar interpolated output modes.
-
-**Source:** `src/core/transient.cpp:514-553` (interpolation helper), `src/core/transient.cpp:965-973` (interp vs raw output branch)
+**Source:** `src/core/transient.cpp:483-494`, `src/core/timestep.cpp:36-78`
 
 ---
 
-## 4. ~~Order promotion strategy~~ (RESOLVED)
-
-**Status:** Aligned with ngspice as of commit `53244e7`.
-
-neospice now uses speculative LTE-conditioned promotion: after a step passes
-at order 1, it re-evaluates device `compute_trunc` at order 2 and only
-promotes if the order-2 dt bound exceeds the current dt by 5%, matching
-ngspice `dctran.c:863-873`.
-
-**Source:** `src/core/transient.cpp:947-959`
-
----
-
-## 5. AC analysis: G/C matrix caching
+## 2. AC analysis: G/C matrix caching
 
 **ngspice** rebuilds the complex admittance matrix Y = G + jwC at every
 frequency point by calling device AC load functions that stamp directly into
@@ -106,11 +74,12 @@ adds per-frequency delta corrections directly into the complex `ax`
 array. This preserves the O(1) device-stamp cost while supporting
 NQS scaling (tau_net relaxation: T0=wt, T2=1/(1+T0^2), T3=T0*T2).
 
-**Source:** `src/core/ac.cpp:149-167`, `src/devices/device.hpp` (ac_stamp_freq)
+**Source:** `src/core/ac.cpp:128` (G/C value cache), `src/core/ac.cpp:195-196`
+(per-frequency assembly), `src/devices/device.hpp` (ac_stamp_freq)
 
 ---
 
-## 6. Noise analysis: pre-built adjoint pattern
+## 3. Noise analysis: pre-built adjoint pattern
 
 **ngspice** solves the adjoint system Y^T * adj = e_out by transposing the
 admittance matrix at each frequency point (or by solving Y^H with a
@@ -128,7 +97,7 @@ enables separate symbolic factorization tuned to each pattern.
 
 ---
 
-## 7. Device-level convergence check
+## 4. Device-level convergence check
 
 **ngspice** declares Newton convergence based solely on node voltage and
 branch current agreement between successive iterations.
@@ -146,26 +115,21 @@ If any device reports non-convergence, Newton continues iterating.
 currents are still oscillating due to the model's internal feedback loops.
 The device-level check prevents premature declaration of convergence.
 
-**Source:** `src/core/newton.cpp:193-206`
+**Source:** `src/core/newton.cpp:313-321`
 
 ---
 
-## 8. ~~Source stepping~~ (RESOLVED)
-
-**Status:** Aligned with ngspice. True source stepping with adaptive
-backtracking.
-
-**Source:** `src/core/convergence.cpp:174-278`
-
----
-
-## 9. DC operating-point convergence fallback order
+## 5. DC operating-point convergence fallback order
 
 **ngspice** `CKTop` tries direct Newton first, then dynamic diagonal-gmin
 stepping, then device-level `new_gmin`, then source stepping.
 
 **neospice** tries direct Newton first, then device-level true-gmin stepping,
-then dynamic diagonal-gmin, then source/gain/pseudo-transient fallback.
+then dynamic diagonal-gmin, then source stepping, gain stepping, and
+pseudo-transient. Beyond that it adds four strict last-resort aids (applied
+only after the entire standard cascade): OPtran transient-startup,
+node-classification initial guess, variable-gain homotopy, and matrix
+equilibration.
 
 **Why:** The port now matches ngspice's `NIiter` result-vector convention:
 when Newton converges, callers keep the previous iterate (`CKTrhsOld`) rather
@@ -187,15 +151,21 @@ ngspice operating point from true-gmin continuation.
 
 ---
 
-## 10. Speed comparison
+## 6. Speed comparison
 
-On a CMOS inverter transient (20ns, BSIM4v7 NMOS + PMOS, 10fF load):
-- neospice: 23ms
-- ngspice: 27ms (subprocess call, includes process startup)
-- neospice is ~1.2x faster for the simulation itself
+On a CMOS inverter transient (`tests/circuits/cmos_inverter.cir`: 20ns,
+BSIM4v7/LEVEL=14 NMOS + PMOS, 10fF load), simulation time only (parse/write
+excluded), median of warm runs on the same machine:
+- neospice: ~6.6ms (self-reported `sim=`; min ~5.3ms)
+- ngspice: ~23ms (`Total analysis time` via `rusage`)
+- neospice is **~3.5x faster** for the simulation itself
 
-The speed advantage comes primarily from C++ vs C overhead reduction and
-the NeoSolver custom sparse LU implementation.
+The speed advantage comes primarily from the NeoSolver custom sparse LU
+(KLU-style AMD-ordered refactorization) and C++ vs C overhead reduction.
+
+> Methodology: `build/neospice <cir>` prints `parse/sim/write/total` timings;
+> ngspice analysis time obtained from a `.control … run / rusage / .endc`
+> block. Discard the first (cold) run before taking the median.
 
 ---
 
