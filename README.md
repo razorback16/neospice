@@ -16,6 +16,7 @@ It reads standard SPICE netlists and produces ngspice-compatible results, runs u
 - **High performance** -- NeoSolver (self-contained Sparse 1.3-compatible LU), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
 - **972 tests** validated against ngspice with tolerances as tight as 1e-6
+- **Validated at scale** -- runs the full **34,908-model KiCad SPICE library** value-matched against ngspice: **93.6% agreement** on the 25,843 decks both simulators solve (24,201 match; only 17 where ngspice converges and neospice does not)
 
 ## Quick Start (C++)
 
@@ -316,5 +317,6 @@ See [docs/building.md](docs/building.md) for platform-specific setup instruction
 | 9 | Digital event simulation | Planned |
 | 10 | Mixed-signal co-simulation | Planned |
 | 11 | Verilog-A device models (syntax not yet supported) | Planned |
+| 12 | ML-guided DC convergence — learned initial-guess predictor (GNN) to seed Newton | Research |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for details.

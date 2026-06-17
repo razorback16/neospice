@@ -284,6 +284,29 @@ Jacobians already used for behavioral B-sources extend naturally to compiled mod
 
 ---
 
+## Phase 12: ML-Guided DC Convergence
+
+**Priority: Research**
+
+Replace neospice's all-zeros Newton starting point with a learned operating-point
+predictor, cutting DC convergence failures and Newton iteration counts. A circuit
+is a graph, so the model is a heterogeneous GNN over a bipartite node/component
+graph, trained on the ~34K converged KiCad solutions and refined toward the true
+objective — actual Newton convergence — rather than just voltage MSE. It stays
+**purely additive**: a bad guess only costs a few extra Newton iterations, and the
+existing gmin / source-stepping / OPtran fallbacks still fire. Gated behind
+`.options mlguess` and a CMake flag, off by default. Full design and prior-art
+survey: [ml-initial-guess.md](ml-initial-guess.md).
+
+### Progression
+- Rule-based heuristic guess (BFS rail propagation) — **done** (`compute_initial_guess()` in `src/core/node_classify.cpp`)
+- Supervised MLP / GNN voltage predictor exported to ONNX, seeding Newton
+- Physics-informed (KCL) residual fine-tuning
+- REINFORCE fine-tuning with Newton convergence as the reward signal
+- Synthetic hard-case generation (latches, Schmitt triggers, bandgaps) for the failure tail
+
+---
+
 ## API Vision
 
 The API evolves through layers — each builds on the previous. The current API
@@ -496,3 +519,4 @@ r = parse_value("4.7k")    # 4700.0
 | 9     | Digital event simulation   | Mixed-signal    | High     | Planned |
 | 10    | Mixed-signal co-simulation | Mixed-signal    | High     | Planned |
 | 11    | Verilog-A device models    | Extensibility   | High     | Planned |
+| 12    | ML-guided DC convergence   | Robustness      | High     | Research |

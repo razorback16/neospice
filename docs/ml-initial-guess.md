@@ -108,8 +108,9 @@ No ML. Pure graph traversal over the parsed circuit.
 3. For nodes with no clear path to a voltage source → leave at 0 V (safe default)
 
 **Strengths:** Zero training data needed. Zero inference cost at runtime. Can
-be implemented in a day. Directly addresses the "Automatic Node Classification"
-item in `kicad-suite-improvement-plan.md` (Priority 3C).
+be implemented in a day. This is the heuristic "Automatic Node Classification"
+approach, implemented as `compute_initial_guess()` in
+`src/core/node_classify.cpp`.
 
 **Weaknesses:** Only works for common topologies. Fails on unusual bias schemes
 and circuits where the operating point is non-obvious from topology alone.
