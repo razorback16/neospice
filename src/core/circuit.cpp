@@ -1,3 +1,14 @@
+/**********
+Some structures and MODE-bit conventions follow UC Berkeley SPICE3
+(cktsetup.c / cktdefs.h). The CKT MODE bits and related circuit-state
+conventions trace, via SPICE3, to L. Nagel's SPICE, UC Berkeley ERL
+Memorandum M382 (1973).
+
+Copyright 1990 Regents of the University of California. All rights reserved.
+(Permissive BSD-style "Berkeley Spice3" license.)
+See NOTICE and CREDITS.md for full attribution.
+**********/
+
 #include "core/circuit.hpp"
 #include "core/circuit_defs.hpp"  // DefinitionStore must be complete for defaulted dtor/move
 #include <algorithm>

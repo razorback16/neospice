@@ -1,3 +1,9 @@
+/**********
+Maximum bipartite matching (maximum transversal) following
+SuiteSparse BTF (Timothy A. Davis, BSD-3-Clause).
+See NOTICE and CREDITS.md.
+**********/
+
 #include "core/matching.hpp"
 #include <algorithm>
 #include <queue>

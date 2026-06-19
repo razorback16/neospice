@@ -1,3 +1,9 @@
+/**********
+Approximate Minimum Degree ordering; matches SuiteSparse AMD by
+Timothy A. Davis, Patrick Amestoy, and Iain Duff (BSD-3-Clause).
+See NOTICE and CREDITS.md.
+**********/
+
 #include "core/amd.hpp"
 #include <algorithm>
 #include <cmath>

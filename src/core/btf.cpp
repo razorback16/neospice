@@ -1,3 +1,9 @@
+/**********
+Block triangular form / maximum-transversal logic traces to
+SuiteSparse BTF by Timothy A. Davis (BSD-3-Clause).
+See NOTICE and CREDITS.md.
+**********/
+
 #include "core/btf.hpp"
 #include <algorithm>
 #include <numeric>

@@ -1,3 +1,9 @@
+/**********
+Sparse-LU factorization compatible with Kenneth S. Kundert's
+Sparse 1.3 (UC Berkeley), the sparse package used by SPICE3.
+See NOTICE and CREDITS.md.
+**********/
+
 #include "core/neo_solver.hpp"
 #include "solver/matrix.hpp"
 #include <algorithm>

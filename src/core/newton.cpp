@@ -1,3 +1,14 @@
+/**********
+Portions of this file are translated from UC Berkeley SPICE3F5
+(niiter.c, the NIiter Newton-Raphson iteration loop) and derive from
+the earlier SPICE2G6 (1983) Fortran, tracing to L. Nagel's SPICE,
+UC Berkeley ERL Memorandum M382 (1973).
+
+Copyright 1990 Regents of the University of California. All rights reserved.
+(Permissive BSD-style "Berkeley Spice3" license.)
+See NOTICE and CREDITS.md for full attribution.
+**********/
+
 #include "core/newton.hpp"
 #include "core/circuit.hpp"
 #include "core/solver_iface.hpp"

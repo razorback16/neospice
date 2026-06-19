@@ -4,7 +4,7 @@
 [![PyPI](https://img.shields.io/pypi/v/neospice.svg)](https://pypi.org/project/neospice/)
 [![Python versions](https://img.shields.io/pypi/pyversions/neospice.svg)](https://pypi.org/project/neospice/)
 
-A SPICE circuit simulator written from scratch in C++20 -- not a fork of ngspice or any Berkeley SPICE derivative. Clean architecture, native Python bindings, and MIT licensed with no LGPL baggage.
+neospice is an independent C++20 reimplementation of the SPICE circuit simulator. Its solver, analysis flow, and device models derive from UC Berkeley SPICE3 (BSD-licensed) and ngspice -- re-architected around a clean Device interface, native Python bindings, and an embeddable C++ API. MIT licensed; see [NOTICE](NOTICE) for full third-party attribution.
 
 It reads standard SPICE netlists and produces ngspice-compatible results, runs up to 8.6x faster per analysis in-process on the benchmark suite, and pairs a self-contained Sparse 1.3-compatible solver stack and auto-differentiated behavioral sources with a modern embeddable API for EDA tools, optimization loops, and notebooks.
 
@@ -320,3 +320,17 @@ See [docs/building.md](docs/building.md) for platform-specific setup instruction
 | 12 | ML-guided DC convergence — learned initial-guess predictor (GNN) to seed Newton | Research |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for details.
+
+## Credits & SPICE lineage
+
+neospice descends from the Berkeley SPICE family. It is an independent C++20 reimplementation, but its solver, analysis flow, and device models are derived — in many places translated — from UC Berkeley SPICE3 and ngspice. We gratefully acknowledge that lineage:
+
+- L. W. Nagel and D. O. Pederson, "SPICE (Simulation Program with Integrated Circuit Emphasis)," Memorandum No. ERL-M382, UC Berkeley, April 1973.
+- L. W. Nagel, "SPICE2: A Computer Program to Simulate Semiconductor Circuits," Memorandum No. ERL-M520, UC Berkeley, May 1975.
+- SPICE2G6 (1983) — the Fortran reference release.
+- SPICE3F5 (UC Berkeley, 1990s) — the BSD-licensed C rewrite that neospice's core and device code is translated from.
+- [ngspice](https://ngspice.sourceforge.io/) — the maintained SPICE3F5 descendant, used as the reference/ground-truth implementation that neospice is validated against.
+
+The NeoSolver sparse-LU stack derives from Kenneth Kundert's Sparse 1.3 (UC Berkeley), with AMD fill-reducing ordering from Tim Davis's [SuiteSparse](https://github.com/DrTimothyAldenDavis/SuiteSparse).
+
+Berkeley SPICE3 is distributed under a permissive BSD-style license ("Copyright Regents of the University of California"), which is what allows neospice to be redistributed under the MIT license. See [NOTICE](NOTICE) and [CREDITS.md](CREDITS.md) for the full attribution.

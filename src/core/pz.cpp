@@ -1,3 +1,14 @@
+/**********
+Portions of this file are translated from UC Berkeley SPICE3F5
+(pzan.c / pzsetup.c, pole-zero analysis) and derive from the earlier
+SPICE2G6 (1983) Fortran, tracing to L. Nagel's SPICE, UC Berkeley
+ERL Memorandum M382 (1973).
+
+Copyright 1990 Regents of the University of California. All rights reserved.
+(Permissive BSD-style "Berkeley Spice3" license.)
+See NOTICE and CREDITS.md for full attribution.
+**********/
+
 #include "core/pz.hpp"
 #include "core/circuit.hpp"
 #include "core/dc.hpp"
