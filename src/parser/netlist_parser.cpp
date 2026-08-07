@@ -57,6 +57,50 @@ std::string to_lower(const std::string& s) {
 // `tok_index` is where scanning begins; `char_offset` is an offset into that
 // first token (used to resume scanning past "POLY(n)" inside the same token).
 // After construction, `next()` returns successive atoms and advances state.
+// POLY(N) header geometry: the polynomial dimension and where control-node
+// scanning resumes.  "poly(n)" glues the count onto the type token; "poly (n)"
+// puts it in the next one.  Shared by the E/G control-node pre-scan (which
+// pre-creates control nodes in ngspice's port order) and by the E/G POLY
+// coefficient parse further below, so the four sites cannot drift apart.
+struct PolyHeader {
+    int    dim      = 1;
+    size_t scan_tok = 0;
+    size_t scan_off = 0;
+};
+
+static PolyHeader parse_poly_header(const std::vector<std::string>& tokens,
+                                    const std::string& type_tok,
+                                    size_t tok_offset, size_t kw_strip) {
+    PolyHeader h;
+    bool dim_in_token = false;
+    const size_t open = type_tok.find('(');
+    if (open != std::string::npos) {
+        const size_t close = type_tok.find(')');
+        if (close != std::string::npos && close > open) {
+            h.dim = std::stoi(type_tok.substr(open + 1, close - open - 1));
+            dim_in_token = true;
+        }
+    } else if (tokens.size() > 4 - tok_offset) {
+        const std::string& count = tokens[4 - tok_offset];
+        if (!count.empty() && count.front() == '(') {
+            const size_t close = count.find(')');
+            if (close != std::string::npos)
+                h.dim = std::stoi(count.substr(1, close - 1));
+        }
+    }
+    h.scan_tok = 3 - tok_offset;
+    if (dim_in_token) {
+        // +kw_strip re-aligns to the original (unstripped) token.
+        h.scan_off = type_tok.find(')') + 1 + kw_strip;  // resume after the count
+    } else {
+        h.scan_tok = 4 - tok_offset;
+        if (h.scan_tok < tokens.size() && !tokens[h.scan_tok].empty()
+                && tokens[h.scan_tok].front() == '(')
+            ++h.scan_tok;  // skip separate "(N)" token
+    }
+    return h;
+}
+
 class NodeAtomScanner {
 public:
     NodeAtomScanner(const std::vector<std::string>& tokens, size_t tok_index,
@@ -2059,34 +2103,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             // sparse ordering and convergence path).  Pre-create the controls
             // in scanner order before materializing the output pair below.
             if (tok3.substr(0, 4) == "poly") {
-                int dim = 1;
-                bool dim_in_token = false;
-                const size_t open = tok3.find('(');
-                if (open != std::string::npos) {
-                    const size_t close = tok3.find(')');
-                    if (close != std::string::npos && close > open) {
-                        dim = std::stoi(tok3.substr(open + 1, close - open - 1));
-                        dim_in_token = true;
-                    }
-                } else if (tokens.size() > 4 - e_tok_offset) {
-                    const std::string& count = tokens[4 - e_tok_offset];
-                    if (!count.empty() && count.front() == '(') {
-                        const size_t close = count.find(')');
-                        if (close != std::string::npos)
-                            dim = std::stoi(count.substr(1, close - 1));
-                    }
-                }
-                size_t scan_tok = 3 - e_tok_offset;
-                size_t scan_off = 0;
-                if (dim_in_token) {
-                    scan_off = tok3.find(')') + 1 + e_kw_strip;
-                } else {
-                    scan_tok = 4 - e_tok_offset;
-                    if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
-                        ++scan_tok;
-                }
-                NodeAtomScanner scan(tokens, scan_tok, scan_off);
-                for (int k = 0; k < dim; ++k) {
+                const PolyHeader ph =
+                    parse_poly_header(tokens, tok3, e_tok_offset, e_kw_strip);
+                NodeAtomScanner scan(tokens, ph.scan_tok, ph.scan_off);
+                for (int k = 0; k < ph.dim; ++k) {
                     std::string sp, sn;
                     if (!scan.next(sp) || !scan.next(sn)) break;
                     node_raw(sp);
@@ -2099,42 +2119,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             if (tok3.substr(0, 4) == "poly") {
                 // POLY(N) form
                 // Extract dimension N from "poly(n)" or "poly" followed by "(n)"
-                int poly_dim = 1;
-                bool poly_dim_in_token = false;
-                std::string poly_tok = tok3;
-                size_t paren_pos = poly_tok.find('(');
-                if (paren_pos != std::string::npos) {
-                    size_t close = poly_tok.find(')');
-                    if (close != std::string::npos && close > paren_pos) {
-                        poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
-                        poly_dim_in_token = true;
-                    }
-                } else if (tokens.size() > 4 - e_tok_offset) {
-                    // "POLY (N)" — dimension in separate token
-                    std::string next = tokens[4 - e_tok_offset];
-                    if (!next.empty() && next.front() == '(') {
-                        size_t close = next.find(')');
-                        if (close != std::string::npos) {
-                            poly_dim = std::stoi(next.substr(1, close - 1));
-                        }
-                    }
-                }
-                // Now parse 2*poly_dim control node atoms with the gettok_node
-                // scanner so (cp,cn), (cp cn), bare cp cn, and the comma-glued
-                // "POLY(N),(cp,cn),..." form all parse identically. When the
-                // count is glued in the POLY token, resume scanning right after
-                // its ')'; otherwise start at the token after POLY[/ "(N)"].
-                size_t scan_tok = 3 - e_tok_offset;
-                size_t scan_off = 0;
-                if (poly_dim_in_token) {
-                    // +e_kw_strip re-aligns to the original (unstripped) token.
-                    scan_off = tok3.find(')') + 1 + e_kw_strip;  // resume after the count
-                } else {
-                    scan_tok = 4 - e_tok_offset;
-                    if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
-                        ++scan_tok;  // skip separate "(N)" token
-                }
-                NodeAtomScanner psc(tokens, scan_tok, scan_off);
+                const PolyHeader ph =
+                    parse_poly_header(tokens, tok3, e_tok_offset, e_kw_strip);
+                const int poly_dim = ph.dim;
+                NodeAtomScanner psc(tokens, ph.scan_tok, ph.scan_off);
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
                 bool poly_ok = true;
@@ -2582,34 +2570,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             }
 
             if (tok3g.substr(0, 4) == "poly") {
-                int dim = 1;
-                bool dim_in_token = false;
-                const size_t open = tok3g.find('(');
-                if (open != std::string::npos) {
-                    const size_t close = tok3g.find(')');
-                    if (close != std::string::npos && close > open) {
-                        dim = std::stoi(tok3g.substr(open + 1, close - open - 1));
-                        dim_in_token = true;
-                    }
-                } else if (tokens.size() > 4 - g_tok_offset) {
-                    const std::string& count = tokens[4 - g_tok_offset];
-                    if (!count.empty() && count.front() == '(') {
-                        const size_t close = count.find(')');
-                        if (close != std::string::npos)
-                            dim = std::stoi(count.substr(1, close - 1));
-                    }
-                }
-                size_t scan_tok = 3 - g_tok_offset;
-                size_t scan_off = 0;
-                if (dim_in_token) {
-                    scan_off = tok3g.find(')') + 1 + g_kw_strip;
-                } else {
-                    scan_tok = 4 - g_tok_offset;
-                    if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
-                        ++scan_tok;
-                }
-                NodeAtomScanner scan(tokens, scan_tok, scan_off);
-                for (int k = 0; k < dim; ++k) {
+                const PolyHeader ph =
+                    parse_poly_header(tokens, tok3g, g_tok_offset, g_kw_strip);
+                NodeAtomScanner scan(tokens, ph.scan_tok, ph.scan_off);
+                for (int k = 0; k < ph.dim; ++k) {
                     std::string sp, sn;
                     if (!scan.next(sp) || !scan.next(sn)) break;
                     node_raw(sp);
@@ -2621,37 +2585,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
 
             if (tok3g.substr(0, 4) == "poly") {
                 // POLY(N) form for VCCS
-                int poly_dim = 1;
-                bool poly_dim_in_token = false;
-                std::string poly_tok = tok3g;
-                size_t paren_pos = poly_tok.find('(');
-                if (paren_pos != std::string::npos) {
-                    size_t close = poly_tok.find(')');
-                    if (close != std::string::npos && close > paren_pos) {
-                        poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
-                        poly_dim_in_token = true;
-                    }
-                } else if (tokens.size() > 4 - g_tok_offset) {
-                    std::string next = tokens[4 - g_tok_offset];
-                    if (!next.empty() && next.front() == '(') {
-                        size_t close = next.find(')');
-                        if (close != std::string::npos) {
-                            poly_dim = std::stoi(next.substr(1, close - 1));
-                        }
-                    }
-                }
-                // Parse 2*poly_dim control node atoms via the gettok_node
-                // scanner; handles the comma-glued "POLY(N),(cp,cn),..." form.
-                size_t scan_tok = 3 - g_tok_offset;
-                size_t scan_off = 0;
-                if (poly_dim_in_token) {
-                    scan_off = tok3g.find(')') + 1 + g_kw_strip;
-                } else {
-                    scan_tok = 4 - g_tok_offset;
-                    if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
-                        ++scan_tok;
-                }
-                NodeAtomScanner psc(tokens, scan_tok, scan_off);
+                const PolyHeader ph =
+                    parse_poly_header(tokens, tok3g, g_tok_offset, g_kw_strip);
+                const int poly_dim = ph.dim;
+                NodeAtomScanner psc(tokens, ph.scan_tok, ph.scan_off);
                 std::vector<CtrlPair> ctrl_pairs;
                 ctrl_pairs.reserve(poly_dim);
                 bool poly_ok = true;
@@ -3056,44 +2993,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             std::string tok3h = to_lower(tokens[3]);
             if (tok3h.substr(0, 4) == "poly") {
                 // POLY(N) form
-                int poly_dim = 1;
-                bool poly_dim_in_token = false;
-                std::string poly_tok = tok3h;
-                size_t paren_pos = poly_tok.find('(');
-                if (paren_pos != std::string::npos) {
-                    size_t close = poly_tok.find(')');
-                    if (close != std::string::npos && close > paren_pos) {
-                        poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
-                        poly_dim_in_token = true;
-                    }
-                } else if (tokens.size() > 4) {
-                    std::string next = tokens[4];
-                    if (!next.empty() && next.front() == '(') {
-                        size_t close = next.find(')');
-                        if (close != std::string::npos) {
-                            poly_dim = std::stoi(next.substr(1, close - 1));
-                        }
-                    }
-                }
-                // Parse N VSource names via NodeAtomScanner so that parenthesised
-                // and comma-glued forms (e.g. POLY(1),(V1) or POLY(1) (V1)) are
-                // handled identically to ngspice's MIFgettok, which treats
-                // ( ) , as whitespace.
-                size_t scan_tok, scan_off;
-                if (poly_dim_in_token) {
-                    // VS names may follow immediately after the count inside
-                    // tokens[3]: "POLY(1),(V1)" — scan_off points past the ')'.
-                    scan_tok = 3;
-                    scan_off = tok3h.find(')') + 1;
-                } else {
-                    // Separate "(N)" token already consumed by dim-extraction.
-                    scan_tok = 4;
-                    scan_off = 0;
-                    if (scan_tok < tokens.size() && !tokens[scan_tok].empty()
-                            && tokens[scan_tok].front() == '(')
-                        ++scan_tok;
-                }
-                NodeAtomScanner vsc(tokens, scan_tok, scan_off);
+                const PolyHeader ph =
+                    parse_poly_header(tokens, tok3h, 0, 0);
+                const int poly_dim = ph.dim;
+                NodeAtomScanner vsc(tokens, ph.scan_tok, ph.scan_off);
                 std::vector<std::string> vsense_names;
                 vsense_names.reserve(poly_dim);
                 for (int k = 0; k < poly_dim; ++k) {
@@ -3159,44 +3062,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             std::string tok3f = to_lower(tokens[3]);
             if (tok3f.substr(0, 4) == "poly") {
                 // POLY(N) form
-                int poly_dim = 1;
-                bool poly_dim_in_token = false;
-                std::string poly_tok = tok3f;
-                size_t paren_pos = poly_tok.find('(');
-                if (paren_pos != std::string::npos) {
-                    size_t close = poly_tok.find(')');
-                    if (close != std::string::npos && close > paren_pos) {
-                        poly_dim = std::stoi(poly_tok.substr(paren_pos + 1, close - paren_pos - 1));
-                        poly_dim_in_token = true;
-                    }
-                } else if (tokens.size() > 4) {
-                    std::string next = tokens[4];
-                    if (!next.empty() && next.front() == '(') {
-                        size_t close = next.find(')');
-                        if (close != std::string::npos) {
-                            poly_dim = std::stoi(next.substr(1, close - 1));
-                        }
-                    }
-                }
-                // Parse N VSource names via NodeAtomScanner so that parenthesised
-                // and comma-glued forms (e.g. POLY(1),(V1) or POLY(1) (V1)) are
-                // handled identically to ngspice's MIFgettok, which treats
-                // ( ) , as whitespace.
-                size_t scan_tok, scan_off;
-                if (poly_dim_in_token) {
-                    // VS names may follow immediately after the count inside
-                    // tokens[3]: "POLY(1),(V1)" — scan_off points past the ')'.
-                    scan_tok = 3;
-                    scan_off = tok3f.find(')') + 1;
-                } else {
-                    // Separate "(N)" token already consumed by dim-extraction.
-                    scan_tok = 4;
-                    scan_off = 0;
-                    if (scan_tok < tokens.size() && !tokens[scan_tok].empty()
-                            && tokens[scan_tok].front() == '(')
-                        ++scan_tok;
-                }
-                NodeAtomScanner vsc(tokens, scan_tok, scan_off);
+                const PolyHeader ph =
+                    parse_poly_header(tokens, tok3f, 0, 0);
+                const int poly_dim = ph.dim;
+                NodeAtomScanner vsc(tokens, ph.scan_tok, ph.scan_off);
                 std::vector<std::string> vsense_names;
                 vsense_names.reserve(poly_dim);
                 for (int k = 0; k < poly_dim; ++k) {
