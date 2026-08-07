@@ -1,4 +1,5 @@
 #include "devices/mos1/mos1_shim.hpp"
+#include "devices/ni_integrate.hpp"
 #include <cstdarg>
 
 namespace neospice::mos1::Shim {
@@ -43,34 +44,7 @@ int CKTmkVolt(Ckt *ckt, CKTnode **node_out,
 
 int NIintegrate(Ckt *ckt, double *geq, double *ceq,
                 double cap, int qcap) {
-    const int ccap = qcap + 1;
-    (void)ccap;
-    double *s0 = ckt->CKTstate0 + qcap;
-    double *s1 = ckt->CKTstate1 + qcap;
-
-    int order = ckt->CKTorder;
-    if (order < 1) order = 1;
-    if (order > 2) order = 2;
-
-    double deriv;
-    if (order == 1) {
-        // Backward Euler (both methods)
-        deriv = ckt->CKTag[0] * s0[0] + ckt->CKTag[1] * s1[0];
-    } else if (ckt->CKTintegrateMethod == 0) {
-        // Trapezoidal order 2: i_n = (2/h)(q_n - q_{n-1}) - i_{n-1}
-        deriv = -s1[1] * ckt->CKTag[1]
-              + ckt->CKTag[0] * (s0[0] - s1[0]);
-    } else {
-        // Gear-2 (BDF-2): i_n = ag[0]*q_n + ag[1]*q_{n-1} + ag[2]*q_{n-2}
-        double *s2 = ckt->CKTstate2 + qcap;
-        deriv = ckt->CKTag[0] * s0[0] + ckt->CKTag[1] * s1[0] + ckt->CKTag[2] * s2[0];
-    }
-    s0[1] = deriv;
-
-    *geq = ckt->CKTag[0] * cap;
-    *ceq = s0[1] - ckt->CKTag[0] * s0[0];
-
-    return OK;
+    return neospice::shim::ni_integrate(ckt, geq, ceq, cap, qcap);
 }
 
 void report_error(int /*level*/, const char *fmt, ...) {

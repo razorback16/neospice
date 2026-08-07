@@ -1,4 +1,5 @@
 #include "devices/mos2/mos2_shim.hpp"
+#include "devices/ni_integrate.hpp"
 #include <cstdarg>
 #include <cmath>
 
@@ -44,30 +45,7 @@ int CKTmkVolt(Ckt *ckt, CKTnode **node_out,
 
 int NIintegrate(Ckt *ckt, double *geq, double *ceq,
                 double cap, int qcap) {
-    const int ccap = qcap + 1;
-    double *s0 = ckt->CKTstate0 + qcap;
-    double *s1 = ckt->CKTstate1 + qcap;
-    double *s2 = ckt->CKTstate2 + qcap;
-
-    int order = ckt->CKTorder;
-    if (order < 1) order = 1;
-    if (order > 2) order = 2;
-
-    double deriv;
-    if (ckt->CKTintegrateMethod == 0 && order == 2) {
-        deriv = -s1[1] * ckt->CKTag[1]
-              + ckt->CKTag[0] * (s0[0] - s1[0]);
-    } else {
-        deriv = ckt->CKTag[0] * s0[0];
-        if (order >= 1) deriv += ckt->CKTag[1] * s1[0];
-        if (order >= 2) deriv += ckt->CKTag[2] * s2[0];
-    }
-    s0[1] = deriv;
-
-    *geq = ckt->CKTag[0] * cap;
-    *ceq = s0[1] - ckt->CKTag[0] * s0[0];
-
-    return OK;
+    return neospice::shim::ni_integrate(ckt, geq, ceq, cap, qcap);
 }
 
 void report_error(int /*level*/, const char *fmt, ...) {
