@@ -1,4 +1,5 @@
 #include "devices/coupled_inductor.hpp"
+#include <span>
 #include <cmath>
 #include <stdexcept>
 
@@ -38,7 +39,7 @@ void CoupledInductor::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void CoupledInductor::evaluate(const std::vector<double>& /*voltages*/,
-                                NumericMatrix& mat, std::vector<double>& rhs) {
+                                NumericMatrix& mat, std::span<double> rhs) {
     // DC: no stamp needed. Inductors are short circuits at DC,
     // and mutual inductance (M * dI/dt) is zero at DC.
     if (!transient_) return;

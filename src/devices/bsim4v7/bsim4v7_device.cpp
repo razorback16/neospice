@@ -1,4 +1,5 @@
 #include "devices/bsim4v7/bsim4v7_device.hpp"
+#include <span>
 
 #include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
@@ -230,7 +231,7 @@ void BSIM4v7Device::set_state_ptrs(double* s0, double* s1, double* s2, double* s
 // ---------------------------------------------------------------------------
 void BSIM4v7Device::evaluate(const std::vector<double>& voltages,
                                NumericMatrix& mat,
-                               std::vector<double>& rhs) {
+                               std::span<double> rhs) {
     const int n_real = static_cast<int>(rhs.size());
     const int n_ghost = (max_neo_node_ >= 0 ? max_neo_node_ + 1 : 0) + 1;
     const OneBasedEvalArrays* shared_arrays = tls_one_based_eval_arrays;

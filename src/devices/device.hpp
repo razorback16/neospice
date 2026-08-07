@@ -1,5 +1,6 @@
 #pragma once
 #include "core/types.hpp"
+#include <span>
 #include "core/matrix.hpp"
 #include "neospice/types.hpp"
 #include <cctype>
@@ -65,10 +66,6 @@ public:
     /// result) on circuits with a unique solution, i.e. fully linear ones.
     virtual bool is_nonlinear() const { return false; }
 
-    /// True for translated ngspice devices that stamp their RHS through the
-    /// one-based CKT arrays published by the Newton driver.
-    virtual bool uses_one_based_rhs() const { return false; }
-
     /// ngspice stores modeled devices under model lists and links instances
     /// at the list head. Circuit::finalize() uses these keys to mirror that
     /// setup/load traversal without changing neospice's ownership order.
@@ -104,7 +101,7 @@ public:
     virtual void stamp_pattern(SparsityBuilder& builder) const = 0;
     virtual void assign_offsets(const SparsityPattern& pattern) = 0;
     virtual void evaluate(const std::vector<double>& voltages,
-                          NumericMatrix& mat, std::vector<double>& rhs) = 0;
+                          NumericMatrix& mat, std::span<double> rhs) = 0;
     virtual void limit_voltages(const std::vector<double>& /*old_v*/,
                                 std::vector<double>& /*new_v*/) {}
     virtual void ac_stamp(const std::vector<double>& /*voltages*/,
@@ -275,7 +272,7 @@ protected:
     static void add_if_valid(NumericMatrix& mat, MatrixOffset off, double val) {
         if (off >= 0) mat.add(off, val);
     }
-    static void add_rhs_if_valid(std::vector<double>& rhs, int32_t node, double val) {
+    static void add_rhs_if_valid(std::span<double> rhs, int32_t node, double val) {
         if (node >= 0) rhs[node] += val;
     }
 };

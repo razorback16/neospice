@@ -2,6 +2,7 @@
 // Measures self-contained Sparse-compatible refactorize+solve at various matrix sizes.
 
 #include "core/neo_solver.hpp"
+#include <span>
 #include "core/matrix.hpp"
 
 #include <algorithm>

@@ -2,6 +2,7 @@
 // Adapter bridging the neospice Device interface to the UCB HFETA (HFET1) code.
 
 #include "devices/device.hpp"
+#include <span>
 #include "devices/hfet1/hfet1_def.hpp"
 #include "devices/hfet1/hfet1_shim.hpp"
 #include <memory>
@@ -26,7 +27,6 @@ struct HFETAModelCard {
 class HFETADevice : public Device {
 public:
     bool is_nonlinear() const override { return true; }
-    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double length = 1e-6;
         double width  = 20e-6;
@@ -45,7 +45,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 

@@ -2,6 +2,7 @@
 // Adapter bridging the neospice Device interface to the UCB BJT code.
 
 #include "devices/device.hpp"
+#include <span>
 #include "devices/bjt/bjt_def.hpp"
 #include "devices/bjt/bjt_shim.hpp"
 #include <memory>
@@ -26,7 +27,6 @@ struct BJTModelCard {
 class BJTDevice : public Device {
 public:
     bool is_nonlinear() const override { return true; }
-    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double area = 1.0;
         double areab = 1.0;  // defaults to area if not given
@@ -47,7 +47,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 

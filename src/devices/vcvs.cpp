@@ -1,4 +1,5 @@
 #include "devices/vcvs.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include <stdexcept>
 
@@ -49,7 +50,7 @@ void VCVS::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void VCVS::evaluate(const std::vector<double>& /*voltages*/,
-                    NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+                    NumericMatrix& mat, std::span<double> /*rhs*/) {
     // Scale gain by dep_src_fact for gain stepping convergence aid
     double gain = gain_;
     if (tls_integrator_ctx && tls_integrator_ctx->options)

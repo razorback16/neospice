@@ -2,6 +2,7 @@
 // Adapter bridging the neospice Device interface to the UCB MOS1 code.
 
 #include "devices/device.hpp"
+#include <span>
 #include "devices/mos1/mos1_def.hpp"
 #include "devices/mos1/mos1_shim.hpp"
 #include <memory>
@@ -34,7 +35,6 @@ struct MOS1ModelCard {
 class MOS1Device : public Device {
 public:
     bool is_nonlinear() const override { return true; }
-    bool uses_one_based_rhs() const override { return true; }
     int ngspice_load_rank_override() const override { return 37; }
     struct Geom {
         double W = 1e-4;
@@ -59,7 +59,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 

@@ -2,6 +2,7 @@
 // Adapter bridging the neospice Device interface to the UCB HSMHV code.
 
 #include "devices/device.hpp"
+#include <span>
 #include "devices/hisimhv/hisimhv_def.hpp"
 #include "devices/hisimhv/hisimhv_shim.hpp"
 #include <memory>
@@ -26,7 +27,6 @@ struct HSMHVModelCard {
 class HSMHVDevice : public Device {
 public:
     bool is_nonlinear() const override { return true; }
-    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double W = 1e-6;
         double L = 1e-7;
@@ -49,7 +49,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 

@@ -1,4 +1,5 @@
 #include "devices/asrc/asrc_device.hpp"
+#include <span>
 #include "devices/vsource.hpp"
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include <algorithm>
@@ -300,7 +301,7 @@ void ASRCDevice::fill_var_values(const std::vector<double>& voltages) const {
 // ===========================================================================
 
 void ASRCDevice::evaluate(const std::vector<double>& voltages,
-                          NumericMatrix& mat, std::vector<double>& rhs) {
+                          NumericMatrix& mat, std::span<double> rhs) {
     fill_var_values(voltages);
 
     // Set dt for DDT() evaluation

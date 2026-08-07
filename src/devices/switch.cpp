@@ -1,4 +1,5 @@
 #include "devices/switch.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include "devices/xspice_input_limiter.hpp"
 #include "core/ckt_mode.hpp"
@@ -219,7 +220,7 @@ void VSwitch::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void VSwitch::evaluate(const std::vector<double>& voltages,
-                       NumericMatrix& mat, std::vector<double>& rhs) {
+                       NumericMatrix& mat, std::span<double> rhs) {
     // Read control voltage
     double Vcp = (ncp_ >= 0) ? voltages[ncp_] : 0.0;
     double Vcn = (ncn_ >= 0) ? voltages[ncn_] : 0.0;
@@ -383,7 +384,7 @@ void CSwitch::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void CSwitch::evaluate(const std::vector<double>& voltages,
-                       NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+                       NumericMatrix& mat, std::span<double> /*rhs*/) {
     // Read sense current
     int32_t bidx = sense_->branch_index();
     double i_ctrl = (bidx >= 0 && bidx < static_cast<int32_t>(voltages.size()))

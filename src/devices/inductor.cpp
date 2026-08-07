@@ -1,4 +1,5 @@
 #include "devices/inductor.hpp"
+#include <span>
 #include "devices/ckt_terr.hpp"
 #include "core/circuit.hpp"
 #include "core/ckt_mode.hpp"
@@ -39,7 +40,7 @@ void Inductor::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void Inductor::evaluate(const std::vector<double>& voltages,
-                        NumericMatrix& mat, std::vector<double>& rhs) {
+                        NumericMatrix& mat, std::span<double> rhs) {
     // KCL coupling ±1 stamps (always present)
     add_if_valid(mat, off_p_br_,  1.0);
     add_if_valid(mat, off_n_br_, -1.0);

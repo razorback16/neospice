@@ -1,4 +1,5 @@
 #include "devices/ccvs.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include <stdexcept>
 
@@ -56,7 +57,7 @@ void CCVS::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void CCVS::evaluate(const std::vector<double>& /*voltages*/,
-                    NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+                    NumericMatrix& mat, std::span<double> /*rhs*/) {
     // KCL at output nodes: +I_branch into np, -I_branch out of nn
     add_if_valid(mat, off_np_branch_,  1.0);
     add_if_valid(mat, off_nn_branch_, -1.0);

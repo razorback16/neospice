@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <span>
 #include "core/transient.hpp"
 #include "core/types.hpp"
 #include "devices/device.hpp"
@@ -19,7 +20,7 @@ TEST(BSIM4v7Trunc, DefaultDeviceReturnsNoConstraint) {
         void stamp_pattern(SparsityBuilder&) const override {}
         void assign_offsets(const SparsityPattern&) override {}
         void evaluate(const std::vector<double>&,
-                      NumericMatrix&, std::vector<double>&) override {}
+                      NumericMatrix&, std::span<double>) override {}
     };
     DummyDevice d;
     IntegratorCtx ctx;

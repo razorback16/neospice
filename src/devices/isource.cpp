@@ -1,4 +1,5 @@
 #include "devices/isource.hpp"
+#include <span>
 #include "core/circuit.hpp"
 #include <cmath>
 
@@ -155,7 +156,7 @@ void ISource::stamp_pattern(SparsityBuilder& /*builder*/) const {}
 void ISource::assign_offsets(const SparsityPattern& /*pattern*/) {}
 
 void ISource::evaluate(const std::vector<double>& /*voltages*/,
-                       NumericMatrix& /*mat*/, std::vector<double>& rhs) {
+                       NumericMatrix& /*mat*/, std::span<double> rhs) {
     // Convention: current flows from np to nn through the source.
     // KCL: current leaves np  -> -I at np
     //      current enters nn  -> +I at nn

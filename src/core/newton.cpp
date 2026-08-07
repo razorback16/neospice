@@ -16,6 +16,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <span>
 #include <limits>
 #include <stdexcept>
 
@@ -194,22 +195,19 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                 tls_integrator_ctx = nullptr;
             }
         } guard(ckt.integrator_ctx, eval_arrays);
-        bool rhs_is_one_based = false;
-        for (Device* dev : load_order) {
-            if (dev->uses_one_based_rhs()) {
-                if (!rhs_is_one_based) {
-                    one_based_rhs[0] = 0.0;
-                    std::copy(rhs.begin(), rhs.end(), one_based_rhs.begin() + 1);
-                    rhs_is_one_based = true;
-                }
-            } else if (rhs_is_one_based) {
-                std::copy(one_based_rhs.begin() + 1, one_based_rhs.end(), rhs.begin());
-                rhs_is_one_based = false;
-            }
-            dev->evaluate(solution, mat, rhs);
-        }
-        if (rhs_is_one_based)
-            std::copy(one_based_rhs.begin() + 1, one_based_rhs.end(), rhs.begin());
+        // Native devices and translated ngspice shims share one buffer: the
+        // shims stamp through one_based_rhs[1..n] (published via
+        // tls_one_based_eval_arrays), while native devices get the same
+        // storage as a zero-based view.  No bridging copies, and no way for a
+        // device to be wired to the wrong convention.
+        for (Device* dev : load_order)
+            dev->evaluate(solution, mat,
+                          std::span<double>(one_based_rhs.data() + 1, n));
+
+        // Hand the accumulated loads back to the zero-based vector the solver
+        // takes.  One unconditional copy, versus the two-or-more the old
+        // per-device convention switch performed on mixed circuits.
+        std::copy(one_based_rhs.begin() + 1, one_based_rhs.end(), rhs.begin());
 
         // Pin dead nodes (see dead_diag_offsets above): stamp a negligible
         // conductance to ground so the diagonal is non-zero and the node

@@ -1,4 +1,5 @@
 #include "devices/vccs.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 
 namespace neospice {
@@ -32,7 +33,7 @@ void VCCS::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void VCCS::evaluate(const std::vector<double>& /*voltages*/,
-                    NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+                    NumericMatrix& mat, std::span<double> /*rhs*/) {
     // SPICE convention: I = gm * (V(ncp) - V(ncn)) leaves N+ (np).
     // Current leaving np = +gm*(V(ncp)-V(ncn))  → mat[np,ncp] += +gm
     // Current leaving nn = -gm*(V(ncp)-V(ncn))  → mat[nn,ncp] += -gm

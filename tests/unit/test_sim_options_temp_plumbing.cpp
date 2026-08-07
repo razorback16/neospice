@@ -4,6 +4,7 @@
 // the hard-coded T_NOMINAL in bsim4v7_device.cpp.
 
 #include <gtest/gtest.h>
+#include <span>
 
 #include "core/circuit.hpp"
 #include "core/neo_solver.hpp"
@@ -31,7 +32,7 @@ public:
         off_ = pattern.offset(node_, node_);
     }
     void evaluate(const std::vector<double>&, NumericMatrix& mat,
-                  std::vector<double>&) override {
+                  std::span<double>) override {
         auto* ic = tls_integrator_ctx;
         temps_.push_back(
             (ic && ic->options) ? ic->options->temp : -1.0);

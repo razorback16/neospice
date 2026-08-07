@@ -6,6 +6,7 @@
 // 4. CMOS inverter DC with device convergence passes.
 
 #include <gtest/gtest.h>
+#include <span>
 #include "core/dc.hpp"
 #include "core/transient.hpp"
 #include "core/types.hpp"
@@ -25,7 +26,7 @@ TEST(BSIM4v7CvTest, DefaultDeviceConvergedReturnsTrue) {
         void stamp_pattern(SparsityBuilder&) const override {}
         void assign_offsets(const SparsityPattern&) override {}
         void evaluate(const std::vector<double>&,
-                      NumericMatrix&, std::vector<double>&) override {}
+                      NumericMatrix&, std::span<double>) override {}
     };
     DummyDevice d;
     EXPECT_TRUE(d.device_converged());

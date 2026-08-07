@@ -1,5 +1,6 @@
 #pragma once
 #include "devices/device.hpp"
+#include <span>
 #include "devices/asrc/expression_ast.hpp"
 #include <utility>
 #include <vector>
@@ -76,7 +77,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 
@@ -237,7 +238,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 

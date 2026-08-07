@@ -2,6 +2,7 @@
 // Adapter bridging the neospice Device interface to the UCB BSIM4v7 code.
 
 #include "devices/device.hpp"
+#include <span>
 #include "devices/bsim4v7/bsim4v7_def.hpp"
 #include "devices/bsim4v7/bsim4v7_shim.hpp"
 #include <memory>
@@ -27,7 +28,6 @@ struct BSIM4v7ModelCard {
 class BSIM4v7Device : public Device {
 public:
     bool is_nonlinear() const override { return true; }
-    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double W = 1e-6;
         double L = 1e-7;
@@ -53,7 +53,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
     bool ac_stamp_freq(double omega, std::vector<double>& ax, int32_t nnz,

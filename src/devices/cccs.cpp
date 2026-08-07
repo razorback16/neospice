@@ -1,4 +1,5 @@
 #include "devices/cccs.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include <stdexcept>
 
@@ -37,7 +38,7 @@ void CCCS::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void CCCS::evaluate(const std::vector<double>& /*voltages*/,
-                    NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+                    NumericMatrix& mat, std::span<double> /*rhs*/) {
     // SPICE convention: I = gain * I(Vsense) leaves N+ (np).
     // Current leaving np = +gain*I_sense → mat[np, sense_branch] += +gain
     // Current leaving nn = -gain*I_sense → mat[nn, sense_branch] += -gain

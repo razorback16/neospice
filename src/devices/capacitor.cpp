@@ -1,4 +1,5 @@
 #include "devices/capacitor.hpp"
+#include <span>
 #include "devices/ckt_terr.hpp"
 #include "core/circuit.hpp"
 #include "core/ckt_mode.hpp"
@@ -27,7 +28,7 @@ void Capacitor::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void Capacitor::evaluate(const std::vector<double>& voltages,
-                         NumericMatrix& mat, std::vector<double>& rhs) {
+                         NumericMatrix& mat, std::span<double> rhs) {
     if (state0_) {
         // State-vector path (matches ngspice capload.c)
         const IntegratorCtx* ic = tls_integrator_ctx;

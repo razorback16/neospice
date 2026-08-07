@@ -2,6 +2,7 @@
 // Adapter bridging the neospice Device interface to the UCB DIO code.
 
 #include "devices/device.hpp"
+#include <span>
 #include "devices/dio/dio_def.hpp"
 #include "devices/dio/dio_shim.hpp"
 #include <memory>
@@ -26,7 +27,6 @@ struct DIOModelCard {
 class DIODevice : public Device {
 public:
     bool is_nonlinear() const override { return true; }
-    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double area = 1.0;
         double pj = 0.0;
@@ -44,7 +44,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 

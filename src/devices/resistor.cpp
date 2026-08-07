@@ -1,4 +1,5 @@
 #include "devices/resistor.hpp"
+#include <span>
 #include "core/types.hpp"
 #include "core/circuit.hpp"
 #include <cmath>
@@ -31,7 +32,7 @@ void Resistor::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void Resistor::evaluate(const std::vector<double>& /*voltages*/,
-                        NumericMatrix& mat, std::vector<double>& /*rhs*/) {
+                        NumericMatrix& mat, std::span<double> /*rhs*/) {
     // Cache simulation temperature for use in noise_sources().
     if (const IntegratorCtx* ic = tls_integrator_ctx) {
         if (ic->options) sim_temp_ = ic->options->temp;

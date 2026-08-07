@@ -1,4 +1,5 @@
 #include "devices/vsource.hpp"
+#include <span>
 #include "core/circuit.hpp"
 #include <cmath>
 #include <stdexcept>
@@ -183,7 +184,7 @@ void VSource::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void VSource::evaluate(const std::vector<double>& /*voltages*/,
-                       NumericMatrix& mat, std::vector<double>& rhs) {
+                       NumericMatrix& mat, std::span<double> rhs) {
     // KCL rows: np gets +I_branch contribution, nn gets -I_branch
     add_if_valid(mat, off_np_branch_,  1.0);
     add_if_valid(mat, off_nn_branch_, -1.0);

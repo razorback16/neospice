@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <span>
 #include "core/circuit.hpp"
 #include "devices/device.hpp"
 
@@ -10,7 +11,7 @@ struct FakeStateDev : public Device {
     FakeStateDev(std::string n, int32_t nv) : Device(std::move(n)), nv_(nv) {}
     void stamp_pattern(SparsityBuilder&) const override {}
     void assign_offsets(const SparsityPattern&) override {}
-    void evaluate(const std::vector<double>&, NumericMatrix&, std::vector<double>&) override {}
+    void evaluate(const std::vector<double>&, NumericMatrix&, std::span<double>) override {}
     int32_t state_vars() const override { return nv_; }
     void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override {
         bound0_ = s0; bound1_ = s1; bound2_ = s2; bound3_ = s3; base_ = base;

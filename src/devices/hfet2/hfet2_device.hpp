@@ -2,6 +2,7 @@
 // Adapter bridging the neospice Device interface to the UCB HFET2 code.
 
 #include "devices/device.hpp"
+#include <span>
 #include "devices/hfet2/hfet2_def.hpp"
 #include "devices/hfet2/hfet2_shim.hpp"
 #include <memory>
@@ -26,7 +27,6 @@ struct HFET2ModelCard {
 class HFET2Device : public Device {
 public:
     bool is_nonlinear() const override { return true; }
-    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double L = 1e-6;
         double W = 20e-6;
@@ -42,7 +42,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 

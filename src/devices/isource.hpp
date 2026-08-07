@@ -1,5 +1,6 @@
 #pragma once
 #include "devices/device.hpp"
+#include <span>
 #include "devices/vsource.hpp"  // for PulseParams, SinParams, SourceFunction
 #include <complex>
 
@@ -64,7 +65,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
 
 private:
     int32_t np_;       // positive node (conventional current exits here)

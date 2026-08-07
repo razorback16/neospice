@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <span>
 
 #include "core/circuit.hpp"
 #include "core/neo_solver.hpp"
@@ -39,7 +40,7 @@ public:
     }
     void evaluate(const std::vector<double>& /*v*/,
                   NumericMatrix& mat,
-                  std::vector<double>& rhs) override {
+                  std::span<double> rhs) override {
         modes_.push_back(tls_integrator_ctx ? tls_integrator_ctx->mode : -1);
         mat.add(off_, 1.0);   // 1 S to ground
         rhs[node_] += 1.0;    // inject 1 A -> non-trivial solution so

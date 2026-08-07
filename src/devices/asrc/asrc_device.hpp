@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 
 #include "devices/device.hpp"
+#include <span>
 #include "devices/asrc/expression_ast.hpp"
 #include <string>
 #include <vector>
@@ -69,7 +70,7 @@ public:
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
-                  NumericMatrix& mat, std::vector<double>& rhs) override;
+                  NumericMatrix& mat, std::span<double> rhs) override;
     bool device_converged(const std::vector<double>& solution) const override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;

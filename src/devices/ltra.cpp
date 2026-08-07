@@ -9,6 +9,7 @@
  */
 
 #include "devices/ltra.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include <algorithm>
 #include <cassert>
@@ -873,7 +874,7 @@ void LossyTransmissionLine::assign_offsets(const SparsityPattern& pattern) {
 // ---------------------------------------------------------------------------
 void LossyTransmissionLine::evaluate(
     const std::vector<double>& voltages,
-    NumericMatrix& mat, std::vector<double>& rhs)
+    NumericMatrix& mat, std::span<double> rhs)
 {
     auto& m = *model_;  // non-const: coefficients are updated each step
 

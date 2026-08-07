@@ -4,6 +4,7 @@
 // rotates.
 
 #include <gtest/gtest.h>
+#include <span>
 
 #include "core/circuit.hpp"
 #include "devices/device.hpp"
@@ -36,7 +37,7 @@ public:
     void stamp_pattern(SparsityBuilder&) const override {}
     void assign_offsets(const SparsityPattern&) override {}
     void evaluate(const std::vector<double>&, NumericMatrix&,
-                  std::vector<double>&) override {}
+                  std::span<double>) override {}
 
     double* state0() const { return state0_; }
     double* state1() const { return state1_; }

@@ -1,4 +1,5 @@
 #include "devices/cccs_nonlinear.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include "devices/spice2poly.hpp"
 #include "devices/xspice_input_limiter.hpp"
@@ -46,7 +47,7 @@ void NonlinearCCCS::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void NonlinearCCCS::evaluate(const std::vector<double>& voltages,
-                              NumericMatrix& mat, std::vector<double>& rhs) {
+                              NumericMatrix& mat, std::span<double> rhs) {
     // Compute sensing currents
     std::vector<double> ctrl_i(vsenses_.size());
     for (size_t k = 0; k < vsenses_.size(); ++k) {

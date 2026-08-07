@@ -1,4 +1,5 @@
 #include "devices/vcvs_nonlinear.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include "devices/vsource.hpp"
 #include "devices/spice2poly.hpp"
@@ -84,7 +85,7 @@ void NonlinearVCVS::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void NonlinearVCVS::evaluate(const std::vector<double>& voltages,
-                              NumericMatrix& mat, std::vector<double>& rhs) {
+                              NumericMatrix& mat, std::span<double> rhs) {
     // Compute control voltages Vk = V(cpk) - V(cnk)
     std::vector<double> ctrl_v(ctrl_pairs_.size());
     for (size_t k = 0; k < ctrl_pairs_.size(); ++k) {
@@ -358,7 +359,7 @@ void TableVCVS::assign_offsets(const SparsityPattern& pattern) {
 }
 
 void TableVCVS::evaluate(const std::vector<double>& voltages,
-                          NumericMatrix& mat, std::vector<double>& rhs) {
+                          NumericMatrix& mat, std::span<double> rhs) {
     // Scale by dep_src_fact for gain stepping convergence aid
     double dsf = 1.0;
     if (tls_integrator_ctx && tls_integrator_ctx->options)

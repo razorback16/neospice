@@ -1,4 +1,5 @@
 #include "devices/tline.hpp"
+#include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include <algorithm>
 #include <cassert>
@@ -173,7 +174,7 @@ void TransmissionLine::update_delayed_values(double t_delayed) {
 // ---------------------------------------------------------------------------
 
 void TransmissionLine::evaluate(const std::vector<double>& voltages,
-                                NumericMatrix& mat, std::vector<double>& rhs) {
+                                NumericMatrix& mat, std::span<double> rhs) {
     if (!transient_) {
         // DC: TL is a short circuit. Tie p1+↔p2+ and p1-↔p2- with large conductance.
         double g_dc = 1e9;
