@@ -91,6 +91,7 @@ namespace Shim {
         double  CKTdeltaOld[8]  = {};
         double  CKTag[8]        = {};
         int     CKTorder        = 1;
+        int     CKTintegrateMethod = 0;
 
         double *CKTstate0 = nullptr;
         double *CKTstate1 = nullptr;

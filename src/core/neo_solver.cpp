@@ -129,6 +129,14 @@ void NeoSolver::symbolic(const SparsityPattern& pattern) {
     dr_.assign(n_, 1.0);
     dc_.assign(n_, 1.0);
 
+    // Sparse 1.3's translation layer numbers external variables lazily, in
+    // the order device setup first requests matrix elements.  Preserve that
+    // first-touch order before retaining CSC-indexed pointers for the numeric
+    // matrix.  Replaying duplicates is harmless and mirrors repeated pointer
+    // requests by device setup.
+    for (const auto& [row, col] : pattern.build_order())
+        matrix_->get_element(row + 1, col + 1);
+
     int32_t k = 0;
     for (int32_t j = 0; j < n_; ++j)
         for (int32_t p = csc.col_ptr[j]; p < csc.col_ptr[j + 1]; ++p) {

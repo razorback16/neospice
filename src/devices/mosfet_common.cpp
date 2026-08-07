@@ -247,7 +247,7 @@ void resolve_mosfets(
             int32_t n_tc = m.nsub_given ? m.nsub : GROUND_INTERNAL;
             auto dev = VDMOSDevice::make(m.name, m.nd, m.ng, m.ns, n_tj, n_tc,
                                          vdmos_geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             ckt.add_device(std::move(dev));
             continue;
         }
@@ -301,7 +301,7 @@ void resolve_mosfets(
             mos1_geom.M   = m.geom.M;
             auto dev = MOS1Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos1_geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,
@@ -334,7 +334,7 @@ void resolve_mosfets(
             mos2_geom.lGiven = m.lGiven;
             auto dev = MOS2Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos2_geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,
@@ -367,7 +367,7 @@ void resolve_mosfets(
             mos3_geom.lGiven = m.lGiven;
             auto dev = MOS3Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos3_geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,
@@ -405,7 +405,7 @@ void resolve_mosfets(
                 g32.M   = m.geom.M;
                 auto dev = BSIM3v32Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                                  g32, *card_it->second);
-                dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+                dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
                 if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                     dev->set_ic(m.ic_vds, m.ic_vds_given,
                                 m.ic_vgs, m.ic_vgs_given,
@@ -435,7 +435,7 @@ void resolve_mosfets(
                 g3.M   = m.geom.M;
                 auto dev = BSIM3Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                              g3, *card_it->second);
-                dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+                dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
                 if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                     dev->set_ic(m.ic_vds, m.ic_vds_given,
                                 m.ic_vgs, m.ic_vgs_given,
@@ -469,7 +469,7 @@ void resolve_mosfets(
             mos9_geom.lGiven = m.lGiven;
             auto dev = MOS9Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos9_geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+                dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,
@@ -490,7 +490,7 @@ void resolve_mosfets(
             }
             auto dev = BSIM4v7Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                            m.geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,
@@ -522,7 +522,7 @@ void resolve_mosfets(
             hsm2_geom.NRS = m.geom.NRS;
             auto dev = HSM2Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         hsm2_geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,
@@ -557,7 +557,7 @@ void resolve_mosfets(
             int32_t n_sub = m.nsub_given ? m.nsub : (GROUND_INTERNAL - 1);
             auto dev = HSMHVDevice::make(m.name, m.nd, m.ng, m.ns, m.nb, n_sub,
                                          hv_geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,
@@ -601,7 +601,7 @@ void resolve_mosfets(
             auto dev = B4SOIDevice::make(m.name, m.nd, m.ng, m.ns,
                                           n_e, n_p, n_b,
                                           soi_geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,

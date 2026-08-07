@@ -347,7 +347,9 @@ void MOS1Device::ac_stamp(const std::vector<double>& /*voltages*/,
 // ---------------------------------------------------------------------------
 // compute_trunc — device-specific local truncation error for time stepping
 //
-// Charge offsets: qgs=5, qgd=8, qgb=11, qbd=13, qbs=15
+// MOS1trunc tests only the three Meyer gate-charge states. Junction
+// depletion charges qbd/qbs are integrated by MOS1load but deliberately do
+// not participate in this device's LTE timestep proposal in ngspice.
 // ---------------------------------------------------------------------------
 double MOS1Device::compute_trunc(const IntegratorCtx& ctx,
                               const SimOptions& opts) const {
@@ -358,7 +360,7 @@ double MOS1Device::compute_trunc(const IntegratorCtx& ctx,
 
     const double* states[] = {state0_, state1_, state2_, state3_};
     double dt_min = 1e30;
-    static const int charge_offsets[] = {5, 8, 11, 13, 15};  // qgs, qgd, qgb, qbd, qbs
+    static const int charge_offsets[] = {5, 8, 11};  // qgs, qgd, qgb
     for (int rel : charge_offsets)
         ckt_terr(state_base_ + rel, states, ctx, opts, dt_min);
     return dt_min;
@@ -420,6 +422,10 @@ bool MOS1Device::device_converged() const {
 }
 
 bool MOS1Device::device_converged(const std::vector<double>& solution) const {
+    constexpr int MODETRANOP_BIT = 0x20;
+    if (tls_integrator_ctx &&
+        (tls_integrator_ctx->mode & MODETRANOP_BIT) != 0)
+        return last_noncon_ == 0;
     return last_noncon_ == 0 && conv_test(solution);
 }
 

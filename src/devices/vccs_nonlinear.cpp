@@ -1,6 +1,8 @@
 #include "devices/vccs_nonlinear.hpp"
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include "devices/vsource.hpp"
+#include "devices/spice2poly.hpp"
+#include "devices/xspice_input_limiter.hpp"
 #include <cmath>
 #include <algorithm>
 #include <functional>
@@ -29,71 +31,7 @@ NonlinearVCCS::NonlinearVCCS(std::string name,
 // ---------------------------------------------------------------------------
 double NonlinearVCCS::eval_poly(const std::vector<double>& ctrl_v,
                                  std::vector<double>& derivs) const {
-    const size_t ndim = ctrl_pairs_.size();
-    derivs.assign(ndim, 0.0);
-
-    if (coeffs_.empty()) return 0.0;
-
-    if (ndim == 1) {
-        double v = ctrl_v[0];
-        double val = 0.0;
-        double deriv = 0.0;
-        for (size_t i = 0; i < coeffs_.size(); ++i) {
-            val += coeffs_[i] * std::pow(v, static_cast<double>(i));
-        }
-        for (size_t i = 1; i < coeffs_.size(); ++i) {
-            deriv += static_cast<double>(i) * coeffs_[i]
-                     * std::pow(v, static_cast<double>(i) - 1.0);
-        }
-        derivs[0] = deriv;
-        return val;
-    }
-
-    // Multi-dimensional
-    double val = 0.0;
-    size_t coeff_idx = 0;
-    for (int d = 0; coeff_idx < coeffs_.size(); ++d) {
-        std::vector<int> exp(ndim, 0);
-        std::vector<std::vector<int>> exps;
-
-        std::function<void(int, int, std::vector<int>&)> gen =
-            [&](int rem, int dim, std::vector<int>& cur) {
-                if (dim == static_cast<int>(ndim) - 1) {
-                    cur[dim] = rem;
-                    exps.push_back(cur);
-                    return;
-                }
-                for (int e = rem; e >= 0; --e) {
-                    cur[dim] = e;
-                    gen(rem - e, dim + 1, cur);
-                }
-            };
-        gen(d, 0, exp);
-
-        for (const auto& ev : exps) {
-            if (coeff_idx >= coeffs_.size()) break;
-            double c = coeffs_[coeff_idx++];
-            if (c == 0.0) continue;
-
-            double mono = c;
-            for (size_t k = 0; k < ndim; ++k) {
-                mono *= std::pow(ctrl_v[k], static_cast<double>(ev[k]));
-            }
-            val += mono;
-
-            for (size_t k = 0; k < ndim; ++k) {
-                if (ev[k] == 0) continue;
-                double dterm = c * static_cast<double>(ev[k]);
-                for (size_t j = 0; j < ndim; ++j) {
-                    int exp_j = (j == k) ? ev[j] - 1 : ev[j];
-                    dterm *= std::pow(ctrl_v[j], static_cast<double>(exp_j));
-                }
-                derivs[k] += dterm;
-            }
-        }
-    }
-
-    return val;
+    return eval_spice2poly(ctrl_v, coeffs_, derivs);
 }
 
 void NonlinearVCCS::stamp_pattern(SparsityBuilder& builder) const {
@@ -126,6 +64,8 @@ void NonlinearVCCS::evaluate(const std::vector<double>& voltages,
         double vn = (ctrl_pairs_[k].neg >= 0) ? voltages[ctrl_pairs_[k].neg] : 0.0;
         ctrl_v[k] = vp - vn;
     }
+    inputs_limited_ = xspice_limit_analog_inputs(
+        ctrl_v, last_inputs_, input_state0_, input_state1_);
 
     std::vector<double> derivs;
     double f_val = eval_poly(ctrl_v, derivs);
@@ -137,6 +77,12 @@ void NonlinearVCCS::evaluate(const std::vector<double>& voltages,
     f_val *= dsf;
     for (auto& d : derivs) d *= dsf;
 
+    // MIFload stamps the output first, then adds each partial companion
+    // separately.  Preserve that floating-point order instead of collapsing
+    // the algebra into f - sum(df*x).
+    add_rhs_if_valid(rhs, np_, -f_val);
+    add_rhs_if_valid(rhs, nn_,  f_val);
+
     // SPICE convention: I = f(Vc) leaves N+ (np).
     // Jacobian: current leaving np = +df/dVk * V(cpk) - df/dVk * V(cnk)
     for (size_t k = 0; k < ctrl_pairs_.size(); ++k) {
@@ -144,15 +90,10 @@ void NonlinearVCCS::evaluate(const std::vector<double>& voltages,
         add_if_valid(mat, off_np_cn_[k], -derivs[k]);
         add_if_valid(mat, off_nn_cp_[k], -derivs[k]);
         add_if_valid(mat, off_nn_cn_[k],  derivs[k]);
+        const double temp = derivs[k] * ctrl_v[k];
+        add_rhs_if_valid(rhs, np_,  temp);
+        add_rhs_if_valid(rhs, nn_, -temp);
     }
-
-    // Newton companion: rhs[np] = -(f(Vc_k) - sum(df/dVk * Vc_k))
-    double companion = f_val;
-    for (size_t k = 0; k < ctrl_pairs_.size(); ++k) {
-        companion -= derivs[k] * ctrl_v[k];
-    }
-    add_rhs_if_valid(rhs, np_, -companion);
-    add_rhs_if_valid(rhs, nn_,  companion);
 }
 
 void NonlinearVCCS::ac_stamp(const std::vector<double>& voltages,

@@ -84,6 +84,21 @@ int node_count_for_element(char elem_type) {
     }
 }
 
+/// Return the '=' in a device key=value token.  An equality operator inside
+/// a braced value (for example {L*if(flag==99,0,1)}) is not an assignment.
+size_t parameter_assignment_pos(const std::string& token) {
+    const size_t pos = token.find('=');
+    if (pos == std::string::npos || pos == 0 ||
+        (pos + 1 < token.size() && token[pos + 1] == '='))
+        return std::string::npos;
+    for (size_t i = 0; i < pos; ++i) {
+        const unsigned char c = static_cast<unsigned char>(token[i]);
+        if (!std::isalnum(c) && c != '_')
+            return std::string::npos;
+    }
+    return pos;
+}
+
 /// Extract up to `want` node atoms from `tokens` starting at token index
 /// `start`, following ngspice gettok_node semantics: '(', ')', ',' and
 /// whitespace ALL delimit. This makes "(n+,n-) (nc+,nc-)", "(n+ n-)",
@@ -1399,7 +1414,7 @@ std::vector<TokenizedLine> expand_instance(
             // param expressions where applicable
             for (size_t i = value_start; i < line.tokens.size(); ++i) {
                 const std::string& tok = line.tokens[i];
-                auto eq_pos = tok.find('=');
+                auto eq_pos = parameter_assignment_pos(tok);
                 if (eq_pos != std::string::npos) {
                     // key=value pair — evaluate the value part
                     std::string key = tok.substr(0, eq_pos);

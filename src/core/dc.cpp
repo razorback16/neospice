@@ -119,13 +119,13 @@ DCResult solve_dc(Circuit& ckt) {
     if (!result.converged) {
         if (ckt.options.verbose)
             std::cerr << "[dc] direct Newton failed (iters=" << result.iterations
-                      << " residual=" << result.residual << "), trying true gmin stepping\n";
+                      << " residual=" << result.residual << "), trying dynamic gmin stepping\n";
         try {
-            result = true_gmin_stepping(ckt, *solver, solution, ckt.options,
-                                        MODEDCOP_BIT | MODEINITJCT_BIT,
-                                        MODEDCOP_BIT | MODEINITFLOAT_BIT);
+            result = gmin_stepping(ckt, *solver, solution, ckt.options,
+                                   MODEDCOP_BIT | MODEINITJCT_BIT,
+                                   MODEDCOP_BIT | MODEINITFLOAT_BIT);
             if (ckt.options.verbose)
-                std::cerr << "[dc] true gmin stepping: converged=" << result.converged
+                std::cerr << "[dc] dynamic gmin stepping: converged=" << result.converged
                           << " iters=" << result.iterations
                           << " residual=" << result.residual << "\n";
         } catch (const std::runtime_error& e) {
@@ -139,17 +139,17 @@ DCResult solve_dc(Circuit& ckt) {
             sim_status.residual = result.residual;
             sim_status.worst_node_idx = result.worst_node_idx;
             sim_status.gmin_steps = 1;
-            sim_status.warnings.push_back("true gmin stepping used");
+            sim_status.warnings.push_back("dynamic gmin stepping used");
         }
         if (!result.converged) {
             if (ckt.options.verbose)
-                std::cerr << "[dc] trying dynamic gmin stepping\n";
+                std::cerr << "[dc] trying true gmin stepping\n";
             try {
-                result = gmin_stepping(ckt, *solver, solution, ckt.options,
-                                       MODEDCOP_BIT | MODEINITJCT_BIT,
-                                       MODEDCOP_BIT | MODEINITFLOAT_BIT);
+                result = true_gmin_stepping(ckt, *solver, solution, ckt.options,
+                                            MODEDCOP_BIT | MODEINITJCT_BIT,
+                                            MODEDCOP_BIT | MODEINITFLOAT_BIT);
                 if (ckt.options.verbose)
-                    std::cerr << "[dc] gmin stepping: converged=" << result.converged
+                    std::cerr << "[dc] true gmin stepping: converged=" << result.converged
                               << " iters=" << result.iterations
                               << " residual=" << result.residual << "\n";
             } catch (const std::runtime_error& e) {
@@ -163,7 +163,7 @@ DCResult solve_dc(Circuit& ckt) {
                 sim_status.residual = result.residual;
                 sim_status.worst_node_idx = result.worst_node_idx;
                 sim_status.gmin_steps = 1;
-                sim_status.warnings.push_back("gmin stepping used");
+                sim_status.warnings.push_back("true gmin stepping used");
             }
         }
         if (!result.converged) {
@@ -189,6 +189,36 @@ DCResult solve_dc(Circuit& ckt) {
                 sim_status.worst_node_idx = result.worst_node_idx;
                 sim_status.source_steps = 1;
                 sim_status.warnings.push_back("source stepping used");
+            }
+        }
+        if (!result.converged) {
+            if (ckt.options.verbose)
+                std::cerr << "[dc] trying op-transient (OPtran)\n";
+            // Match CKTop ordering exactly: OPtran follows failed source
+            // stepping immediately and starts from its last accepted state.
+            // Additional neospice-only fallbacks remain available below only
+            // if the reference OPtran path itself fails.
+            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+            try {
+                result = transient_operating_point(ckt, *solver, solution, ckt.options);
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] op-transient: converged=" << result.converged
+                              << " iters=" << result.iterations
+                              << " residual=" << result.residual << "\n";
+            } catch (const std::runtime_error& e) {
+                result.converged = false;
+                if (ckt.options.verbose)
+                    std::cerr << "[dc] op-transient threw: " << e.what() << "\n";
+            }
+            if (result.converged) {
+                // ngspice returns the final accepted transient point directly;
+                // a subsequent DC solve can select a different operating-point
+                // basin and therefore must not be inserted here.
+                sim_status.iterations = result.iterations;
+                sim_status.convergence_method = ConvergenceMethod::OP_TRANSIENT;
+                sim_status.residual = result.residual;
+                sim_status.worst_node_idx = result.worst_node_idx;
+                sim_status.warnings.push_back("op-transient (OPtran) used");
             }
         }
         if (!result.converged) {
@@ -242,54 +272,30 @@ DCResult solve_dc(Circuit& ckt) {
         }
         if (!result.converged) {
             if (ckt.options.verbose)
-                std::cerr << "[dc] trying op-transient (OPtran)\n";
-            // 7. Final fallback: OPtran — run a minimal transient from t=0 and
-            // take the relaxed final state as the operating point.  Mirrors
-            // ngspice CKTop's last resort (cktop.c:94-103 -> optran.c).  Runs
-            // only when every other aid has failed, so it costs nothing for
-            // circuits that already converge.
+                std::cerr << "[dc] retrying op-transient from continuation state\n";
+            // A failed reference-order OPtran restores its entry state.  Let
+            // the inexpensive gain/PTC continuations above provide a new seed,
+            // then retry the same physical transient fallback.  This path is
+            // reached only after the reference sequence has already failed.
             ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
             try {
                 result = transient_operating_point(ckt, *solver, solution, ckt.options);
                 if (ckt.options.verbose)
-                    std::cerr << "[dc] op-transient: converged=" << result.converged
-                              << " iters=" << result.iterations
+                    std::cerr << "[dc] op-transient retry: converged="
+                              << result.converged << " iters=" << result.iterations
                               << " residual=" << result.residual << "\n";
             } catch (const std::runtime_error& e) {
                 result.converged = false;
                 if (ckt.options.verbose)
-                    std::cerr << "[dc] op-transient threw: " << e.what() << "\n";
+                    std::cerr << "[dc] op-transient retry threw: " << e.what() << "\n";
             }
             if (result.converged) {
-                // OPtran leaves reactive companions reset (cleanup_optran_devices)
-                // and the solution at the relaxed final state.  Re-solve one DC
-                // Newton in MODEDCOP from that point so branch currents/charges
-                // reflect a true DC operating point, not a transient step.  Seeded
-                // at equilibrium this converges trivially.
-                const std::vector<double> op_solution = solution;
-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-                NewtonResult dc_resolve;
-                try {
-                    dc_resolve = newton_solve(ckt, *solver, solution,
-                                              direct_attempt_options(ckt.options));
-                } catch (const std::runtime_error&) {
-                    dc_resolve.converged = false;
-                }
-                if (dc_resolve.converged) {
-                    result = dc_resolve;
-                } else {
-                    // The DC re-solve diverged (e.g. multiple DC roots, or a
-                    // device whose DC and transient-relaxed states differ).
-                    // Keep the OPtran solution — it is the converged operating
-                    // point ngspice reports.
-                    solution = op_solution;
-                }
                 sim_status.iterations = result.iterations;
                 sim_status.convergence_method = ConvergenceMethod::OP_TRANSIENT;
                 sim_status.residual = result.residual;
                 sim_status.worst_node_idx = result.worst_node_idx;
-                sim_status.warnings.push_back("op-transient (OPtran) used");
-                result.converged = true;
+                sim_status.warnings.push_back(
+                    "op-transient (continuation-seeded retry) used");
             }
         }
         if (!result.converged) {

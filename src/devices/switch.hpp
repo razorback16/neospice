@@ -19,6 +19,9 @@ struct SwitchModel {
     bool smooth = false;  // PSpice-style smooth transition (Von/Voff specified)
     double Von  = 0.0;   // control value for full ON (PSpice)
     double Voff = 0.0;   // control value for full OFF (PSpice)
+    // ngspice lowers PSpice VSWITCH to an XSPICE pswitch whose control port
+    // has a finite 1 TOhm input resistance. Native SW remains ideal.
+    double control_input_resistance = 0.0;
 };
 
 // ---------------------------------------------------------------------------
@@ -51,6 +54,15 @@ inline bool switch_is_on(SwitchState s) {
 class VSwitch : public Device {
 public:
     bool is_nonlinear() const override { return true; }
+    int ngspice_load_rank_override() const override {
+        return model_.smooth ? 118 : -1;
+    }
+    int32_t state_vars() const override { return model_.smooth ? 2 : 0; }
+    void set_state_ptrs(double* s0, double* s1, double*, double*,
+                        int32_t base) override {
+        input_state0_ = s0 + base;
+        input_state1_ = s1 + base;
+    }
     VSwitch(std::string name,
             int32_t node_pos, int32_t node_neg,
             int32_t node_ctrl_pos, int32_t node_ctrl_neg,
@@ -63,7 +75,9 @@ public:
                   NumericMatrix& mat, std::vector<double>& rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
-    bool device_converged() const override { return !state_changed_; }
+    bool device_converged() const override {
+        return model_.smooth ? !inputs_limited_ : !state_changed_;
+    }
     bool matrix_structure_changed() const override { return state_changed_; }
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
@@ -83,11 +97,23 @@ private:
     bool state_changed_ = false;
     bool prev_state_changed_ = false;
     double last_g_ = 0.0;   // cached conductance from last evaluate() for AC
+    double* input_state0_ = nullptr;
+    double* input_state1_ = nullptr;
+    std::vector<double> last_inputs_;
+    bool inputs_limited_ = false;
 
     MatrixOffset off_pp_ = -1;
     MatrixOffset off_pn_ = -1;
     MatrixOffset off_np_ = -1;
     MatrixOffset off_nn_ = -1;
+    MatrixOffset off_cp_cp_ = -1;
+    MatrixOffset off_cp_cn_ = -1;
+    MatrixOffset off_cn_cp_ = -1;
+    MatrixOffset off_cn_cn_ = -1;
+    MatrixOffset off_np_cp_ = -1;
+    MatrixOffset off_np_cn_ = -1;
+    MatrixOffset off_nn_cp_ = -1;
+    MatrixOffset off_nn_cn_ = -1;
 };
 
 // ---------------------------------------------------------------------------

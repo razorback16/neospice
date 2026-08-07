@@ -167,7 +167,7 @@ void resolve_bjts(
             vgeom.m_given = q.geom.m_given;
             auto dev = VBICDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
                                         vgeom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, q.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), q.parse_order);
             if (q.ic_vbe_given || q.ic_vce_given) {
                 dev->set_ic(q.ic_vbe, q.ic_vbe_given, q.ic_vce, q.ic_vce_given);
             }
@@ -187,7 +187,7 @@ void resolve_bjts(
             }
             auto dev = BJTDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
                                        q.geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, q.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), q.parse_order);
             if (q.ic_vbe_given || q.ic_vce_given) {
                 dev->set_ic(q.ic_vbe, q.ic_vbe_given, q.ic_vce, q.ic_vce_given);
             }

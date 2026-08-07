@@ -411,9 +411,15 @@ double BJTDevice::compute_trunc(const IntegratorCtx& ctx,
 
     const double* states[] = {state0_, state1_, state2_, state3_};
     double dt_min = 1e30;
-    static const int charge_offsets[] = {8, 10, 12, 14};  // qbe, qbc, qsub, qbx
+    // Match BJTtrunc: intrinsic base-emitter, base-collector, and substrate
+    // charges always participate.  The extrinsic base-collector charge is
+    // included only for the quasi-saturation model.  In particular, qbx is
+    // not an LTE input in current ngspice.
+    static const int charge_offsets[] = {8, 10, 12};  // qbe, qbc, qsub
     for (int rel : charge_offsets)
         ckt_terr(state_base_ + rel, states, ctx, opts, dt_min);
+    if (model_ && model_->BJTintCollResistGiven)
+        ckt_terr(state_base_ + 30, states, ctx, opts, dt_min);  // qbcx
     return dt_min;
 }
 

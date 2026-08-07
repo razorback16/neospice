@@ -15,9 +15,45 @@ See NOTICE and CREDITS.md for full attribution.
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace neospice {
+
+namespace {
+
+// Above 1/epsilon a double no longer has unit resolution, so the relative
+// Newton test can accept a large absolute step.  Reject such a candidate only
+// when a voltage constraint is also carrying current: that means the rounded
+// voltage participates in the circuit.  An unloaded behavioral source remains
+// valid, including ngspice's intentional 1/(gmin*1e-20) result for 1/0.
+bool has_loaded_unresolved_voltage_constraint(
+        const std::vector<Device*>& load_order,
+        const std::vector<double>& solution,
+        const SimOptions& opts) {
+    const double unresolved = 1.0 / std::numeric_limits<double>::epsilon();
+    for (const Device* dev : load_order) {
+        const std::string type = dev->device_type();
+        if (type != "B" && type != "E" && type != "H" && type != "V")
+            continue;
+
+        const int32_t branch = dev->branch_index();
+        if (branch < 0 || branch >= static_cast<int32_t>(solution.size()))
+            continue;
+
+        const auto nodes = dev->external_nodes();
+        if (nodes.size() < 2)
+            continue;
+        const double vp = nodes[0] >= 0 ? solution[nodes[0]] : 0.0;
+        const double vn = nodes[1] >= 0 ? solution[nodes[1]] : 0.0;
+        if (std::abs(vp - vn) > unresolved &&
+            std::abs(solution[branch]) > opts.abstol)
+            return true;
+    }
+    return false;
+}
+
+} // namespace
 
 thread_local OneBasedEvalArrays* tls_one_based_eval_arrays = nullptr;
 
@@ -43,20 +79,22 @@ void NewtonWorkspace::ensure_size(int32_t n) {
 
 NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           std::vector<double>& solution,
-                          const SimOptions& opts) {
+                          const SimOptions& opts,
+                          bool preserve_previous_on_convergence) {
     NewtonWorkspace workspace(ckt.pattern());
-    return newton_solve(ckt, solver, solution, opts, workspace);
+    return newton_solve(ckt, solver, solution, opts, workspace,
+                        preserve_previous_on_convergence);
 }
 
 NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts,
-                          NewtonWorkspace& workspace) {
+                          NewtonWorkspace& workspace,
+                          bool preserve_previous_on_convergence) {
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
     const auto& pattern = ckt.pattern();
     const auto& load_order = ckt.device_load_order();
-
     if (workspace.matrix_size != pattern.size() ||
         workspace.matrix_nnz != pattern.nnz()) {
         throw std::logic_error("NewtonWorkspace does not match circuit sparsity pattern");
@@ -88,7 +126,8 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
     std::vector<double>& one_based_rhs = workspace.one_based_rhs;
 
     if (opts.verbose) {
-        std::cerr << "[newton] gmin=" << opts.gmin << " start:";
+        std::cerr << "[newton] n=" << n << " nnz=" << pattern.nnz()
+                  << " gmin=" << opts.gmin << " start:";
         for (int32_t i = 0; i < num_nodes; ++i)
             std::cerr << " " << ckt.node_name(i) << "=" << solution[i];
         std::cerr << "\n";
@@ -114,7 +153,9 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
     constexpr int MODEINITTRAN_BIT   = 0x1000;
     constexpr int MODEINITPRED_BIT   = 0x2000;
 
-    // Save the caller's mode so we can restore it on exit.
+    // Retain the entry mode for analysis-type decisions. NIiter mutates
+    // CKTmode in place and deliberately leaves the final init phase visible
+    // to continuation callers, including after an iteration-limit failure.
     const int saved_mode = ckt.integrator_ctx.mode;
 
     // Start by reusing the existing pivot order whenever possible.
@@ -124,16 +165,15 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
     constexpr int MODETRAN_BIT = 0x1;
     bool force_numeric = false;
 
-    // ngspice niiter.c:107-110 — force reorder when mode is MODEINITJCT.
-    // Tracks the *current* mode each iteration, matching ngspice which
-    // checks ckt->CKTmode (which changes mid-loop as init phases transition).
-    bool always_reorder = false;
-
     // Track residual norm and worst node across iterations.
     double max_residual = 0.0;
     int32_t worst_idx = -1;
 
-    for (int iter = 0; iter < opts.max_iter; ++iter) {
+    // NIiter checks its iteration limit only after loading and solving.  Thus
+    // maxIter=N performs N normal iterations plus one final load/solve whose
+    // proposal is discarded when the limit is reported.  The device state
+    // produced by that final load is deliberately retained.
+    for (int iter = 0; iter <= opts.max_iter; ++iter) {
         // Save old solution for convergence check
         std::copy(solution.begin(), solution.end(), old_solution.begin());
 
@@ -161,12 +201,22 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                 tls_integrator_ctx = nullptr;
             }
         } guard(ckt.integrator_ctx, eval_arrays);
+        bool rhs_is_one_based = false;
         for (Device* dev : load_order) {
+            if (dev->uses_one_based_rhs()) {
+                if (!rhs_is_one_based) {
+                    one_based_rhs[0] = 0.0;
+                    std::copy(rhs.begin(), rhs.end(), one_based_rhs.begin() + 1);
+                    rhs_is_one_based = true;
+                }
+            } else if (rhs_is_one_based) {
+                std::copy(one_based_rhs.begin() + 1, one_based_rhs.end(), rhs.begin());
+                rhs_is_one_based = false;
+            }
             dev->evaluate(solution, mat, rhs);
         }
-        for (int32_t i = 0; i < n; ++i) {
-            rhs[i] += one_based_rhs[i + 1];
-        }
+        if (rhs_is_one_based)
+            std::copy(one_based_rhs.begin() + 1, one_based_rhs.end(), rhs.begin());
 
         // Pin dead nodes (see dead_diag_offsets above): stamp a negligible
         // conductance to ground so the diagonal is non-zero and the node
@@ -209,9 +259,11 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
 
         // ngspice niiter.c:107-110: force full reorder when in MODEINITJCT.
         int cur_mode = ckt.integrator_ctx.mode;
-        if (cur_mode & MODEINITJCT_BIT) {
-            always_reorder = true;
-        }
+        // NISHOULDREORDER is consumed by SMPreorder in this iteration.  Do
+        // not latch the request across later MODEINITFLOAT iterations.
+        const bool always_reorder =
+            (cur_mode & MODEINITJCT_BIT) ||
+            ((cur_mode & MODEINITTRAN_BIT) && iter == 0);
 
         // Factorize: try refactorize first (reuses pivot order).  If
         // refactorization finds a singular pivot, match ngspice NIiter: mark
@@ -221,9 +273,10 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         if (force_numeric || always_reorder) {
             bool singular = solver.numeric(pattern, mat, opts.diag_gmin);
             if (singular) {
-                ckt.integrator_ctx.mode = saved_mode;
                 return {false, iter + 1, max_residual, worst_idx};
             }
+            // SMPreorder clears NISHOULDREORDER.  A mode transition below may
+            // request another full reorder for the following iteration.
             force_numeric = false;
         } else {
             try {
@@ -235,7 +288,6 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
             } catch (const std::exception&) {
                 bool singular = solver.numeric(pattern, mat, opts.diag_gmin);
                 if (singular) {
-                    ckt.integrator_ctx.mode = saved_mode;
                     return {false, iter + 1, max_residual, worst_idx};
                 }
                 force_numeric = false;
@@ -262,6 +314,17 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
 
         std::copy(proposed.begin(), proposed.end(), solution.begin());
 
+        // ngspice niiter.c tests `iterno > maxIter` immediately after the
+        // solve and before convergence testing, damping, or the RHS-buffer
+        // swap.  Keep the iterate that was used for this load (CKTrhsOld),
+        // while retaining the freshly evaluated device state0.
+        if (iter == opts.max_iter) {
+            std::copy(old_solution.begin(), old_solution.end(), solution.begin());
+            if (opts.verbose)
+                std::cerr << "[newton] NOT converged after " << (iter + 1)
+                          << " iter (limit " << opts.max_iter << ")\n";
+            return {false, iter + 1, max_residual, worst_idx};
+        }
 
         // Check convergence
         bool converged = true;
@@ -274,7 +337,7 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
             double v_old = old_solution[i];
             double diff = std::abs(v_new - v_old);
 
-            if (i < num_nodes) {
+            if (ckt.is_voltage_variable(i)) {
                 // Node voltage convergence
                 double tol = opts.reltol * std::max(std::abs(v_new), std::abs(v_old)) + opts.vntol;
                 if (diff > tol) {
@@ -299,7 +362,7 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                 double v_new = solution[i];
                 double v_old = old_solution[i];
                 double diff  = std::abs(v_new - v_old);
-                double other = (i < num_nodes) ? opts.vntol : opts.abstol;
+                double other = ckt.is_voltage_variable(i) ? opts.vntol : opts.abstol;
                 double tol   = opts.reltol * std::max(std::abs(v_new), std::abs(v_old)) + other;
                 double ratio = (tol > 0.0) ? diff / tol : 0.0;
                 if (ratio > worst_ratio) { worst_ratio = ratio; worst_diff = diff; worst = i; }
@@ -333,6 +396,14 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
             }
         }
 
+        if (converged && has_loaded_unresolved_voltage_constraint(
+                             load_order, solution, opts)) {
+            converged = false;
+            if (opts.verbose)
+                std::cerr << "[newton] loaded voltage constraint exceeds "
+                             "double unit resolution\n";
+        }
+
         // Node damping (ngspice niiter.c:295-323) is applied only after the
         // iteration has already been found non-converged.  This keeps the
         // convergence test on the raw Newton proposal and damps only the value
@@ -343,6 +414,7 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
             (saved_mode & (MODEDCOP_BIT | MODETRANOP_BIT)) && iter > 0) {
             double max_diff = 0.0;
             for (int32_t i = 0; i < num_nodes; ++i) {
+                if (!ckt.is_voltage_variable(i)) continue;
                 double diff = std::abs(solution[i] - old_solution[i]);
                 if (diff > max_diff)
                     max_diff = diff;
@@ -352,6 +424,7 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                 if (damp_factor < 0.1)
                     damp_factor = 0.1;
                 for (int32_t i = 0; i < num_nodes; ++i) {
+                    if (!ckt.is_voltage_variable(i)) continue;
                     solution[i] = old_solution[i] + damp_factor * (solution[i] - old_solution[i]);
                 }
                 for (int32_t i = 0; i < num_states; ++i) {
@@ -364,20 +437,17 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         // Post-iteration init-phase flip (matches ngspice NIiter.c:234-269).
         //
         // The mode is modified in-place on ckt.integrator_ctx.mode so that
-        // the NEXT iteration sees the updated phase.  On convergence or
-        // max-iter exit we restore saved_mode.
+        // the NEXT iteration and continuation calls see the updated phase.
         // -----------------------------------------------------------------
         int m = ckt.integrator_ctx.mode;
 
         if (m & MODEINITFLOAT_BIT) {
-            // Corrector phase: convergence check is meaningful.  ngspice
-            // returns OP/transient values from CKTrhsOld, i.e. the previous
-            // iterate that the proposal just converged against.  Keep the
-            // caller's solution on that same side of the final NIiter swap so
-            // continuation methods follow the same path.
+            // Corrector phase: convergence check is meaningful.  Continuation
+            // callers retain CKTrhsOld, the iterate against which CKTrhs just
+            // converged, so keep the same side of the NIiter buffer pair.
             if (converged) {
-                std::copy(old_solution.begin(), old_solution.end(), solution.begin());
-                ckt.integrator_ctx.mode = saved_mode;
+                if (preserve_previous_on_convergence)
+                    std::copy(old_solution.begin(), old_solution.end(), solution.begin());
                 return {true, iter + 1, max_residual, worst_idx};
             }
             // else: keep iterating in MODEINITFLOAT
@@ -385,7 +455,6 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
             // Junction-init -> fix mode (try reading CKTrhsOld next iter)
             ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFIX_BIT;
             force_numeric = true;
-            always_reorder = false;
         } else if (m & MODEINITFIX_BIT) {
             // Fix mode -> float once converged under FIX
             if (converged)
@@ -396,7 +465,9 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         } else if (m & MODEINITTRAN_BIT) {
             // First transient step: predictor/init -> corrector
             ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFLOAT_BIT;
-            force_numeric = true;  // ngspice: NISHOULDREORDER after MODEINITTRAN (niiter.c:257)
+            // niiter.c sets NISHOULDREORDER after the first MODEINITTRAN load,
+            // so the first corrector receives its own full pivot search.
+            force_numeric = true;
         } else if (m & MODEINITPRED_BIT) {
             // Subsequent transient steps: predictor -> corrector
             ckt.integrator_ctx.mode = (m & ~INITF_MASK) | MODEINITFLOAT_BIT;
@@ -405,17 +476,12 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
             // If already converged, return success.
             if (converged) {
                 std::copy(old_solution.begin(), old_solution.end(), solution.begin());
-                ckt.integrator_ctx.mode = saved_mode;
                 return {true, iter + 1, max_residual, worst_idx};
             }
         }
     }
 
-    if (opts.verbose)
-        std::cerr << "[newton] NOT converged after " << opts.max_iter << " iter\n";
-
-    ckt.integrator_ctx.mode = saved_mode;
-    return {false, opts.max_iter, max_residual, worst_idx};
+    throw std::logic_error("unreachable Newton iteration exit");
 }
 
 } // namespace neospice

@@ -420,7 +420,8 @@ bool MOS2Device::device_converged() const {
 }
 
 bool MOS2Device::device_converged(const std::vector<double>& solution) const {
-    return last_noncon_ == 0 && conv_test(solution);
+    (void) solution;
+    return last_noncon_ == 0;
 }
 
 // ---------------------------------------------------------------------------

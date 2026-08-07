@@ -27,6 +27,7 @@ struct BSIM3v32ModelCard {
 class BSIM3v32Device : public Device {
 public:
     bool is_nonlinear() const override { return true; }
+    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double W = 1e-6;
         double L = 1e-7;

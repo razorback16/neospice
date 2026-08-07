@@ -34,11 +34,13 @@ struct NewtonResult {
 
 NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           std::vector<double>& solution,
-                          const SimOptions& opts);
+                          const SimOptions& opts,
+                          bool preserve_previous_on_convergence = true);
 
 NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           std::vector<double>& solution,
                           const SimOptions& opts,
-                          NewtonWorkspace& workspace);
+                          NewtonWorkspace& workspace,
+                          bool preserve_previous_on_convergence = true);
 
 } // namespace neospice

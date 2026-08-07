@@ -981,15 +981,41 @@ CompiledExpression::eval_node(const ASTNode* node,
     case NodeType::DIV: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
         auto b = eval_node(node->right.get(), var_values, nv, need_grad);
-        double denom = b.val;
-        if (std::abs(denom) < 1e-32)
-            denom = std::copysign(1e-32, denom == 0.0 ? 1.0 : denom);
-        result.val = a.val / denom;
+        // ngspice PTdivide adds PTfudge_factor (gmin*1e-20) to every
+        // denominator.  Its derivative is a separately differentiated parse
+        // tree, (a'b-b'a)/(b^2), whose division is fudged again; it is not the
+        // mathematical derivative of the adjusted value.  Reproduce that
+        // deliberately, especially the zero derivative of x/abs(x) at x=0.
+        const double fudge = current_gmin_ * 1e-20;
+        const double value_denom = b.val >= 0.0
+            ? b.val + fudge : b.val - fudge;
+        result.val = value_denom != 0.0
+            ? a.val / value_denom : std::numeric_limits<double>::max();
         if (need_grad) {
-            // d(a/b)/dx = (a'b - ab') / b^2
-            double b2 = denom * denom;
+            const double derivative_denom = b.val * b.val + fudge;
             for (int i = 0; i < nv; ++i)
-                result.grad[i] = (a.grad[i] * denom - a.val * b.grad[i]) / b2;
+                if (node->left->type == NodeType::VARIABLE &&
+                    node->left->var_idx == i) {
+                    double folded_denom = 0.0;
+                    if (try_fold_constant(node->right.get(), folded_denom)) {
+                        // ngspice constructs and compresses a separate
+                        // symbolic derivative tree.  For x/constant, dx/dx
+                        // is fully constant-folded while PTfudge_factor is
+                        // still zero, yielding exactly 1/constant rather than
+                        // constant/(constant^2 + runtime_fudge).
+                        result.grad[i] = 1.0 / folded_denom;
+                        continue;
+                    }
+                    result.grad[i] = derivative_denom != 0.0
+                        ? (a.grad[i] * b.val - a.val * b.grad[i])
+                            / derivative_denom
+                        : 0.0;
+                } else {
+                    result.grad[i] = derivative_denom != 0.0
+                        ? (a.grad[i] * b.val - a.val * b.grad[i])
+                            / derivative_denom
+                        : 0.0;
+                }
         }
         return result;
     }
@@ -1007,30 +1033,22 @@ CompiledExpression::eval_node(const ASTNode* node,
         // This matters for models like Infineon OptiMOS3 (J(...) uses da**0.5
         // with da == 0 at the all-zero DC start).
         constexpr double kPowFudge = 1e-32;
-        if (a.val < 0.0) {
-            // Negative base: use |base|^exp with sign preservation
-            double abs_base = std::abs(a.val);
-            double raw = std::pow(abs_base, b.val);
-            result.val = std::copysign(raw, a.val);
-            if (need_grad) {
-                double grad_base = (abs_base == 0.0 && b.val < 1.0) ? kPowFudge : abs_base;
-                double da_coeff = b.val * std::pow(grad_base, b.val - 1.0);
-                // db_coeff uses log(|base|) for negative base
-                double db_coeff = (abs_base > 0.0) ? raw * std::log(abs_base) : 0.0;
-                // Sign of da_coeff follows sign of result
-                for (int i = 0; i < nv; ++i)
-                    result.grad[i] = da_coeff * a.grad[i] + std::copysign(db_coeff, a.val) * b.grad[i];
-            }
-        } else {
-            result.val = std::pow(a.val, b.val);
-            if (need_grad) {
-                // d(a^b)/dx = a^b * (b * a'/a + b' * ln(a))
-                double grad_base = (a.val == 0.0 && b.val < 1.0) ? kPowFudge : a.val;
-                double da_coeff = b.val * std::pow(grad_base, b.val - 1.0);
-                double db_coeff = (a.val > 0.0) ? result.val * std::log(a.val) : 0.0;
-                for (int i = 0; i < nv; ++i)
-                    result.grad[i] = da_coeff * a.grad[i] + db_coeff * b.grad[i];
-            }
+        // In ngbehavior=psa (without LTspice/HSPICE compatibility), both
+        // PTpower and PTpowerH evaluate pow(abs(base), exponent).  Signed
+        // power is provided separately by pwr()/pwrs().
+        const double abs_base = std::abs(a.val);
+        result.val = std::pow(abs_base, b.val);
+        if (need_grad) {
+            const double grad_base =
+                (abs_base == 0.0 && b.val < 1.0) ? kPowFudge : abs_base;
+            double da_coeff = b.val * std::pow(grad_base, b.val - 1.0);
+            if (a.val < 0.0)
+                da_coeff = -da_coeff;
+            const double db_coeff = abs_base > 0.0
+                ? result.val * std::log(abs_base) : 0.0;
+            for (int i = 0; i < nv; ++i)
+                result.grad[i] = da_coeff * a.grad[i]
+                               + db_coeff * b.grad[i];
         }
         return result;
     }
@@ -1293,7 +1311,10 @@ CompiledExpression::eval_node(const ASTNode* node,
     case NodeType::MIN: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
         auto b = eval_node(node->right.get(), var_values, nv, need_grad);
-        if (a.val <= b.val) {
+        // ngspice differentiates min(a,b) as (a-b < 0) ? a' : b'.
+        // Equality therefore selects the second operand, which is important
+        // at all-zero Newton starts in behavioral macromodels.
+        if (a.val < b.val) {
             result.val = a.val;
             if (need_grad) result.grad = std::move(a.grad);
         } else {
@@ -1306,7 +1327,8 @@ CompiledExpression::eval_node(const ASTNode* node,
     case NodeType::MAX: {
         auto a = eval_node(node->left.get(), var_values, nv, need_grad);
         auto b = eval_node(node->right.get(), var_values, nv, need_grad);
-        if (a.val >= b.val) {
+        // ngspice uses (a-b > 0) ? a' : b'; equality selects b.
+        if (a.val > b.val) {
             result.val = a.val;
             if (need_grad) result.grad = std::move(a.grad);
         } else {
@@ -1325,11 +1347,12 @@ CompiledExpression::eval_node(const ASTNode* node,
         result.val = std::copysign(raw, a.val);
         if (need_grad) {
             // d/dx[sgn(x)*|x|^y] = y * |x|^(y-1)   (sign-preserving)
-            // Floor the base for the derivative: a fractional exponent gives an
-            // infinite slope at x=0 (e.g. pwr(I,0.4) with I=0 at the DC op),
-            // which would make the Jacobian singular. Match ngspice's tolerance
-            // by clamping the magnitude used for the derivative only.
-            double da_coeff = b.val * std::pow(std::max(abs_x, 1e-12), b.val - 1.0);
+            // ngspice's differentiated tree evaluates pwr(x,y-1), whose
+            // PSpice zero/negative-exponent guard adds PTfudge_factor
+            // (gmin*1e-20), not a simulator-tolerance-sized floor.
+            const double derivative_base =
+                (abs_x == 0.0 && b.val < 1.0) ? current_gmin_ * 1e-20 : abs_x;
+            double da_coeff = b.val * std::pow(derivative_base, b.val - 1.0);
             if (!std::isfinite(da_coeff)) da_coeff = 0.0;
             // d/dy[sgn(x)*|x|^y] = sgn(x) * |x|^y * ln(|x|)
             double db_coeff = (abs_x > 0.0) ? raw * std::log(abs_x) : 0.0;
@@ -1348,9 +1371,9 @@ CompiledExpression::eval_node(const ASTNode* node,
         double raw = std::pow(abs_x, b.val);
         result.val = std::copysign(raw, a.val);
         if (need_grad) {
-            // d/dx[PWRS(x,y)] = y * |x|^(y-1)  (same magnitude as PWR); floor
-            // the derivative base to avoid an infinite slope at x=0.
-            double da_coeff = b.val * std::pow(std::max(abs_x, 1e-12), b.val - 1.0);
+            const double derivative_base =
+                (abs_x == 0.0 && b.val < 1.0) ? current_gmin_ * 1e-20 : abs_x;
+            double da_coeff = b.val * std::pow(derivative_base, b.val - 1.0);
             if (!std::isfinite(da_coeff)) da_coeff = 0.0;
             double db_coeff = (abs_x > 0.0) ? raw * std::log(abs_x) : 0.0;
             double sign = (a.val >= 0.0) ? 1.0 : -1.0;
@@ -1381,10 +1404,10 @@ CompiledExpression::eval_node(const ASTNode* node,
         auto x = eval_node(node->left.get(), var_values, nv, need_grad);
         auto lo = eval_node(node->mid.get(), var_values, nv, false);
         auto hi = eval_node(node->right.get(), var_values, nv, false);
-        if (x.val < lo.val) {
+        if (x.val <= lo.val) {
             result.val = lo.val;
             // Gradient is zero (clamped at low)
-        } else if (x.val > hi.val) {
+        } else if (x.val >= hi.val) {
             result.val = hi.val;
             // Gradient is zero (clamped at high)
         } else {

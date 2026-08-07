@@ -12,7 +12,13 @@ namespace neospice {
 
 SparsityPattern::SparsityPattern(int32_t n,
                                  std::vector<std::pair<int32_t, int32_t>> entries)
-    : n_(n), entries_(std::move(entries)) {}
+    : n_(n), entries_(std::move(entries)), build_order_(entries_) {}
+
+SparsityPattern::SparsityPattern(
+    int32_t n, std::vector<std::pair<int32_t, int32_t>> entries,
+    std::vector<std::pair<int32_t, int32_t>> build_order)
+    : n_(n), entries_(std::move(entries)),
+      build_order_(std::move(build_order)) {}
 
 MatrixOffset SparsityPattern::find_offset(int32_t row, int32_t col) const {
     // entries_ is sorted by (col, row).
@@ -93,7 +99,7 @@ SparsityPattern SparsityBuilder::build() const {
               });
     // Deduplicate
     sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
-    return SparsityPattern(n_, std::move(sorted));
+    return SparsityPattern(n_, std::move(sorted), entries_);
 }
 
 // ---------------------------------------------------------------------------

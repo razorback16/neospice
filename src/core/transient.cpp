@@ -419,13 +419,15 @@ static void fill_integrator_context(Circuit& ckt, double dt, int step_count,
         ckt.integrator_ctx.ag[2] =  0.0;
         ckt.integrator_ctx.xmu_ratio = 0.0;  // BE: no previous-derivative term
     } else if (!eff_gear) {
-        // Trapezoidal with xmu damping: i_n = ag[0]*(q_n - q_{n-1}) - xmu_ratio*i_{n-1}
+        // ngspice NIcomCof stores the previous-current multiplier in ag[1]
+        // for trapezoidal order 2. NIintegrate then evaluates
+        // -ag[1]*i_{n-1} + ag[0]*(q_n-q_{n-1}).
         double xmu = ckt.options.xmu;
         double one_minus_xmu = 1.0 - xmu;
         ckt.integrator_ctx.ag[0] =  1.0 / (dt * one_minus_xmu);
-        ckt.integrator_ctx.ag[1] = -1.0 / (dt * one_minus_xmu);
+        ckt.integrator_ctx.ag[1] = xmu / one_minus_xmu;
         ckt.integrator_ctx.ag[2] =  0.0;
-        ckt.integrator_ctx.xmu_ratio = xmu / one_minus_xmu;
+        ckt.integrator_ctx.xmu_ratio = ckt.integrator_ctx.ag[1];
     } else {
         // Variable-step Gear-2 (BDF2)
         double h_old = ctrl.prev_dt();

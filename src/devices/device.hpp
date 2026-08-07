@@ -65,6 +65,10 @@ public:
     /// result) on circuits with a unique solution, i.e. fully linear ones.
     virtual bool is_nonlinear() const { return false; }
 
+    /// True for translated ngspice devices that stamp their RHS through the
+    /// one-based CKT arrays published by the Newton driver.
+    virtual bool uses_one_based_rhs() const { return false; }
+
     /// ngspice stores modeled devices under model lists and links instances
     /// at the list head. Circuit::finalize() uses these keys to mirror that
     /// setup/load traversal without changing neospice's ownership order.
@@ -75,10 +79,20 @@ public:
     int ngspice_model_order() const { return ngspice_model_order_; }
     int ngspice_instance_order() const { return ngspice_instance_order_; }
 
+    /// Exact static_devices[] slot when a SPICE designator maps to multiple
+    /// ngspice implementations (for example M level 1 versus BSIM4, or a
+    /// PSpice VSWITCH lowered to an XSPICE A device).
+    virtual int ngspice_load_rank_override() const { return -1; }
+
     /// Called by Circuit::finalize() before branch assignment and sparsity
     /// build. Devices that need internal MNA nodes (e.g. BSIM4 resistance
     /// models) override this to allocate them via ckt.node().
     virtual void declare_internal_nodes(Circuit& /*ckt*/) {}
+
+    // Behavioral voltage sources in ngspice allocate their current equation
+    // while the parsed device is created, before model setup adds hidden
+    // semiconductor nodes.  Devices may opt into that early allocation phase.
+    virtual void assign_early_branch_index(int32_t& /*next*/) {}
 
     virtual void stamp_pattern(SparsityBuilder& builder) const = 0;
     virtual void assign_offsets(const SparsityPattern& pattern) = 0;

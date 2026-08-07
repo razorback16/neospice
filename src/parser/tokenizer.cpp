@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <iterator>
 
@@ -217,31 +218,78 @@ std::vector<TokenizedLine> tokenize(const std::string& netlist) {
 }
 
 double parse_spice_number(const std::string& str) {
-    std::string s = str;
-    char* end = nullptr;
-    double val = std::strtod(s.c_str(), &end);
-
-    if (end == s.c_str()) {
+    // Match ngspice's INPevaluate arithmetic, including its observable
+    // roundoff. INPevaluate accumulates a decimal mantissa and applies the
+    // exponent with pow(10, exponent); strtod can produce an adjacent double.
+    const char* p = str.c_str();
+    int sign = 1;
+    if (*p == '+') {
+        ++p;
+    } else if (*p == '-') {
+        sign = -1;
+        ++p;
+    }
+    if (*p == '\0' || (!std::isdigit(static_cast<unsigned char>(*p)) && *p != '.')) {
         throw ParseError("Invalid number: " + str);
     }
 
-    std::string suffix(end);
-    std::string lsuffix = to_lower(suffix);
+    double mantissa = 0.0;
+    int decimal_exponent = 0;
+    while (std::isdigit(static_cast<unsigned char>(*p))) {
+        mantissa = 10.0 * mantissa + static_cast<double>(*p - '0');
+        ++p;
+    }
+    if (*p == '.') {
+        ++p;
+        while (std::isdigit(static_cast<unsigned char>(*p))) {
+            mantissa = 10.0 * mantissa + static_cast<double>(*p - '0');
+            --decimal_exponent;
+            ++p;
+        }
+    }
 
-    if (lsuffix.empty()) return val;
-    if (lsuffix[0] == 't' || lsuffix.substr(0, 4) == "tera") return val * 1e12;
-    if (lsuffix[0] == 'g' || lsuffix.substr(0, 4) == "giga") return val * 1e9;
-    if (lsuffix.substr(0, 3) == "meg") return val * 1e6;
-    if (lsuffix[0] == 'k') return val * 1e3;
-    if (lsuffix.substr(0, 3) == "mil") return val * 25.4e-6;
-    if (lsuffix[0] == 'm' && lsuffix.substr(0, 3) != "meg") return val * 1e-3;
-    if (lsuffix[0] == 'u') return val * 1e-6;
-    if (lsuffix[0] == 'n') return val * 1e-9;
-    if (lsuffix[0] == 'p') return val * 1e-12;
-    if (lsuffix[0] == 'f') return val * 1e-15;
-    if (lsuffix[0] == 'a') return val * 1e-18;
+    int explicit_exponent = 0;
+    int exponent_sign = 1;
+    if (*p == 'e' || *p == 'E' || *p == 'd' || *p == 'D') {
+        ++p;
+        if (*p == '+') {
+            ++p;
+        } else if (*p == '-') {
+            exponent_sign = -1;
+            ++p;
+        }
+        while (std::isdigit(static_cast<unsigned char>(*p))) {
+            explicit_exponent = 10 * explicit_exponent + (*p - '0');
+            ++p;
+        }
+    }
 
-    return val;
+    switch (std::tolower(static_cast<unsigned char>(*p))) {
+    case 't': decimal_exponent += 12; break;
+    case 'g': decimal_exponent += 9; break;
+    case 'k': decimal_exponent += 3; break;
+    case 'u': decimal_exponent -= 6; break;
+    case 'n': decimal_exponent -= 9; break;
+    case 'p': decimal_exponent -= 12; break;
+    case 'f': decimal_exponent -= 15; break;
+    case 'a': decimal_exponent -= 18; break;
+    case 'm':
+        if (std::tolower(static_cast<unsigned char>(p[1])) == 'e' &&
+            std::tolower(static_cast<unsigned char>(p[2])) == 'g') {
+            decimal_exponent += 6;
+        } else if (std::tolower(static_cast<unsigned char>(p[1])) == 'i' &&
+                   std::tolower(static_cast<unsigned char>(p[2])) == 'l') {
+            decimal_exponent -= 6;
+            mantissa *= 25.4;
+        } else {
+            decimal_exponent -= 3;
+        }
+        break;
+    default: break;
+    }
+
+    return static_cast<double>(sign) * mantissa *
+           std::pow(10.0, static_cast<double>(decimal_exponent + exponent_sign * explicit_exponent));
 }
 
 } // namespace neospice

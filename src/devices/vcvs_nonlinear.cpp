@@ -1,6 +1,8 @@
 #include "devices/vcvs_nonlinear.hpp"
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include "devices/vsource.hpp"
+#include "devices/spice2poly.hpp"
+#include "devices/xspice_input_limiter.hpp"
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
@@ -47,95 +49,7 @@ std::vector<std::string> NonlinearVCVS::output_currents() const {
 // ---------------------------------------------------------------------------
 double NonlinearVCVS::eval_poly(const std::vector<double>& ctrl_v,
                                  std::vector<double>& derivs) const {
-    const size_t ndim = ctrl_pairs_.size();
-    derivs.assign(ndim, 0.0);
-
-    if (coeffs_.empty()) return 0.0;
-
-    // Special-case single-dimension for efficiency and clarity
-    if (ndim == 1) {
-        double v = ctrl_v[0];
-        double val = 0.0;
-        double deriv = 0.0;
-        double vpow = 1.0;
-        for (size_t i = 0; i < coeffs_.size(); ++i) {
-            val += coeffs_[i] * vpow;
-            if (i > 0) {
-                deriv += static_cast<double>(i) * coeffs_[i] * std::pow(v, static_cast<double>(i) - 1.0);
-            }
-            vpow *= v;
-        }
-        // For i == 0, derivative contribution is 0 (constant term)
-        // Recompute cleanly
-        deriv = 0.0;
-        for (size_t i = 1; i < coeffs_.size(); ++i) {
-            deriv += static_cast<double>(i) * coeffs_[i] * std::pow(v, static_cast<double>(i) - 1.0);
-        }
-        derivs[0] = deriv;
-        return val;
-    }
-
-    // Multi-dimensional POLY: enumerate all monomials in SPICE order.
-    // SPICE uses "graded reverse lexicographic" order (by total degree,
-    // then descending power of V1, then V2, etc.).
-    // Generate terms up to the degree needed to cover all coefficients.
-    double val = 0.0;
-    size_t coeff_idx = 0;
-
-    // Enumerate by total degree d = 0, 1, 2, ...
-    // For each total degree d, enumerate exponent vectors [e1, e2, ..., en]
-    // with sum = d, in the SPICE ordering (e1 descends first).
-    for (int d = 0; coeff_idx < coeffs_.size(); ++d) {
-        // Generate all exponent vectors with sum == d for ndim variables.
-        // We use a recursive generation via a stack-based DFS.
-        // For ndim=2: d=0 → [0,0]; d=1 → [1,0],[0,1]; d=2 → [2,0],[1,1],[0,2]; ...
-        std::vector<int> exp(ndim, 0);
-        std::vector<std::vector<int>> exps;
-
-        // Generate combinations using a simple recursive enumeration
-        // converted to iterative for clarity.
-        // The SPICE ordering for ndim=2 degree d is: e1 from d down to 0, e2 = d - e1
-        // For ndim > 2 it extends similarly.
-        std::function<void(int, int, std::vector<int>&)> gen =
-            [&](int rem, int dim, std::vector<int>& cur) {
-                if (dim == static_cast<int>(ndim) - 1) {
-                    cur[dim] = rem;
-                    exps.push_back(cur);
-                    return;
-                }
-                for (int e = rem; e >= 0; --e) {
-                    cur[dim] = e;
-                    gen(rem - e, dim + 1, cur);
-                }
-            };
-        gen(d, 0, exp);
-
-        for (const auto& ev : exps) {
-            if (coeff_idx >= coeffs_.size()) break;
-            double c = coeffs_[coeff_idx++];
-            if (c == 0.0) continue;
-
-            // Evaluate monomial V1^e1 * V2^e2 * ...
-            double mono = c;
-            for (size_t k = 0; k < ndim; ++k) {
-                mono *= std::pow(ctrl_v[k], static_cast<double>(ev[k]));
-            }
-            val += mono;
-
-            // Partial derivatives: d(mono)/d(Vk) = c * ek * Vk^(ek-1) * prod(Vj^ej, j!=k)
-            for (size_t k = 0; k < ndim; ++k) {
-                if (ev[k] == 0) continue;
-                double dterm = c * static_cast<double>(ev[k]);
-                for (size_t j = 0; j < ndim; ++j) {
-                    int exp_j = (j == k) ? ev[j] - 1 : ev[j];
-                    dterm *= std::pow(ctrl_v[j], static_cast<double>(exp_j));
-                }
-                derivs[k] += dterm;
-            }
-        }
-    }
-
-    return val;
+    return eval_spice2poly(ctrl_v, coeffs_, derivs);
 }
 
 void NonlinearVCVS::stamp_pattern(SparsityBuilder& builder) const {
@@ -178,6 +92,8 @@ void NonlinearVCVS::evaluate(const std::vector<double>& voltages,
         double vn = (ctrl_pairs_[k].neg >= 0) ? voltages[ctrl_pairs_[k].neg] : 0.0;
         ctrl_v[k] = vp - vn;
     }
+    inputs_limited_ = xspice_limit_analog_inputs(
+        ctrl_v, last_inputs_, input_state0_, input_state1_);
 
     std::vector<double> derivs;
     double f_val = eval_poly(ctrl_v, derivs);
@@ -203,18 +119,12 @@ void NonlinearVCVS::evaluate(const std::vector<double>& voltages,
     //   where rhs[branch] = f(Vc_k) - sum_k(df/dVk * Vk_k)   (Newton companion)
     add_if_valid(mat, off_branch_np_,  1.0);
     add_if_valid(mat, off_branch_nn_, -1.0);
+    add_rhs_if_valid(rhs, branch_idx_, f_val);
     for (size_t k = 0; k < ctrl_pairs_.size(); ++k) {
         add_if_valid(mat, off_branch_cp_[k], -derivs[k]);
         add_if_valid(mat, off_branch_cn_[k],  derivs[k]);
+        add_rhs_if_valid(rhs, branch_idx_, -derivs[k] * ctrl_v[k]);
     }
-
-    // RHS: Newton companion for branch equation
-    // rhs[branch] = f(Vc_k) - sum_k(df/dVk * Vk_k)
-    double rhs_val = f_val;
-    for (size_t k = 0; k < ctrl_pairs_.size(); ++k) {
-        rhs_val -= derivs[k] * ctrl_v[k];
-    }
-    add_rhs_if_valid(rhs, branch_idx_, rhs_val);
 }
 
 void NonlinearVCVS::ac_stamp(const std::vector<double>& voltages,

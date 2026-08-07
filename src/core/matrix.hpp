@@ -18,6 +18,9 @@ public:
     /// Construct from a sorted, deduplicated list of (row, col) pairs.
     /// entries must be sorted by (col, row) (CSC order).
     SparsityPattern(int32_t n, std::vector<std::pair<int32_t, int32_t>> entries);
+    SparsityPattern(int32_t n,
+                    std::vector<std::pair<int32_t, int32_t>> entries,
+                    std::vector<std::pair<int32_t, int32_t>> build_order);
 
     /// Matrix dimension
     int32_t size() const { return n_; }
@@ -38,9 +41,17 @@ public:
     /// Sorted (row, col) pairs in CSC (col-major) order.
     const std::vector<std::pair<int32_t, int32_t>>& entries() const { return entries_; }
 
+    /// Original device-stamp traversal order. Sparse 1.3 assigns its internal
+    /// translation indices on first element access, so this order affects MNA
+    /// preordering and the reusable numeric pivot path.
+    const std::vector<std::pair<int32_t, int32_t>>& build_order() const {
+        return build_order_;
+    }
+
 private:
     int32_t n_;
     std::vector<std::pair<int32_t, int32_t>> entries_;  // sorted by (col, row)
+    std::vector<std::pair<int32_t, int32_t>> build_order_;
 };
 
 /// Accumulates sparsity entries before building an immutable SparsityPattern.

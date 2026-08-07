@@ -91,8 +91,28 @@ int32_t ASRCDevice::var_circuit_index(int i) const {
 // Branch index assignment
 // ===========================================================================
 
+void ASRCDevice::assign_early_branch_index(int32_t& next) {
+    if (mode_ == Mode::VOLTAGE && branch_idx_ < 0) {
+        branch_idx_ = next;
+        next += 1;
+    }
+    // ASRCsetup resolves I(source) variables immediately after allocating the
+    // behavioral source's own branch.  CKTfndBranch may lazily allocate the
+    // referenced provider here, interleaving its equation with ASRC equations.
+    // This order is observable when the numeric factorization is reused.
+    const auto& refs = expr_.var_refs();
+    for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
+        if (refs[i].kind != asrc::VarKind::BRANCH_CURRENT ||
+            vsource_ptrs_[i] == nullptr || vsource_ptrs_[i] == this)
+            continue;
+        Device* provider = const_cast<Device*>(vsource_ptrs_[i]);
+        if (provider->branch_index() < 0)
+            provider->assign_branch_index(next);
+    }
+}
+
 void ASRCDevice::assign_branch_index(int32_t& next) {
-    if (mode_ == Mode::VOLTAGE) {
+    if (mode_ == Mode::VOLTAGE && branch_idx_ < 0) {
         branch_idx_ = next;
         next += 1;
     }
@@ -130,8 +150,8 @@ void ASRCDevice::stamp_pattern(SparsityBuilder& builder) const {
                 stamp_if_not_ground(builder, branch_idx_, var_indices_[i]);
                 break;
             case asrc::VarKind::DIFF_VOLTAGE:
-                stamp_if_not_ground(builder, branch_idx_, var_indices_[i]);
                 stamp_if_not_ground(builder, branch_idx_, var_indices2_[i]);
+                stamp_if_not_ground(builder, branch_idx_, var_indices_[i]);
                 break;
             case asrc::VarKind::BRANCH_CURRENT: {
                 int32_t br = var_circuit_index(i);
@@ -153,10 +173,10 @@ void ASRCDevice::stamp_pattern(SparsityBuilder& builder) const {
                 stamp_if_not_ground(builder, nn_, var_indices_[i]);
                 break;
             case asrc::VarKind::DIFF_VOLTAGE:
-                stamp_if_not_ground(builder, np_, var_indices_[i]);
-                stamp_if_not_ground(builder, nn_, var_indices_[i]);
                 stamp_if_not_ground(builder, np_, var_indices2_[i]);
                 stamp_if_not_ground(builder, nn_, var_indices2_[i]);
+                stamp_if_not_ground(builder, np_, var_indices_[i]);
+                stamp_if_not_ground(builder, nn_, var_indices_[i]);
                 break;
             case asrc::VarKind::BRANCH_CURRENT: {
                 int32_t br = var_circuit_index(i);
@@ -231,7 +251,7 @@ void ASRCDevice::assign_offsets(const SparsityPattern& pattern) {
 // Fill variable values from circuit solution
 // ===========================================================================
 
-void ASRCDevice::fill_var_values(const std::vector<double>& voltages) {
+void ASRCDevice::fill_var_values(const std::vector<double>& voltages) const {
     const auto& refs = expr_.var_refs();
     for (int i = 0; i < static_cast<int>(refs.size()); ++i) {
         if (i == time_var_idx_) {
@@ -286,16 +306,16 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
     // Set dt for DDT() evaluation
     if (tls_integrator_ctx) {
         expr_.set_dt(tls_integrator_ctx->delta);
+        expr_.set_gmin(tls_integrator_ctx->options
+                           ? tls_integrator_ctx->options->gmin : 1e-12);
     } else {
         expr_.set_dt(0.0);
+        expr_.set_gmin(1e-12);
     }
 
     // Evaluate expression and get derivatives
     double f_val = expr_.evaluate(var_values_, derivs_);
-
-    // Store for convergence test
-    prev_value_ = current_value_;
-    current_value_ = f_val;
+    prev_value_ = f_val;
     has_prev_value_ = true;
 
     // Store derivatives for AC analysis
@@ -395,6 +415,23 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
     }
 }
 
+bool ASRCDevice::device_converged(
+        const std::vector<double>& solution) const {
+    if (!has_prev_value_) return true;
+
+    fill_var_values(solution);
+    std::vector<double> proposal_derivs;
+    const double proposal_value = expr_.evaluate(var_values_, proposal_derivs);
+    const SimOptions fallback;
+    const SimOptions& opts =
+        (tls_integrator_ctx && tls_integrator_ctx->options)
+            ? *tls_integrator_ctx->options : fallback;
+    const double abs_tol = mode_ == Mode::VOLTAGE ? opts.vntol : opts.abstol;
+    const double tol = opts.reltol *
+        std::max(std::abs(proposal_value), std::abs(prev_value_)) + abs_tol;
+    return std::abs(proposal_value - prev_value_) <= tol;
+}
+
 // ===========================================================================
 // ac_stamp — small-signal AC stamp
 // ===========================================================================
@@ -456,16 +493,6 @@ void ASRCDevice::ac_stamp(const std::vector<double>& voltages,
             }
         }
     }
-}
-
-// ===========================================================================
-// Convergence test
-// ===========================================================================
-
-bool ASRCDevice::device_converged() const {
-    if (!has_prev_value_) return true;
-    double tol = 1e-3 * std::max(std::abs(prev_value_), std::abs(current_value_)) + 1e-6;
-    return std::abs(current_value_ - prev_value_) <= tol;
 }
 
 } // namespace neospice

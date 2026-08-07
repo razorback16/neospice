@@ -66,7 +66,7 @@ DIOload(DIOModel *inModel, Shim::Ckt *ckt)
     double gen_fac, gen_fac_vd, t1;
     int Check;
     int error;
-    double diffcharge, diffchargeSW, deplcharge, deplchargeSW, diffcap, diffcapSW, deplcap, deplcapSW;
+    double diffcharge, deplcharge, deplchargeSW, diffcap, deplcap, deplcapSW;
 
     /*  loop through all the diode models */
     for( ; model != NULL; model = model->DIOnextModel ) {
@@ -336,14 +336,18 @@ DIOload(DIOModel *inModel, Shim::Ckt *ckt)
                     deplcapSW = czof2SW*(here->DIOtF3SW+model->DIOgradingSWCoeff*vd/here->DIOtJctSWPot);
                 }
 
-                diffcharge = here->DIOtTransitTime*cdb;
-                diffchargeSW = here->DIOtTransitTime*cdsw;
+                // ngspice dioload.c forms diffusion charge/capacitance from
+                // the total diode current/conductance after knee limiting and
+                // CKTgmin have been applied.  Using the pre-limit bottom and
+                // sidewall components changes the transient Jacobian by
+                // CKTgmin*TT/dt, which is enough to select a different pivot
+                // path in ill-conditioned power-MOS macromodels.
+                diffcharge = here->DIOtTransitTime*cd;
                 *(ckt->CKTstate0 + here->DIOcapCharge) =
-                        diffcharge + diffchargeSW + deplcharge + deplchargeSW;
+                        diffcharge + deplcharge + deplchargeSW;
 
-                diffcap = here->DIOtTransitTime*gdb;
-                diffcapSW = here->DIOtTransitTime*gdsw;
-                capd = diffcap + diffcapSW + deplcap + deplcapSW;
+                diffcap = here->DIOtTransitTime*gd;
+                capd = diffcap + deplcap + deplcapSW;
 
                 here->DIOcap = capd;
 

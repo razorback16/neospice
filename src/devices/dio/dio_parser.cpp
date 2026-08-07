@@ -70,7 +70,7 @@ void resolve_diodes(
                                         to_dio_card(it->second)).first;
         }
         auto dev = DIODevice::make(dd.name, dd.anode, dd.cathode, dd.geom, *card_it->second);
-        dev->set_ngspice_setup_order(it->second.source_order, dd.parse_order);
+        dev->set_ngspice_setup_order(it->second.effective_setup_order(), dd.parse_order);
         if (dd.ic_vd_given) {
             dev->set_ic(dd.ic_vd, dd.ic_vd_given);
         }

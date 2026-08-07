@@ -55,7 +55,8 @@ int NIintegrate(Ckt *ckt, double *geq, double *ceq,
     double deriv;
     if (ckt->CKTintegrateMethod == 0 && order == 2) {
         // Trapezoidal order 2: needs previous-derivative correction
-        deriv = -s1[1] * ckt->xmu_ratio + ckt->CKTag[0]*s0[0] + ckt->CKTag[1]*s1[0];
+        deriv = -s1[1] * ckt->CKTag[1]
+              + ckt->CKTag[0] * (s0[0] - s1[0]);
     } else {
         // BE (order 1) or Gear: pure coefficient sum
         deriv = ckt->CKTag[0]*s0[0];
@@ -65,7 +66,7 @@ int NIintegrate(Ckt *ckt, double *geq, double *ceq,
     s0[1] = deriv;
 
     *geq = ckt->CKTag[0] * cap;
-    *ceq = s0[1] - (*geq) * s0[0];
+    *ceq = s0[1] - ckt->CKTag[0] * s0[0];
 
     return OK;
 }

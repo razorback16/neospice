@@ -26,6 +26,10 @@ struct ModelCard {
     std::string name;
     std::string type; // "d", "nmos", "pmos", "npn", "pnp" (lowercase)
     int source_order = 0; // Flat .model card order after subcircuit expansion.
+    int setup_order = -1; // Order in which an instance first references it.
+    [[nodiscard]] int effective_setup_order() const {
+        return setup_order >= 0 ? setup_order : source_order;
+    }
     std::string ako_base; // PSpice AKO: base model name (empty if not AKO)
     // Stored lowercase for case-insensitive lookup.  Values are parsed as
     // doubles; integer/flag BSIM4 parameters cast from double at dispatch.

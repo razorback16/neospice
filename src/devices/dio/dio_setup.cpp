@@ -191,6 +191,14 @@ DIOsetup(Shim::Matrix *matrix, DIOModel *inModel, Shim::Ckt *ckt, int *states)
             model->DIOtikf = 0.0;
         }
 
+        // ngspice diosetup.c floors the model saturation current at CKTepsmin
+        // after applying the default.  Vendor power-MOS macromodels commonly
+        // specify IS below that floor (for example 1e-30); preserving the raw
+        // value removes the leakage that makes their near-floating bias
+        // networks numerically solvable in the reference simulator.
+        if (model->DIOsatCur < ckt->CKTepsmin)
+            model->DIOsatCur = ckt->CKTepsmin;
+
         /* loop through all the instances of the model */
         for (here = model->DIOinstances; here != NULL ;
                 here=here->DIOnextInstance) {

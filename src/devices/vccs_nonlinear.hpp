@@ -41,7 +41,17 @@ public:
                   std::vector<double> coefficients);
 
     std::string device_type() const override { return "G"; }
+    int ngspice_load_rank_override() const override { return 118; }
     int32_t extra_vars() const override { return 0; }
+    int32_t state_vars() const override {
+        return static_cast<int32_t>(ctrl_pairs_.size());
+    }
+    void set_state_ptrs(double* s0, double* s1, double*, double*,
+                        int32_t base) override {
+        input_state0_ = s0 + base;
+        input_state1_ = s1 + base;
+    }
+    bool device_converged() const override { return !inputs_limited_; }
 
     std::vector<int32_t> external_nodes() const override {
         std::vector<int32_t> nodes = {np_, nn_};
@@ -64,6 +74,10 @@ private:
     int32_t nn_;
     std::vector<CtrlPair> ctrl_pairs_;
     std::vector<double>   coeffs_;
+    double* input_state0_ = nullptr;
+    double* input_state1_ = nullptr;
+    std::vector<double> last_inputs_;
+    bool inputs_limited_ = false;
 
     // Per control pair: (np, cpk), (np, cnk), (nn, cpk), (nn, cnk)
     std::vector<MatrixOffset> off_np_cp_;

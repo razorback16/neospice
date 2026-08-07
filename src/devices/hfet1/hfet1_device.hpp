@@ -26,6 +26,7 @@ struct HFETAModelCard {
 class HFETADevice : public Device {
 public:
     bool is_nonlinear() const override { return true; }
+    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double length = 1e-6;
         double width  = 20e-6;

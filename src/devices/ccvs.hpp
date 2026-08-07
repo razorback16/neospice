@@ -38,8 +38,17 @@ public:
     // Device interface
     std::string device_type() const override { return "H"; }
     int32_t extra_vars() const override { return 1; }
+    void assign_early_branch_index(int32_t& next) override {
+        // CCVSsetup creates the output equation before resolving the
+        // controlling source through CKTfndBranch.
+        assign_branch_index(next);
+        if (vsense_ != nullptr && vsense_->branch_index() < 0)
+            const_cast<VSource*>(vsense_)->assign_branch_index(next);
+    }
     void assign_branch_index(int32_t& next) override {
-        set_branch_index(next); next += extra_vars();
+        if (branch_index() < 0) {
+            set_branch_index(next); next += extra_vars();
+        }
     }
     std::vector<std::string> output_currents() const override;
 

@@ -138,7 +138,7 @@ void resolve_jfets(
             g2.m_given = j.geom.m_given;
             auto dev = JFET2Device::make(j.name, nd, ng, ns,
                                           g2, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, j.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), j.parse_order);
             if (j.ic_vds_given || j.ic_vgs_given) {
                 dev->set_ic(j.ic_vds, j.ic_vds_given, j.ic_vgs, j.ic_vgs_given);
             }
@@ -161,7 +161,7 @@ void resolve_jfets(
             int32_t ns = j.ns;
             auto dev = JFETDevice::make(j.name, nd, ng, ns,
                                          j.geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, j.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), j.parse_order);
             if (j.ic_vds_given || j.ic_vgs_given) {
                 dev->set_ic(j.ic_vds, j.ic_vds_given, j.ic_vgs, j.ic_vgs_given);
             }

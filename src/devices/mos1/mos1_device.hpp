@@ -34,6 +34,8 @@ struct MOS1ModelCard {
 class MOS1Device : public Device {
 public:
     bool is_nonlinear() const override { return true; }
+    bool uses_one_based_rhs() const override { return true; }
+    int ngspice_load_rank_override() const override { return 37; }
     struct Geom {
         double W = 1e-4;
         double L = 1e-4;

@@ -39,9 +39,21 @@ public:
     int32_t branch_index() const override { return branch_idx_; }
 
     std::string device_type() const override { return "H"; }
+    int ngspice_load_rank_override() const override { return 118; }
     int32_t extra_vars() const override { return 1; }
+    int32_t state_vars() const override {
+        return static_cast<int32_t>(vsenses_.size());
+    }
+    void set_state_ptrs(double* s0, double* s1, double*, double*,
+                        int32_t base) override {
+        input_state0_ = s0 + base;
+        input_state1_ = s1 + base;
+    }
+    bool device_converged() const override { return !inputs_limited_; }
     void assign_branch_index(int32_t& next) override {
-        set_branch_index(next); next += extra_vars();
+        if (branch_index() < 0) {
+            set_branch_index(next); next += extra_vars();
+        }
     }
     std::vector<std::string> output_currents() const override;
 
@@ -65,6 +77,10 @@ private:
     std::vector<const VSource*> vsenses_;
     std::vector<double>   coeffs_;
     int32_t branch_idx_ = -1;
+    double* input_state0_ = nullptr;
+    double* input_state1_ = nullptr;
+    std::vector<double> last_inputs_;
+    bool inputs_limited_ = false;
 
     // Cached matrix offsets
     MatrixOffset off_np_branch_ = -1;   // (np, branch)

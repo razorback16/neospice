@@ -34,6 +34,7 @@ struct StateCheckpoint {
     std::vector<double> state0;
     std::vector<double> state1;
     std::vector<double> state2;
+    std::vector<double> state3;
 };
 
 StateCheckpoint save_state(Circuit& ckt) {
@@ -43,6 +44,7 @@ StateCheckpoint save_state(Circuit& ckt) {
         saved.state0.assign(ckt.state0(), ckt.state0() + n);
         saved.state1.assign(ckt.state1(), ckt.state1() + n);
         saved.state2.assign(ckt.state2(), ckt.state2() + n);
+        saved.state3.assign(ckt.state3(), ckt.state3() + n);
     }
     return saved;
 }
@@ -53,6 +55,7 @@ void restore_state(Circuit& ckt, const StateCheckpoint& saved) {
     std::copy_n(saved.state0.data(), n, ckt.state0());
     std::copy_n(saved.state1.data(), n, ckt.state1());
     std::copy_n(saved.state2.data(), n, ckt.state2());
+    std::copy_n(saved.state3.data(), n, ckt.state3());
 }
 
 void clear_state(Circuit& ckt) {
@@ -61,6 +64,17 @@ void clear_state(Circuit& ckt) {
     std::fill_n(ckt.state0(), n, 0.0);
     std::fill_n(ckt.state1(), n, 0.0);
     std::fill_n(ckt.state2(), n, 0.0);
+    std::fill_n(ckt.state3(), n, 0.0);
+}
+
+void clear_state0(Circuit& ckt) {
+    const int32_t n = ckt.num_states();
+    if (n > 0) std::fill_n(ckt.state0(), n, 0.0);
+}
+
+void restore_state0(Circuit& ckt, const StateCheckpoint& saved) {
+    const int32_t n = ckt.num_states();
+    if (n > 0) std::copy_n(saved.state0.data(), n, ckt.state0());
 }
 
 void enable_optran_devices(Circuit& ckt, double dt, int method) {
@@ -179,17 +193,12 @@ void fill_optran_integrator_context(Circuit& ckt, double t, double dt,
     ckt.integrator_ctx.integrate_method = method;
     ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
 
-    if (first_step) {
-        // ngspice optran.c:407 forces CKTag[0]=CKTag[1]=0 on the very first
-        // MODEINITTRAN step: reactive companions contribute nothing, so the
-        // first OPtran point is a pure DC solve with caps held open / inductors
-        // shorted at their seeded state.  Using 1/dt here (a near-short for tiny
-        // dt) destabilises the first solve and diverges macromodels like LM1875.
-        ckt.integrator_ctx.ag[0] = 0.0;
-        ckt.integrator_ctx.ag[1] = 0.0;
-        ckt.integrator_ctx.ag[2] = 0.0;
-        ckt.integrator_ctx.xmu_ratio = 0.0;
-    } else if (order <= 1) {
+    if (order <= 1) {
+        // optran.c initializes CKTag to zero before entering its time loop, but
+        // NIcomCof recomputes these backward-Euler coefficients immediately
+        // before the first NIiter call.  MODEINITTRAN makes state0 == state1,
+        // so the initial companion current is zero while the conductance still
+        // regularizes the operating-point matrix.
         ckt.integrator_ctx.ag[0] = 1.0 / dt;
         ckt.integrator_ctx.ag[1] = -1.0 / dt;
         ckt.integrator_ctx.ag[2] = 0.0;
@@ -198,9 +207,12 @@ void fill_optran_integrator_context(Circuit& ckt, double t, double dt,
         double xmu = ckt.options.xmu;
         double one_minus_xmu = 1.0 - xmu;
         ckt.integrator_ctx.ag[0] = 1.0 / (dt * one_minus_xmu);
-        ckt.integrator_ctx.ag[1] = -1.0 / (dt * one_minus_xmu);
+        // NIcomCof stores the previous-current coefficient in ag[1] for
+        // second-order trapezoidal integration. NIintegrate then evaluates
+        // ag0 * (q0 - q1), preserving ngspice's operation order.
+        ckt.integrator_ctx.ag[1] = xmu / one_minus_xmu;
         ckt.integrator_ctx.ag[2] = 0.0;
-        ckt.integrator_ctx.xmu_ratio = xmu / one_minus_xmu;
+        ckt.integrator_ctx.xmu_ratio = ckt.integrator_ctx.ag[1];
     } else {
         double h_old = prev_dt > 0.0 ? prev_dt : dt;
         double sum = dt + h_old;
@@ -217,9 +229,6 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
                            std::vector<double>& solution,
                            const SimOptions& opts,
                            int firstmode, int continuemode) {
-    const std::vector<double> entry_solution = solution;
-    const StateCheckpoint entry_state = save_state(ckt);
-
     const double gmin_factor = 10.0;
     double factor = gmin_factor;
     double OldGmin = 1e-2;
@@ -229,16 +238,18 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
     int total_iterations = 0;
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
-    bool success = false;
-    bool failed = false;
+    bool done = false;
 
     SimOptions step_opts = opts;
+    // NIiter floors every requested budget at 100 iterations
+    // (ngspice maths/ni/niiter.c).  Keep itl2 for the continuation-step
+    // adaptation thresholds, but honor that independent Newton floor.
     step_opts.max_iter = std::max(opts.itl2, 100);
-    const int dc_trcv_max_iter = opts.itl2;  // ngspice itl2; NIiter still floors maxIter at 100.
+    const int dc_trcv_max_iter = opts.itl2;
 
     // Start from zero initial guess (matching ngspice)
     solution.assign(solution.size(), 0.0);
-    clear_state(ckt);
+    clear_state0(ckt);
 
     std::vector<double> saved_solution = solution;
     StateCheckpoint saved_state = save_state(ckt);
@@ -246,7 +257,7 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
     // Set first mode (e.g. MODETRANOP|MODEINITJCT)
     ckt.integrator_ctx.mode = firstmode;
 
-    while (!success && !failed) {
+    while (!done) {
         step_opts.diag_gmin = diag_gmin;
         if (opts.verbose)
             std::cerr << "[gmin] trying diag_gmin=" << diag_gmin
@@ -273,7 +284,7 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
             ckt.integrator_ctx.mode = continuemode;
 
             if (diag_gmin <= gtarget) {
-                success = true;
+                done = true;
             } else {
                 // Save accepted solution and state
                 saved_solution = solution;
@@ -302,7 +313,10 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
         } else {
             // Convergence failure at this gmin level
             if (factor < 1.00005) {
-                failed = true;
+                // dynamic_gmin still performs one final NIiter at gshunt.
+                // That final solve can converge even when the last tiny
+                // continuation increment did not.
+                done = true;
             } else {
                 // Reduce factor aggressiveness and retry (ngspice cktop.c:213-214)
                 factor = std::sqrt(std::sqrt(factor));
@@ -310,47 +324,30 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
 
                 // Restore last accepted solution
                 solution = saved_solution;
-                restore_state(ckt, saved_state);
+                restore_state0(ckt, saved_state);
             }
         }
     }
 
-    if (success) {
-        // ngspice cktop.c:229+242 — final solve at true gmin (no artificial diagonal)
-        // After gmin stepping converges, ngspice sets CKTdiagGmin = CKTgshunt
-        // and runs one more NIiter to confirm the solution holds without the
-        // artificial diagonal conductance.
-        SimOptions final_opts = opts;
-        final_opts.diag_gmin = std::max(opts.gshunt, 0.0);
-        NewtonResult final_result;
-        try {
-            final_result = newton_solve(ckt, solver, solution, final_opts);
-        } catch (const std::runtime_error&) {
-            final_result.converged = false;
-        }
-        if (!final_result.converged) {
-            // Final solve failed — gmin stepping didn't truly converge.
-            // Restore entry state so the caller can try the next method.
-            solution = entry_solution;
-            restore_state(ckt, entry_state);
-            return {false, total_iterations + final_result.iterations, final_result.residual, final_result.worst_node_idx};
-        }
-        total_iterations += final_result.iterations;
-        return {true, total_iterations, last_residual, last_worst_idx};
+    // dynamic_gmin always resets CKTdiagGmin and runs one final solve,
+    // regardless of how the continuation loop terminated.
+    SimOptions final_opts = opts;
+    final_opts.diag_gmin = std::max(opts.gshunt, 0.0);
+    NewtonResult final_result;
+    try {
+        final_result = newton_solve(ckt, solver, solution, final_opts, false);
+    } catch (const std::runtime_error&) {
+        final_result.converged = false;
     }
-
-    // Failed — restore entry state
-    solution = entry_solution;
-    restore_state(ckt, entry_state);
-    return {false, total_iterations, last_residual, last_worst_idx};
+    total_iterations += final_result.iterations;
+    final_result.iterations = total_iterations;
+    return final_result;
 }
 
 NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
                                 std::vector<double>& solution,
                                 const SimOptions& opts,
                                 int firstmode, int continuemode) {
-    const std::vector<double> entry_solution = solution;
-    const StateCheckpoint entry_state = save_state(ckt);
     const double original_gmin = ckt.options.gmin;
 
     const double gmin_factor = 10.0;
@@ -362,22 +359,21 @@ NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
     int total_iterations = 0;
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
-    bool success = false;
-    bool failed = false;
+    bool done = false;
 
     SimOptions step_opts = opts;
     step_opts.max_iter = std::max(opts.itl2, 100);
     const int dc_trcv_max_iter = opts.itl2;  // ngspice itl2; NIiter still floors maxIter at 100.
 
     solution.assign(solution.size(), 0.0);
-    clear_state(ckt);
+    clear_state0(ckt);
 
     std::vector<double> saved_solution = solution;
     StateCheckpoint saved_state = save_state(ckt);
 
     ckt.integrator_ctx.mode = firstmode;
 
-    while (!success && !failed) {
+    while (!done) {
         // Publish the stepping gmin to ckt.options so devices see it
         // via tls_integrator_ctx->options->gmin.
         ckt.options.gmin = current_gmin;
@@ -406,7 +402,7 @@ NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
             ckt.integrator_ctx.mode = continuemode;
 
             if (current_gmin <= gtarget) {
-                success = true;
+                done = true;
             } else {
                 saved_solution = solution;
                 saved_state = save_state(ckt);
@@ -431,41 +427,29 @@ NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
             }
         } else {
             if (factor < 1.00005) {
-                failed = true;
+                done = true;
             } else {
                 factor = std::sqrt(std::sqrt(factor));
                 current_gmin = OldGmin / factor;
                 solution = saved_solution;
-                restore_state(ckt, saved_state);
+                restore_state0(ckt, saved_state);
             }
         }
     }
 
-    // Restore original gmin regardless of outcome
-    ckt.options.gmin = original_gmin;
-
-    if (success) {
-        // Final verification at target gmin (already restored above)
-        SimOptions final_opts = opts;
-        NewtonResult final_result;
-        try {
-            final_result = newton_solve(ckt, solver, solution, final_opts);
-        } catch (const std::runtime_error&) {
-            final_result.converged = false;
-        }
-        if (!final_result.converged) {
-            solution = entry_solution;
-            restore_state(ckt, entry_state);
-            return {false, total_iterations + final_result.iterations,
-                    final_result.residual, final_result.worst_node_idx};
-        }
-        total_iterations += final_result.iterations;
-        return {true, total_iterations, last_residual, last_worst_idx};
+    // new_gmin likewise always runs its final solve at the target gmin.
+    ckt.options.gmin = gtarget;
+    SimOptions final_opts = opts;
+    final_opts.gmin = gtarget;
+    NewtonResult final_result;
+    try {
+        final_result = newton_solve(ckt, solver, solution, final_opts, false);
+    } catch (const std::runtime_error&) {
+        final_result.converged = false;
     }
-
-    solution = entry_solution;
-    restore_state(ckt, entry_state);
-    return {false, total_iterations, last_residual, last_worst_idx};
+    total_iterations += final_result.iterations;
+    final_result.iterations = total_iterations;
+    return final_result;
 }
 
 NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
@@ -474,6 +458,7 @@ NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
     double fraction = 0.0;
     double step = 0.001;
     const double min_step = 1e-7;
+    const int dc_trcv_max_iter = opts.itl2;
     int total_iterations = 0;
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
@@ -484,9 +469,11 @@ NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
     int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
     ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
 
-    // Start with all sources at zero
+    // gillespie_src clears CKTrhsOld for every CKTnode (both voltage and
+    // current-equation nodes) and clears CKTstate0 only.  Deeper transient
+    // histories are deliberately left untouched.
     solution.assign(solution.size(), 0.0);
-    clear_state(ckt);
+    clear_state0(ckt);
 
     SimOptions step_opts = opts;
     step_opts.src_fact = 0.0;
@@ -504,9 +491,6 @@ NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
         if (zg == 0.0) zg = opts.gmin;
         double diag = zg;
         for (int i = 0; i < 10; ++i) diag *= 10.0;
-        solution.assign(solution.size(), 0.0);
-        clear_state(ckt);
-        ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
         SimOptions zg_opts = step_opts;
         bool zg_ok = false;
         for (int i = 0; i <= 10; ++i) {
@@ -522,21 +506,32 @@ NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
         }
         if (!zg_ok) {
             ckt.options.src_fact = 1.0;
+            // gillespie_src resets a failed zero-source gmin attempt to the
+            // ordinary shunt before returning to CKTop.
+            ckt.options.diag_gmin = std::max(opts.gshunt, 0.0);
             return {false, total_iterations, result.residual, result.worst_node_idx};
         }
     }
+    if (opts.verbose)
+        std::cerr << "[source] fraction=0 converged=" << result.converged
+                  << " iters=" << result.iterations << "\n";
     total_iterations += result.iterations;
     std::vector<double> accepted_solution = solution;
     StateCheckpoint accepted_state = save_state(ckt);
 
     ckt.integrator_ctx.mode = base_mode | MODEINITFLOAT_BIT;
 
-    while (fraction < 1.0) {
-        double next_frac = fraction + step;
-        if (next_frac > 1.0) next_frac = 1.0;
+    // gillespie_src keeps the scheduled source fraction separate from the
+    // increment that it adapts after a successful solve.  In particular, the
+    // next fraction is scheduled *before* `raise` is changed, and a failed
+    // fraction is followed by one solve at the last accepted fraction.  Both
+    // details affect which branch strongly nonlinear macromodels follow.
+    double scheduled_fraction = step;
+    while (step >= min_step && fraction < 1.0) {
+        const double next_frac = std::min(scheduled_fraction, 1.0);
 
         solution = accepted_solution;
-        restore_state(ckt, accepted_state);
+        restore_state0(ckt, accepted_state);
 
         step_opts.src_fact = next_frac;
         ckt.options.src_fact = next_frac;
@@ -548,35 +543,50 @@ NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
 
         last_residual = result.residual;
         last_worst_idx = result.worst_node_idx;
+        if (opts.verbose)
+            std::cerr << "[source] fraction=" << next_frac
+                      << " converged=" << result.converged
+                      << " iters=" << result.iterations
+                      << " step=" << step << "\n";
 
         if (result.converged) {
             total_iterations += result.iterations;
             fraction = next_frac;
             accepted_solution = solution;
             accepted_state = save_state(ckt);
-            if (result.iterations < opts.max_iter / 4) {
-                step = std::min(0.1, step * 1.5);
-            } else if (result.iterations > opts.max_iter / 2) {
-                step = std::max(min_step, step * 0.5);
-            }
+            scheduled_fraction = fraction + step;
+            // gillespie_src uses CKTdcTrcvMaxIter (itl2), not the ordinary
+            // DC iteration budget, to adapt the source-fraction increment.
+            if (result.iterations <= dc_trcv_max_iter / 4)
+                step *= 1.5;
+            if (result.iterations > 3 * dc_trcv_max_iter / 4)
+                step *= 0.5;
         } else {
-            if (step * (1.0 - fraction) < 1e-8)
+            if (next_frac - fraction < 1e-8)
                 break;
             solution = accepted_solution;
-            restore_state(ckt, accepted_state);
-            step_opts.src_fact = fraction;
-            ckt.options.src_fact = fraction;
+            restore_state0(ckt, accepted_state);
             step *= 0.1;
             if (step > 0.01) step = 0.01;
-            if (step < min_step) {
-                ckt.options.src_fact = 1.0;
-                return {false, total_iterations, last_residual, last_worst_idx};
-            }
+            scheduled_fraction = fraction;
         }
     }
 
     ckt.options.src_fact = 1.0;
+    // Once the zero-source point converged, gillespie_src exits its stepping
+    // loop with both CKTdiagGmin and CKTgmin restored to gminstart.  OPtran is
+    // called immediately afterward and therefore inherits this value.
+    ckt.options.diag_gmin = opts.gmin;
+    if (fraction != 1.0) {
+        // When the final retry is already at the last accepted source
+        // fraction, gillespie_src breaks before restoring its checkpoint.
+        // CKTrhsOld and state0 from that failed NIiter therefore seed the
+        // immediately following OPtran attempt.
+        result.converged = false;
+    }
     result.iterations = total_iterations;
+    result.residual = last_residual;
+    result.worst_node_idx = last_worst_idx;
     return result;
 }
 
@@ -857,27 +867,16 @@ NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
     const int32_t ns = ckt.num_states();
     if (ns > 0) {
         std::copy_n(ckt.state0(), ns, ckt.state1());
-        std::copy_n(ckt.state0(), ns, ckt.state2());
-        std::copy_n(ckt.state0(), ns, ckt.state3());
     }
 
-    std::vector<double> accepted_solution = solution;
-    StateCheckpoint accepted_state = save_state(ckt);
     NewtonWorkspace workspace(ckt.pattern());
     SimOptions step_opts = opts;
-    // ngspice's OPtran runs NIiter with CKTtranMaxIter (default 10) per step.
-    // Keep that per-step budget: the genuinely-converging steps (Integral,
-    // OPA170) settle well within it, and circuits that instead enter a Newton
-    // limit cycle (e.g. AP2127_ADJ's RS=0 diode junction) never converge no
-    // matter how many iterations are granted.
-    step_opts.max_iter = std::min(opts.itl4, 10);
-    // ngspice keeps CKTgmin on the matrix diagonal throughout the op solve.
-    // With the first OPtran step holding reactive companions at ag=0 (caps
-    // open, inductors short), a node whose only DC path is through such a
-    // companion would otherwise yield a structurally singular matrix (e.g.
-    // the LTspice "Integral" idt cell — a 1F cap on a node fed only by a
-    // VCCS).  A small diagonal gmin regularises it exactly as ngspice does.
-    step_opts.diag_gmin = std::max(opts.gshunt, opts.gmin);
+    // OPtran passes CKTtranMaxIter to NIiter; NIiter then applies its global
+    // floor of 100 iterations (niiter.c).  Preserve larger explicit budgets.
+    step_opts.max_iter = std::max(opts.itl4, 100);
+    // OPtran inherits CKTdiagGmin from the immediately preceding CKTop path.
+    // In particular, failed Gillespie source stepping leaves it at gminstart.
+    step_opts.diag_gmin = std::max(opts.diag_gmin, 0.0);
 
     double time = 0.0;
     double prev_dt = dt;
@@ -905,9 +904,20 @@ NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
             last_result.converged = false;
         }
 
+        if (opts.verbose) {
+            std::cerr << "[optran] step=" << step
+                      << " time=" << time
+                      << " trial_time=" << t
+                      << " dt=" << dt
+                      << " order=" << order
+                      << " converged=" << last_result.converged
+                      << " iters=" << last_result.iterations
+                      << " residual=" << last_result.residual << "\n";
+        }
+
         if (!last_result.converged) {
-            solution = accepted_solution;
-            restore_state(ckt, accepted_state);
+            // optran.c retains CKTrhsOld and state0 from the failed NIiter as
+            // the seed for its smaller-delta retry; it backs up time only.
             dt /= kNewtonFailureDtFactor;
             order = 1;
             first_step = (step == 0);
@@ -929,45 +939,63 @@ NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
         }
 
         total_iterations += last_result.iterations;
+
+        // optran.c skips LTE testing only for its first successfully solved
+        // point.  Later candidates whose CKTtrunc proposal is below 90% of the
+        // attempted interval are rejected and repeated from the last accepted
+        // state; accepting them first changes the nonlinear trajectory.
+        // CKTtrunc permits at most 2x growth, then each device may reduce it.
+        // The first successful point jumps directly to optran.c's nextTime
+        // label before CKTtrunc runs, so the second point uses the same delta.
+        // Growth (up to 2x) starts only after that second successful solve.
+        double proposed = first_step ? dt : std::min(2.0 * dt, dt_max);
+        if (!first_step) {
+            for (const auto& dev : ckt.devices()) {
+                proposed = std::min(
+                    proposed, dev->compute_trunc(ckt.integrator_ctx, opts));
+            }
+            if (proposed <= 0.9 * dt) {
+                // A truncation rejection likewise keeps the converged trial
+                // iterate/state and retries it against the prior history with
+                // a smaller delta (optran.c's 650 loop).
+                dt = std::max(proposed, dt_min);
+                continue;
+            }
+
+            if (order == 1) {
+                const int saved_order = ckt.integrator_ctx.order;
+                ckt.integrator_ctx.order = 2;
+                double order2_dt = std::min(2.0 * dt, dt_max);
+                for (const auto& dev : ckt.devices()) {
+                    order2_dt = std::min(
+                        order2_dt,
+                        dev->compute_trunc(ckt.integrator_ctx, opts));
+                }
+                if (order2_dt > 1.05 * dt)
+                    order = 2;
+                ckt.integrator_ctx.order = saved_order;
+            }
+        } else if (ns > 0) {
+            // ngspice initializes the deeper history only after the first
+            // NIiter, when MODEINITTRAN has made state1 equal the solved state.
+            std::copy_n(ckt.state1(), ns, ckt.state2());
+            std::copy_n(ckt.state1(), ns, ckt.state3());
+        }
+
         time = t;
         step++;
         tried_delmin = false;
 
-        ckt.rotate_state();
         accept_optran_step(ckt, time, solution);
-        accepted_solution = solution;
-        accepted_state = save_state(ckt);
+        // Match optran.c: CKTaccept() records the converged point into state0
+        // before the history pointers are rotated for the next candidate.
+        ckt.rotate_state();
 
         prev_prev_dt = prev_dt;
         prev_dt = dt;
         first_step = false;
         ckt.integrator_ctx.mode = MODETRAN_BIT | MODEINITPRED_BIT;
-
-        // Use device truncation as the optran CKTtrunc step proposal and
-        // respect the default op_step ceiling.
-        double proposed = dt_max;
-        for (const auto& dev : ckt.devices()) {
-            proposed = std::min(proposed, dev->compute_trunc(ckt.integrator_ctx, opts));
-        }
-        if (proposed >= 1e29) {
-            proposed = std::min(dt * 2.0, dt_max);
-        } else {
-            proposed = std::min(proposed, dt * 2.0);
-        }
         dt = std::max(proposed, dt_min);
-
-        if (order == 1 && step >= 2) {
-            int saved_order = ckt.integrator_ctx.order;
-            ckt.integrator_ctx.order = 2;
-            double order2_dt = 1e30;
-            for (const auto& dev : ckt.devices()) {
-                order2_dt = std::min(order2_dt, dev->compute_trunc(ckt.integrator_ctx, opts));
-            }
-            if (order2_dt > 1.05 * prev_dt) {
-                order = 2;
-            }
-            ckt.integrator_ctx.order = saved_order;
-        }
     }
 
     cleanup_optran_devices(ckt);

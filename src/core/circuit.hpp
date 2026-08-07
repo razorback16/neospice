@@ -161,6 +161,11 @@ public:
 
     int32_t num_nodes() const { return next_node_; }
     int32_t num_vars() const  { return num_vars_; }
+    bool is_voltage_variable(int32_t idx) const {
+        return idx >= 0 && idx < next_node_ &&
+               (idx >= static_cast<int32_t>(early_branch_variables_.size()) ||
+                !early_branch_variables_[idx]);
+    }
     int32_t num_states() const { return num_states_; }
 
     /// True if the circuit contains no nonlinear device — i.e. every device
@@ -399,6 +404,7 @@ private:
     std::unordered_map<std::string, int32_t> node_map_;
     std::vector<std::string>                 node_names_;
     std::vector<bool>                        internal_nodes_;
+    std::vector<bool>                        early_branch_variables_;
     std::vector<bool>                        organic_diagonal_;
     std::vector<int32_t>                     dead_nodes_;
     int32_t next_node_ = 0;

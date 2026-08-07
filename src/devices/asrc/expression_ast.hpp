@@ -106,6 +106,9 @@ public:
     /// Must be called before evaluate() when DDT/IDT nodes are present.
     void set_dt(double dt) const { current_dt_ = dt; }
 
+    /// Set the device gmin used by ngspice's parse-tree PTfudge_factor.
+    void set_gmin(double gmin) const { current_gmin_ = gmin; }
+
     /// Accept the current DDT argument values as the "previous" for the
     /// next timestep.  Call once per accepted timestep after evaluate().
     void accept_ddt() const {
@@ -149,6 +152,7 @@ private:
 
     // DDT state — mutable because evaluate() is const but DDT needs history
     mutable double current_dt_ = 0.0;
+    mutable double current_gmin_ = 1e-12;
     mutable std::vector<double> ddt_prev_values_;      // accepted previous argument values
     mutable std::vector<bool>   ddt_has_prev_;          // whether we have accepted previous values
     mutable std::vector<double> ddt_current_values_;    // current eval argument values (tentative)

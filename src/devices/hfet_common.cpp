@@ -130,7 +130,7 @@ void resolve_hfets(
             geom.m = z.m_given ? z.m : 1.0;
             auto dev = MESDevice::make(z.name, nd, ng, ns,
                                        geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, z.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), z.parse_order);
             if (z.ic_vds_given || z.ic_vgs_given) {
                 dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
             }
@@ -151,7 +151,7 @@ void resolve_hfets(
             geom.L = z.length; geom.W = z.width; geom.M = z.m;
             auto dev = HFET2Device::make(z.name, nd, ng, ns,
                                          geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, z.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), z.parse_order);
             if (z.ic_vds_given || z.ic_vgs_given) {
                 dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
             }
@@ -176,7 +176,7 @@ void resolve_hfets(
             geom.m_given = z.m_given;
             auto dev = HFETADevice::make(z.name, nd, ng, ns,
                                          geom, *card_it->second);
-            dev->set_ngspice_setup_order(it->second.source_order, z.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), z.parse_order);
             if (z.ic_vds_given || z.ic_vgs_given) {
                 dev->set_ic(z.ic_vds, z.ic_vds_given, z.ic_vgs, z.ic_vgs_given);
             }

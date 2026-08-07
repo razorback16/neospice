@@ -33,7 +33,17 @@ public:
                   std::vector<double> coefficients);
 
     std::string device_type() const override { return "F"; }
+    int ngspice_load_rank_override() const override { return 118; }
     int32_t extra_vars() const override { return 0; }
+    int32_t state_vars() const override {
+        return static_cast<int32_t>(vsenses_.size());
+    }
+    void set_state_ptrs(double* s0, double* s1, double*, double*,
+                        int32_t base) override {
+        input_state0_ = s0 + base;
+        input_state1_ = s1 + base;
+    }
+    bool device_converged() const override { return !inputs_limited_; }
 
     std::vector<int32_t> external_nodes() const override { return {np_, nn_}; }
 
@@ -52,6 +62,10 @@ private:
     int32_t nn_;
     std::vector<const VSource*> vsenses_;
     std::vector<double>   coeffs_;
+    double* input_state0_ = nullptr;
+    double* input_state1_ = nullptr;
+    std::vector<double> last_inputs_;
+    bool inputs_limited_ = false;
 
     // Per sensing VSource: (np, sense_branch_k), (nn, sense_branch_k)
     std::vector<MatrixOffset> off_np_sense_;

@@ -35,6 +35,8 @@ static int ngspice_load_rank(const Device& dev) {
     // Mirrors ngspice src/spicelib/devices/dev.c static_devices[] order for
     // the device families implemented in neospice. Device ownership remains
     // in netlist order; this order is used only for load/stamp traversal.
+    const int rank_override = dev.ngspice_load_rank_override();
+    if (rank_override >= 0) return rank_override;
     const std::string type = dev.device_type();
     if (type == "B") return 1;   // ASRC
     if (type == "Q") return 2;   // BJT-style devices
@@ -49,7 +51,7 @@ static int ngspice_load_rank(const Device& dev) {
     if (type == "I") return 31;
     if (type == "J") return 32;
     if (type == "O") return 34;  // LTRA/CPL-style devices
-    if (type == "R") return 41;
+    if (type == "R") return 42;
     if (type == "S") return 43;  // voltage-controlled switch
     if (type == "T") return 44;
     if (type == "G") return 48;  // VCCS
@@ -83,8 +85,13 @@ void Circuit::rebuild_device_load_order() {
                          if (a.rank >= 1000 && a.instance_order < 0 &&
                              b.instance_order < 0)
                              return a.index < b.index;
-                         if (a.model_order != b.model_order)
-                             return a.model_order < b.model_order;
+                        // CKTmodCrt inserts every newly encountered model at
+                        // the head of its per-device-type list.  Setup/load
+                        // therefore traverses modeled devices in reverse
+                        // model-creation order (instances within each model
+                        // are likewise head-inserted below).
+                        if (a.model_order != b.model_order)
+                            return a.model_order > b.model_order;
                          const int a_instance = (a.instance_order >= 0)
                              ? a.instance_order
                              : static_cast<int>(a.index);
@@ -149,6 +156,7 @@ NodeId Circuit::node(const std::string& name) {
     node_map_[name] = idx;
     node_names_.push_back(name);
     internal_nodes_.push_back(false);
+    early_branch_variables_.push_back(false);
     return NodeId{idx};
 }
 
@@ -202,6 +210,33 @@ void Circuit::finalize() {
     assert(!finalized_ && "Circuit::finalize() called twice");
 
     rebuild_device_load_order();
+
+    // ngspice cktdojob.c lowers trtol to 1 whenever the circuit contains an
+    // XSPICE A device.  Under PSpice compatibility this includes POLY
+    // controlled sources and smooth VSWITCH models (static device slot 118).
+    // Apply the same job-level rule before any DC OPtran or transient solve.
+    if (options.trtol > 1.0) {
+        const bool has_xspice_a_device = std::any_of(
+            device_load_order_.begin(), device_load_order_.end(),
+            [](const Device* dev) {
+                return dev->ngspice_load_rank_override() == 118;
+            });
+        if (has_xspice_a_device)
+            options.trtol = 1.0;
+    }
+
+    // ngspice's voltage-mode behavioral sources own current equations before
+    // device setup allocates hidden model nodes.  Reserve those equation slots
+    // now so MNA preordering sees the same deterministic variable order.
+    int32_t early_idx = next_node_;
+    for (Device* dev : device_load_order_)
+        dev->assign_early_branch_index(early_idx);
+    while (next_node_ < early_idx) {
+        node_names_.push_back("__early_branch_" + std::to_string(next_node_));
+        internal_nodes_.push_back(true);
+        early_branch_variables_.push_back(true);
+        ++next_node_;
+    }
 
     // 0. Let devices declare internal nodes. These get allocated from
     //    next_node_ via the normal Circuit::node() path, so they appear
@@ -326,10 +361,14 @@ void Circuit::clear_operating_point() {
 }
 
 void Circuit::rotate_state() {
-    // Rotate state history: state3 <- state2 <- state1 <- state0.
+    // Rotate state history exactly like ngspice's CKTstates pointer ring:
+    // state3 <- state2 <- state1 <- state0, with the old spare state3 buffer
+    // becoming the new writable state0.  Copying state0 into state1 while
+    // retaining state0 aliases the newest history logically and breaks LTE
+    // estimates after rejected transient points.
     state3_.swap(state2_);
     state2_.swap(state1_);
-    state1_ = state0_;
+    state1_.swap(state0_);
     rebind_device_states();
 }
 

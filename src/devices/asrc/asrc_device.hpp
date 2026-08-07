@@ -50,11 +50,19 @@ public:
                std::vector<int32_t> resolved_node_indices2,
                std::vector<const Device*> vsource_ptrs);
 
+    // Compatibility lowering prefixes hierarchical E/G VALUE sources with
+    // 'b' at the full-name level (for example bx1.e1).  The final hierarchy
+    // component still begins with E/G, so Device::device_type() would
+    // otherwise schedule the resulting ASRC with controlled sources instead
+    // of ngspice's B-device setup/load group.
+    std::string device_type() const override { return "B"; }
+
     // -- Device interface --
 
     int32_t extra_vars() const override {
         return (mode_ == Mode::VOLTAGE) ? 1 : 0;
     }
+    void assign_early_branch_index(int32_t& next) override;
     void assign_branch_index(int32_t& next) override;
     std::vector<std::string> output_currents() const override;
 
@@ -62,6 +70,7 @@ public:
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
                   NumericMatrix& mat, std::vector<double>& rhs) override;
+    bool device_converged(const std::vector<double>& solution) const override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 
@@ -71,8 +80,6 @@ public:
         for (auto n : var_indices2_) if (n >= 0) nodes.push_back(n);
         return nodes;
     }
-
-    bool device_converged() const override;
 
     /// Set the simulation time for the next evaluate call.
     void set_time(double t) { current_time_ = t; }
@@ -106,7 +113,7 @@ private:
     int32_t var_circuit_index(int i) const;
 
     /// Collect current variable values from the circuit solution vector.
-    void fill_var_values(const std::vector<double>& voltages);
+    void fill_var_values(const std::vector<double>& voltages) const;
 
     int32_t np_;           // positive node (GROUND_INTERNAL = -1)
     int32_t nn_;           // negative node (GROUND_INTERNAL = -1)
@@ -127,10 +134,7 @@ private:
     // Working buffers (reused between evaluations)
     mutable std::vector<double> var_values_;
     mutable std::vector<double> derivs_;
-
-    // Convergence test
     mutable double prev_value_ = 0.0;
-    mutable double current_value_ = 0.0;
     mutable bool has_prev_value_ = false;
 
     // Simulation time

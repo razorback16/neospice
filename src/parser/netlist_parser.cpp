@@ -1162,8 +1162,13 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 std::string cand = (eq == std::string::npos) ? tok : tok.substr(0, eq);
                 std::string lc = to_lower(cand);
                 auto rit = state.model_raw.find(lc);
-                if (rit != state.model_raw.end() && !rit->second.parsed) {
-                    ensure_model(state, lc);
+                if (rit != state.model_raw.end()) {
+                    auto [order_it, inserted] = state.setup_model_order.emplace(
+                        lc, state.next_setup_model_order);
+                    if (inserted) ++state.next_setup_model_order;
+                    ModelCard* card = ensure_model(state, lc);
+                    if (card && card->setup_order < 0)
+                        card->setup_order = order_it->second;
                 }
             }
         }
@@ -1290,6 +1295,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         if (flag == "interp") ckt.options.interp = true;
                         else if (flag == "newtrunc") ckt.options.newtrunc = true;
                         else if (flag == "nonewtrunc") ckt.options.newtrunc = false;
+                        else if (flag == "verbose") ckt.options.verbose = true;
+                        else if (flag == "nodedamping") ckt.options.node_damping = true;
                         continue;
                     }
                     std::string key = to_lower(tokens[i].substr(0, eq_pos));
@@ -1729,6 +1736,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             int32_t nn = node_raw(tokens[2]);
             double val = 0.0;
             size_t model_start = 4;
+            std::string resistor_model_key = "__default_r__";
             try {
                 val = parse_value(tokens[3]);
             } catch (const ParseError&) {
@@ -1739,6 +1747,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 // later bare (non key=value) token. Also honor an r=<val> param.
                 auto mit = res_models.find(to_lower(tokens[3]));
                 if (mit != res_models.end()) {
+                    resistor_model_key = to_lower(tokens[3]);
                     val = 0.0; // resistance may follow the model name
                     for (size_t k = 4; k < tokens.size(); ++k) {
                         std::string tl = to_lower(tokens[k]);
@@ -1764,6 +1773,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 if (tok_lower.find('=') == std::string::npos) {
                     auto mit = res_models.find(tok_lower);
                     if (mit != res_models.end()) {
+                        resistor_model_key = tok_lower;
                         const auto& rm = mit->second;
                         r->set_tc1(rm.tc1);
                         r->set_tc2(rm.tc2);
@@ -1792,6 +1802,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 else if (tok.starts_with("rac="))
                     r->set_rac(parse_spice_number(tok.substr(4)));
             }
+            auto [setup_it, inserted] = state.setup_model_order.emplace(
+                "r:" + resistor_model_key, state.next_setup_model_order);
+            if (inserted)
+                ++state.next_setup_model_order;
+            r->set_ngspice_setup_order(setup_it->second,
+                                      state.next_setup_instance_order++);
             ckt.add_device(std::move(r));
 
         } else if (elem_type == 'c') {
@@ -2007,6 +2023,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             // Support parenthesized output nodes: E name (np,nn) ...
             size_t e_tok_offset = 0;
             int32_t np, nn;
+            std::string e_np_name, e_nn_name;
             {
                 std::string t1 = tokens[1];
                 if (t1.size() > 1 && t1[0] == '(' && t1.find(',') != std::string::npos) {
@@ -2015,12 +2032,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     if (inner.front() == '(') inner.erase(0, 1);
                     if (inner.back() == ')') inner.pop_back();
                     auto comma = inner.find(',');
-                    np = node_raw(inner.substr(0, comma));
-                    nn = node_raw(inner.substr(comma + 1));
+                    e_np_name = inner.substr(0, comma);
+                    e_nn_name = inner.substr(comma + 1);
                     e_tok_offset = 1;  // tokens shifted by 1
                 } else {
-                    np = node_raw(tokens[1]);
-                    nn = node_raw(tokens[2]);
+                    e_np_name = tokens[1];
+                    e_nn_name = tokens[2];
                 }
             }
 
@@ -2035,6 +2052,49 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 tok3.erase(0, 1);
                 e_kw_strip = 1;
             }
+
+            // spice2poly parses its input ports before its output ports.  A
+            // control node first encountered on a POLY line therefore gets a
+            // lower CKT node number than a new output node (observable in the
+            // sparse ordering and convergence path).  Pre-create the controls
+            // in scanner order before materializing the output pair below.
+            if (tok3.substr(0, 4) == "poly") {
+                int dim = 1;
+                bool dim_in_token = false;
+                const size_t open = tok3.find('(');
+                if (open != std::string::npos) {
+                    const size_t close = tok3.find(')');
+                    if (close != std::string::npos && close > open) {
+                        dim = std::stoi(tok3.substr(open + 1, close - open - 1));
+                        dim_in_token = true;
+                    }
+                } else if (tokens.size() > 4 - e_tok_offset) {
+                    const std::string& count = tokens[4 - e_tok_offset];
+                    if (!count.empty() && count.front() == '(') {
+                        const size_t close = count.find(')');
+                        if (close != std::string::npos)
+                            dim = std::stoi(count.substr(1, close - 1));
+                    }
+                }
+                size_t scan_tok = 3 - e_tok_offset;
+                size_t scan_off = 0;
+                if (dim_in_token) {
+                    scan_off = tok3.find(')') + 1 + e_kw_strip;
+                } else {
+                    scan_tok = 4 - e_tok_offset;
+                    if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
+                        ++scan_tok;
+                }
+                NodeAtomScanner scan(tokens, scan_tok, scan_off);
+                for (int k = 0; k < dim; ++k) {
+                    std::string sp, sn;
+                    if (!scan.next(sp) || !scan.next(sn)) break;
+                    node_raw(sp);
+                    node_raw(sn);
+                }
+            }
+            np = node_raw(e_np_name);
+            nn = node_raw(e_nn_name);
 
             if (tok3.substr(0, 4) == "poly") {
                 // POLY(N) form
@@ -2353,6 +2413,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     continue;
                 }
 
+                // The compatibility rewrite creates the E source's internal
+                // control node before parsing the following B expression, so
+                // expression-only nodes must be allocated after this one.
+                const int32_t expr_node = node_raw(name + "_int1");
+                ckt.mark_internal_node(expr_node);
+
                 // Resolve variable references (same as B-source)
                 const auto& refs = compiled.var_refs();
                 int nv = compiled.num_vars();
@@ -2390,10 +2456,10 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     case asrc::VarKind::DIFF_VOLTAGE: {
                         std::string ln1 = ref.name1;
                         std::string ln2 = ref.name2;
-                        e_node_indices[i]  = (ln1 == "0" || ln1 == "gnd")
-                                             ? GROUND_INTERNAL : node_raw(ln1);
                         e_node_indices2[i] = (ln2 == "0" || ln2 == "gnd")
                                              ? GROUND_INTERNAL : node_raw(ln2);
+                        e_node_indices[i]  = (ln1 == "0" || ln1 == "gnd")
+                                             ? GROUND_INTERNAL : node_raw(ln1);
                         break;
                     }
                     case asrc::VarKind::BRANCH_CURRENT:
@@ -2402,10 +2468,24 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                 }
 
+                // ngspice's PSpice compatibility pass does not stamp an
+                // E VALUE expression directly at the output terminals.  It
+                // lowers it to a unity-gain linear E source controlled by an
+                // internal voltage-mode B source:
+                //
+                //   Ename np nn name_int1 0 1
+                //   Bname name_int1 0 V={expr}
+                //
+                // The extra node is electrically equivalent, but its matrix
+                // topology and pivot path are observable in singular vendor
+                // macromodels (notably the Harris power-MOS family).
+                ckt.add_device(std::make_unique<VCVS>(
+                    name, np, nn, expr_node, GROUND_INTERNAL, 1.0));
+
                 DeferredASRC bd;
-                bd.name = name;
-                bd.np = np;
-                bd.nn = nn;
+                bd.name = "b" + name;
+                bd.np = expr_node;
+                bd.nn = GROUND_INTERNAL;
                 bd.mode = ASRCDevice::Mode::VOLTAGE;
                 bd.expr = std::move(compiled);
                 bd.node_indices = std::move(e_node_indices);
@@ -2475,6 +2555,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
             // Support parenthesized output nodes: G name (np,nn) ...
             size_t g_tok_offset = 0;
             int32_t np, nn;
+            std::string g_np_name, g_nn_name;
             {
                 std::string t1 = tokens[1];
                 if (t1.size() > 1 && t1[0] == '(' && t1.find(',') != std::string::npos) {
@@ -2482,12 +2563,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     if (inner.front() == '(') inner.erase(0, 1);
                     if (inner.back() == ')') inner.pop_back();
                     auto comma = inner.find(',');
-                    np = node_raw(inner.substr(0, comma));
-                    nn = node_raw(inner.substr(comma + 1));
+                    g_np_name = inner.substr(0, comma);
+                    g_nn_name = inner.substr(comma + 1);
                     g_tok_offset = 1;
                 } else {
-                    np = node_raw(tokens[1]);
-                    nn = node_raw(tokens[2]);
+                    g_np_name = tokens[1];
+                    g_nn_name = tokens[2];
                 }
             }
 
@@ -2499,6 +2580,44 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 tok3g.erase(0, 1);
                 g_kw_strip = 1;
             }
+
+            if (tok3g.substr(0, 4) == "poly") {
+                int dim = 1;
+                bool dim_in_token = false;
+                const size_t open = tok3g.find('(');
+                if (open != std::string::npos) {
+                    const size_t close = tok3g.find(')');
+                    if (close != std::string::npos && close > open) {
+                        dim = std::stoi(tok3g.substr(open + 1, close - open - 1));
+                        dim_in_token = true;
+                    }
+                } else if (tokens.size() > 4 - g_tok_offset) {
+                    const std::string& count = tokens[4 - g_tok_offset];
+                    if (!count.empty() && count.front() == '(') {
+                        const size_t close = count.find(')');
+                        if (close != std::string::npos)
+                            dim = std::stoi(count.substr(1, close - 1));
+                    }
+                }
+                size_t scan_tok = 3 - g_tok_offset;
+                size_t scan_off = 0;
+                if (dim_in_token) {
+                    scan_off = tok3g.find(')') + 1 + g_kw_strip;
+                } else {
+                    scan_tok = 4 - g_tok_offset;
+                    if (scan_tok < tokens.size() && tokens[scan_tok].front() == '(')
+                        ++scan_tok;
+                }
+                NodeAtomScanner scan(tokens, scan_tok, scan_off);
+                for (int k = 0; k < dim; ++k) {
+                    std::string sp, sn;
+                    if (!scan.next(sp) || !scan.next(sn)) break;
+                    node_raw(sp);
+                    node_raw(sn);
+                }
+            }
+            np = node_raw(g_np_name);
+            nn = node_raw(g_nn_name);
 
             if (tok3g.substr(0, 4) == "poly") {
                 // POLY(N) form for VCCS
@@ -2782,6 +2901,11 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     continue;
                 }
 
+                // The rewritten linear G source names its internal control
+                // node before the following behavioral expression is parsed.
+                const int32_t expr_node = node_raw(name + "_int1");
+                ckt.mark_internal_node(expr_node);
+
                 const auto& refs = compiled.var_refs();
                 int nv = compiled.num_vars();
                 std::vector<int32_t> g_node_indices(nv, -1);
@@ -2830,11 +2954,18 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     }
                 }
 
+                // Match ngspice's PSpice G VALUE/CUR lowering: a unity-gain
+                // linear G source reads an internal voltage-mode B source.
+                // As with E VALUE above, retaining this topology is important
+                // for the reference simulator's nonlinear pivot trajectory.
+                ckt.add_device(std::make_unique<VCCS>(
+                    name, np, nn, expr_node, GROUND_INTERNAL, 1.0));
+
                 DeferredASRC bd;
-                bd.name = name;
-                bd.np = np;
-                bd.nn = nn;
-                bd.mode = ASRCDevice::Mode::CURRENT;
+                bd.name = "b" + name;
+                bd.np = expr_node;
+                bd.nn = GROUND_INTERNAL;
+                bd.mode = ASRCDevice::Mode::VOLTAGE;
                 bd.expr = std::move(compiled);
                 bd.node_indices = std::move(g_node_indices);
                 bd.node_indices2 = std::move(g_node_indices2);

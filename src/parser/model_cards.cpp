@@ -264,6 +264,11 @@ SwitchModel to_switch_model(const ModelCard& card) {
         model.smooth = true;
         model.Von  = von;
         model.Voff = voff;
+        model.control_input_resistance = 1e12;
+        // cm_pswitch clamps these limits before evaluating its log-linear
+        // transfer (xtradev/pswitch/cfunc.mod).
+        model.Ron = std::max(model.Ron, 1e-3);
+        model.Roff = std::min(model.Roff, 1e12);
         if (!has_vt) model.Vt = (von + voff) / 2.0;
         if (!has_vh) model.Vh = (von - voff) / 2.0;
     }

@@ -34,6 +34,14 @@ public:
     // Device interface — no extra variable needed
     std::string device_type() const override { return "F"; }
     int32_t extra_vars() const override { return 0; }
+    void assign_early_branch_index(int32_t& next) override {
+        // CCCSsetup resolves its controlling branch with CKTfndBranch.  That
+        // call lazily allocates a not-yet-set-up voltage source, so the sense
+        // equation can precede hidden device nodes and ordinary V-source
+        // equations in ngspice's MNA numbering.
+        if (vsense_ != nullptr && vsense_->branch_index() < 0)
+            const_cast<VSource*>(vsense_)->assign_branch_index(next);
+    }
 
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;

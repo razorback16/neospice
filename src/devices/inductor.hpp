@@ -14,7 +14,9 @@ public:
 
     int32_t extra_vars() const override { return 1; }
     void assign_branch_index(int32_t& next) override {
-        set_branch_index(next); next += extra_vars();
+        if (branch_index() < 0) {
+            set_branch_index(next); next += extra_vars();
+        }
     }
 
     void stamp_pattern(SparsityBuilder& builder) const override;

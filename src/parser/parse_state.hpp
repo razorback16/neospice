@@ -55,6 +55,9 @@ struct ParseState {
     std::unordered_map<std::string, InductorModel> ind_models;
     int next_model_order = 0;
     int next_element_order = 0;
+    int next_setup_model_order = 0;
+    int next_setup_instance_order = 0;
+    std::unordered_map<std::string, int> setup_model_order;
 
     // Lazy .model parsing support.
     //   raw_tokens : the original ".model ..." token vector for the card.

@@ -27,6 +27,7 @@ struct B4SOIModelCard {
 class B4SOIDevice : public Device {
 public:
     bool is_nonlinear() const override { return true; }
+    bool uses_one_based_rhs() const override { return true; }
     struct Geom {
         double W = 1e-6;
         double L = 1e-7;
