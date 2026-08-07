@@ -27,6 +27,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include "devices/tline.hpp"
 #include "devices/ltra.hpp"
 #include "devices/asrc/asrc_device.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -78,13 +79,6 @@ constexpr int kGlobalLteMinStepsAfterBp = 4;
 constexpr int kLteMinStepCount = 2;
 
 // CKTmode bits (ngspice cktdefs.h)
-constexpr int MODETRANOP_BIT      = 0x20;
-constexpr int MODEINITJCT_BIT     = 0x200;
-constexpr int MODEINITFLOAT_BIT   = 0x100;
-constexpr int MODEINITFIX_BIT     = 0x400;
-constexpr int MODETRAN_BIT        = 0x1;
-constexpr int MODEINITTRAN_BIT    = 0x1000;
-constexpr int MODEINITPRED_BIT    = 0x2000;
 
 // ===================================================================
 // Small utility functions

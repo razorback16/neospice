@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include "devices/ckt_terr.hpp"
+#include "core/ckt_mode.hpp"
 
 // Forward declarations for translated UCB functions.
 namespace neospice::mos1 {
@@ -422,7 +423,6 @@ bool MOS1Device::device_converged() const {
 }
 
 bool MOS1Device::device_converged(const std::vector<double>& solution) const {
-    constexpr int MODETRANOP_BIT = 0x20;
     if (tls_integrator_ctx &&
         (tls_integrator_ctx->mode & MODETRANOP_BIT) != 0)
         return last_noncon_ == 0;

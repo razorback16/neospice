@@ -1,6 +1,7 @@
 #include "devices/switch.hpp"
 #include "core/circuit.hpp"   // tls_integrator_ctx
 #include "devices/xspice_input_limiter.hpp"
+#include "core/ckt_mode.hpp"
 #include <cmath>
 #include <stdexcept>
 
@@ -52,12 +53,6 @@ static double smooth_conductance(double ctrl, double Von, double Voff,
 }
 
 // Mode flag bits (ngspice cktdefs.h)
-static constexpr int MODEINITFIX_BIT    = 0x400;
-static constexpr int MODEINITJCT_BIT    = 0x200;
-static constexpr int MODEINITFLOAT_BIT  = 0x100;
-static constexpr int MODEINITSMSIG_BIT  = 0x800;
-static constexpr int MODEINITTRAN_BIT   = 0x1000;
-static constexpr int MODEINITPRED_BIT   = 0x2000;
 
 // ---------------------------------------------------------------------------
 // compute_switch_state — ngspice 4-state hysteresis algorithm

@@ -19,6 +19,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include "core/topology.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -93,10 +94,6 @@ DCResult solve_dc(Circuit& ckt) {
     // Plain DC operating point uses MODEDCOP (0x10), NOT the full MODEDC mask.
     // This matters because BSIM4v7's load function checks MODEDCTRANCURVE to
     // decide whether to compute charges; for a plain DC op that bit must be off.
-    constexpr int MODEDCOP_BIT       = 0x10;
-    constexpr int MODEINITJCT_BIT    = 0x200;
-    constexpr int MODEINITFLOAT_BIT  = 0x100;
-    constexpr int MODEINITFIX_BIT    = 0x400;
 
     SimStatus sim_status;
 
@@ -557,10 +554,6 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
     // DC sweep uses MODEDCTRANCURVE (0x40), NOT the full MODEDC mask.
     // This is the ngspice convention: BSIM4v7's load function checks
     // MODEDCTRANCURVE to decide whether to compute charges during a DC sweep.
-    constexpr int MODEDCTRANCURVE_BIT  = 0x40;
-    constexpr int MODEINITJCT_BIT     = 0x200;
-    constexpr int MODEINITFLOAT_BIT   = 0x100;
-    constexpr int MODEINITFIX_BIT     = 0x400;
 
     // Initial guess: zeros
     std::vector<double> solution(n, 0.0);

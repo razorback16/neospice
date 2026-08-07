@@ -1,6 +1,7 @@
 #include "devices/inductor.hpp"
 #include "devices/ckt_terr.hpp"
 #include "core/circuit.hpp"
+#include "core/ckt_mode.hpp"
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>
@@ -50,11 +51,6 @@ void Inductor::evaluate(const std::vector<double>& voltages,
         const IntegratorCtx* ic = tls_integrator_ctx;
         if (!ic) return;
 
-        constexpr int MODETRAN_BIT     = 0x1;
-        constexpr int MODEDC_BIT       = 0x70;
-        constexpr int MODEUIC_BIT      = 0x10000;
-        constexpr int MODEINITPRED_BIT = 0x2000;
-        constexpr int MODEINITTRAN_BIT = 0x1000;
 
         double m = m_;
         double newmind = inductance_eff_ / m;

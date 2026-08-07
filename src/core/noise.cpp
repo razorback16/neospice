@@ -16,6 +16,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include "core/neo_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -99,10 +100,6 @@ NoiseResult solve_noise(Circuit& ckt,
 
     // Noise analysis runs a plain DC operating point first — use MODEDCOP
     // (0x10), same as solve_dc().  newton_solve() reads integrator_ctx.mode.
-    constexpr int MODEDCOP_BIT       = 0x10;
-    constexpr int MODEINITJCT_BIT    = 0x200;
-    constexpr int MODEINITFLOAT_BIT  = 0x100;
-    constexpr int MODEINITFIX_BIT    = 0x400;
 
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
@@ -151,8 +148,6 @@ NoiseResult solve_noise(Circuit& ckt,
     // 4. MODEINITSMSIG pass — compute small-signal parameters
     // ---------------------------------------------------------------
     {
-        constexpr int MODEAC_BIT        = 0x2;
-        constexpr int MODEINITSMSIG_BIT = 0x800;
         ckt.integrator_ctx.mode = MODEAC_BIT | MODEINITSMSIG_BIT;
 
         NumericMatrix smsig_mat(ckt.pattern());

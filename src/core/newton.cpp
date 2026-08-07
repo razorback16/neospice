@@ -12,6 +12,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include "core/newton.hpp"
 #include "core/circuit.hpp"
 #include "core/solver_iface.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -145,13 +146,6 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
     //   MODEINITPRED   -> flip to MODEINITFLOAT  (subsequent transient steps)
     //
     // The INITF mask clears all init-flag bits before setting the new one.
-    constexpr int INITF_MASK         = 0x3F00;
-    constexpr int MODEINITFLOAT_BIT  = 0x100;
-    constexpr int MODEINITJCT_BIT    = 0x200;
-    constexpr int MODEINITFIX_BIT    = 0x400;
-    constexpr int MODEINITSMSIG_BIT  = 0x800;
-    constexpr int MODEINITTRAN_BIT   = 0x1000;
-    constexpr int MODEINITPRED_BIT   = 0x2000;
 
     // Retain the entry mode for analysis-type decisions. NIiter mutates
     // CKTmode in place and deliberately leaves the final init phase visible
@@ -162,7 +156,6 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
     // ngspice only forces a full reorder through NISHOULDREORDER
     // (not at every continuation step); MODEINITJCT and singular
     // refactors below set force_numeric when a fresh order is required.
-    constexpr int MODETRAN_BIT = 0x1;
     bool force_numeric = false;
 
     // Track residual norm and worst node across iterations.
@@ -408,8 +401,6 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         // iteration has already been found non-converged.  This keeps the
         // convergence test on the raw Newton proposal and damps only the value
         // carried into the next load.
-        constexpr int MODEDCOP_BIT   = 0x10;
-        constexpr int MODETRANOP_BIT = 0x20;
         if (!converged && opts.node_damping &&
             (saved_mode & (MODEDCOP_BIT | MODETRANOP_BIT)) && iter > 0) {
             double max_diff = 0.0;

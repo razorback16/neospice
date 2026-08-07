@@ -15,6 +15,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include "core/neo_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -75,10 +76,6 @@ TFResult solve_tf(Circuit& ckt, const std::string& output_var,
 
     ckt.integrator_ctx.options = &ckt.options;
 
-    constexpr int MODEDCOP_BIT       = 0x10;
-    constexpr int MODEINITJCT_BIT    = 0x200;
-    constexpr int MODEINITFLOAT_BIT  = 0x100;
-    constexpr int MODEINITFIX_BIT    = 0x400;
 
     // DC operating point — try newton, then gmin stepping, then source stepping
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;

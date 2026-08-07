@@ -15,6 +15,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/neo_solver.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
@@ -91,8 +92,6 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     //    extra evaluation after DC convergence so the state vectors contain
     //    the small-signal values that ac_stamp() reads.
     {
-        constexpr int MODEAC_BIT        = 0x2;
-        constexpr int MODEINITSMSIG_BIT = 0x800;
         ckt.integrator_ctx.mode = MODEAC_BIT | MODEINITSMSIG_BIT;
 
         NumericMatrix smsig_mat(ckt.pattern());

@@ -1,6 +1,7 @@
 #include "devices/capacitor.hpp"
 #include "devices/ckt_terr.hpp"
 #include "core/circuit.hpp"
+#include "core/ckt_mode.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -32,14 +33,6 @@ void Capacitor::evaluate(const std::vector<double>& voltages,
         const IntegratorCtx* ic = tls_integrator_ctx;
         if (!ic) return;
 
-        constexpr int MODETRAN_BIT     = 0x1;
-        constexpr int MODEAC_BIT       = 0x2;
-        constexpr int MODETRANOP_BIT   = 0x20;
-        constexpr int MODEUIC_BIT      = 0x10000;
-        constexpr int MODEINITPRED_BIT = 0x2000;
-        constexpr int MODEINITTRAN_BIT = 0x1000;
-        constexpr int MODEINITJCT_BIT  = 0x200;
-        constexpr int MODEDC_BIT       = 0x70;
 
         if (!(ic->mode & (MODETRAN_BIT | MODEAC_BIT | MODETRANOP_BIT)))
             return;

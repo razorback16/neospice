@@ -20,6 +20,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include "devices/tline.hpp"
 #include "devices/ltra.hpp"
 #include "devices/asrc/asrc_device.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -180,9 +181,6 @@ void update_optran_source_time(Circuit& ckt, double t) {
 void fill_optran_integrator_context(Circuit& ckt, double t, double dt,
                                     double prev_dt, double prev_prev_dt,
                                     int order, bool first_step, int method) {
-    constexpr int MODETRAN_BIT = 0x1;
-    constexpr int MODEINITTRAN_BIT = 0x1000;
-    constexpr int MODEINITPRED_BIT = 0x2000;
 
     ckt.integrator_ctx.order = order;
     ckt.integrator_ctx.delta = dt;
@@ -455,9 +453,6 @@ NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
 
-    constexpr int MODEINITJCT_BIT   = 0x200;
-    constexpr int MODEINITFLOAT_BIT = 0x100;
-    constexpr int INITF_MASK        = 0x3F00;
     int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
     ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
 
@@ -594,9 +589,6 @@ NewtonResult gain_stepping(Circuit& ckt, ISolver& solver,
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
 
-    constexpr int MODEINITJCT_BIT   = 0x200;
-    constexpr int MODEINITFLOAT_BIT = 0x100;
-    constexpr int INITF_MASK        = 0x3F00;
     int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
     ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
 
@@ -716,9 +708,6 @@ NewtonResult variable_gain_homotopy(Circuit& ckt, ISolver& solver,
     double last_residual = 0.0;
     int32_t last_worst_idx = -1;
 
-    constexpr int MODEINITJCT_BIT   = 0x200;
-    constexpr int MODEINITFLOAT_BIT = 0x100;
-    constexpr int INITF_MASK        = 0x3F00;
     int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
     ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
 
@@ -835,8 +824,6 @@ NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
     constexpr double op_final = 10e-6;
     constexpr double kNewtonFailureDtFactor = 8.0;
     constexpr int kMaxOptranSteps = 200000;
-    constexpr int MODETRAN_BIT = 0x1;
-    constexpr int MODEINITPRED_BIT = 0x2000;
 
     const int method = (opts.method == "gear") ? 1 : 0;
     const double dt_max = op_step;
@@ -1021,9 +1008,6 @@ NewtonResult pseudo_transient(Circuit& ckt, ISolver& solver,
     solution.assign(solution.size(), 0.0);
     clear_state(ckt);
 
-    constexpr int INITF_MASK        = 0x3F00;
-    constexpr int MODEINITJCT_BIT   = 0x200;
-    constexpr int MODEINITFLOAT_BIT = 0x100;
     int base_mode = ckt.integrator_ctx.mode & ~INITF_MASK;
     ckt.integrator_ctx.mode = base_mode | MODEINITJCT_BIT;
 

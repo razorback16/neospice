@@ -15,6 +15,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/neo_solver.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -58,10 +59,6 @@ PZResult solve_pz(Circuit& ckt,
     dc_solver->symbolic(ckt.pattern());
     ckt.integrator_ctx.options = &ckt.options;
 
-    constexpr int MODEDCOP_BIT       = 0x10;
-    constexpr int MODEINITJCT_BIT    = 0x200;
-    constexpr int MODEINITFLOAT_BIT  = 0x100;
-    constexpr int MODEINITFIX_BIT    = 0x400;
 
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
     auto dc_result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
@@ -114,8 +111,6 @@ PZResult solve_pz(Circuit& ckt,
 
     // 2. MODEINITSMSIG pass — compute small-signal parameters at DC operating point
     {
-        constexpr int MODEAC_BIT        = 0x2;
-        constexpr int MODEINITSMSIG_BIT = 0x800;
         ckt.integrator_ctx.mode = MODEAC_BIT | MODEINITSMSIG_BIT;
 
         NumericMatrix smsig_mat(ckt.pattern());

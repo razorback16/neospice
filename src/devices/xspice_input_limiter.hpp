@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/circuit.hpp"
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -16,9 +17,6 @@ inline bool xspice_limit_analog_inputs(std::vector<double>& inputs,
     if (!state0) return false;
     if (last_inputs.size() != inputs.size())
         last_inputs.assign(inputs.size(), 0.0);
-    constexpr int MODEINITJCT_BIT  = 0x200;
-    constexpr int MODEINITTRAN_BIT = 0x1000;
-    constexpr int MODEINITPRED_BIT = 0x2000;
     constexpr double relative_step = 0.25;
     constexpr double absolute_step = 0.1;
 
