@@ -470,7 +470,13 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         }
     }
 
-    throw std::logic_error("unreachable Newton iteration exit");
+    // Loop fell through the `iter <= max_iter` bound without a graceful return.
+    // This happens when the final iteration ends in a singular-refactor `continue`
+    // (above), which bumps iter past the limit before the iter==max_iter check at
+    // the top of the body can return. Treat it as non-convergence — identical to
+    // that check — so the DC continuation cascade (gmin, gain stepping, …) can
+    // take over, rather than aborting the whole simulation with a logic_error.
+    return {false, opts.max_iter + 1, max_residual, worst_idx};
 }
 
 } // namespace neospice
