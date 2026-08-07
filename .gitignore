@@ -19,3 +19,12 @@ Testing/
 .claude/worktrees/
 docs/superpowers/
 uv.lock
+
+# ad-hoc parity/debug build trees and scratch artifacts
+build-*/
+scratch_*
+results/
+debug-out*.txt
+*.out
+*.log
+tests/regression/*.raw
