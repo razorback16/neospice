@@ -50,6 +50,7 @@ static void apply_save_filter(Result& r, const std::vector<std::string>& sigs) {
 
 Circuit Simulator::load(const std::string& filepath) {
     NetlistParser parser;
+    parser.set_force_pspice_compat(pspice_compat_override_);
     auto ckt = parser.parse_file(filepath);
     ckt.set_source_path(filepath);
     // Read file contents for potential re-parsing (.step param)
@@ -64,6 +65,7 @@ Circuit Simulator::load(const std::string& filepath) {
 
 Circuit Simulator::parse(const std::string& netlist_text) {
     NetlistParser parser;
+    parser.set_force_pspice_compat(pspice_compat_override_);
     auto ckt = parser.parse(netlist_text);
     ckt.set_source_text(netlist_text);
     return ckt;

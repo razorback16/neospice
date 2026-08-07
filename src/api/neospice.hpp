@@ -59,6 +59,11 @@ public:
     Circuit load(const std::string& filepath);
     Circuit parse(const std::string& netlist_text);
 
+    /// Force PSpice/LTspice compatibility mode for subsequent load()/parse()
+    /// calls, overriding netlist-dialect auto-detection. Mirrors ngspice's
+    /// `-D ngbehavior=ps/lt/psa`. std::nullopt (default) = auto-detect.
+    void set_pspice_compat(std::optional<bool> v) { pspice_compat_override_ = v; }
+
     DCResult run_dc(Circuit& ckt);
     TransientResult run_transient(Circuit& ckt, double tstep, double tstop);
     TransientResult run_transient(Circuit& ckt, double tstep, double tstop,
@@ -90,6 +95,7 @@ private:
         DeviceFactory factory;
     };
     std::vector<RegistryEntry> registry_;
+    std::optional<bool> pspice_compat_override_;
 };
 
 } // namespace neospice

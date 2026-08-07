@@ -626,9 +626,11 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 
     // Surface PSpice/LTspice compatibility mode to the device layer. ngspice
     // applies several compat-only tweaks under -D ngbehavior=ps/lt/psa (e.g. the
-    // diode RS=0 virtual series conductance in diosetup.c). We have no global
-    // ngbehavior flag; the closest faithful proxy is the auto-detected dialect.
-    ckt.options.pspice_compat = (dialect_ == SpiceDialect::PSPICE);
+    // diode RS=0 virtual series conductance in diosetup.c). Default is the
+    // auto-detected dialect; an explicit override (CLI `-D ngbehavior=...`)
+    // wins, since the keyword heuristic cannot classify keyword-free vendor libs.
+    ckt.options.pspice_compat =
+        force_pspice_compat_.value_or(dialect_ == SpiceDialect::PSPICE);
 
     pass0_extract_subcircuits(state);
     pass025_resolve_funcs_params(state);

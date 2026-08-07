@@ -232,7 +232,9 @@ def run_simulator(netlist_text, sim_bin, is_ngspice=False, timeout=10):
         if is_ngspice:
             cmd = [sim_bin, '-D', 'ngbehavior=psa', '-b', tmp_cir, '-r', tmp_raw]
         else:
-            cmd = [sim_bin, tmp_cir, '-o', tmp_raw]
+            # Match the compat mode forced on ngspice above, so both simulators
+            # select the same DC basin for keyword-free vendor libraries.
+            cmd = [sim_bin, tmp_cir, '-D', 'ngbehavior=psa', '-o', tmp_raw]
 
         t0 = time.perf_counter()
         result = subprocess.run(

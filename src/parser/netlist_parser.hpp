@@ -2,6 +2,7 @@
 #include "core/circuit.hpp"
 #include "parser/parse_state.hpp"
 #include "parser/subcircuit.hpp"
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -15,6 +16,12 @@ public:
 
     void set_dialect(SpiceDialect d) { dialect_ = d; }
     SpiceDialect dialect() const { return dialect_; }
+
+    /// Force PSpice/LTspice compatibility mode (options.pspice_compat) instead
+    /// of deriving it from the auto-detected dialect. Mirrors ngspice's
+    /// `-D ngbehavior=ps/lt/psa` override, which the netlist-keyword heuristic
+    /// cannot infer for keyword-free vendor libraries. std::nullopt = auto.
+    void set_force_pspice_compat(std::optional<bool> v) { force_pspice_compat_ = v; }
 
     const std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs() const {
         return subcircuit_defs_;
@@ -45,6 +52,7 @@ public:
 
 private:
     SpiceDialect dialect_ = SpiceDialect::AUTO;
+    std::optional<bool> force_pspice_compat_;  // nullopt = derive from dialect_
     std::unordered_map<std::string, SubcircuitDef> subcircuit_defs_;
 
     SpiceDialect detect_dialect(const std::string& content) const;

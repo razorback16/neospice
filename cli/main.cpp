@@ -4,22 +4,37 @@
 #include <string>
 #include <filesystem>
 #include <chrono>
+#include <optional>
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: neospice <netlist.cir> [-o output.raw] [--split]\n";
+        std::cerr << "Usage: neospice <netlist.cir> [-o output.raw] [--split] "
+                     "[-D ngbehavior=<mode>]\n";
         return 1;
     }
 
     std::string input_path = argv[1];
     std::string output_path;
     bool split = false;
+    std::optional<bool> pspice_compat;  // -D ngbehavior=... override
 
     for (int i = 2; i < argc; ++i) {
-        if (std::string(argv[i]) == "-o" && i + 1 < argc) {
+        std::string arg = argv[i];
+        if (arg == "-o" && i + 1 < argc) {
             output_path = argv[++i];
-        } else if (std::string(argv[i]) == "--split") {
+        } else if (arg == "--split") {
             split = true;
+        } else if (arg == "-D" && i + 1 < argc) {
+            // Mirror ngspice's `-D ngbehavior=<mode>`: ps/lt/psa/a/all engage
+            // PSpice/LTspice compatibility; ng/spice/spice3 disable it.
+            std::string kv = argv[++i];
+            auto eq = kv.find('=');
+            std::string key = kv.substr(0, eq);
+            std::string val = eq == std::string::npos ? "" : kv.substr(eq + 1);
+            if (key == "ngbehavior") {
+                pspice_compat = (val == "ps" || val == "lt" || val == "psa" ||
+                                 val == "a" || val == "all");
+            }
         }
     }
 
@@ -31,6 +46,7 @@ int main(int argc, char* argv[]) {
     try {
         using Clock = std::chrono::high_resolution_clock;
         neospice::Simulator sim;
+        sim.set_pspice_compat(pspice_compat);
         auto t_parse = Clock::now();
         auto ckt = sim.load(input_path);
         auto t_loaded = Clock::now();
