@@ -34,6 +34,7 @@ public:
 
     std::string device_type() const override { return "F"; }
     int ngspice_load_rank_override() const override { return 118; }
+    bool is_xspice_a_device() const override { return true; }
     int32_t extra_vars() const override { return 0; }
     int32_t state_vars() const override {
         return static_cast<int32_t>(vsenses_.size());

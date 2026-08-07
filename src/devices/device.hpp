@@ -84,6 +84,13 @@ public:
     /// PSpice VSWITCH lowered to an XSPICE A device).
     virtual int ngspice_load_rank_override() const { return -1; }
 
+    /// True for devices ngspice realizes as XSPICE A instances (PSpice POLY
+    /// controlled sources, smooth VSWITCH models).  Kept separate from the
+    /// load rank above: cktdojob.c's trtol=1 rule keys off the device being
+    /// an A instance, not off its static_devices[] slot, so retuning the slot
+    /// for load-ordering reasons must not silently change the trtol rule.
+    virtual bool is_xspice_a_device() const { return false; }
+
     /// Called by Circuit::finalize() before branch assignment and sparsity
     /// build. Devices that need internal MNA nodes (e.g. BSIM4 resistance
     /// models) override this to allocate them via ckt.node().

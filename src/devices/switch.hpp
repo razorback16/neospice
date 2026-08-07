@@ -57,6 +57,7 @@ public:
     int ngspice_load_rank_override() const override {
         return model_.smooth ? 118 : -1;
     }
+    bool is_xspice_a_device() const override { return model_.smooth; }
     int32_t state_vars() const override { return model_.smooth ? 2 : 0; }
     void set_state_ptrs(double* s0, double* s1, double*, double*,
                         int32_t base) override {

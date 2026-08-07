@@ -45,6 +45,7 @@ public:
     // ngspice's front end lowers POLY controlled sources to its XSPICE
     // spice2poly code model, which is set up and loaded after native sources.
     int ngspice_load_rank_override() const override { return 118; }
+    bool is_xspice_a_device() const override { return true; }
 
     void set_branch_index(int32_t idx);
     int32_t branch_index() const override { return branch_idx_; }

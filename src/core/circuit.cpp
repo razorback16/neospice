@@ -218,9 +218,7 @@ void Circuit::finalize() {
     if (options.trtol > 1.0) {
         const bool has_xspice_a_device = std::any_of(
             device_load_order_.begin(), device_load_order_.end(),
-            [](const Device* dev) {
-                return dev->ngspice_load_rank_override() == 118;
-            });
+            [](const Device* dev) { return dev->is_xspice_a_device(); });
         if (has_xspice_a_device)
             options.trtol = 1.0;
     }
