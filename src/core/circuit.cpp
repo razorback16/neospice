@@ -85,13 +85,13 @@ void Circuit::rebuild_device_load_order() {
                          if (a.rank >= 1000 && a.instance_order < 0 &&
                              b.instance_order < 0)
                              return a.index < b.index;
-                        // CKTmodCrt inserts every newly encountered model at
-                        // the head of its per-device-type list.  Setup/load
-                        // therefore traverses modeled devices in reverse
-                        // model-creation order (instances within each model
-                        // are likewise head-inserted below).
-                        if (a.model_order != b.model_order)
-                            return a.model_order > b.model_order;
+                         // CKTmodCrt inserts every newly encountered model at
+                         // the head of its per-device-type list.  Setup/load
+                         // therefore traverses modeled devices in reverse
+                         // model-creation order (instances within each model
+                         // are likewise head-inserted below).
+                         if (a.model_order != b.model_order)
+                             return a.model_order > b.model_order;
                          const int a_instance = (a.instance_order >= 0)
                              ? a.instance_order
                              : static_cast<int>(a.index);

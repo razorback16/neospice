@@ -469,7 +469,7 @@ void resolve_mosfets(
             mos9_geom.lGiven = m.lGiven;
             auto dev = MOS9Device::make(m.name, m.nd, m.ng, m.ns, m.nb,
                                         mos9_geom, *card_it->second);
-                dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
+            dev->set_ngspice_setup_order(it->second.effective_setup_order(), m.parse_order);
             if (m.ic_vds_given || m.ic_vgs_given || m.ic_vbs_given) {
                 dev->set_ic(m.ic_vds, m.ic_vds_given,
                             m.ic_vgs, m.ic_vgs_given,

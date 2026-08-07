@@ -236,8 +236,6 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
     const double gtarget = std::max(opts.gmin, opts.gshunt);
 
     int total_iterations = 0;
-    double last_residual = 0.0;
-    int32_t last_worst_idx = -1;
     bool done = false;
 
     SimOptions step_opts = opts;
@@ -270,8 +268,6 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
             result.converged = false;
         }
 
-        last_residual = result.residual;
-        last_worst_idx = result.worst_node_idx;
         int iters = result.iterations;
         total_iterations += iters;
         if (opts.verbose)
@@ -357,8 +353,6 @@ NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
     const double gtarget = std::max(original_gmin, opts.gshunt);
 
     int total_iterations = 0;
-    double last_residual = 0.0;
-    int32_t last_worst_idx = -1;
     bool done = false;
 
     SimOptions step_opts = opts;
@@ -389,8 +383,6 @@ NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
             result.converged = false;
         }
 
-        last_residual = result.residual;
-        last_worst_idx = result.worst_node_idx;
         int iters = result.iterations;
         total_iterations += iters;
         if (opts.verbose)

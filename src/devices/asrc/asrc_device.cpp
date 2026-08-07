@@ -420,8 +420,9 @@ bool ASRCDevice::device_converged(
     if (!has_prev_value_) return true;
 
     fill_var_values(solution);
-    std::vector<double> proposal_derivs;
-    const double proposal_value = expr_.evaluate(var_values_, proposal_derivs);
+    // Value-only evaluation: the gradient overload allocates a per-node
+    // derivative vector that the convergence test never reads.
+    const double proposal_value = expr_.evaluate(var_values_);
     const SimOptions fallback;
     const SimOptions& opts =
         (tls_integrator_ctx && tls_integrator_ctx->options)
