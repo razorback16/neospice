@@ -1,0 +1,8 @@
+* Regression: Harris RFF70N06 operating point with the parity-suite fixture.
+.include "../../third_party/KiCad-Spice-Library/Models/uncategorized/spice_complete/harprmos.lib"
+X1 net_2 net_1 net_3 RFF70N06_HA
+R_2 net_2 0 100k
+R_1 net_1 0 100k
+R_3 net_3 0 100k
+.op
+.end

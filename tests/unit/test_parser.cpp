@@ -249,7 +249,7 @@ R1 out 0 1k
 )";
     NetlistParser parser;
     auto ckt = parser.parse(netlist);
-    EXPECT_EQ(ckt.devices().size(), 3u);
+    EXPECT_EQ(ckt.devices().size(), 4u);
 }
 
 TEST(Parser, GElementValueWithoutEquals) {
@@ -263,7 +263,7 @@ R1 out 0 1k
 )";
     NetlistParser parser;
     auto ckt = parser.parse(netlist);
-    EXPECT_EQ(ckt.devices().size(), 3u);
+    EXPECT_EQ(ckt.devices().size(), 4u);
 }
 
 TEST(Parser, AKOCrossScopeResolution) {

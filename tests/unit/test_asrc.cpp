@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "api/neospice.hpp"
 #include "devices/asrc/expression_ast.hpp"
+#include "core/neo_solver.hpp"
+#include "core/newton.hpp"
 #include "core/types.hpp"   // ParseError
 #include <cmath>
 #include <vector>
@@ -420,6 +422,53 @@ B1 out 0 V={5.0}
 )");
     auto dc = sim.run_dc(ckt);
     EXPECT_NEAR(dc.voltage("out"), 5.0, 1e-6);
+}
+
+TEST(ASRC, LoadedVoltageBeyondDoubleResolutionRequiresContinuation) {
+    // At 1e20 a double has no unit resolution. A loaded voltage constraint can
+    // therefore satisfy the relative node test while still taking enormous
+    // absolute Newton steps (the BSP135 false-root failure). Reject it during
+    // ordinary and continuation iterations.
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Loaded unresolved behavioral voltage
+B1 out 0 V={1e20}
+R1 out 0 1k
+.op
+.end
+)");
+    ckt.integrator_ctx.mode = 0x10 | 0x200; // MODEDCOP | MODEINITJCT
+    auto solver = std::make_unique<NeoSolver>();
+    solver->symbolic(ckt.pattern());
+
+    std::vector<double> solution(ckt.num_vars(), 0.0);
+    SimOptions opts;
+    opts.max_iter = 5;
+    auto guarded = newton_solve(ckt, *solver, solution, opts);
+    EXPECT_FALSE(guarded.converged);
+}
+
+TEST(ASRC, UnloadedDivideByZeroMagnitudeRemainsConverged) {
+    // ngspice represents 1/0 as 1/(gmin*1e-20), normally 1e32. With no load
+    // the behavioral voltage source carries zero current and is not an
+    // ill-conditioned circuit root (the VCCAP_PSPICE regression).
+    Simulator sim;
+    auto ckt = sim.parse(R"(
+Unloaded divide by zero behavioral voltage
+B1 out 0 V={1/V(ctrl)}
+Rctrl ctrl 0 1k
+.op
+.end
+)");
+    ckt.integrator_ctx.mode = 0x10 | 0x200; // MODEDCOP | MODEINITJCT
+    auto solver = std::make_unique<NeoSolver>();
+    solver->symbolic(ckt.pattern());
+    std::vector<double> solution(ckt.num_vars(), 0.0);
+    SimOptions opts;
+    opts.max_iter = 10;
+    auto result = newton_solve(ckt, *solver, solution, opts);
+    ASSERT_TRUE(result.converged);
+    EXPECT_DOUBLE_EQ(solution[static_cast<int32_t>(ckt.node("out"))], 1e32);
 }
 
 TEST(ASRC, DiffVoltage) {

@@ -6,6 +6,7 @@
 #include "core/circuit.hpp"
 #include "core/types.hpp"
 #include "api/neospice.hpp"
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -178,6 +179,50 @@ TEST(VSwitch, EvaluateHysteresisRegion) {
     double Goff = 1.0 / 1e6;
     EXPECT_NEAR(mat.value(pattern.offset(0, 0)),  Goff, 1e-15);
     EXPECT_NEAR(mat.value(pattern.offset(0, 1)), -Goff, 1e-15);
+}
+
+TEST(VSwitch, PSpiceSmoothModelLimitsBothAnalogInputs) {
+    SwitchModel m;
+    m.smooth = true;
+    m.Von = 0.5;
+    m.Voff = 1.2;
+    m.Ron = 1e-3;
+    m.Roff = 1e7;
+    m.control_input_resistance = 1e12;
+
+    VSwitch sw("S1", 0, 1, 2, GROUND_INTERNAL, m);
+    EXPECT_EQ(sw.state_vars(), 2);
+
+    SparsityBuilder builder(3);
+    sw.stamp_pattern(builder);
+    auto pattern = builder.build();
+    NumericMatrix mat(pattern);
+    sw.assign_offsets(pattern);
+
+    double state0[2] = {};
+    double state1[2] = {};
+    double state2[2] = {};
+    double state3[2] = {};
+    sw.set_state_ptrs(state0, state1, state2, state3, 0);
+
+    UnitTestIntegratorGuard guard(0x200);  // MODEINITJCT: both inputs start at zero
+    std::vector<double> voltages = {0.0, 0.0, 0.0};
+    std::vector<double> rhs(3, 0.0);
+    sw.evaluate(voltages, mat, rhs);
+    EXPECT_TRUE(sw.device_converged());
+
+    // XSPICE MIFload clips both the control port and the resistive-output
+    // port to its default 0.1 V absolute step and rejects this iteration.
+    guard.ctx.mode = 0x100;  // MODEINITFLOAT
+    voltages = {1.0, 0.0, 1.0};
+    mat.clear();
+    std::fill(rhs.begin(), rhs.end(), 0.0);
+    sw.evaluate(voltages, mat, rhs);
+
+    EXPECT_FALSE(sw.device_converged());
+    EXPECT_DOUBLE_EQ(state0[0], 0.1);  // control input
+    EXPECT_DOUBLE_EQ(state0[1], 0.1);  // output input
+    EXPECT_NEAR(mat.value(pattern.offset(0, 0)), 1e3, 1e-6);
 }
 
 // ===========================================================================

@@ -346,7 +346,9 @@ TEST(ResolveParams, PDKStyleChain) {
     double epsox = 3.9 * 8.854e-12;
     double cox   = epsox / toxe;
     EXPECT_NEAR(result.at("toxe"),  toxe,  1e-20);
-    EXPECT_NEAR(result.at("epsox"), epsox, 1e-30);
+    // INPevaluate-style decimal accumulation can differ from a compiler
+    // literal by two ulps; this is the ngspice-compatible result.
+    EXPECT_NEAR(result.at("epsox"), epsox, 2e-26);
     EXPECT_NEAR(result.at("cox"),   cox,   1e3); // ~1.9 mF/m^2 range, use relative
     EXPECT_NEAR(result.at("cox") / cox, 1.0, 1e-10);
 }

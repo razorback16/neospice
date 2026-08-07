@@ -17,6 +17,8 @@ Usage:
     python3 tools/compare_kicad_models.py [options]
     python3 tools/compare_kicad_models.py --max 100 --verbose
     python3 tools/compare_kicad_models.py --file LinearTech --save results.json
+    python3 tools/compare_kicad_models.py --case 'path/to/lib::MODEL'
+    python3 tools/compare_kicad_models.py --select-baseline old.json --select-status NG_ONLY
 """
 
 import argparse
@@ -43,6 +45,56 @@ from test_kicad_models import (
 RELTOL = 1e-3    # 0.1%
 VNTOL  = 1e-6    # 1 uV
 ABSTOL = 1e-9    # 1 nA (SPICE ITOL default)
+
+
+def case_key(result_or_test):
+    """Return the stable identity shared by generated tests and saved rows."""
+    if isinstance(result_or_test, dict):
+        return (result_or_test['file'], result_or_test['name'])
+    return (result_or_test[4], result_or_test[1])
+
+
+def parse_case_selector(value):
+    """Parse an exact FILE::NAME selector used by ``--case``."""
+    if '::' not in value:
+        raise argparse.ArgumentTypeError(
+            "case must have the exact form FILE::NAME")
+    file_name, model_name = value.rsplit('::', 1)
+    if not file_name or not model_name:
+        raise argparse.ArgumentTypeError(
+            "case must have non-empty FILE and NAME fields")
+    return file_name, model_name
+
+
+def load_baseline_rows(path):
+    with open(path) as f:
+        data = json.load(f)
+    if not isinstance(data, dict) or not isinstance(data.get('results'), list):
+        raise ValueError(f"baseline {path!r} has no results list")
+    return data['results']
+
+
+def status_transitions(results, baseline_rows):
+    """Return deterministic status transitions for identities in ``results``."""
+    old = {case_key(row): row['status'] for row in baseline_rows}
+    transitions = []
+    for row in sorted(results, key=case_key):
+        key = case_key(row)
+        if key in old:
+            transitions.append((key[0], key[1], old[key], row['status']))
+    return transitions
+
+
+def isolated_case_keys(baseline_rows):
+    """Return cases whose saved comparison used the isolated fixture.
+
+    Isolation must remain stable across status-transition runs. Otherwise an
+    implementation improvement that makes the whole-library neospice deck
+    converge can silently switch both simulators back to a different fixture.
+    """
+    return {
+        case_key(row) for row in baseline_rows if row.get('isolated') is True
+    }
 
 
 def _parse_raw_plot(header_text, binary):
@@ -439,7 +491,8 @@ def make_isolated_driven_netlist(netlist):
 
 def run_one_test(args_tuple):
     """Worker function for parallel execution. Returns a result dict."""
-    kind, name, info, netlist, rel_path, neo_bin, ng_bin, ext_only = args_tuple
+    (kind, name, info, netlist, rel_path, neo_bin, ng_bin, ext_only,
+     force_isolated) = args_tuple
 
     neo_ok, neo_vals, neo_err, neo_time = run_simulator(netlist, neo_bin, is_ngspice=False)
     ng_ok, ng_vals, ng_err, ng_time = run_simulator(netlist, ng_bin, is_ngspice=True)
@@ -450,7 +503,7 @@ def run_one_test(args_tuple):
     # NEO_ONLY/NEO_TRIVIAL non-comparison into a real MATCH/MISMATCH. Otherwise we
     # keep the original result (ngspice genuinely can't evaluate the PSpice deck).
     isolated = False
-    if neo_ok and not ng_ok and kind == 'subckt':
+    if (force_isolated or (neo_ok and not ng_ok)) and kind == 'subckt':
         iso_netlist, iso_lib = make_isolated_driven_netlist(netlist)
         if iso_netlist and iso_lib:
             libf = None
@@ -532,6 +585,23 @@ def main():
                         help='Only test a specific category (Diode, Transistor, etc.)')
     parser.add_argument('--file', default=None,
                         help='Only test models from files matching this substring')
+    parser.add_argument(
+        '--case', action='append', type=parse_case_selector, default=[],
+        metavar='FILE::NAME',
+        help='Test an exact file/model pair; repeat for multiple cases',
+    )
+    parser.add_argument(
+        '--select-baseline', default=None, metavar='RESULTS_JSON',
+        help='Select exact file/model pairs present in a saved comparison',
+    )
+    parser.add_argument(
+        '--select-status', action='append', default=[], metavar='STATUS',
+        help='With --select-baseline, only select rows with this status; repeatable',
+    )
+    parser.add_argument(
+        '--transition-baseline', default=None, metavar='RESULTS_JSON',
+        help='Report old -> new statuses for tested file/model pairs',
+    )
     parser.add_argument('--max', type=int, default=0,
                         help='Max models to test (0=all)')
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -552,6 +622,9 @@ def main():
                         help='Load previous neospice results JSON; skip neospice run, '
                              'only run ngspice on passing tests')
     args = parser.parse_args()
+
+    if args.select_status and not args.select_baseline:
+        parser.error('--select-status requires --select-baseline')
 
     # Verify binaries exist
     neo_bin = args.neospice
@@ -611,11 +684,49 @@ def main():
                         'subckt', name, f'{len(ports)}-port', netlist, rel_path
                     ))
 
+    transition_rows = None
+    if args.select_baseline:
+        try:
+            selected_rows = load_baseline_rows(args.select_baseline)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            parser.error(str(exc))
+        if args.select_status:
+            wanted_status = set(args.select_status)
+            selected_rows = [
+                row for row in selected_rows if row.get('status') in wanted_status
+            ]
+        selected_keys = {case_key(row) for row in selected_rows}
+        all_tests = [test for test in all_tests if case_key(test) in selected_keys]
+        transition_rows = load_baseline_rows(args.select_baseline)
+        missing = selected_keys - {case_key(test) for test in all_tests}
+        if missing:
+            print(f"Warning: {len(missing)} selected cases were not discovered",
+                  file=sys.stderr)
+
+    if args.case:
+        exact_keys = set(args.case)
+        all_tests = [test for test in all_tests if case_key(test) in exact_keys]
+        missing = exact_keys - {case_key(test) for test in all_tests}
+        if missing:
+            for file_name, model_name in sorted(missing):
+                print(f"Warning: exact case not found: {file_name}::{model_name}",
+                      file=sys.stderr)
+
     if args.file:
         all_tests = [t for t in all_tests if args.file.lower() in t[4].lower()]
 
     if args.max > 0:
         all_tests = all_tests[:args.max]
+
+    if args.transition_baseline and transition_rows is None:
+        try:
+            transition_rows = load_baseline_rows(args.transition_baseline)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            parser.error(str(exc))
+    force_isolated_keys = (
+        isolated_case_keys(transition_rows) if transition_rows is not None
+        else set()
+    )
 
     total = len(all_tests)
     print(f"Running {total} test circuits through both simulators...")
@@ -624,7 +735,8 @@ def main():
     # Prepare worker args
     ext_only = not args.include_internal
     work_items = [
-        (*t, neo_bin, ng_bin, ext_only) for t in all_tests
+        (*t, neo_bin, ng_bin, ext_only, case_key(t) in force_isolated_keys)
+        for t in all_tests
     ]
 
     # Run in parallel
@@ -708,6 +820,24 @@ def main():
     print(f"NEO_TRIVIAL (neospice solves ~0, ngspice fails): {stats['NEO_TRIVIAL']}")
     print(f"  Unexcited fixtures (all nodes < {TRIVIAL_SOLUTION_V} V) — not a win:")
     print(f"  ngspice returns the same ~0 when it can parse; it merely failed at parse.")
+
+    if transition_rows is not None:
+        transitions = status_transitions(all_results, transition_rows)
+        changed = [item for item in transitions if item[2] != item[3]]
+        print()
+        print("STATUS TRANSITIONS:")
+        print("-" * 75)
+        if not changed:
+            print(f"  no changes ({len(transitions)} compared)")
+        else:
+            counts = defaultdict(int)
+            for _file_name, _model_name, old_status, new_status in changed:
+                counts[(old_status, new_status)] += 1
+            for (old_status, new_status), count in sorted(counts.items()):
+                print(f"  {old_status:11s} -> {new_status:11s}: {count}")
+            for file_name, model_name, old_status, new_status in changed:
+                print(f"    {old_status:11s} -> {new_status:11s}  "
+                      f"{file_name}::{model_name}")
 
     # Mismatch breakdown by file
     if mismatch_details:

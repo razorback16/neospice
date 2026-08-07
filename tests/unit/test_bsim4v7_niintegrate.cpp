@@ -32,7 +32,7 @@ TEST(BSIM4v7NIintegrate, BackwardEulerOrder1) {
     // BE / Gear-1 with step h: ag[0] = 1/h, ag[1] = -1/h
     // state0[1] (= numerical current) should become ag[0]*q_new + ag[1]*q_old
     // geq = ag[0] * cap
-    // ceq = state0[1] - geq * q_new
+    // ceq = state0[1] - ag[0] * q_new (ngspice niinteg.c)
     StateFixture fx;
     const double h     = 1e-9;
     const double q_new = 1.5e-15;
@@ -58,7 +58,7 @@ TEST(BSIM4v7NIintegrate, BackwardEulerOrder1) {
     const double expected_geq = fx.ckt.CKTag[0] * cap;
     EXPECT_DOUBLE_EQ(geq, expected_geq);
 
-    const double expected_ceq = expected_current - expected_geq * q_new;
+    const double expected_ceq = expected_current - fx.ckt.CKTag[0] * q_new;
     EXPECT_DOUBLE_EQ(ceq, expected_ceq);
 }
 
@@ -88,7 +88,7 @@ TEST(BSIM4v7NIintegrate, Gear2SumsThreeHistories) {
         fx.ckt.CKTag[2] * fx.s2[0];
     EXPECT_DOUBLE_EQ(fx.s0[1], expected_current);
     EXPECT_DOUBLE_EQ(geq, fx.ckt.CKTag[0] * cap);
-    EXPECT_DOUBLE_EQ(ceq, expected_current - geq * fx.s0[0]);
+    EXPECT_DOUBLE_EQ(ceq, expected_current - fx.ckt.CKTag[0] * fx.s0[0]);
 }
 
 TEST(BSIM4v7NIintegrate, TrapezoidalOrder2) {
@@ -102,7 +102,7 @@ TEST(BSIM4v7NIintegrate, TrapezoidalOrder2) {
     fx.ckt.CKTorder = 2;
     fx.ckt.CKTintegrateMethod = 0;  // Trapezoidal
     fx.ckt.CKTag[0] =  2.0 / h;
-    fx.ckt.CKTag[1] = -2.0 / h;
+    fx.ckt.CKTag[1] = 1.0;  // xmu/(1-xmu), with xmu=0.5
 
     const double cap = 1e-15;
     double geq = 0.0, ceq = 0.0;
@@ -110,17 +110,18 @@ TEST(BSIM4v7NIintegrate, TrapezoidalOrder2) {
     EXPECT_EQ(rc, Shim::OK);
 
     const double expected_current =
-        -fx.s1[1] + fx.ckt.CKTag[0] * fx.s0[0] + fx.ckt.CKTag[1] * fx.s1[0];
+        -fx.s1[1] * fx.ckt.CKTag[1]
+        + fx.ckt.CKTag[0] * (fx.s0[0] - fx.s1[0]);
     EXPECT_DOUBLE_EQ(fx.s0[1], expected_current);
     EXPECT_DOUBLE_EQ(geq, fx.ckt.CKTag[0] * cap);
-    EXPECT_DOUBLE_EQ(ceq, expected_current - geq * fx.s0[0]);
+    EXPECT_DOUBLE_EQ(ceq, expected_current - fx.ckt.CKTag[0] * fx.s0[0]);
 }
 
 TEST(BSIM4v7NIintegrate, CapZeroIsBSIM4CallPattern) {
     // BSIM4 b4ld.c always passes cap=0.0 and consumes ceq as the pure
     // numerical current-from-charge (it multiplies the analytic
     // capacitance in externally).  Verify geq==0 in that case and
-    // ceq equals the Gear sum.
+    // ceq equals the history-only companion term.
     StateFixture fx;
     fx.s0[0] = 4.2e-16;
     fx.s1[0] = 4.0e-16;
@@ -133,8 +134,9 @@ TEST(BSIM4v7NIintegrate, CapZeroIsBSIM4CallPattern) {
     EXPECT_EQ(rc, Shim::OK);
 
     EXPECT_DOUBLE_EQ(geq, 0.0);
-    const double expected = fx.ckt.CKTag[0] * fx.s0[0]
-                          + fx.ckt.CKTag[1] * fx.s1[0];
+    const double current = fx.ckt.CKTag[0] * fx.s0[0]
+                         + fx.ckt.CKTag[1] * fx.s1[0];
+    const double expected = current - fx.ckt.CKTag[0] * fx.s0[0];
     EXPECT_DOUBLE_EQ(ceq, expected);
-    EXPECT_DOUBLE_EQ(fx.s0[1], expected);
+    EXPECT_DOUBLE_EQ(fx.s0[1], current);
 }

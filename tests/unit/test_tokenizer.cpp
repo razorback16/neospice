@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "parser/tokenizer.hpp"
+#include <cmath>
 
 using namespace neospice;
 
@@ -19,7 +20,8 @@ TEST(Tokenizer, NumericSuffixes) {
     EXPECT_DOUBLE_EQ(parse_spice_number("10p"), 10e-12);
     EXPECT_DOUBLE_EQ(parse_spice_number("1f"), 1e-15);
     EXPECT_DOUBLE_EQ(parse_spice_number("1e-3"), 1e-3);
-    EXPECT_DOUBLE_EQ(parse_spice_number("3.3"), 3.3);
+    EXPECT_DOUBLE_EQ(parse_spice_number("3.3"), 33.0 * std::pow(10.0, -1.0));
+    EXPECT_DOUBLE_EQ(parse_spice_number("115.8"), 1158.0 * std::pow(10.0, -1.0));
 }
 
 TEST(Tokenizer, LineContinuation) {

@@ -5,6 +5,7 @@
 #include "parser/tokenizer.hpp"
 #include "core/dc.hpp"
 #include "devices/resistor.hpp"
+#include "devices/inductor.hpp"
 #include "devices/vsource.hpp"
 #include "devices/ccvs.hpp"
 #include "devices/cccs.hpp"
@@ -1093,6 +1094,45 @@ X1 n1 0 cross_param
     EXPECT_TRUE(result.status.converged);
     // af = 5/6; I = 1/(5/6) = 6/5 = 1.2A; V(n1) = 1V
     EXPECT_NEAR(result.voltage("n1"), 1.0, 1e-6);
+}
+
+// Infineon's BSP135 macromodel declares several local parameters on one
+// .PARAM card, then uses them in both a nested X-call and outer inductors.
+// All names must remain visible after the nested instance is expanded.
+TEST(SubcircuitExpand, BSP135BodyParamsSurviveNestedExpansion) {
+    std::string netlist = wrap(R"(
+.subckt helper a b PARAMS: scale=1
+R1 a b {scale}
+.ends helper
+
+.subckt bsp drain gate source PARAMS: dgfs=0
+.param Rs=0.027 Rg=10 Ls=3n Ld=1n Lg=3n
+X1 drain source helper PARAMS: scale={Rs}
+Lg gate g1 {Lg*if(dgfs==99,0,1)}
+Ls source s1 {Ls*if(dgfs==99,0,1)}
+Ld drain d1 {Ld*if(dgfs==99,0,1)}
+Rg g1 source {Rg}
+.ends bsp
+
+Vg gate 0 0
+X1 drain gate source bsp dgfs=0
+Rdrain drain 0 1k
+Rsource source 0 1k
+.op
+)");
+
+    NetlistParser parser;
+    auto ckt = parser.parse(netlist);
+
+    std::unordered_map<std::string, double> inductances;
+    for (const auto& dev : ckt.devices()) {
+        if (const auto* ind = dynamic_cast<const Inductor*>(dev.get()))
+            inductances.emplace(ind->name(), ind->inductance());
+    }
+    ASSERT_EQ(inductances.size(), 3u);
+    EXPECT_DOUBLE_EQ(inductances.at("x1.lg"), 3e-9);
+    EXPECT_DOUBLE_EQ(inductances.at("x1.ls"), 3e-9);
+    EXPECT_DOUBLE_EQ(inductances.at("x1.ld"), 1e-9);
 }
 
 // -----------------------------------------------------------------------

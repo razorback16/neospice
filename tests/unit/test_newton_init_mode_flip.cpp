@@ -72,8 +72,6 @@ TEST(NewtonInitFlip, MODEINITJCTFlipsToFIXAfterIter0) {
 
     // Seed the integrator context the way dc.cpp does — MODEDCOP | MODEINITJCT.
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    const int saved_mode = ckt.integrator_ctx.mode;
-
     auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
 
@@ -107,9 +105,9 @@ TEST(NewtonInitFlip, MODEINITJCTFlipsToFIXAfterIter0) {
             << "iter " << i << " lost MODEDCOP bit";
     }
 
-    // The Circuit's integrator_ctx.mode must be restored to the original
-    // value on return (so gmin/source stepping retries see the right bits).
-    EXPECT_EQ(ckt.integrator_ctx.mode, saved_mode);
+    // NIiter leaves the evolved phase visible to continuation callers.
+    EXPECT_EQ(ckt.integrator_ctx.mode,
+              MODEDCOP_BIT | MODEINITFLOAT_BIT);
 }
 
 TEST(NewtonInitFlip, NoFlipWhenJCTBitAbsent) {
@@ -123,8 +121,6 @@ TEST(NewtonInitFlip, NoFlipWhenJCTBitAbsent) {
     ckt.finalize();
 
     ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
-    const int saved_mode = ckt.integrator_ctx.mode;
-
     auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
@@ -138,8 +134,8 @@ TEST(NewtonInitFlip, NoFlipWhenJCTBitAbsent) {
     ASSERT_GE(rec->modes().size(), 1u);
     EXPECT_EQ(rec->modes()[0], MODEDCOP_BIT | MODEINITFIX_BIT);
 
-    // Restored on return
-    EXPECT_EQ(ckt.integrator_ctx.mode, saved_mode);
+    EXPECT_EQ(ckt.integrator_ctx.mode,
+              MODEDCOP_BIT | MODEINITFLOAT_BIT);
 }
 
 TEST(NewtonInitFlip, MODEINITTRANFlipsToFLOAT) {
@@ -151,8 +147,6 @@ TEST(NewtonInitFlip, MODEINITTRANFlipsToFLOAT) {
     ckt.finalize();
 
     ckt.integrator_ctx.mode = MODETRAN_BIT | MODEINITTRAN_BIT;
-    const int saved_mode = ckt.integrator_ctx.mode;
-
     auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
@@ -177,7 +171,8 @@ TEST(NewtonInitFlip, MODEINITTRANFlipsToFLOAT) {
             << "iter " << i << " lost MODETRAN bit";
     }
 
-    EXPECT_EQ(ckt.integrator_ctx.mode, saved_mode);
+    EXPECT_EQ(ckt.integrator_ctx.mode,
+              MODETRAN_BIT | MODEINITFLOAT_BIT);
 }
 
 TEST(NewtonInitFlip, MODEINITPREDFlipsToFLOAT) {
@@ -189,8 +184,6 @@ TEST(NewtonInitFlip, MODEINITPREDFlipsToFLOAT) {
     ckt.finalize();
 
     ckt.integrator_ctx.mode = MODETRAN_BIT | MODEINITPRED_BIT;
-    const int saved_mode = ckt.integrator_ctx.mode;
-
     auto solver = std::make_unique<NeoSolver>();
     solver->symbolic(ckt.pattern());
     std::vector<double> solution(ckt.num_vars(), 0.0);
@@ -214,5 +207,6 @@ TEST(NewtonInitFlip, MODEINITPREDFlipsToFLOAT) {
             << "iter " << i << " lost MODETRAN bit";
     }
 
-    EXPECT_EQ(ckt.integrator_ctx.mode, saved_mode);
+    EXPECT_EQ(ckt.integrator_ctx.mode,
+              MODETRAN_BIT | MODEINITFLOAT_BIT);
 }
