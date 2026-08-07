@@ -223,15 +223,25 @@ void fill_optran_integrator_context(Circuit& ckt, double t, double dt,
 
 } // namespace
 
-NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
-                           std::vector<double>& solution,
-                           const SimOptions& opts,
-                           int firstmode, int continuemode) {
+namespace {
+
+// Shared continuation loop behind gmin_stepping (ngspice cktop.c dynamic_gmin)
+// and true_gmin_stepping (new_gmin).  ngspice runs the identical algorithm for
+// both; they differ only in which knob the sweep drives -- the artificial
+// diagonal conductance versus the device gmin -- and in how the mandatory
+// final solve is configured.  `apply_step` publishes the current sweep value;
+// `setup_final` configures the final solve at the target.
+template <typename ApplyStep, typename SetupFinal>
+NewtonResult gmin_continuation(Circuit& ckt, ISolver& solver,
+                               std::vector<double>& solution,
+                               const SimOptions& opts,
+                               int firstmode, int continuemode,
+                               double gtarget, const char* label,
+                               ApplyStep apply_step, SetupFinal setup_final) {
     const double gmin_factor = 10.0;
     double factor = gmin_factor;
     double OldGmin = 1e-2;
-    double diag_gmin = OldGmin / factor;  // starts at 1e-3
-    const double gtarget = std::max(opts.gmin, opts.gshunt);
+    double g = OldGmin / factor;  // starts at 1e-3
 
     int total_iterations = 0;
     bool done = false;
@@ -254,9 +264,9 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
     ckt.integrator_ctx.mode = firstmode;
 
     while (!done) {
-        step_opts.diag_gmin = diag_gmin;
+        apply_step(step_opts, g);
         if (opts.verbose)
-            std::cerr << "[gmin] trying diag_gmin=" << diag_gmin
+            std::cerr << "[" << label << "] trying g=" << g
                       << " factor=" << factor << "\n";
 
         NewtonResult result;
@@ -269,7 +279,7 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
         int iters = result.iterations;
         total_iterations += iters;
         if (opts.verbose)
-            std::cerr << "[gmin] result converged=" << result.converged
+            std::cerr << "[" << label << "] result converged=" << result.converged
                       << " iters=" << iters
                       << " residual=" << result.residual << "\n";
 
@@ -277,7 +287,7 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
             // Switch to continuation mode (e.g. MODETRANOP|MODEINITFLOAT)
             ckt.integrator_ctx.mode = continuemode;
 
-            if (diag_gmin <= gtarget) {
+            if (g <= gtarget) {
                 done = true;
             } else {
                 // Save accepted solution and state
@@ -294,27 +304,26 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
                     factor = std::max(std::sqrt(factor), 1.00005);
                 }
 
-                OldGmin = diag_gmin;
+                OldGmin = g;
 
-                // Reduce diag_gmin, clamping to gtarget (ngspice cktop.c:198-203)
-                if (diag_gmin < factor * gtarget) {
-                    factor = diag_gmin / gtarget;
-                    diag_gmin = gtarget;
+                // Reduce g, clamping to gtarget (ngspice cktop.c:198-203)
+                if (g < factor * gtarget) {
+                    factor = g / gtarget;
+                    g = gtarget;
                 } else {
-                    diag_gmin /= factor;
+                    g /= factor;
                 }
             }
         } else {
-            // Convergence failure at this gmin level
+            // Convergence failure at this level
             if (factor < 1.00005) {
-                // dynamic_gmin still performs one final NIiter at gshunt.
-                // That final solve can converge even when the last tiny
-                // continuation increment did not.
+                // ngspice still performs one final NIiter at the target.  That
+                // solve can converge even when the last tiny increment did not.
                 done = true;
             } else {
                 // Reduce factor aggressiveness and retry (ngspice cktop.c:213-214)
                 factor = std::sqrt(std::sqrt(factor));
-                diag_gmin = OldGmin / factor;
+                g = OldGmin / factor;
 
                 // Restore last accepted solution
                 solution = saved_solution;
@@ -323,10 +332,10 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
         }
     }
 
-    // dynamic_gmin always resets CKTdiagGmin and runs one final solve,
+    // ngspice always resets the swept knob and runs one final solve,
     // regardless of how the continuation loop terminated.
     SimOptions final_opts = opts;
-    final_opts.diag_gmin = std::max(opts.gshunt, 0.0);
+    setup_final(final_opts);
     NewtonResult final_result;
     try {
         final_result = newton_solve(ckt, solver, solution, final_opts, false);
@@ -338,108 +347,41 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
     return final_result;
 }
 
+} // namespace
+
+NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
+                           std::vector<double>& solution,
+                           const SimOptions& opts,
+                           int firstmode, int continuemode) {
+    return gmin_continuation(
+        ckt, solver, solution, opts, firstmode, continuemode,
+        std::max(opts.gmin, opts.gshunt), "gmin",
+        [](SimOptions& step_opts, double g) { step_opts.diag_gmin = g; },
+        [&opts](SimOptions& final_opts) {
+            final_opts.diag_gmin = std::max(opts.gshunt, 0.0);
+        });
+}
+
 NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
                                 std::vector<double>& solution,
                                 const SimOptions& opts,
                                 int firstmode, int continuemode) {
-    const double original_gmin = ckt.options.gmin;
-
-    const double gmin_factor = 10.0;
-    double factor = gmin_factor;
-    double OldGmin = 1e-2;
-    double current_gmin = OldGmin / factor;
-    const double gtarget = std::max(original_gmin, opts.gshunt);
-
-    int total_iterations = 0;
-    bool done = false;
-
-    SimOptions step_opts = opts;
-    step_opts.max_iter = std::max(opts.itl2, 100);
-    const int dc_trcv_max_iter = opts.itl2;  // ngspice itl2; NIiter still floors maxIter at 100.
-
-    solution.assign(solution.size(), 0.0);
-    clear_state0(ckt);
-
-    std::vector<double> saved_solution = solution;
-    StateCheckpoint saved_state = save_state(ckt);
-
-    ckt.integrator_ctx.mode = firstmode;
-
-    while (!done) {
-        // Publish the stepping gmin to ckt.options so devices see it
-        // via tls_integrator_ctx->options->gmin.
-        ckt.options.gmin = current_gmin;
-        step_opts.gmin = current_gmin;
-        if (opts.verbose)
-            std::cerr << "[true_gmin] trying gmin=" << current_gmin
-                      << " factor=" << factor << "\n";
-
-        NewtonResult result;
-        try {
-            result = newton_solve(ckt, solver, solution, step_opts);
-        } catch (const std::runtime_error&) {
-            result.converged = false;
-        }
-
-        int iters = result.iterations;
-        total_iterations += iters;
-        if (opts.verbose)
-            std::cerr << "[true_gmin] result converged=" << result.converged
-                      << " iters=" << iters
-                      << " residual=" << result.residual << "\n";
-
-        if (result.converged) {
-            ckt.integrator_ctx.mode = continuemode;
-
-            if (current_gmin <= gtarget) {
-                done = true;
-            } else {
-                saved_solution = solution;
-                saved_state = save_state(ckt);
-
-                if (iters <= dc_trcv_max_iter / 4) {
-                    factor *= std::sqrt(factor);
-                    if (factor > gmin_factor)
-                        factor = gmin_factor;
-                }
-                if (iters > (3 * dc_trcv_max_iter / 4)) {
-                    factor = std::max(std::sqrt(factor), 1.00005);
-                }
-
-                OldGmin = current_gmin;
-
-                if (current_gmin < factor * gtarget) {
-                    factor = current_gmin / gtarget;
-                    current_gmin = gtarget;
-                } else {
-                    current_gmin /= factor;
-                }
-            }
-        } else {
-            if (factor < 1.00005) {
-                done = true;
-            } else {
-                factor = std::sqrt(std::sqrt(factor));
-                current_gmin = OldGmin / factor;
-                solution = saved_solution;
-                restore_state0(ckt, saved_state);
-            }
-        }
-    }
-
-    // new_gmin likewise always runs its final solve at the target gmin.
-    ckt.options.gmin = gtarget;
-    SimOptions final_opts = opts;
-    final_opts.gmin = gtarget;
-    NewtonResult final_result;
-    try {
-        final_result = newton_solve(ckt, solver, solution, final_opts, false);
-    } catch (const std::runtime_error&) {
-        final_result.converged = false;
-    }
-    total_iterations += final_result.iterations;
-    final_result.iterations = total_iterations;
-    return final_result;
+    // new_gmin sweeps the device gmin itself, so each step must also be
+    // published on ckt.options for devices reading it through
+    // tls_integrator_ctx->options->gmin.  Note the target is taken from
+    // ckt.options.gmin, not opts.gmin, and is deliberately left in place.
+    const double gtarget = std::max(ckt.options.gmin, opts.gshunt);
+    return gmin_continuation(
+        ckt, solver, solution, opts, firstmode, continuemode, gtarget,
+        "true_gmin",
+        [&ckt](SimOptions& step_opts, double g) {
+            ckt.options.gmin = g;
+            step_opts.gmin = g;
+        },
+        [&ckt, gtarget](SimOptions& final_opts) {
+            ckt.options.gmin = gtarget;
+            final_opts.gmin = gtarget;
+        });
 }
 
 NewtonResult source_stepping(Circuit& ckt, ISolver& solver,
