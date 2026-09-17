@@ -1,6 +1,8 @@
 /**********
-Approximate Minimum Degree ordering; matches SuiteSparse AMD by
-Timothy A. Davis, Patrick Amestoy, and Iain Duff (BSD-3-Clause).
+Minimum-degree ordering on an explicit elimination graph.
+The dense-vertex threshold follows the default SuiteSparse AMD heuristic;
+credit to Timothy A. Davis, Patrick Amestoy, and Iain Duff (BSD-3-Clause).
+This is not SuiteSparse AMD's quotient-graph algorithm.
 See NOTICE and CREDITS.md.
 **********/
 
@@ -37,7 +39,7 @@ std::vector<int32_t> amd_ordering(int32_t n, const int32_t* col_ptr,
     for (int32_t i = 0; i < n; ++i)
         degree[i] = static_cast<int32_t>(adj[i].size());
 
-    // ---- Dense row/column detection (matches SuiteSparse AMD) ----
+    // ---- Dense row/column detection (SuiteSparse AMD default threshold) ----
     // Dense threshold: alpha * sqrt(n), clamped to [16, n].
     // SuiteSparse uses alpha = 10.0 by default.
     // Dense nodes are excluded from the main elimination loop and
@@ -103,7 +105,7 @@ std::vector<int32_t> amd_ordering(int32_t n, const int32_t* col_ptr,
         }
 
         // Add edges between all pairs of live neighbors (fill-in),
-        // forming a clique — this is the "element absorption" step.
+        // forming an explicit fill clique.
         for (size_t a = 0; a < neighbors.size(); ++a) {
             for (size_t b = a + 1; b < neighbors.size(); ++b) {
                 int32_t u = neighbors[a], v = neighbors[b];
@@ -127,10 +129,10 @@ std::vector<int32_t> amd_ordering(int32_t n, const int32_t* col_ptr,
     }
 
     // ---- Append dense nodes last, ordered by ascending degree ----
-    // This matches SuiteSparse AMD: dense rows/columns are placed at the
-    // end of the permutation so they are eliminated last (highest degree
-    // truly last). degree[] for dense nodes retains the original value
-    // since only non-dense nodes had their degrees updated above.
+    // This implementation sorts dense vertices by their original degree.
+    // No identical SuiteSparse ordering is implied. degree[] for dense
+    // vertices retains its original value because only non-dense vertices
+    // had their degrees updated above.
     std::sort(dense_nodes.begin(), dense_nodes.end(),
         [&](int32_t a, int32_t b) {
             return degree[a] < degree[b];

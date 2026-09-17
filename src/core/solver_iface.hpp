@@ -6,7 +6,7 @@
 namespace neospice {
 
 // Abstract linear-solver interface shared by the production Markowitz solver
-// (NeoSolver) and the experimental AMD-ordered Gilbert-Peierls LU solver
+// (NeoSolver) and the minimum-degree-ordered Gilbert-Peierls LU solver
 // (AmdLuSolver). The method set and return conventions match NeoSolver exactly
 // so the Newton / convergence / transient code can be solver-agnostic.
 //
@@ -44,21 +44,21 @@ public:
 //
 // Selection policy (Stage 4):
 //   NEOSPICE_SOLVER controls the engine:
-//     - "auto" (default): pick by problem size — Markowitz (NeoSolver) below the
-//       auto-enable threshold, AMD-LU (AmdLuSolver) at/above it. Auto-selected
+//     - "auto" (default): AmdLuSolver for linear circuits at/above the
+//       auto-enable threshold; NeoSolver for all other circuits. Auto-selected
 //       AMD-LU is wrapped so a hard factor failure (structural/numeric
 //       singularity at the first factorization) falls back to Markowitz for that
 //       solve instead of failing outright.
-//     - "amdlu" / "klu": force AMD-LU always (no size gate, no fallback wrapper).
+//     - "amdlu" / "klu": force AmdLuSolver (no size/linearity gate or fallback
+//       wrapper). The legacy "klu" name does not select external SuiteSparse KLU.
 //     - "markowitz" / "sparse": force Markowitz always.
 //   NEOSPICE_FORCE_AMDLU=<non-empty,non-"0"> is an alias for forced "amdlu".
 //
 // `num_vars` is the matrix dimension (Circuit::num_vars() / pattern.size()),
 // `is_linear` is Circuit::is_linear() (true iff no nonlinear device). Both are
 // used only by the "auto" policy, which engages AMD-LU iff the circuit is BOTH
-// large (>= threshold) AND linear. Linear circuits have a unique solution so
-// AMD-LU's static pivot ordering is provably result-identical to Markowitz;
-// nonlinear circuits are basin/pivot sensitive and stay on Markowitz. The
+// large (>= threshold) AND linear. This does not guarantee identical results
+// under different elimination orders; comparisons remain necessary. The
 // zero-arg overload selects with size 0 (always Markowitz under auto) and is
 // kept for callers without a size.
 //
@@ -66,9 +66,8 @@ public:
 std::unique_ptr<ISolver> make_solver(int num_vars, bool is_linear = true);
 std::unique_ptr<ISolver> make_solver();
 
-// AMD-LU auto-enable threshold (unknowns). Circuits with num_vars >= this use
-// AMD-LU under the "auto" policy; smaller circuits stay on Markowitz. See
-// make_solver.cpp for the derivation from the measured KiCad-suite max.
+// Auto-enable threshold (unknowns). Only linear circuits at/above this size
+// use AmdLuSolver under auto; all other circuits use NeoSolver.
 int amdlu_auto_threshold();
 
 }  // namespace neospice

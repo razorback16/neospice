@@ -51,9 +51,23 @@ static SimOptions direct_attempt_options(const SimOptions& opts) {
     return direct_opts;
 }
 
+namespace {
+struct DiagonalGminCleanup {
+    SimOptions& options;
+    // Fallbacks may leave temporary diagonal conductance for a following
+    // continuation attempt. Once the whole analysis exits, it must not leak
+    // into the next solve, including when an exception exits this function.
+    ~DiagonalGminCleanup() { options.diag_gmin = options.gshunt; }
+};
+} // namespace
+
 DCResult solve_dc(Circuit& ckt) {
     auto t_start = std::chrono::steady_clock::now();
+    DiagonalGminCleanup diagonal_cleanup{ckt.options};
     ckt.clear_operating_point();
+    // Invalid model expressions are input errors, not Newton nonconvergence.
+    // Evaluate them outside the numerical fallback exception handlers.
+    ckt.prepare_temperature(ckt.options.temp, ckt.options.tnom);
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
@@ -401,11 +415,9 @@ DCResult solve_dc(Circuit& ckt) {
         }
     }
 
-    // Persist diag_gmin baseline after DC convergence (ngspice: every path out
-    // of CKTop sets CKTdiagGmin = CKTgshunt, never CKTgmin).
-    ckt.options.diag_gmin = ckt.options.gshunt;
-
-    ckt.set_operating_point(solution);
+    // A partial failed solution is useful diagnostic output, but cannot be
+    // reused as a valid small-signal bias by AC or another analysis.
+    if (sim_status.converged) ckt.set_operating_point(solution);
 
     // 7. Build DCResult
     DCResult dc_result;
@@ -452,35 +464,36 @@ DCResult solve_dc(Circuit& ckt) {
 // ---------------------------------------------------------------------------
 
 static std::vector<double> make_sweep_values(double start, double stop, double step) {
-    if (step == 0.0) {
-        throw std::invalid_argument("DC sweep step cannot be zero");
-    }
+    if (!std::isfinite(start) || !std::isfinite(stop) || !std::isfinite(step) || step == 0.0)
+        throw std::invalid_argument("DC sweep requires finite endpoints and a finite nonzero step");
+    if ((stop > start && step < 0) || (stop < start && step > 0))
+        throw std::invalid_argument("DC sweep step points away from stop");
     std::vector<double> vals;
-    // Determine direction
-    double tol = std::abs(step) * 1e-9;
-    if (step > 0.0) {
-        for (double v = start; v <= stop + tol; v += step) {
-            vals.push_back(v);
-        }
-    } else {
-        for (double v = start; v >= stop - tol; v += step) {
-            vals.push_back(v);
-        }
+    // Retain the existing endpoint rounding allowance and incremental grid.
+    const long double limit = static_cast<long double>(stop) + step * 1e-9L;
+    for (double v = start; step > 0 ? v <= limit : v >= limit;) {
+        vals.push_back(v);
+        if (step > 0 ? v >= stop : v <= stop) break;
+        const double next = v + step;
+        if (next == v)
+            throw std::invalid_argument("DC sweep step is too small to advance the source value");
+        v = next;
     }
     return vals;
 }
 
 DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& params) {
+    DiagonalGminCleanup diagonal_cleanup{ckt.options};
     auto t_start = std::chrono::steady_clock::now();
-    if (params.empty()) {
-        throw std::invalid_argument("DC sweep requires at least one sweep parameter");
+    if (params.empty() || params.size() > 2) {
+        throw std::invalid_argument("DC sweep requires one or two sweep parameters");
     }
 
     const int32_t n         = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
 
     // Find source pointers by name (VSource or ISource)
-    // We support up to 2 sweep sources (outer = params[0], inner = params[1])
+    // ngspice sweeps the first source fastest (inner = params[0]).
     auto find_source = [&](const std::string& name) -> Device* {
         std::string lname = to_lower(name);
         for (auto& dev : ckt.devices()) {
@@ -518,28 +531,39 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
             throw std::invalid_argument("DC sweep: source '" +
                                         params[1].source_name + "' not found");
         }
+        if (src0 == src1)
+            throw std::invalid_argument("DC sweep sources must be distinct");
     }
 
     // Save original DC values so we can restore them after sweep
     const double orig_val0 = get_dc_value(src0);
     const double orig_val1 = src1 ? get_dc_value(src1) : 0.0;
+    struct SourceValueGuard {
+        Device* first;
+        Device* second;
+        double first_value;
+        double second_value;
+        void (*set)(Device*, double);
+        ~SourceValueGuard() {
+            set(first, first_value);
+            if (second) set(second, second_value);
+        }
+    } restore_sources{src0, src1, orig_val0, orig_val1, +set_dc_value};
 
     // Build sweep point lists
-    std::vector<double> outer_vals = make_sweep_values(params[0].start,
+    std::vector<double> inner_vals = make_sweep_values(params[0].start,
                                                        params[0].stop,
                                                        params[0].step);
-    std::vector<double> inner_vals;
+    std::vector<double> outer_vals;
     if (src1) {
-        inner_vals = make_sweep_values(params[1].start,
+        outer_vals = make_sweep_values(params[1].start,
                                       params[1].stop,
                                       params[1].step);
-    } else {
-        inner_vals = outer_vals;  // single sweep — treat outer as inner
     }
 
     // Result: inner sweep variable is the x-axis (ngspice convention)
     DCSweepResult sweep_result;
-    sweep_result.sweep_var = to_lower(params.back().source_name);
+    sweep_result.sweep_var = to_lower(params.front().source_name);
 
     // Pre-initialise voltage/current vectors
     // Collect node and branch-current names (from a trial DC)
@@ -622,32 +646,32 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         auto res = newton_solve(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             first_point = false;
-            return;
+            return true;
         }
         res = gmin_stepping(ckt, *solver, solution, ckt.options,
                             MODEDCTRANCURVE_BIT | MODEINITJCT_BIT,
                             MODEDCTRANCURVE_BIT | MODEINITFLOAT_BIT);
         if (res.converged) {
             first_point = false;
-            return;
+            return true;
         }
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = source_stepping(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             first_point = false;
-            return;
+            return true;
         }
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = gain_stepping(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             first_point = false;
-            return;
+            return true;
         }
         ckt.integrator_ctx.mode = MODEDCTRANCURVE_BIT | MODEINITJCT_BIT;
         res = pseudo_transient(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             first_point = false;
-            return;
+            return true;
         }
         // Final fallback: OPtran (see solve_dc).  Re-solve one DC Newton from
         // the relaxed final state so device loads reflect a DC operating point.
@@ -660,7 +684,7 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
             if (re.converged) res = re;
             else solution = op_solution;
             first_point = false;
-            return;
+            return true;
         }
         // [3B gain-homotopy fallback] last resort: ramp device_gain_fact 0->1
         // (semiconductor nonlinearity). Placed after OPtran so sweep points that
@@ -670,7 +694,7 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         res = variable_gain_homotopy(ckt, *solver, solution, ckt.options);
         if (res.converged) {
             first_point = false;
-            return;
+            return true;
         }
         SimStatus sweep_fail_status;
         sweep_fail_status.converged = false;
@@ -679,37 +703,31 @@ DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& para
         if (!ckt.options.no_throw) {
             throw SimulationError("DC sweep: convergence failed", sweep_fail_status);
         }
-        // no_throw: continue with unconverged solution
+        sweep_result.status = sweep_fail_status;
+        return false;
     };
 
     if (!src1) {
         // Single-variable sweep
         for (double v : inner_vals) {
             set_dc_value(src0, v);
-            run_newton();
+            if (!run_newton()) break;
             collect_point(v);
         }
     } else {
-        // Nested sweep: outer = params[0], inner = params[1]
+        // Nested sweep: outer = params[1], inner = params[0].
         for (double vout : outer_vals) {
-            set_dc_value(src0, vout);
+            set_dc_value(src1, vout);
             for (double vin : inner_vals) {
-                set_dc_value(src1, vin);
-                run_newton();
+                set_dc_value(src0, vin);
+                if (!run_newton()) break;
                 collect_point(vin);
             }
+            if (!sweep_result.status.converged) break;
         }
     }
 
-    // Restore original source values
-    set_dc_value(src0, orig_val0);
-    if (src1) set_dc_value(src1, orig_val1);
-
-    // Persist diag_gmin baseline after DC sweep convergence
-    ckt.options.diag_gmin = ckt.options.gshunt;
-
     auto t_end = std::chrono::steady_clock::now();
-    sweep_result.status.converged = true;
     sweep_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
 
     return sweep_result;

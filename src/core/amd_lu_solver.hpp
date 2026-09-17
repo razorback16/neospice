@@ -7,15 +7,15 @@
 
 namespace neospice {
 
-// AMD-ordered, left-looking (Gilbert-Peierls) sparse LU solver with threshold
+// In-tree minimum-degree-ordered, left-looking (Gilbert-Peierls) sparse LU solver with threshold
 // partial pivoting. Drop-in replacement for NeoSolver on the real DC/transient
 // path, selectable via NEOSPICE_SOLVER=amdlu / NEOSPICE_FORCE_AMDLU=1.
 //
 // Design notes:
-//  - symbolic(): computes an AMD column ordering on the structurally-symmetric
+//  - symbolic(): computes the in-tree minimum-degree ordering on the symmetric
 //    pattern (A | A^T) and records the CSC layout of A used to scatter values.
 //  - numeric()/refactorize(): factor with partial pivoting (KLU-style tol).
-//  - solve(): permuted L\ then U\ substitution with row pivot perm + AMD col
+//  - solve(): permuted L\ then U\ substitution with row pivot perm + column
 //    perm + RHS permutation, matching the LU produced by numeric().
 //  - complex variants delegate to an internal NeoSolver (AC/noise stay on the
 //    Markowitz path). This keeps scope to the real DC/transient path.

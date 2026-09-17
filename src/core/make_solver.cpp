@@ -11,29 +11,13 @@ namespace neospice {
 namespace {
 
 // ---------------------------------------------------------------------------
-// AMD-LU auto-enable threshold (number of unknowns / matrix dimension).
-//
-// Policy: under "auto", AMD-LU engages iff the circuit is BOTH large
-// (num_vars >= threshold) AND linear (no nonlinear device). The linearity gate
-// is what makes the threshold safe to lower:
-//   - On LINEAR large circuits, the system has a unique solution, so AMD's
-//     fill-reducing pivot order is provably result-identical to Markowitz. We
-//     measured the twisted_pair*/symmetric_line* RC-ladder models (262-5129
-//     vars) as byte-identical (max diff 0.0) and up to 1691x faster under
-//     AMD-LU. These get the fast solver.
-//   - On NONLINEAR macromodels (OPA*/INA*/PGA*/LT* op-amps, 192-388 vars),
-//     AMD-LU's static order diverges from Markowitz by up to 8.5% (Newton
-//     basin / pivot sensitivity). These stay on Markowitz to preserve their
-//     ngspice-validated results, REGARDLESS of size.
-//
-// Threshold = 256 unknowns. Justification from measured num_vars (via
-// NEOSPICE_PRINT_NVARS) over the generated suite:
-//   - the 5000-model parity gate's largest circuit is 191 vars; everything in
-//     the gate is < 256 AND the largest gate circuits are nonlinear op-amps, so
-//     the gate stays entirely on Markowitz -> byte-identical to baseline.
-//   - the smallest large LINEAR circuit is symmetric_line64 at 262 vars; the
-//     twisted_pair linear wins are at 329 / 1289 / 5129 vars.
-// 256 clears the gate with margin and captures every linear win.
+// Minimum-degree LU auto-enable threshold (matrix dimension).
+// Auto selects AmdLuSolver only for linear circuits with at least256 unknowns.
+// This is an implementation policy, not a proof of equivalent floating-point
+// results or a universal performance advantage. Different elimination orders
+// can change rounding even when a linear system has a unique solution.
+// Nonlinear circuits retain NeoSolver under auto. Current measurements and
+// historical policy experiments are distinguished in docs/benchmark-methods.md.
 constexpr int kAmdLuAutoThreshold = 256;
 
 enum class SolverChoice { kAuto, kForceAmdLu, kForceMarkowitz };

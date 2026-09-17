@@ -9,7 +9,7 @@ namespace neospice {
 
 struct SensResult {
     std::string output_var;   // e.g., "v(out)"
-    double output_value;      // DC value of output variable
+    double output_value = 0.0; // DC value; only valid after a successful baseline
 
     struct Entry {
         std::string element;    // e.g., "r1", "v1"

@@ -28,7 +28,12 @@ std::string expand_funcs(const std::string& expr,
 /// Evaluate a single arithmetic expression string.
 /// The expression may be surrounded by braces: {expr} — braces are stripped.
 double eval_expression(const std::string& expr,
-                       const std::unordered_map<std::string, double>& params);
+                       const std::unordered_map<std::string, double>& params,
+                       bool strict_unknown = false);
+
+/// True for a complete TEMP/TEMPER identifier, not a substring of another name.
+bool has_temperature_identifier(const std::string& expression);
+std::string canonical_temperature_expression(const std::string& expression);
 
 /// Substitute bare parameter identifiers in an expression string with their
 /// numeric values, preserving expression structure. Identifiers followed by

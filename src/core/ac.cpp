@@ -125,9 +125,9 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     }
 
     // 5. Generate frequency points
-    auto freqs = generate_frequencies(mode, npoints, fstart, fstop);
+    auto freqs = generate_frequencies(mode, npoints, fstart, fstop, ckt.options.reltol);
     if (freqs.empty()) {
-        return ACResult{};
+        throw SimulationError("AC analysis: invalid or empty frequency sweep", SimStatus{.converged = false});
     }
 
     // 6. Pre-cache G/C value arrays for direct indexing

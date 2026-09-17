@@ -210,6 +210,9 @@ void Circuit::finalize() {
     assert(!finalized_ && "Circuit::finalize() called twice");
 
     rebuild_device_load_order();
+    // Expressions must be applied before setup decides which internal nodes
+    // and parameter defaults the model needs.
+    prepare_temperature(options.temp, options.tnom);
 
     // ngspice cktdojob.c lowers trtol to 1 whenever the circuit contains an
     // XSPICE A device.  Under PSpice compatibility this includes POLY
@@ -348,14 +351,33 @@ void Circuit::reset_state() {
 
 void Circuit::set_operating_point(const std::vector<double>& solution) {
     operating_point_ = solution;
+    operating_point_temperature_ = std::pair{options.temp, options.tnom};
 }
 
 const std::vector<double>* Circuit::operating_point() const {
-    return operating_point_.empty() ? nullptr : &operating_point_;
+    return operating_point_.empty() || operating_point_temperature_ != std::pair{options.temp, options.tnom}
+        ? nullptr : &operating_point_;
 }
 
 void Circuit::clear_operating_point() {
     operating_point_.clear();
+    operating_point_temperature_.reset();
+}
+
+void Circuit::prepare_temperature(double temperature, double nominal) {
+    const auto requested = std::pair{temperature, nominal};
+    if (prepared_temperature_ == requested) return;
+    // A failed expression may leave earlier models updated. Never advertise
+    // the old preparation or operating point as reusable after that failure.
+    prepared_temperature_.reset();
+    clear_operating_point();
+    for (auto& model : model_cards_)
+        model->prepare_model_temperature(temperature);
+    for (auto& device : devices_) {
+        device->reset_temp();
+        device->process_temperature(temperature, nominal);
+    }
+    prepared_temperature_ = requested;
 }
 
 void Circuit::rotate_state() {

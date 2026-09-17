@@ -54,86 +54,117 @@ static double extract_output(const DCResult& dc, const std::string& output_var) 
     throw std::invalid_argument("SENS: unrecognized output variable '" + output_var + "'");
 }
 
+namespace {
+
+template<class T>
+struct ParameterRestorer {
+    T& device;
+    void (T::*setter)(double);
+    double original;
+    ~ParameterRestorer() { (device.*setter)(original); }
+};
+
+struct SensitivityCacheGuard {
+    Circuit& circuit;
+    // Device states may describe the final perturbation. A subsequent analysis
+    // must solve the restored circuit again instead of reusing that DC cache.
+    ~SensitivityCacheGuard() { circuit.clear_operating_point(); }
+};
+
+} // namespace
+
 SensResult solve_sens(Circuit& ckt, const std::string& output_var) {
-    auto t_start = std::chrono::steady_clock::now();
+    const auto t_start = std::chrono::steady_clock::now();
+    SensitivityCacheGuard cache_guard{ckt};
     SensResult result;
     result.output_var = to_lower(output_var);
+    int total_iterations = 0;
+    const auto elapsed = [&] {
+        return std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - t_start).count();
+    };
+    const auto fail = [&](SimStatus status, const std::string& context) {
+        status.converged = false;
+        status.iterations = total_iterations;
+        status.elapsed_seconds = elapsed();
+        status.warnings.push_back(context);
+        result.status = status;
+        if (!ckt.options.no_throw) throw SimulationError(context, status);
+    };
+    const auto solve_point = [&](const std::string& context) -> std::optional<DCResult> {
+        DCResult dc;
+        try {
+            dc = solve_dc(ckt);
+        } catch (const SimulationError& error) {
+            total_iterations += error.status().iterations;
+            fail(error.status(), context + ": " + error.what());
+            return std::nullopt;
+        }
+        total_iterations += dc.status.iterations;
+        if (!dc.status.converged) {
+            fail(dc.status, context + ": DC solve did not converge");
+            return std::nullopt;
+        }
+        return dc;
+    };
 
-    // 1. Baseline DC operating point
-    DCResult baseline = solve_dc(ckt);
-    double out_baseline = extract_output(baseline, output_var);
+    const auto baseline = solve_point("Sensitivity baseline");
+    if (!baseline) return result;
+    const double out_baseline = extract_output(*baseline, output_var);
+    if (!std::isfinite(out_baseline)) {
+        fail(baseline->status, "Sensitivity baseline output is not finite");
+        return result;
+    }
     result.output_value = out_baseline;
+    result.status = baseline->status;
 
-    // Relative perturbation factor (ngspice uses 1e-4 in sensetup.c)
+    // Preserve the existing forward-difference step and normalization. These
+    // parameters define the measurement, independently of failure handling.
     constexpr double REL_DELTA = 1e-4;
     constexpr double ABS_DELTA = 1e-10;
-
-    // 2. Perturb each Resistor
-    for (auto& dev : ckt.devices()) {
-        if (auto* r = dynamic_cast<Resistor*>(dev.get())) {
-            double orig = r->resistance();
-            double delta = std::abs(orig) * REL_DELTA;
-            if (delta < ABS_DELTA) delta = ABS_DELTA;
-
-            r->set_resistance(orig + delta);
-            DCResult perturbed = solve_dc(ckt);
-            double out_perturbed = extract_output(perturbed, output_var);
-
-            double sens = (out_perturbed - out_baseline) / delta;
-            double norm = (std::abs(out_baseline) > 1e-30)
-                              ? sens * orig / out_baseline
-                              : 0.0;
-            result.entries.push_back(
-                {to_lower(r->name()), "resistance", sens, norm});
-            r->set_resistance(orig);  // restore
+    const auto perturb = [&](auto& device, auto setter, double original,
+                             const std::string& parameter) {
+        const std::string context = "Sensitivity perturbation " + device.name() +
+                                    ":" + parameter;
+        const double delta = std::max(std::abs(original) * REL_DELTA, ABS_DELTA);
+        const double changed = original + delta;
+        if (!std::isfinite(original) || !std::isfinite(changed) || changed == original) {
+            fail(result.status, context + ": invalid parameter perturbation");
+            return false;
         }
-    }
-
-    // 3. Perturb each VSource DC value
-    for (auto& dev : ckt.devices()) {
-        if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
-            double orig = vs->dc_value();
-            double delta = std::abs(orig) * REL_DELTA;
-            if (delta < ABS_DELTA) delta = ABS_DELTA;
-
-            vs->set_dc_value(orig + delta);
-            DCResult perturbed = solve_dc(ckt);
-            double out_perturbed = extract_output(perturbed, output_var);
-
-            double sens = (out_perturbed - out_baseline) / delta;
-            double norm = (std::abs(out_baseline) > 1e-30)
-                              ? sens * orig / out_baseline
-                              : 0.0;
-            result.entries.push_back(
-                {to_lower(vs->name()), "dc", sens, norm});
-            vs->set_dc_value(orig);  // restore
+        ParameterRestorer restore{device, setter, original};
+        (device.*setter)(changed);
+        const auto dc = solve_point(context);
+        if (!dc) return false;
+        const double output = extract_output(*dc, output_var);
+        const double sensitivity = (output - out_baseline) / delta;
+        const double normalized = std::abs(out_baseline) > 1e-30
+            ? sensitivity * original / out_baseline : 0.0;
+        if (!std::isfinite(output) || !std::isfinite(sensitivity) ||
+            !std::isfinite(normalized)) {
+            fail(dc->status, context + ": nonfinite output or derivative");
+            return false;
         }
-    }
+        result.entries.push_back({to_lower(device.name()), parameter,
+                                  sensitivity, normalized});
+        return true;
+    };
 
-    // 4. Perturb each ISource DC value
-    for (auto& dev : ckt.devices()) {
-        if (auto* is = dynamic_cast<ISource*>(dev.get())) {
-            double orig = is->dc_value();
-            double delta = std::abs(orig) * REL_DELTA;
-            if (delta < ABS_DELTA) delta = ABS_DELTA;
+    for (auto& dev : ckt.devices())
+        if (auto* r = dynamic_cast<Resistor*>(dev.get()))
+            if (!perturb(*r, &Resistor::set_resistance, r->resistance(), "resistance"))
+                return result;
+    for (auto& dev : ckt.devices())
+        if (auto* vs = dynamic_cast<VSource*>(dev.get()))
+            if (!perturb(*vs, &VSource::set_dc_value, vs->dc_value(), "dc"))
+                return result;
+    for (auto& dev : ckt.devices())
+        if (auto* is = dynamic_cast<ISource*>(dev.get()))
+            if (!perturb(*is, &ISource::set_dc_value, is->dc_value(), "dc"))
+                return result;
 
-            is->set_dc_value(orig + delta);
-            DCResult perturbed = solve_dc(ckt);
-            double out_perturbed = extract_output(perturbed, output_var);
-
-            double sens = (out_perturbed - out_baseline) / delta;
-            double norm = (std::abs(out_baseline) > 1e-30)
-                              ? sens * orig / out_baseline
-                              : 0.0;
-            result.entries.push_back(
-                {to_lower(is->name()), "dc", sens, norm});
-            is->set_dc_value(orig);  // restore
-        }
-    }
-
-    auto t_end = std::chrono::steady_clock::now();
-    result.status.converged = true;
-    result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
+    result.status.iterations = total_iterations;
+    result.status.elapsed_seconds = elapsed();
     return result;
 }
 

@@ -34,6 +34,7 @@ See NOTICE and CREDITS.md for full attribution.
 #include <cstdio>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <set>
 
 namespace neospice {
@@ -68,9 +69,6 @@ constexpr double kDeviceLteRejectRatio = 0.9;
 
 /// Maximum dt growth factor per accepted step
 constexpr double kMaxDtGrowthFactor = 2.0;
-
-/// Minimum steps before ringing detection is active after a breakpoint
-constexpr int kRingingMinStepsAfterBp = 5;
 
 /// Minimum steps before global LTE proposal is used in next-dt computation
 constexpr int kGlobalLteMinStepsAfterBp = 4;
@@ -113,20 +111,19 @@ static TimeStepController::BreakpointType classify_source(SourceFunction func) {
     }
 }
 
-// Collect PULSE/SIN breakpoints from sources with type classification
+// Collect fixed source corners. PULSE schedules its next corner at acceptance.
 static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double tstop) {
     for (auto& dev : ckt.devices()) {
         if (auto* vs = dynamic_cast<VSource*>(dev.get())) {
+            if (vs->source_function() == SourceFunction::PULSE) continue;
             auto type = classify_source(vs->source_function());
             auto bps = vs->get_breakpoints(0.0, tstop);
             for (double bp : bps) ctrl.add_source_breakpoint(bp, type);
         } else if (auto* is = dynamic_cast<ISource*>(dev.get())) {
+            if (is->source_function() == SourceFunction::PULSE) continue;
             auto type = classify_source(is->source_function());
             auto bps = is->get_breakpoints(0.0, tstop);
             for (double bp : bps) ctrl.add_source_breakpoint(bp, type);
-        } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
-            auto bps = tl->get_breakpoints(0.0, tstop);
-            for (double bp : bps) ctrl.add_source_breakpoint(bp);  // TL breakpoints are HARD
         }
     }
 }
@@ -138,7 +135,7 @@ static void collect_breakpoints(Circuit& ckt, TimeStepController& ctrl, double t
 // Returns the converged solution; throws SimulationError on failure.
 static void compute_dc_operating_point(Circuit& ckt, ISolver& solver,
                                        std::vector<double>& solution,
-                                       int& total_newton_iters) {
+                                       int& total_newton_iters, bool uic) {
     // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
     const int32_t n = ckt.num_vars();
     std::vector<char> pinned(n, 0);
@@ -151,14 +148,15 @@ static void compute_dc_operating_point(Circuit& ckt, ISolver& solver,
     }
     for (auto& [node_id, value] : ckt.ic) {
         int32_t node_idx = static_cast<int32_t>(node_id);
-        if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
+        if (node_idx >= 0 && node_idx < n && (uic || !pinned[node_idx])) {
             solution[node_idx] = value;
         }
     }
 
     // DC preamble — the transient initial operating point uses MODETRANOP
     // (0x20), NOT the full MODEDC mask (0x70) or MODEDCOP (0x10).
-    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
+    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT |
+                              (uic ? MODEUIC_BIT : 0);
     auto result = newton_solve(ckt, solver, solution, ckt.options);
     if (result.converged) {
         total_newton_iters += result.iterations;
@@ -295,7 +293,7 @@ static void initialize_device_dc_state(Circuit& ckt, std::vector<double>& soluti
         } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
             ki->init_dc_state(solution);
         } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
-            tl->init_dc_state(solution);
+            tl->init_dc_state(solution, uic);
         } else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get())) {
             ltl->init_dc_state(solution);
         }
@@ -310,35 +308,6 @@ static void initialize_device_dc_state(Circuit& ckt, std::vector<double>& soluti
             }
         }
     }
-}
-
-// ===================================================================
-// Helper: Resolve TL initial conditions into the solution vector
-// ===================================================================
-// After DC OP (TL is short circuit) and TL IC initialization (history
-// filled with IC values), the node voltages don't reflect the TL ICs.
-// This solve uses the TL companion model with IC-initialized history
-// to make node voltages consistent before storing the t=0 output.
-// ngspice achieves this implicitly: its first output point is after
-// the first MODEINITTRAN Newton step, so ICs are already resolved.
-static void resolve_tl_initial_conditions(Circuit& ckt, ISolver& solver,
-                                          std::vector<double>& solution,
-                                          double tstep) {
-    bool tl_has_ic = false;
-    for (auto& dev : ckt.devices()) {
-        if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
-            if (tl->has_ic()) { tl_has_ic = true; break; }
-        }
-    }
-    if (!tl_has_ic) return;
-
-    ckt.integrator_ctx.current_time = 0.0;
-    ckt.integrator_ctx.delta = tstep;
-    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
-    auto result = newton_solve(ckt, solver, solution, ckt.options);
-    if (!result.converged && ckt.options.verbose)
-        std::fprintf(stderr, "[tran] TL IC resolve did not converge (%d iters)\n",
-                     result.iterations);
 }
 
 // ===================================================================
@@ -398,12 +367,12 @@ static void fill_integrator_context(Circuit& ckt, double dt, int step_count,
     ckt.integrator_ctx.delta = dt;
     ckt.integrator_ctx.current_time = ctrl.current_time() + dt;
     ckt.integrator_ctx.delta_old[0] = dt;
-    ckt.integrator_ctx.delta_old[1] = first_step ? dt : ctrl.prev_dt();
+    ckt.integrator_ctx.delta_old[1] = ctrl.prev_dt();
     ckt.integrator_ctx.delta_old[2] = prev_prev_dt;
-    ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
+    ckt.integrator_ctx.mode = (ckt.integrator_ctx.mode & MODEUIC_BIT) |
+        MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
 
-    // Determine effective method: trap unless user chose gear or
-    // ringing detection temporarily switched to gear.
+    // Honor the requested integration method throughout the analysis.
     bool eff_gear = (ckt.integrator_ctx.integrate_method == 1);
 
     if (cur_order == 1) {
@@ -473,10 +442,15 @@ static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
 
     // Device-specific LTE for step rejection (matches ngspice CKTtrunc).
     device_dt_out = 1e30;
-    if (step_count >= kLteMinStepCount) {
+    // step_count excludes the candidate being checked. ngspice skips only
+    // the first timepoint, then evaluates device LTE on the second candidate.
+    if (step_count + 1 >= kLteMinStepCount) {
         for (const auto& dev : ckt.devices()) {
             device_dt_out = std::min(device_dt_out,
                 dev->compute_trunc(ckt.integrator_ctx, ckt.options));
+            if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get()))
+                device_dt_out = std::min(device_dt_out,
+                    tl->trunc_timestep(ckt.integrator_ctx, solution));
         }
         device_dt_out = std::min(kMaxDtGrowthFactor * dt, device_dt_out);
         if (device_dt_out < dt * kDeviceLteRejectRatio && dt > dt_min * 1.01) {
@@ -486,11 +460,11 @@ static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
         }
     }
 
-    // Global node-voltage LTE — gated on .option newtrunc or .option interp.
+    // Global node-voltage LTE — gated only on .option newtrunc.
     // When enabled: proposal-only (never rejects when devices provide LTE).
     // When disabled: no global voltage LTE at all (ngspice default behavior).
     bool has_device_lte = (device_dt_out < 1e29);
-    if ((ckt.options.newtrunc || ckt.options.interp) &&
+    if (ckt.options.newtrunc &&
         step_count >= kLteMinStepCount && steps_after_bp >= kBreakpointSettleSteps) {
         ctrl.set_dt(dt);
         bool global_ok = ctrl.evaluate_step(solution, sol_prev, sol_prev2,
@@ -506,60 +480,33 @@ static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
 }
 
 // ===================================================================
-// Helper: Accept step on all reactive / stateful devices
-// ===================================================================
-static void accept_step_on_devices(Circuit& ckt, double t,
-                                   const std::vector<double>& solution) {
-    for (auto& dev : ckt.devices()) {
-        if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
-            cap->accept_step_from_solution(solution);
-        } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
-            ind->accept_step_from_solution(solution);
-        } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
-            ki->accept_step_from_solution(solution);
-        } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
-            tl->accept_step(t, solution);
-        } else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get())) {
-            ltl->accept_step(t, solution);
-        } else if (auto* asrc = dynamic_cast<ASRCDevice*>(dev.get())) {
-            asrc->expression().accept_ddt();
-            asrc->expression().accept_idt();
-        }
-    }
-}
-
-// ===================================================================
 // Helper: Interpolate solution and store output points
 // ===================================================================
 static void interpolate_and_store_outputs(
-    const TimeStepController& ctrl, double dt, double prev_prev_dt,
-    double tstep, double tstop, int step_count, int32_t n,
+    const TimeStepController& ctrl, double dt,
+    double tstep, double tstop, int32_t n,
     const std::vector<double>& solution,
     const std::vector<double>& sol_prev,
-    const std::vector<double>& sol_prev2,
-    double& next_output_time,
+    size_t& next_output_index,
     const std::function<void(double, const std::vector<double>&)>& store_point)
 {
-    while (next_output_time <= ctrl.current_time() + 1e-18 && next_output_time <= tstop + 1e-18) {
+    for (;;) {
+        // Compute each output timestamp directly from its index.
+        // Repeated addition drifts far enough on long grids to omit the last
+        // point or label its solution with a time short of the requested stop.
+        double next_output_time = next_output_index * tstep;
+        const double stop_roundoff = 4 * std::numeric_limits<double>::epsilon()
+            * std::max(std::abs(next_output_time), std::abs(tstop));
+        if (std::abs(next_output_time - tstop) <= stop_roundoff)
+            next_output_time = tstop;
+        if (next_output_time > ctrl.current_time() + 1e-18 ||
+            next_output_time > tstop)
+            break;
         if (std::abs(ctrl.current_time() - next_output_time) < 1e-18) {
             // Landed exactly on output point
             store_point(next_output_time, solution);
-        } else if (step_count >= kLteMinStepCount && prev_prev_dt > 1e-20) {
-            // Quadratic (Lagrange) interpolation using 3 history points
-            double t2 = ctrl.current_time();
-            double t1 = t2 - dt;
-            double t0 = t1 - prev_prev_dt;
-            double t_out = next_output_time;
-            double L0 = ((t_out - t1) * (t_out - t2)) / ((t0 - t1) * (t0 - t2));
-            double L1 = ((t_out - t0) * (t_out - t2)) / ((t1 - t0) * (t1 - t2));
-            double L2 = ((t_out - t0) * (t_out - t1)) / ((t2 - t0) * (t2 - t1));
-            std::vector<double> interp(n);
-            for (int32_t i = 0; i < n; ++i) {
-                interp[i] = L0 * sol_prev2[i] + L1 * sol_prev[i] + L2 * solution[i];
-            }
-            store_point(next_output_time, interp);
         } else {
-            // Linear interpolation for first 2 steps (only 2 history points)
+            // Linear output interpolation between accepted steps, as in ngspice.
             double alpha = (next_output_time - (ctrl.current_time() - dt)) / dt;
             alpha = std::max(0.0, std::min(1.0, alpha));
             std::vector<double> interp(n);
@@ -568,41 +515,7 @@ static void interpolate_and_store_outputs(
             }
             store_point(next_output_time, interp);
         }
-        next_output_time += tstep;
-    }
-}
-
-// ===================================================================
-// Helper: Ringing detection and integration method switching
-// ===================================================================
-static void detect_and_handle_ringing(
-    Circuit& ckt, TimeStepController& ctrl,
-    const std::vector<double>& solution,
-    const std::vector<double>& sol_prev,
-    const std::vector<double>& sol_prev2,
-    const std::vector<double>& sol_prev3,
-    int32_t num_nodes, int step_count, bool use_gear, int steps_after_bp)
-{
-    if (step_count < 3 || use_gear || steps_after_bp < kRingingMinStepsAfterBp)
-        return;
-
-    ctrl.check_ringing(solution, sol_prev, sol_prev2, sol_prev3,
-                       num_nodes, ckt.options);
-    ctrl.tick_cooldown();
-
-    // Switch integration method based on ringing state
-    int new_method = (ctrl.ringing_detected() || ctrl.ringing_cooldown() > 0) ? 1 : 0;
-    if (new_method != ckt.integrator_ctx.integrate_method) {
-        ckt.integrator_ctx.integrate_method = new_method;
-        for (auto& dev : ckt.devices()) {
-            if (auto* cap = dynamic_cast<Capacitor*>(dev.get())) {
-                cap->set_integration_method(new_method);
-            } else if (auto* ind = dynamic_cast<Inductor*>(dev.get())) {
-                ind->set_integration_method(new_method);
-            } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
-                ki->set_integration_method(new_method);
-            }
-        }
+        ++next_output_index;
     }
 }
 
@@ -649,39 +562,29 @@ static void update_source_time(const CachedDevicePtrs& c, double t) {
     for (auto* bs : c.asrc) bs->set_time(t);
 }
 
+static void accept_pulse_breakpoints(const CachedDevicePtrs& c,
+                                      TimeStepController& ctrl, double min_break) {
+    const double t = ctrl.current_time();
+    for (auto* source : c.vsrc)
+        if (const auto next = source->accept_pulse_breakpoint(t, min_break))
+            ctrl.add_source_breakpoint(*next);
+    for (auto* source : c.isrc)
+        if (const auto next = source->accept_pulse_breakpoint(t, min_break))
+            ctrl.add_source_breakpoint(*next);
+}
+
 static void accept_step_on_devices(const CachedDevicePtrs& c, double t,
-                                   const std::vector<double>& solution) {
+                                   const std::vector<double>& solution,
+                                   const IntegratorCtx& ctx,
+                                   TimeStepController& ctrl, double min_break) {
     for (auto* cap : c.caps) cap->accept_step_from_solution(solution);
     for (auto* ind : c.inds) ind->accept_step_from_solution(solution);
     for (auto* ki : c.coupled) ki->accept_step_from_solution(solution);
-    for (auto* tl : c.tline) tl->accept_step(t, solution);
+    for (auto* tl : c.tline)
+        if (const auto bp = tl->accept_step(t, solution, ctx, min_break))
+            ctrl.add_source_breakpoint(*bp);
     for (auto* ltl : c.ltline) ltl->accept_step(t, solution);
-    for (auto* asrc : c.asrc) { asrc->expression().accept_ddt(); asrc->expression().accept_idt(); }
-}
-
-static void detect_and_handle_ringing(
-    Circuit& ckt, const CachedDevicePtrs& c, TimeStepController& ctrl,
-    const std::vector<double>& solution,
-    const std::vector<double>& sol_prev,
-    const std::vector<double>& sol_prev2,
-    const std::vector<double>& sol_prev3,
-    int32_t num_nodes, int step_count, bool use_gear, int steps_after_bp)
-{
-    if (step_count < 3 || use_gear || steps_after_bp < kRingingMinStepsAfterBp)
-        return;
-
-    ctrl.check_ringing(solution, sol_prev, sol_prev2, sol_prev3,
-                       num_nodes, ckt.options);
-    ctrl.tick_cooldown();
-
-    // Switch integration method based on ringing state
-    int new_method = (ctrl.ringing_detected() || ctrl.ringing_cooldown() > 0) ? 1 : 0;
-    if (new_method != ckt.integrator_ctx.integrate_method) {
-        ckt.integrator_ctx.integrate_method = new_method;
-        for (auto* cap : c.caps) cap->set_integration_method(new_method);
-        for (auto* ind : c.inds) ind->set_integration_method(new_method);
-        for (auto* ki : c.coupled) ki->set_integration_method(new_method);
-    }
+    for (auto* asrc : c.asrc) asrc->expression().accept_idt();
 }
 
 // ===================================================================
@@ -696,20 +599,21 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
     // Publish SimOptions so BSIM4v7Device can read user-configured values.
     ckt.integrator_ctx.options = &ckt.options;
+    ckt.integrator_ctx.current_time = 0.0;
+    ckt.integrator_ctx.delta = 0.0;
     const bool use_gear = (ckt.options.method == "gear");
 
     // ---------------------------------------------------------------
     // 1. DC operating point
     // ---------------------------------------------------------------
-    // ngspice always computes a DC OP, even with UIC — the MODEUIC flag
-    // modifies device loading but doesn't skip the solve.  We do the same:
-    // the DC OP establishes baseline node voltages, then apply_ic_overrides
-    // and initialize_device_dc_state override with user-specified IC values.
+    // Under UIC, ngspice NIiter performs one initial device load and skips
+    // the DC solve. Otherwise establish the transient operating point.
+    update_source_time(ckt, 0.0);
     std::vector<double> solution(n, 0.0);
     auto dc_solver = make_solver(ckt.num_vars(), ckt.is_linear());
     dc_solver->symbolic(ckt.pattern());
     try {
-        compute_dc_operating_point(ckt, *dc_solver, solution, total_newton_iters);
+        compute_dc_operating_point(ckt, *dc_solver, solution, total_newton_iters, uic);
     } catch (const SimulationError& e) {
         if (!ckt.options.no_throw) throw;
         TransientResult fail_result;
@@ -780,7 +684,6 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // ---------------------------------------------------------------
     enable_transient_on_devices(ckt, tstep, use_gear);
     initialize_device_dc_state(ckt, solution, uic);
-    resolve_tl_initial_conditions(ckt, *solver, solution, tstep);
 
     // Seed state history from DC operating point.
     // ngspice bcopy's state0→state1 (dctran.c:343), then at the start of
@@ -797,8 +700,9 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         }
     }
 
-    // Store t=0 output point
-    store_point(0.0, solution);
+    // UIC has no solved t=0 operating point. Like ngspice, start its output
+    // with the first accepted transient step.
+    if (!uic) store_point(0.0, solution);
 
     // Resolve PULSE/SIN default parameters before breakpoint collection
     resolve_source_defaults(ckt, tstep, tstop);
@@ -812,16 +716,16 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     const double dt_max = max_step;
 
     TimeStepController ctrl;
-    ctrl.init(tstep, tstop, max_step);
+    // The reference shared-library/XSPICE build uses 10*delmin, including
+    // independent source corner requests (dctran.c), not 5e-5*maxStep.
+    const double min_break = 10.0 * dt_min;
+    ctrl.init(tstep, tstop, max_step, min_break);
     collect_breakpoints(ckt, ctrl, tstop);
+    accept_pulse_breakpoints(cached, ctrl, min_break);
 
     const bool interp = ckt.options.interp;
-    if (interp) {
-        int num_output = static_cast<int>(std::round(tstop / tstep));
-        for (int i = 1; i <= num_output; ++i) {
-            ctrl.add_breakpoint(i * tstep);
-        }
-    }
+    // Like ngspice outitf.c, interpolation changes output only. It must not
+    // add solver breakpoints or implicitly enable a different LTE controller.
 
     // History for LTE — ring buffer of 3 vectors (pointer rotation instead of 3 copies)
     std::vector<double> hist_buf0 = solution;
@@ -830,7 +734,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     std::vector<double>* sol_prev  = &hist_buf0;
     std::vector<double>* sol_prev2 = &hist_buf1;
     std::vector<double>* sol_prev3 = &hist_buf2;
-    double next_output_time = tstep;  // only used in interp mode
+    size_t next_output_index = 1;  // only used in interp mode
     int step_count = 0;
 
     // ---------------------------------------------------------------
@@ -843,22 +747,26 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     double saved_delta = dt;
     int steps_after_bp = kNoRecentBreakpoint;
 
-    // ngspice dctran.c:548-577: at the first breakpoint (t=0 for PULSE with TD=0),
+    // ngspice dctran.c:548-577: t=0 is always the first breakpoint,
     // clamp dt by breakpoint gap and reduce further for firsttime.
     // Use ngspice's CKTsaveDelta initial value (finalTime/50, dctran.c:317)
     // instead of our already-reduced dt; this prevents the formula from
     // double-reducing dt when dt < bp_gap (as in the CMOS inverter circuit).
     {
         double bp_gap = ctrl.next_breakpoint_gap();
-        if (bp_gap < tstop) {
-            double init_save_delta = tstop / 50.0;  // ngspice dctran.c:317
-            dt = std::min(dt, 0.1 * std::min(init_save_delta, bp_gap));
-            dt /= 10;  // firsttime extra reduction (dctran.c:569)
-            dt = std::max(dt, dt_min * 2.0);
-        }
+        double init_save_delta = tstop / 50.0;  // ngspice dctran.c:317
+        dt = std::min(dt, 0.1 * std::min(init_save_delta, bp_gap));
+        dt /= 10;  // firsttime reduction also applies without source breakpoints
+        dt = std::max(dt, dt_min * 2.0);
     }
     saved_delta = dt;
-    double prev_prev_dt = dt;
+    // ngspice dctran.c adds a startup breakpoint at CKTstep under UIC after
+    // choosing the initial delta. It applies even to a constant linear circuit.
+    if (uic) ctrl.add_source_breakpoint(tstep);
+    // dctran.c initializes CKTdeltaOld to maxStep before shifting in the
+    // first candidate. Keep older intervals independent of startup reduction.
+    ctrl.set_prev_dt(max_step);
+    double prev_prev_dt = max_step;
 
     int total_iterations = 0;
     bool loop_converged = true;  // set false if we break due to no_throw failure
@@ -866,7 +774,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     std::set<std::string> soa_warned;  // throttle: one SOA warning per device per sim
     int order_promote_cooldown = 0;
 
-    while (ctrl.current_time() < tstop - 1e-18) {
+    while (ctrl.current_time() < tstop) {
         if (++total_iterations > kMaxTransientIterations) {
             SimStatus iter_fail_status;
             iter_fail_status.converged = false;
@@ -896,7 +804,22 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         if (dt < unclamped_dt - 1e-18)
             saved_delta = unclamped_dt;
         dt = ctrl.clamp_to_end(dt);
-        if (dt < 1e-20) break;
+        if (!std::isfinite(dt) || dt <= 0.0 ||
+            ctrl.current_time() + dt <= ctrl.current_time()) {
+            cleanup_transient_devices(ckt);
+            SimStatus failure;
+            failure.converged = false;
+            failure.iterations = total_newton_iters;
+            failure.min_timestep = dt;
+            failure.elapsed_seconds = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - t_start).count();
+            failure.warnings.push_back("Transient timestep cannot advance time");
+            if (!ckt.options.no_throw)
+                throw SimulationError(failure.warnings.back(), failure);
+            tran_result.status = failure;
+            tran_result.rejected_steps = ctrl.rejected_count();
+            return tran_result;
+        }
 
         double t = ctrl.current_time() + dt;
 
@@ -909,6 +832,14 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         SimOptions tran_opts = ckt.options;
         tran_opts.max_iter = ckt.options.itl4;
         auto nr = newton_solve(ckt, *solver, solution, tran_opts, newton_workspace);
+        if (step_count == 0 && ckt.num_states() > 0) {
+            // MODEINITTRAN initializes charge/current history in state1.
+            // Seed deeper history after that first load, as dctran.c does;
+            // the DC seed above predates transient-only charge evaluation.
+            const auto ns = ckt.num_states();
+            std::copy_n(ckt.state1(), ns, ckt.state2());
+            std::copy_n(ckt.state1(), ns, ckt.state3());
+        }
         if (!nr.converged) {
             if (ckt.options.verbose)
                 std::cerr << "[tran] NEWTON FAIL sc=" << step_count << " dt=" << dt << " t=" << t << "\n";
@@ -959,16 +890,22 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
         }
 
         // Accept step — advance controller
-        double accepted_dt = dt;   // save before breakpoint handler modifies dt
+        double accepted_dt = dt;
         prev_prev_dt = ctrl.prev_dt();
         ctrl.set_prev_dt(dt);
         ctrl.advance(dt);
+        // Register the following corner before selecting the restart step,
+        // which is bounded by the distance to that next corner.
+        accept_pulse_breakpoints(cached, ctrl, min_break);
         ctrl.set_dt(dt);
         step_count++;
         tried_delmin = false;
         if (steps_after_bp < kNoRecentBreakpoint) ++steps_after_bp;
 
-        // After crossing a source breakpoint: reduce dt and drop order
+        // Apply the restart bound to the final next-step proposal. Applying it
+        // here to dt alone lets the growth proposal below double it again.
+        double restart_dt_limit = 1e30;
+        // After crossing a source breakpoint: limit the next dt and drop order
         if (ctrl.crossed_source_breakpoint() && step_count > 2) {
             steps_after_bp = 0;
             ctrl.set_order(1);  // ngspice: CKTorder = 1 at breakpoints (dctran.c:548)
@@ -977,19 +914,29 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             if (ctrl.last_bp_type() == TimeStepController::BreakpointType::SOFT) {
                 scale = std::sqrt(scale);
             }
-            dt = std::min(dt, scale * std::min(saved_delta, bp_gap));
-            dt = std::max(dt, dt_min * 2.0);
+            restart_dt_limit = std::max(scale * std::min(saved_delta, bp_gap),
+                                        dt_min * 2.0);
         }
 
         // LTE-conditioned order promotion (ngspice dctran.c:862-873)
         if (order_promote_cooldown > 0) --order_promote_cooldown;
-        if (ctrl.order() == 1 && step_count >= 2 && order_promote_cooldown == 0) {
+        // ngspice applies the breakpoint order reduction after considering
+        // promotion for the accepted step. Do not immediately undo that
+        // reduction: the first step after the corner must use backward Euler.
+        if (ctrl.order() == 1 && step_count >= 2 && order_promote_cooldown == 0 &&
+            !ctrl.crossed_source_breakpoint()) {
             ckt.integrator_ctx.order = 2;
             double device_dt_order2 = 1e30;
             for (const auto& dev : ckt.devices()) {
                 device_dt_order2 = std::min(device_dt_order2,
                     dev->compute_trunc(ckt.integrator_ctx, ckt.options));
+                if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get()))
+                    device_dt_order2 = std::min(device_dt_order2,
+                        tl->trunc_timestep(ckt.integrator_ctx, solution));
             }
+            // CKTtrunc's speculative order-two proposal becomes the next
+            // interval even when its size is insufficient to promote order.
+            device_dt = device_dt_order2;
             if (device_dt_order2 > 1.05 * dt) {
                 ctrl.set_order(2);
             }
@@ -998,7 +945,9 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
         // Rotate state history ring and accept on devices
         ckt.rotate_state();
-        accept_step_on_devices(cached, ctrl.current_time(), solution);
+        // Shared ngspice/XSPICE uses 10*delmin as its history spacing floor.
+        accept_step_on_devices(cached, ctrl.current_time(), solution,
+                               ckt.integrator_ctx, ctrl, 10.0 * dt_min);
 
         // SOA (Safe Operating Area) checking — informational, once per device
         for (auto& dev : ckt.devices()) {
@@ -1014,9 +963,14 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
         if (interp) {
             // Interpolated uniform grid output (.option interp)
-            interpolate_and_store_outputs(ctrl, accepted_dt, prev_prev_dt, tstep, tstop,
-                                          step_count, n, solution, *sol_prev,
-                                          *sol_prev2, next_output_time, store_point);
+            interpolate_and_store_outputs(ctrl, accepted_dt, tstep, tstop,
+                                          n, solution, *sol_prev,
+                                          next_output_index, store_point);
+            // ngspice also emits the final accepted point when tstop is not
+            // an integer multiple of the requested output interval.
+            if (ctrl.current_time() == tstop &&
+                (tran_result.time.empty() || tran_result.time.back() < tstop))
+                store_point(tstop, solution);
         } else {
             // Raw adaptive timestep output (default)
             store_point(ctrl.current_time(), solution);
@@ -1031,18 +985,14 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             sol_prev = tmp;
         }
 
-        // Ringing detection and integration method switching
-        detect_and_handle_ringing(ckt, cached, ctrl, solution, *sol_prev, *sol_prev2,
-                                  *sol_prev3, num_nodes, step_count, use_gear,
-                                  steps_after_bp);
-
         // Propose next dt from device and global LTE
         if (step_count >= kLteMinStepCount) {
             double proposed = device_dt;
-            if ((ckt.options.newtrunc || ckt.options.interp) && steps_after_bp >= kGlobalLteMinStepsAfterBp) {
+            if (ckt.options.newtrunc && steps_after_bp >= kGlobalLteMinStepsAfterBp) {
                 proposed = std::min(proposed, ctrl.proposed_dt());
             }
             proposed = std::min(proposed, kMaxDtGrowthFactor * dt);
+            proposed = std::min(proposed, restart_dt_limit);
             dt = std::max(proposed, dt_min);
         }
     }

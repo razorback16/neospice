@@ -1,4 +1,6 @@
 #include "parser/model_cards.hpp"
+#include "parser/expression.hpp"
+#include <cmath>
 #include "core/types.hpp"
 #include "devices/switch.hpp"
 #include <algorithm>
@@ -15,7 +17,9 @@ static std::string to_lower(const std::string& s) {
     return result;
 }
 
-ModelCard parse_model_card(const std::vector<std::string>& tokens) {
+ModelCard parse_model_card(const std::vector<std::string>& tokens,
+                          const std::unordered_map<std::string, double>& params,
+                          bool pspice_temperature_alias) {
     // tokens[0] = ".model", tokens[1] = name, tokens[2..] = TYPE(key=val ...)
     if (tokens.size() < 3) {
         throw ParseError(".model: insufficient tokens");
@@ -59,36 +63,13 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
         }
     }
 
-    // Find the type name. In SPICE, the .model line is either
-    //   .model NAME TYPE(k=v ...)       (parenthesized)
-    //   .model NAME TYPE k=v k=v ...    (bare — paren-less form)
-    // In both cases, TYPE is the first whitespace-delimited token of `rest`.
-    size_t paren_pos = rest.find('(');
-    std::string type_str;
-    std::string params_str;
-    if (paren_pos == std::string::npos) {
-        // No parens: first token is type, everything after is params
-        size_t first_space = rest.find_first_of(" \t");
-        if (first_space == std::string::npos) {
-            type_str = rest;
-            params_str = "";
-        } else {
-            type_str = rest.substr(0, first_space);
-            params_str = rest.substr(first_space + 1);
-        }
-    } else {
-        // Parens: type is everything before '(' (trimmed)
-        type_str = rest.substr(0, paren_pos);
-        size_t close_paren = rest.rfind(')');
-        if (close_paren != std::string::npos && close_paren > paren_pos) {
-            params_str = rest.substr(paren_pos + 1, close_paren - paren_pos - 1);
-        } else {
-            params_str = rest.substr(paren_pos + 1);
-        }
-    }
-    // Trim whitespace from type
-    while (!type_str.empty() && std::isspace(static_cast<unsigned char>(type_str.back())))
-        type_str.pop_back();
+    // INPgetTok reads the model type as one token; optional parentheses
+    // delimit parameters, not the end of the type-and-prefix field. Keep
+    // parameters on either side of the group (e.g. NPN LEVEL=4(IS=...) TD=1n).
+    const size_t type_end = rest.find_first_of(" \t\r\n(),=");
+    const std::string type_str = rest.substr(0, type_end);
+    const std::string params_str = type_end == std::string::npos ?
+        std::string{} : rest.substr(type_end);
     card.type = to_lower(type_str);
 
     // Normalize PSpice model type aliases
@@ -98,29 +79,41 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
     else if (card.type == "vswitch") card.type = "sw";
     else if (card.type == "iswitch") card.type = "csw";
 
-    // Parse parameters (from paren block or bare params)
+    // Parse parameters across optional parenthesized groups and bare fields.
     if (!params_str.empty()) {
 
-        // Replace '=' with ' = ' for easier parsing, then split. Commas are
-        // valid parameter separators in PSpice model cards (e.g.
-        // "d(kf=2e-12,af=1, T_abs=-4)"), so treat them as whitespace.
-        std::string normalized;
+        // Split only outside balanced expressions. Parentheses and commas
+        // inside braces or quotes belong to the expression, not the card.
+        std::vector<std::string> ptokens;
+        std::string token;
+        int braces = 0;
+        char quote = 0;
+        auto flush = [&] {
+            if (!token.empty()) { ptokens.push_back(std::move(token)); token.clear(); }
+        };
         for (char c : params_str) {
-            if (c == '=') {
-                normalized += " = ";
-            } else if (c == ',') {
-                normalized += ' ';
+            if (quote) {
+                token += c;
+                if (c == quote) quote = 0;
+            } else if (c == '\'' || c == '"') {
+                quote = c; token += c;
+            } else if (c == '{') {
+                ++braces; token += c;
+            } else if (c == '}') {
+                if (braces == 0) throw ParseError("Model '" + card.name + "': unmatched '}'");
+                --braces; token += c;
+            } else if (braces) {
+                token += c;
+            } else if (c == '=') {
+                flush(); ptokens.emplace_back("=");
+            } else if (std::isspace(static_cast<unsigned char>(c)) || c == ',' || c == '(' || c == ')') {
+                flush();
             } else {
-                normalized += c;
+                token += c;
             }
         }
-
-        std::istringstream iss(normalized);
-        std::string tok;
-        std::vector<std::string> ptokens;
-        while (iss >> tok) {
-            ptokens.push_back(tok);
-        }
+        if (braces || quote) throw ParseError("Model '" + card.name + "': unterminated expression");
+        flush();
 
         // Parse key=value pairs: expect key, =, value.
         // Bare tokens without '=' are treated as flag parameters (value = 1.0).
@@ -129,15 +122,39 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens) {
         for (size_t i = 0; i < ptokens.size(); ) {
             std::string key = to_lower(ptokens[i]);
             if (i + 2 < ptokens.size() && ptokens[i + 1] == "=") {
-                // key = value triplet
+                const auto& value_token = ptokens[i + 2];
+                std::string expression = value_token;
+                const bool quoted = expression.size() >= 2 &&
+                    ((expression.front() == '\'' && expression.back() == '\'') ||
+                     (expression.front() == '"' && expression.back() == '"'));
+                if (quoted) expression = expression.substr(1, expression.size() - 2);
+                const bool is_expression = quoted || expression.find('{') != std::string::npos ||
+                    params.contains(to_lower(expression));
                 double val;
-                try {
-                    val = parse_spice_number(ptokens[i + 2]);
-                } catch (const ParseError&) {
-                    // Non-numeric value (e.g., mfg=USSR) — skip this parameter
-                    i += 3;
-                    continue;
+                if (is_expression) {
+                    if (pspice_temperature_alias)
+                        expression = canonical_temperature_expression(expression);
+                    expression = subst_param_names(expression, params);
+                    if (has_temperature_identifier(expression)) {
+                        if (key == "level" || key == "t_measured" || key == "t_abs" ||
+                            key == "t_rel_global" || key == "t_rel_local")
+                            throw ParseError("Model '" + card.name + "': temperature-dependent '" + key + "' is not supported");
+                        card.temperature_expressions.emplace_back(key, std::move(expression));
+                        i += 3;
+                        continue;
+                    }
+                    val = eval_expression(expression, {}, true);
+                } else {
+                    try {
+                        val = parse_spice_number(value_token);
+                    } catch (const ParseError&) {
+                        // Non-numeric metadata such as mfg=USSR is not an expression.
+                        i += 3;
+                        continue;
+                    }
                 }
+                if (!std::isfinite(val))
+                    throw ParseError("Model '" + card.name + "': non-finite parameter '" + key + "'");
                 // PSpice temperature metadata goes to dedicated fields only,
                 // not the generic param map — the per-device parameter tables
                 // don't know t_abs/t_measured/etc. and would warn "unknown".
@@ -222,6 +239,8 @@ int detect_mosfet_level(const ModelCard& card) {
 // to_switch_model — parse a .model SW or CSW card into a SwitchModel.
 // ---------------------------------------------------------------------------
 SwitchModel to_switch_model(const ModelCard& card) {
+    if (!card.temperature_expressions.empty())
+        throw ParseError("Model '" + card.name + "': temperature expressions for this model type are not implemented");
     SwitchModel model;
     model.name = card.name;
 
@@ -280,6 +299,8 @@ SwitchModel to_switch_model(const ModelCard& card) {
 // to_resistor_model — parse a .model R card into a ResistorModel.
 // ---------------------------------------------------------------------------
 ResistorModel to_resistor_model(const ModelCard& card) {
+    if (!card.temperature_expressions.empty())
+        throw ParseError("Model '" + card.name + "': temperature expressions for this model type are not implemented");
     ResistorModel m;
     for (const auto& [key, val] : card.params) {
         if (key == "tc1") m.tc1 = val;
@@ -296,6 +317,8 @@ ResistorModel to_resistor_model(const ModelCard& card) {
 // to_capacitor_model — parse a .model C card into a CapacitorModel.
 // ---------------------------------------------------------------------------
 CapacitorModel to_capacitor_model(const ModelCard& card) {
+    if (!card.temperature_expressions.empty())
+        throw ParseError("Model '" + card.name + "': temperature expressions for this model type are not implemented");
     CapacitorModel m;
     for (const auto& [key, val] : card.params) {
         if (key == "tc1") m.tc1 = val;
@@ -311,6 +334,8 @@ CapacitorModel to_capacitor_model(const ModelCard& card) {
 // to_inductor_model — parse a .model L card into an InductorModel.
 // ---------------------------------------------------------------------------
 InductorModel to_inductor_model(const ModelCard& card) {
+    if (!card.temperature_expressions.empty())
+        throw ParseError("Model '" + card.name + "': temperature expressions for this model type are not implemented");
     InductorModel m;
     for (const auto& [key, val] : card.params) {
         if (key == "tc1") m.tc1 = val;

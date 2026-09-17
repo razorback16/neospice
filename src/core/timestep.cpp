@@ -1,10 +1,12 @@
 #include "core/timestep.hpp"
 #include <cmath>
 #include <algorithm>
+#include <bit>
+#include <cstdint>
 
 namespace neospice {
 
-void TimeStepController::init(double initial_dt, double tstop, double max_step) {
+void TimeStepController::init(double initial_dt, double tstop, double max_step, double min_break) {
     dt_ = initial_dt;
     tstop_ = tstop;
     time_ = 0.0;
@@ -15,7 +17,7 @@ void TimeStepController::init(double initial_dt, double tstop, double max_step) 
     breakpoints_.clear();
     source_breakpoints_.clear();
     max_seen_.clear();
-    min_break_ = (max_step > 0.0) ? 5e-5 * max_step : 0.0;
+    min_break_ = min_break >= 0 ? min_break : ((max_step > 0.0) ? 5e-5 * max_step : 0.0);
 }
 
 void TimeStepController::advance(double dt) {
@@ -148,16 +150,21 @@ double TimeStepController::next_breakpoint_gap() const {
 }
 
 double TimeStepController::clamp_to_breakpoint(double proposed_dt) const {
-    double t_next = time_ + proposed_dt;
-    if (!breakpoints_.empty()) {
-        double bp = *breakpoints_.begin();
-        if (t_next > bp - 1e-18) {
-            return bp - time_;
-        }
-        if (t_next > bp - 0.1 * proposed_dt) {
-            return bp - time_;
-        }
-    }
+    // ngspice 47 dctran.c: retain the stop time as the final breakpoint and
+    // balance the last two steps before a corner. Do not enlarge a proposal
+    // merely because it lands close to that corner.
+    const double bp = breakpoints_.empty()
+        ? tstop_ : std::min(*breakpoints_.begin(), tstop_);
+    const double t_next = time_ + proposed_dt;
+    if (t_next > bp) return bp - time_;
+
+    // Match AlmostEqualUlps(..., 100) for nonnegative simulation times.
+    // A proposal already at the requested stop must not be halved repeatedly.
+    const auto next_bits = std::bit_cast<std::uint64_t>(t_next);
+    const auto stop_bits = std::bit_cast<std::uint64_t>(tstop_);
+    const auto ulps = next_bits > stop_bits ? next_bits - stop_bits : stop_bits - next_bits;
+    if (ulps > 100 && time_ + 1.9 * proposed_dt > bp)
+        return (bp - time_) / 2.0;
     return proposed_dt;
 }
 

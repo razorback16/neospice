@@ -407,12 +407,16 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             if (vals.size() >= 5) spec.sffm.fs  = vals[4];
         } else if (lower == "am" || lower.substr(0, 2) == "am") {
             auto vals = parse_paren_params(tokens, i, params);
+            if (vals.size() < 2) throw ParseError("AM requires output and modulation offsets");
             spec.func = SourceFunction::AM;
-            if (vals.size() >= 1) spec.am.sa = vals[0];
-            if (vals.size() >= 2) spec.am.oc = vals[1];
-            if (vals.size() >= 3) spec.am.fm = vals[2];
-            if (vals.size() >= 4) spec.am.fc = vals[3];
-            if (vals.size() >= 5) spec.am.td = vals[4];
+            spec.am.vo = vals[0];
+            spec.am.vmo = vals[1];
+            if (vals.size() >= 3) spec.am.vma = vals[2];
+            if (vals.size() >= 4) spec.am.fm = vals[3];
+            if (vals.size() >= 5) spec.am.fc = vals[4];
+            if (vals.size() >= 6) spec.am.td = vals[5];
+            if (vals.size() >= 7) spec.am.phasem = vals[6];
+            if (vals.size() >= 8) spec.am.phasec = vals[7];
         } else {
             // Try to parse as a bare DC value (no "DC" keyword).
             // ngspice treats a bare leading numeric value as VSRCdcGiven=TRUE.
@@ -1053,7 +1057,7 @@ ModelCard* NetlistParser::ensure_model(ParseState& state, const std::string& nam
     }
     raw.resolving = true;
 
-    ModelCard card = parse_model_card(raw.tokens);
+    ModelCard card = parse_model_card(raw.tokens, state.params, state.ckt.options.pspice_compat);
     card.source_order = raw.source_order;
 
     // Resolve AKO inheritance on demand.
@@ -1095,10 +1099,17 @@ ModelCard* NetlistParser::ensure_model(ParseState& state, const std::string& nam
                 }
                 // Merge params: start with base, overlay derived.
                 auto merged = base->params;
+                auto expressions = base->temperature_expressions;
                 for (const auto& [pk, pv] : card.params) {
                     merged[pk] = pv;
                 }
+                // AKO copies the base assignments before the derived ones.
+                // Preserve that order for the later reverse temperature pass;
+                // neither literals nor later expressions delete earlier ones.
+                expressions.insert(expressions.end(), card.temperature_expressions.begin(),
+                                   card.temperature_expressions.end());
                 card.params = std::move(merged);
+                card.temperature_expressions = std::move(expressions);
                 card.ako_base.clear();
             }
         }
@@ -1195,18 +1206,43 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
     // later content lookups in pass 2/3 behave exactly as they did when every
     // model was parsed eagerly — but only for models that are used.
     //
-    // Any token on a non-dot element line that matches a collected .model name
-    // is materialized (which also pulls in its AKO base transitively). Tokens
-    // that don't name a model are ignored. This is O(used models), not
-    // O(models-in-library).
+    // Inspect model-reference positions only. Source keywords (DC/AC), node
+    // names, instance names and parameter keys do not reference models merely
+    // because a library contains an identically named declaration.
     if (!state.model_raw.empty()) {
         for (const auto& line : state.lines) {
             if (line.tokens.empty()) continue;
             if (!line.tokens[0].empty() && line.tokens[0][0] == '.') continue;
-            for (const auto& tok : line.tokens) {
-                auto eq = tok.find('=');
-                std::string cand = (eq == std::string::npos) ? tok : tok.substr(0, eq);
-                std::string lc = to_lower(cand);
+            const auto instance = to_lower(line.tokens[0]);
+            const auto dot = instance.rfind('.');
+            const auto leaf = dot == std::string::npos ? 0 : dot + 1;
+            if (leaf >= instance.size()) continue;
+            size_t first_model = 1;
+            switch (instance[leaf]) {
+            case 'r': case 'c': case 'l': case 'd': first_model = 3; break;
+            case 'm': case 'q': case 'j': case 'z': case 'w': case 'u':
+                first_model = 4; break;
+            case 'o': case 'y': first_model = 5; break;
+            case 'a': first_model = line.tokens.size() - 1; break;
+            case 's': {
+                NodeAtomScanner scanner(line.tokens, 1);
+                std::string node;
+                bool complete = true;
+                for (int i = 0; i < 4; ++i) complete = scanner.next(node) && complete;
+                first_model = complete ? scanner.resume_token_index() : line.tokens.size();
+                break;
+            }
+            case 'v': case 'i': case 'e': case 'f': case 'g': case 'h':
+            case 'b': case 'k': case 't': case 'x':
+                continue;
+            default: break; // Preserve extension-device model lookup.
+            }
+            for (size_t i = first_model; i < line.tokens.size(); ++i) {
+                const auto& tok = line.tokens[i];
+                if (tok.find('=') != std::string::npos ||
+                    (i + 1 < line.tokens.size() && !line.tokens[i + 1].empty() &&
+                     line.tokens[i + 1][0] == '=')) break;
+                const std::string lc = to_lower(tok);
                 auto rit = state.model_raw.find(lc);
                 if (rit != state.model_raw.end()) {
                     auto [order_it, inserted] = state.setup_model_order.emplace(
@@ -1215,6 +1251,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     ModelCard* card = ensure_model(state, lc);
                     if (card && card->setup_order < 0)
                         card->setup_order = order_it->second;
+                    break;
                 }
             }
         }
@@ -2046,15 +2083,12 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     throw ParseError("Line " + std::to_string(line.line_number) + ": " + msg);
                 };
                 ParseContext parse_ctx{ckt, node_raw, models, line.line_number, error_fn};
-                try {
-                    auto elem = handler->parse(tokens, parse_ctx);
-                    if (elem) {
-                        elem->parse_order = state.next_element_order++;
-                        parsed_elements[elem_type].push_back(std::move(elem));
-                    }
-                } catch (const ParseError& e) {
-                    fprintf(stderr, "Warning: %s — skipping\n", e.what());
-                    continue;
+                // A malformed semiconductor card must not become a valid
+                // circuit with that device silently omitted.
+                auto elem = handler->parse(tokens, parse_ctx);
+                if (elem) {
+                    elem->parse_order = state.next_element_order++;
+                    parsed_elements[elem_type].push_back(std::move(elem));
                 }
             }
 

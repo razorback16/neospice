@@ -42,8 +42,9 @@ double uniform_minus1_plus1() { return tls_uniform(tls_rng); }
 class ExprParser {
 public:
     ExprParser(const std::string& expr,
-               const std::unordered_map<std::string, double>& params)
-        : expr_(expr), params_(params), pos_(0) {}
+               const std::unordered_map<std::string, double>& params,
+               bool strict_unknown = false)
+        : expr_(expr), params_(params), pos_(0), strict_unknown_(strict_unknown) {}
 
     double parse() {
         skip_ws();
@@ -60,6 +61,7 @@ private:
     const std::string& expr_;
     const std::unordered_map<std::string, double>& params_;
     size_t pos_;
+    bool strict_unknown_;
 
     void skip_ws() {
         while (pos_ < expr_.size() && std::isspace(static_cast<unsigned char>(expr_[pos_])))
@@ -390,6 +392,8 @@ private:
                 // the same name takes precedence (handled by the lookup above).
                 if (lname == "pi") return M_PI;
                 if (lname == "e")  return M_E;
+                if (strict_unknown_)
+                    throw ParseError("Unknown parameter '" + name + "' in expression");
                 fprintf(stderr, "Warning: Unknown parameter '%s' — defaulting to 0\n", name.c_str());
                 return 0.0;
             }
@@ -615,10 +619,55 @@ std::string expand_funcs(const std::string& expr,
 }
 
 double eval_expression(const std::string& expr,
-                       const std::unordered_map<std::string, double>& params) {
+                       const std::unordered_map<std::string, double>& params,
+                       bool strict_unknown) {
     std::string e = strip_braces(expr);
-    ExprParser parser(e, params);
+    ExprParser parser(e, params, strict_unknown);
     return parser.parse();
+}
+
+bool has_temperature_identifier(const std::string& expression) {
+    for (size_t i = 0; i < expression.size();) {
+        const auto c = static_cast<unsigned char>(expression[i]);
+        if (std::isalnum(c) || c == '_' || c == '.') {
+            const size_t start = i++;
+            while (i < expression.size()) {
+                const auto next = static_cast<unsigned char>(expression[i]);
+                if (!std::isalnum(next) && next != '_' && next != '.') break;
+                ++i;
+            }
+            std::string name = expression.substr(start, i - start);
+            std::transform(name.begin(), name.end(), name.begin(),
+                           [](unsigned char value) { return std::tolower(value); });
+            if (name == "temp" || name == "temper") return true;
+        } else {
+            ++i;
+        }
+    }
+    return false;
+}
+
+std::string canonical_temperature_expression(const std::string& expression) {
+    std::string result;
+    for (size_t i = 0; i < expression.size();) {
+        const auto c = static_cast<unsigned char>(expression[i]);
+        if (std::isalnum(c) || c == '_' || c == '.') {
+            const size_t start = i++;
+            while (i < expression.size()) {
+                const auto next = static_cast<unsigned char>(expression[i]);
+                if (!std::isalnum(next) && next != '_' && next != '.') break;
+                ++i;
+            }
+            const auto token = expression.substr(start, i - start);
+            std::string lower = token;
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                           [](unsigned char value) { return std::tolower(value); });
+            result += lower == "temp" ? "temper" : token;
+        } else {
+            result += expression[i++];
+        }
+    }
+    return result;
 }
 
 std::unordered_map<std::string, double> resolve_params(

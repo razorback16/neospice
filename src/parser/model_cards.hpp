@@ -34,6 +34,11 @@ struct ModelCard {
     // Stored lowercase for case-insensitive lookup.  Values are parsed as
     // doubles; integer/flag BSIM4 parameters cast from double at dispatch.
     std::unordered_map<std::string, double> params;
+    // Preserve source order and duplicate assignments. ngspice evaluates
+    // deferred temperature expressions after ordinary parameters, in reverse
+    // order, so the first temperature assignment takes final precedence.
+    // Constants are substituted before these expressions are stored.
+    std::vector<std::pair<std::string, std::string>> temperature_expressions;
 
     // PSpice tolerance annotations (DEV/LOT on parameters)
     std::vector<ToleranceAnnotation> tolerances;
@@ -45,7 +50,9 @@ struct ModelCard {
     std::optional<double> t_rel_local;
 };
 
-ModelCard parse_model_card(const std::vector<std::string>& tokens);
+ModelCard parse_model_card(const std::vector<std::string>& tokens,
+                          const std::unordered_map<std::string, double>& params = {},
+                          bool pspice_temperature_alias = false);
 
 /// Detect the MOSFET level from a parsed .model card.
 /// Returns 1 for MOS1, 14 (default) for BSIM4v7.

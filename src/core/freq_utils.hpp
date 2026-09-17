@@ -1,7 +1,6 @@
 #pragma once
 // Shared frequency-point generation for AC and noise analyses.
-// Both analyses use identical DEC/OCT/LIN sweep logic — this header
-// provides a single definition to avoid duplication.
+// AC and noise have distinct DEC and small LIN grid rules in ngspice 47.
 
 #include "core/circuit.hpp"
 #include <cmath>
@@ -9,49 +8,55 @@
 
 namespace neospice {
 
-/// Generate frequency sample points for a sweep analysis.
-///
-/// @param mode    DEC (decades), OCT (octaves), or LIN (linear)
-/// @param npoints Number of points per decade/octave, or total points for LIN
-/// @param fstart  Start frequency (Hz) — must be > 0
-/// @param fstop   Stop frequency  (Hz) — must be >= fstart > 0
-/// @returns       Ordered vector of frequency values; empty on invalid input.
-inline std::vector<double> generate_frequencies(ACMode mode,
-                                                int npoints,
-                                                double fstart, double fstop) {
-    std::vector<double> freqs;
-    if (fstart <= 0 || fstop <= 0 || fstop < fstart || npoints < 1)
-        return freqs;
+enum class FrequencyAnalysis { AC, Noise };
 
+/// Generate the ngspice 47 AC or noise sweep grid, including its endpoint
+/// tolerance and incremental floating-point arithmetic. AC DEC redistributes
+/// intervals only for ranges of at least one decade; narrower ranges and noise
+/// use a fixed exp(log(10)/npoints) ratio. See acan.c/noisean.c.
+/// Returns empty on invalid input.
+inline std::vector<double> generate_frequencies(ACMode mode, int npoints,
+                                                double fstart, double fstop,
+                                                double reltol = 1e-3,
+                                                FrequencyAnalysis analysis = FrequencyAnalysis::AC) {
+    std::vector<double> freqs;
+    if (!std::isfinite(fstart) || !std::isfinite(fstop) || !std::isfinite(reltol) ||
+        fstart <= 0 || fstop < fstart || npoints < 1 || reltol < 0)
+        return freqs;
+    double delta = 0.0;
+    bool logarithmic = mode != ACMode::LIN;
     switch (mode) {
-    case ACMode::DEC: {
-        double decades = std::log10(fstop / fstart);
-        int total = static_cast<int>(std::round(decades * npoints)) + 1;
-        freqs.reserve(total);
-        for (int i = 0; i < total; ++i) {
-            double f = fstart * std::pow(10.0, static_cast<double>(i) / npoints);
-            freqs.push_back(f);
+    case ACMode::DEC:
+        if (analysis == FrequencyAnalysis::AC) {
+            if (fstop / 10.0 < fstart) {
+                delta = fstop == fstart ? 1.0 : std::exp(std::log(10.0) / npoints);
+            } else {
+                const double intervals = std::floor(std::abs(std::log10(fstop / fstart)) * npoints);
+                if (intervals < 1 || !std::isfinite(intervals)) return freqs;
+                delta = std::exp(std::log(fstop / fstart) / intervals);
+            }
+        } else {
+            delta = std::exp(std::log(10.0) / npoints);
         }
         break;
-    }
-    case ACMode::OCT: {
-        double octaves = std::log2(fstop / fstart);
-        int total = static_cast<int>(std::round(octaves * npoints)) + 1;
-        freqs.reserve(total);
-        for (int i = 0; i < total; ++i) {
-            double f = fstart * std::pow(2.0, static_cast<double>(i) / npoints);
-            freqs.push_back(f);
-        }
+    case ACMode::OCT:
+        delta = std::exp(std::log(2.0) / npoints);
         break;
-    }
-    case ACMode::LIN: {
-        freqs.reserve(npoints);
-        double step = (npoints > 1) ? (fstop - fstart) / (npoints - 1) : 0.0;
-        for (int i = 0; i < npoints; ++i) {
-            freqs.push_back(fstart + i * step);
-        }
+    case ACMode::LIN:
+        // ngspice AC uses one point for npoints=1 or 2; noise only for 1.
+        if (npoints > (analysis == FrequencyAnalysis::AC ? 2 : 1))
+            delta = (fstop - fstart) / (npoints - 1);
         break;
+    default:
+        return freqs;
     }
+    if (!std::isfinite(delta)) return freqs;
+    const double end_tolerance = logarithmic ? delta * fstop * reltol : delta * reltol;
+    for (double frequency = fstart; frequency <= fstop + end_tolerance;) {
+        freqs.push_back(frequency);
+        const double next = logarithmic ? frequency * delta : frequency + delta;
+        if (!std::isfinite(next) || next <= frequency) break;
+        frequency = next;
     }
     return freqs;
 }

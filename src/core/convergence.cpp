@@ -156,11 +156,12 @@ void accept_optran_step(Circuit& ckt, double t, const std::vector<double>& solut
         } else if (auto* ki = dynamic_cast<CoupledInductor*>(dev.get())) {
             ki->accept_step_from_solution(solution);
         } else if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
-            tl->accept_step(t, solution);
+            // This continuation seeks a DC state; it does not emit a physical
+            // transient trace or maintain the transient breakpoint queue.
+            (void)tl->accept_step(t, solution, ckt.integrator_ctx, 0.0);
         } else if (auto* ltl = dynamic_cast<LossyTransmissionLine*>(dev.get())) {
             ltl->accept_step(t, solution);
         } else if (auto* asrc = dynamic_cast<ASRCDevice*>(dev.get())) {
-            asrc->expression().accept_ddt();
             asrc->expression().accept_idt();
         }
     }
@@ -226,17 +227,18 @@ void fill_optran_integrator_context(Circuit& ckt, double t, double dt,
 namespace {
 
 // Shared continuation loop behind gmin_stepping (ngspice cktop.c dynamic_gmin)
-// and true_gmin_stepping (new_gmin).  ngspice runs the identical algorithm for
-// both; they differ only in which knob the sweep drives -- the artificial
-// diagonal conductance versus the device gmin -- and in how the mandatory
-// final solve is configured.  `apply_step` publishes the current sweep value;
+// and true_gmin_stepping (new_gmin). They sweep different conductances and
+// configure different final solves. ngspice47 also uses distinct lower bounds
+// when a successful step needs many iterations: 1.00005 for diagonal gmin,
+// 3 for device gmin.
+// `apply_step` publishes the current sweep value;
 // `setup_final` configures the final solve at the target.
 template <typename ApplyStep, typename SetupFinal>
 NewtonResult gmin_continuation(Circuit& ckt, ISolver& solver,
                                std::vector<double>& solution,
                                const SimOptions& opts,
                                int firstmode, int continuemode,
-                               double gtarget, const char* label,
+                               double gtarget, const char* label, double slow_step_factor_floor,
                                ApplyStep apply_step, SetupFinal setup_final) {
     const double gmin_factor = 10.0;
     double factor = gmin_factor;
@@ -301,7 +303,7 @@ NewtonResult gmin_continuation(Circuit& ckt, ISolver& solver,
                         factor = gmin_factor;
                 }
                 if (iters > (3 * dc_trcv_max_iter / 4)) {
-                    factor = std::max(std::sqrt(factor), 1.00005);
+                    factor = std::max(std::sqrt(factor), slow_step_factor_floor);
                 }
 
                 OldGmin = g;
@@ -355,7 +357,7 @@ NewtonResult gmin_stepping(Circuit& ckt, ISolver& solver,
                            int firstmode, int continuemode) {
     return gmin_continuation(
         ckt, solver, solution, opts, firstmode, continuemode,
-        std::max(opts.gmin, opts.gshunt), "gmin",
+        std::max(opts.gmin, opts.gshunt), "gmin", 1.00005,
         [](SimOptions& step_opts, double g) { step_opts.diag_gmin = g; },
         [&opts](SimOptions& final_opts) {
             final_opts.diag_gmin = std::max(opts.gshunt, 0.0);
@@ -373,7 +375,7 @@ NewtonResult true_gmin_stepping(Circuit& ckt, ISolver& solver,
     const double gtarget = std::max(ckt.options.gmin, opts.gshunt);
     return gmin_continuation(
         ckt, solver, solution, opts, firstmode, continuemode, gtarget,
-        "true_gmin",
+        "true_gmin", 3.0,
         [&ckt](SimOptions& step_opts, double g) {
             ckt.options.gmin = g;
             step_opts.gmin = g;
@@ -788,6 +790,9 @@ NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
     const int32_t ns = ckt.num_states();
     if (ns > 0) {
         std::copy_n(ckt.state0(), ns, ckt.state1());
+        // ngspice rotates once before its first MODEINITTRAN load, putting
+        // this same entry state into state2 for the device predictor.
+        std::copy_n(ckt.state0(), ns, ckt.state2());
     }
 
     NewtonWorkspace workspace(ckt.pattern());
@@ -800,8 +805,11 @@ NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
     step_opts.diag_gmin = std::max(opts.diag_gmin, 0.0);
 
     double time = 0.0;
-    double prev_dt = dt;
-    double prev_prev_dt = dt;
+    // optran.c seeds CKTdeltaOld with CKTmaxStep, then shifts the
+    // attempted interval into slot zero. Startup subdivision must not
+    // replace the older intervals used by device truncation.
+    double prev_dt = dt_max;
+    double prev_prev_dt = dt_max;
     int order = 1;
     int total_iterations = 0;
     bool first_step = true;
@@ -892,6 +900,11 @@ NewtonResult transient_operating_point(Circuit& ckt, ISolver& solver,
                         order2_dt,
                         dev->compute_trunc(ckt.integrator_ctx, opts));
                 }
+                // OPtran uses the second-order truncation proposal for the
+                // next interval, even if it subsequently restores order one.
+                // Keeping the first-order proposal discards the LTE estimate
+                // that was used to choose the next integration order.
+                proposed = order2_dt;
                 if (order2_dt > 1.05 * dt)
                     order = 2;
                 ckt.integrator_ctx.order = saved_order;

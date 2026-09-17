@@ -299,6 +299,10 @@ public:
     /// Reset all state buffers and device state for a fresh simulation pass.
     void reset_state();
 
+    /// Apply model expressions and invalidate device temperature caches when
+    /// the simulation temperature or nominal temperature changes.
+    void prepare_temperature(double temperature_kelvin, double nominal_kelvin);
+
     /// Cache the latest full DC operating-point vector for same-circuit reuse.
     void set_operating_point(const std::vector<double>& solution);
     const std::vector<double>* operating_point() const;
@@ -369,6 +373,7 @@ public:
         std::string name;
         std::string model_type;
         virtual ~ModelCardHolder() = default;
+        virtual void prepare_model_temperature(double) {}
     };
 
     template <typename T>
@@ -381,6 +386,10 @@ public:
             this->name = std::move(n);
             this->model_type = std::move(type);
         }
+        void prepare_model_temperature(double temperature) override {
+            if constexpr (requires(T& value) { value.prepare_model_temperature(temperature); })
+                card->prepare_model_temperature(temperature);
+        }
     };
 
     /// Look up a model card holder by name (type-erased).
@@ -391,6 +400,8 @@ public:
                                std::string name, std::string model_type);
 
 private:
+    std::optional<std::pair<double, double>> prepared_temperature_;
+    std::optional<std::pair<double, double>> operating_point_temperature_;
     void rebind_device_states();  // re-invoke set_state_ptrs on every device
     void rebuild_device_load_order();
     static std::string model_key(std::string_view name);

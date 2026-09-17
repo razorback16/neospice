@@ -39,6 +39,23 @@ size_t x_param_section_start(const std::vector<std::string>& tokens) {
     return tokens.size();
 }
 
+// ngspice 47 get_number_terminals() counts M-card nodes from the end of
+// the positional fields, before instance assignments or flags. Model-name
+// lookup here would confuse a formal/internal node with a global model.
+int mos_terminal_count(const std::vector<std::string>& tokens) {
+    size_t end = tokens.size();
+    for (size_t i = 5; i < tokens.size(); ++i) {
+        const auto token = to_lower(tokens[i]);
+        if (token == "off" || token == "thermal" || token == "tnodeout" ||
+            token.find('=') != std::string::npos ||
+            (i + 1 < tokens.size() && !tokens[i + 1].empty() && tokens[i + 1][0] == '=')) {
+            end = i;
+            break;
+        }
+    }
+    return end >= 2 ? static_cast<int>(end - 2) : 0;
+}
+
 /// Check whether a node name is global (ground or declared via .global).
 /// Global nodes are never substituted during subcircuit expansion.
 bool is_global_node(const std::string& name,
@@ -179,10 +196,16 @@ std::string subst_brace_params(
             }
             std::string expr = token.substr(i, close - i + 1); // includes braces
             try {
-                double val = eval_expression(expr, params);
-                char buf[64];
-                std::snprintf(buf, sizeof(buf), "%.15g", val);
-                result += buf;
+                if (has_temperature_identifier(expr)) {
+                    // Model temperature expressions are evaluated by the model
+                    // runtime. Substitute local constants without freezing TEMP.
+                    result += subst_param_names(expr, params);
+                } else {
+                    double val = eval_expression(expr, params, true);
+                    char buf[64];
+                    std::snprintf(buf, sizeof(buf), "%.15g", val);
+                    result += buf;
+                }
             } catch (...) {
                 result += expr;
             }
@@ -596,7 +619,8 @@ std::unordered_set<std::string> collect_internal_nodes(
                 }
             }
         } else {
-            int ncount = node_count_for_element(elem_type);
+            int ncount = elem_type == 'm' ? mos_terminal_count(line.tokens)
+                                         : node_count_for_element(elem_type);
 
             // E/G POLY: only 2 output nodes, then POLY(N) + 2*N control node
             // atoms. Handles control pairs as "(cp,cn)", "(cp cn)", bare
@@ -1100,10 +1124,12 @@ std::vector<TokenizedLine> expand_instance(
 
         } else {
             // Regular element line — substitute nodes and evaluate param expressions
-            int ncount = node_count_for_element(elem_type);
+            int ncount = elem_type == 'm' ? mos_terminal_count(line.tokens)
+                                         : node_count_for_element(elem_type);
 
-            // Q cards can have 3 or 4 nodes: Q name NC NB NE [NS] model [area]
-            // Use the local model names to disambiguate token[4].
+            // Q cards can also name their model after three terminals.
+            // MOS terminal counts above follow the reference's positional
+            // grammar, including optional thermal/SOI terminals.
             if (elem_type == 'q' && line.tokens.size() > 4) {
                 std::string tok4_lower = to_lower(line.tokens[4]);
                 // token[4] is the model (3-node Q) if it names a model defined
@@ -1111,7 +1137,7 @@ std::vector<TokenizedLine> expand_instance(
                 // the model against the global table regardless of scope).
                 if (local_model_names.count(tok4_lower) ||
                     global_model_names.count(tok4_lower)) {
-                    ncount = 3;  // token[4] is model, not substrate
+                    ncount = 3;  // token[4] is model, not a fourth node
                 }
             }
 

@@ -93,6 +93,7 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
                           const SimOptions& opts,
                           NewtonWorkspace& workspace,
                           bool preserve_previous_on_convergence) {
+    ckt.prepare_temperature(opts.temp, opts.tnom);
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
     const auto& pattern = ckt.pattern();
@@ -203,6 +204,12 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         for (Device* dev : load_order)
             dev->evaluate(solution, mat,
                           std::span<double>(one_based_rhs.data() + 1, n));
+
+        // NIiter's UIC preamble loads initial device states once, without
+        // solving an operating point. Keep the prescribed initial voltages;
+        // the first transient step will solve the circuit equations.
+        if ((saved_mode & MODETRANOP_BIT) && (saved_mode & MODEUIC_BIT))
+            return NewtonResult{true, 0, 0.0, -1};
 
         // Hand the accumulated loads back to the zero-based vector the solver
         // takes.  One unconditional copy, versus the two-or-more the old

@@ -11,8 +11,7 @@ See NOTICE and CREDITS.md for full attribution.
 
 #include "core/noise.hpp"
 #include "core/freq_utils.hpp"
-#include "core/newton.hpp"
-#include "core/convergence.hpp"
+#include "core/dc.hpp"
 #include "core/neo_solver.hpp"
 #include "devices/vsource.hpp"
 #include "devices/inductor.hpp"
@@ -75,72 +74,19 @@ NoiseResult solve_noise(Circuit& ckt,
     // ---------------------------------------------------------------
     // 3. DC operating point (same as AC analysis)
     // ---------------------------------------------------------------
-    std::vector<double> dc_solution(n, 0.0);
-    std::vector<char> pinned(n, 0);
-    for (auto& [node_id, value] : ckt.nodeset) {
-        int32_t node_idx = static_cast<int32_t>(node_id);
-        if (node_idx >= 0 && node_idx < n) {
-            dc_solution[node_idx] = value;
-            pinned[node_idx] = 1;
-        }
+    // Use the same operating-point implementation as .op and AC, including
+    // reference-order true-gmin and transient continuation. A separate reduced
+    // fallback chain can reject a bias point that .op successfully finds.
+    const auto dc = solve_dc(ckt);
+    if (!dc.status.converged) {
+        NoiseResult fail_result;
+        fail_result.status = dc.status;
+        return fail_result;
     }
-    for (auto& [node_id, value] : ckt.ic) {
-        int32_t node_idx = static_cast<int32_t>(node_id);
-        if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
-            dc_solution[node_idx] = value;
-        }
-    }
-
-    auto dc_solver = std::make_unique<NeoSolver>();
-    dc_solver->symbolic(ckt.pattern());
-
-    // Publish SimOptions for BSIM4v7Device (and any future state-storing
-    // device) via the same integrator_ctx channel used for CKTmode/ag.
-    ckt.integrator_ctx.options = &ckt.options;
-
-    // Noise analysis runs a plain DC operating point first — use MODEDCOP
-    // (0x10), same as solve_dc().  newton_solve() reads integrator_ctx.mode.
-
-    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-    auto result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
-    if (result.converged) {
-        // dc_solution modified in-place by newton_solve
-    } else {
-        result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options,
-                               MODEDCOP_BIT | MODEINITJCT_BIT,
-                               MODEDCOP_BIT | MODEINITFLOAT_BIT);
-        if (result.converged) {
-            // dc_solution modified in-place
-        } else {
-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-            result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
-            if (result.converged) {
-                // dc_solution modified in-place
-            } else {
-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
-                result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
-                if (result.converged) {
-                    // dc_solution modified in-place
-                } else {
-                    SimStatus fail_status;
-                    fail_status.converged = false;
-                    fail_status.residual = result.residual;
-                    fail_status.worst_node_idx = result.worst_node_idx;
-                    if (!ckt.options.no_throw) {
-                        throw SimulationError(
-                            "Noise analysis: DC operating point failed to converge",
-                            fail_status);
-                    }
-                    auto t_end = std::chrono::steady_clock::now();
-                    fail_status.elapsed_seconds =
-                        std::chrono::duration<double>(t_end - t_start).count();
-                    NoiseResult fail_result;
-                    fail_result.status = fail_status;
-                    return fail_result;
-                }
-            }
-        }
-    }
+    const auto* operating_point = ckt.operating_point();
+    if (!operating_point || static_cast<int32_t>(operating_point->size()) != n)
+        throw std::logic_error("Noise analysis: DC operating point cache missing");
+    const std::vector<double> dc_solution = *operating_point;
     // Persist diag_gmin baseline after DC convergence
     ckt.options.diag_gmin = ckt.options.gshunt;
 
@@ -187,9 +133,9 @@ NoiseResult solve_noise(Circuit& ckt,
     // ---------------------------------------------------------------
     // 5. Generate frequency points
     // ---------------------------------------------------------------
-    auto freqs = generate_frequencies(mode, npoints, fstart, fstop);
+    auto freqs = generate_frequencies(mode, npoints, fstart, fstop, ckt.options.reltol, FrequencyAnalysis::Noise);
     if (freqs.empty()) {
-        return NoiseResult{};
+        throw SimulationError("Noise analysis: invalid or empty frequency sweep", SimStatus{.converged = false});
     }
 
     // ---------------------------------------------------------------
@@ -257,17 +203,30 @@ NoiseResult solve_noise(Circuit& ckt,
     // ---------------------------------------------------------------
     // 8. Frequency sweep
     // ---------------------------------------------------------------
+    const int32_t nnz = pattern.nnz();
+    std::vector<double> ax(2 * nnz);
+    std::vector<std::complex<double>> device_rhs(n);
     for (size_t fi = 0; fi < freqs.size(); ++fi) {
         double omega = 2.0 * M_PI * freqs[fi];
+
+        ckt.integrator_ctx.ac_freq = freqs[fi];
+        for (int32_t k = 0; k < nnz; ++k) {
+            ax[2 * k] = G.data()[k];
+            ax[2 * k + 1] = omega * C.data()[k];
+        }
+        std::fill(device_rhs.begin(), device_rhs.end(), std::complex<double>{});
+        // Use the same frequency-dependent admittance as AC. Deterministic
+        // AC-source amplitudes are excluded: noise gain uses its unit input
+        // excitation and the adjoint uses a unit output excitation below.
+        for (auto& dev : ckt.devices())
+            dev->ac_stamp_freq(omega, ax, nnz, device_rhs);
 
         // Build Y matrix (2n x 2n)
         mat_2n.clear();
         for (const auto& [r, c] : entries) {
-            double g_val = G.value(pattern.offset(r, c));
-            double c_val = C.value(pattern.offset(r, c));
-
-            double re_y = g_val;
-            double im_y = omega * c_val;
+            const auto offset = pattern.offset(r, c);
+            const double re_y = ax[2 * offset];
+            const double im_y = ax[2 * offset + 1];
 
             // Top-left: Re(Y)
             mat_2n.add(pattern_2n.offset(r, c), re_y);
@@ -282,11 +241,9 @@ NoiseResult solve_noise(Circuit& ckt,
         // Build Y^T matrix (transpose of Y)
         mat_2n_t.clear();
         for (const auto& [r, c] : entries) {
-            double g_val = G.value(pattern.offset(r, c));
-            double c_val = C.value(pattern.offset(r, c));
-
-            double re_y = g_val;
-            double im_y = omega * c_val;
+            const auto offset = pattern.offset(r, c);
+            const double re_y = ax[2 * offset];
+            const double im_y = ax[2 * offset + 1];
 
             // Y^T: swap (r,c) -> (c,r)
             // Top-left: Re(Y^T)
@@ -416,12 +373,12 @@ NoiseResult solve_noise(Circuit& ckt,
 
         noise_result.output_noise_density[fi] = total_output_noise;
 
-        // Input-referred noise: output_noise / |gain|^2
-        if (gain_sq > 0.0) {
-            noise_result.input_noise_density[fi] = total_output_noise / gain_sq;
-        } else {
-            noise_result.input_noise_density[fi] = 0.0;
-        }
+        // Match ngspice noisean.c / noisedef.h: N_MINGAIN bounds squared
+        // transfer gain, including zero gain, before referring noise to input.
+        // It is an analysis convention, independent of comparison tolerances.
+        constexpr double min_gain_squared = 1e-20;
+        const double inverse_gain_squared = 1.0 / std::max(gain_sq, min_gain_squared);
+        noise_result.input_noise_density[fi] = total_output_noise * inverse_gain_squared;
     }
 
     auto t_end = std::chrono::steady_clock::now();
