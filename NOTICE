@@ -19,6 +19,12 @@ AC analysis, noise analysis, transfer function, pole-zero, sensitivity, and the
 Newton-Raphson convergence aids (e.g. derived from dctran.c, niiter.c, and the
 MODE bit definitions in cktdefs.h).
 
+The behavioral-source DDT history and zero-Jacobian behavior in
+src/devices/asrc/expression_ast.cpp follow ngspice's parser/PTddt and PTF_DDT
+implementation (ptfuncs.c and inpptree.c). The original parse-tree functions
+are attributed to Wayne A. Christopher, U. C. Berkeley CAD Group (1987),
+and maintained by the ngspice contributors.
+
   Copyright 1990 Regents of the University of California.
   All rights reserved.
 
@@ -51,9 +57,11 @@ matching.cpp) traces to the following sources.
   Kenneth S. Kundert and Alberto Sangiovanni-Vincentelli, "Sparse 1.3"
   (UC Berkeley), the sparse-matrix package used by SPICE3.
 
-  The AMD (Approximate Minimum Degree) ordering in amd.cpp derives from and
-  matches SuiteSparse AMD by Timothy A. Davis, Patrick Amestoy, and Iain Duff.
-  SuiteSparse AMD is BSD-3-Clause licensed.
+  The ordering in amd.cpp performs minimum-degree elimination on an explicit
+  graph. Its dense-vertex threshold follows the default SuiteSparse AMD
+  heuristic. Preserve credit to Timothy A. Davis, Patrick Amestoy, and Iain
+  Duff (SuiteSparse AMD, BSD-3-Clause). The implementation does not reproduce
+  AMD's quotient-graph algorithm or promise an identical permutation.
 
   The BTF / maximum-transversal logic in btf.cpp and matching.cpp likewise
   traces to Timothy A. Davis's SuiteSparse BTF (BSD-3-Clause licensed).

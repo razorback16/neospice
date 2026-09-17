@@ -6,17 +6,26 @@
 
 neospice is an independent C++20 reimplementation of the SPICE circuit simulator. Its solver, analysis flow, and device models derive from UC Berkeley SPICE3 (BSD-licensed) and ngspice -- re-architected around a clean Device interface, native Python bindings, and an embeddable C++ API. MIT licensed; see [NOTICE](NOTICE) for full third-party attribution.
 
-It reads standard SPICE netlists and produces ngspice-compatible results, runs up to 8.6x faster per analysis in-process on the benchmark suite, and pairs a self-contained Sparse 1.3-compatible solver stack and auto-differentiated behavioral sources with a modern embeddable API for EDA tools, optimization loops, and notebooks.
+It reads SPICE netlists, writes ngspice-format raw results, and pairs a self-contained Sparse 1.3-compatible solver stack and differentiated behavioral sources with an embeddable API for EDA tools, optimization loops, and notebooks.
+
+Publication validation targets ngspice 47 exclusively. The current working tree retains an operating-point regression failure and corpus mismatches. See the [progress tracker](docs/joss-progress.md) and [comparison methods](docs/validation-methods.md). The project is not yet ready for a JOSS submission.
+
+An initial [JOSS manuscript draft and PDF](paper/README.md) are available for
+review. Actual research evidence, final validation/benchmarks and human
+disclosures remain pending. [ngspice 47 compatibility](docs/ngspice47-reference.md)
+defines the default behavior, required reference checks and migration-tool inputs.
+A compiled draft is
+not a submission-ready release.
 
 ## Features
 
-- **10 analysis types** -- DC OP, DC sweep, transient (adaptive Trap/Gear-2/BE), AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero, Fourier/THD, parameter sweep (`.step`), and `.measure` post-processing
-- **32 device models** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, MESFETs, HFETs, and MOSFETs through BSIM4v7
+- **Analyses** -- DC OP, DC sweep, transient (adaptive Trap/Gear-2/BE), AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero, Fourier/THD, parameter sweep (`.step`), and `.measure` post-processing
+- **Device families** -- passives, independent/dependent/behavioral sources, switches, transmission lines, diodes, BJTs, JFETs, MESFETs, HFETs, and MOSFETs through BSIM4v7
 - **Embeddable C++ API** -- `Simulator`/`Circuit`/`Result` types with handle-based and string-based accessors, typed device methods, and circuit introspection
 - **High performance** -- NeoSolver (self-contained Sparse 1.3-compatible LU), G/C matrix caching for AC, adjoint-method noise
 - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
-- **972 tests** validated against ngspice with tolerances as tight as 1e-6
-- **Validated at scale** -- runs the full **34,908-model KiCad SPICE library** value-matched against ngspice: **93.6% agreement** on the 25,843 decks both simulators solve (24,201 match; only 17 where ngspice converges and neospice does not)
+- **C++ and Python validation** -- analytical checks and ngspice comparisons, with current failures and test results in the [progress tracker](docs/joss-progress.md)
+- **Corpus harness** -- a historical cohort of **34,908 KiCad operating-point fixtures**; [input freezing](docs/kicad-experiment.md) now records declaration identities and separate planned rescues. Completed ngspice 47 audits are linked from the progress tracker; declaration binding and full-model scope still need interpretation. Minimal operating-point fixtures do not certify transient, AC, or noise behavior.
 
 ## Quick Start (C++)
 
@@ -67,12 +76,15 @@ cd build && ctest -j$(nproc)
 | AC small-signal | `.ac dec 10 1 100meg` | DEC/OCT/LIN frequency sweeps |
 | Noise | `.noise v(out) V1 dec 10 1 100meg` | Adjoint method, per-device breakdown |
 | Transfer function | `.tf v(out) V1` | Gain + input/output impedance |
-| Sensitivity | `.sens v(out)` | DC sensitivity to all parameters |
+| Sensitivity | `.sens v(out)` | Finite-difference DC sensitivity to resistor values and independent-source DC values |
 | Pole-zero | `.pz` | Transfer function poles and zeros |
 | Fourier | `.four 1meg v(out)` | Harmonic decomposition + THD |
 | Parameter sweep | `.step param R1 1k 10k 1k` | Sweep any parameter across analyses |
 
 ## Device Models
+
+AM source parameters now follow ngspice 47. Existing AM netlists and C++ source
+parameters may require conversion; see [source compatibility](docs/source-compatibility.md).
 
 | Category | Models |
 |---|---|
@@ -223,26 +235,18 @@ All result vectors are returned as NumPy arrays.
 
 ## Performance
 
-Benchmarked in-process against ngspice-42 on Intel Core Ultra 9 285K, GCC 14, `-O3`. Both simulators linked as libraries -- no subprocess overhead, no file I/O in timed sections. ngspice uses its default Sparse 1.3 path; `.options klu` is not used. Median of 30 runs.
+The paired benchmark covers 34 fixed workloads: small circuits, amplifier
+macromodels, larger resistor meshes and diode ladders, and RC/diode-RC analyses.
+Every accepted timing requires valid, accuracy-qualified results from both
+engines. The protocol records load, analysis/result materialization, cleanup
+and total time with equal sampling and alternating execution order.
 
-| Benchmark | ngspice | neospice | Speedup |
-|---|---:|---:|---:|
-| **Parse** THS4131 (77 nodes) | 435 us | 312 us | 1.4x |
-| **Parse** resistor divider | 45 us | 11 us | 4.1x |
-| **DC OP** THS4131 (14 BJTs) | 623 us | 483 us | 1.3x |
-| **DC OP** resistor divider | 54 us | 10 us | 5.4x |
-| **AC** THS4131, 81 points | 1.04 ms | 706 us | 1.5x |
-| **AC** THS4131, 8001 points | 22.35 ms | 23.33 ms | 1.0x ngspice |
-| **AC** RC lowpass, 91 points | 120 us | 18 us | 6.7x |
-| **Transient** RC lowpass, 500 us | 1.17 ms | 284 us | 4.1x |
-| **Transient** RLC series, 100 us | 1.66 ms | 397 us | 4.2x |
-| **Transient** pulse source, 100 us | 1.02 ms | 118 us | 8.6x |
-| **Noise** resistor divider, 91 pts | 91 us | 54 us | 1.7x |
-| **DC sweep** V1, 1001 pts | 847 us | 207 us | 4.1x |
-| **E2E** THS4131 (.op + .ac) | 746 us | 633 us | 1.2x |
-| **E2E** OPA1632 (.op + .ac) | 6.72 ms | 3.59 ms | 1.9x |
-
-See [docs/performance-comparison-with-ngspice.md](docs/performance-comparison-with-ngspice.md) for the full methodology and results.
+See [benchmark methods](docs/benchmark-methods.md) for reproduction and
+[the progress tracker](docs/joss-progress.md) for completed evidence and active
+runs. Historical timings from the former harness are
+[archived](docs/evidence/joss/2026-09-11-historical-readme-performance.md); they
+lack the corrected qualification protocol and must not support performance
+claims. [Performance analysis](docs/performance-analysis.md) explains the limits.
 
 ## Netlist Compatibility
 
@@ -331,6 +335,10 @@ neospice descends from the Berkeley SPICE family. It is an independent C++20 rei
 - SPICE3F5 (UC Berkeley, 1990s) — the BSD-licensed C rewrite that neospice's core and device code is translated from.
 - [ngspice](https://ngspice.sourceforge.io/) — the maintained SPICE3F5 descendant, used as the reference/ground-truth implementation that neospice is validated against.
 
-The NeoSolver sparse-LU stack derives from Kenneth Kundert's Sparse 1.3 (UC Berkeley), with AMD fill-reducing ordering from Tim Davis's [SuiteSparse](https://github.com/DrTimothyAldenDavis/SuiteSparse).
+The NeoSolver sparse-LU stack derives from Kenneth Kundert's Sparse 1.3 (UC Berkeley). The separate in-tree minimum-degree ordering explicitly maintains the elimination graph and uses the default dense-vertex threshold from [SuiteSparse AMD](https://github.com/DrTimothyAldenDavis/SuiteSparse); it does not implement SuiteSparse AMD's quotient-graph algorithm.
 
-Berkeley SPICE3 is distributed under a permissive BSD-style license ("Copyright Regents of the University of California"), which is what allows neospice to be redistributed under the MIT license. See [NOTICE](NOTICE) and [CREDITS.md](CREDITS.md) for the full attribution.
+Original project contributions use the MIT license. Derived SPICE code and device models retain applicable upstream notices and terms. See [NOTICE](NOTICE), [CREDITS.md](CREDITS.md), and the [distribution audit](docs/joss-attribution-audit.md).
+
+The JOSS benchmark protocol and its current qualification failures are documented
+in [paired benchmark methods](docs/benchmark-methods.md). Historical standalone
+benchmark timings are not yet publication evidence.

@@ -28,3 +28,13 @@ debug-out*.txt
 *.out
 *.log
 tests/regression/*.raw
+.venv-dev/
+
+# Intermediate JOSS renderer output; the reviewable draft PDF is retained.
+/paper/jats/
+
+# JOSS evidence: the reviewable records (JSON, reconstruction patches, reports)
+# are tracked. The bulk archives they reference are reproducible from those
+# records and stay local, so cloning the repository does not pull ~1.8 GB.
+docs/evidence/**/*.tar.gz
+docs/evidence/**/*.json.gz

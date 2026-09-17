@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NGSPICE_VERSION="${1:-42}"
+if [[ $# -ne 0 ]]; then
+    echo "This script builds the required ngspice 47 reference; no version argument is accepted." >&2
+    exit 1
+fi
+NGSPICE_VERSION="47"
 NGSPICE_TAG="ngspice-${NGSPICE_VERSION}"
 PREFIX="${PWD}/third_party/libngspice"
 JOBS="$(sysctl -n hw.ncpu)"
@@ -34,8 +38,7 @@ autoreconf -fi
 export PATH="$(brew --prefix)/opt/bison/bin:$PATH"
 
 echo "==> Configuring (--with-ngshared --enable-xspice --enable-cider)..."
-# Force C11 — ngspice ≤42 has 'typedef int bool' which conflicts with C23's
-# built-in bool keyword (Clang 17+ defaults to -std=gnu23).
+# Use C11 consistently across supported macOS compilers.
 CFLAGS="-std=gnu11 ${CFLAGS:-}" \
 ./configure \
     --with-ngshared \

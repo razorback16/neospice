@@ -27,13 +27,12 @@ Nagel SPICE (1973)
 
 ## Licensing
 
-neospice is released under the MIT License (see [LICENSE](LICENSE)). This is
-compatible with its Berkeley heritage because Berkeley SPICE3 is distributed
-under a permissive BSD-style license (the "Berkeley Spice3" license), which
-allows reuse, modification, and relicensing provided the original copyright
-notices are preserved. Those notices, along with the additional terms that
-apply to specific device models (e.g. the BSIM and HiSIM compact models), are
-documented in [NOTICE](NOTICE) on a per-component basis.
+The project's original contributions use the MIT License (see [LICENSE](LICENSE)).
+Derived code retains the applicable upstream copyright notices and license
+terms, including component-specific terms for compact-device models. See
+[NOTICE](NOTICE) and the source headers. The project's MIT declaration does
+not replace those terms. The [distribution attribution audit](docs/joss-attribution-audit.md)
+tracks the remaining review of source and binary release contents.
 
 ## Historical references
 
@@ -59,9 +58,11 @@ The sparse solver stack (`src/core/neo_solver.cpp`, `amd.cpp`, `btf.cpp`,
 - **Sparse 1.3** — the NeoSolver sparse-LU factorization is Sparse 1.3-compatible.
   Credit to Kenneth S. Kundert and Alberto Sangiovanni-Vincentelli, "Sparse 1.3"
   (UC Berkeley), the sparse-matrix package used by SPICE3.
-- **SuiteSparse AMD** — the Approximate Minimum Degree ordering derives from and
-  matches SuiteSparse AMD by Timothy A. Davis, Patrick Amestoy, and Iain Duff
-  (BSD-3-Clause licensed).
+- **SuiteSparse AMD** — preserve credit to Timothy A. Davis, Patrick Amestoy
+  and Iain Duff (BSD-3-Clause). The in-tree ordering uses explicit graph
+  minimum-degree elimination with AMD's default dense-vertex threshold. It
+  does not implement the SuiteSparse quotient-graph algorithm or guarantee
+  its permutation.
 - **SuiteSparse BTF** — the BTF / maximum-transversal logic likewise traces to
   Timothy A. Davis's SuiteSparse BTF (BSD-3-Clause licensed).
 

@@ -9,20 +9,70 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
 
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ libopenblas-dev libsleef-dev libngspice0-dev ngspice pkg-config
+          sudo apt-get install -y cmake g++ libopenblas-dev libsleef-dev pkg-config curl bison flex
+
+      - name: Build pinned ngspice 47 reference
+        run: |
+          bash scripts/build-ngspice47-reference.sh "${RUNNER_TEMP}/ngspice47"
+          echo "${RUNNER_TEMP}/ngspice47/cli/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=${RUNNER_TEMP}/ngspice47/shared/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${RUNNER_TEMP}/ngspice47/shared/lib" >> "$GITHUB_ENV"
+          echo "SPICE_SCRIPTS=${RUNNER_TEMP}/ngspice47/shared/share/ngspice/scripts" >> "$GITHUB_ENV"
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_RPATH="${RUNNER_TEMP}/ngspice47/shared/lib"
 
       - name: Build
         run: cmake --build build -j$(nproc)
 
-      - name: Test
-        run: cd build && ctest -j$(nproc) --output-on-failure
+      - name: Install Python package and development dependencies
+        run: python -m pip install '.[dev,benchmarks]'
+
+      - name: Test C++, both Python APIs and migration tools
+        env:
+          NGSPICE_DIR: ${{ runner.temp }}/ngspice47/source
+        run: |
+          # Attempt both suites and propagate either failure, retaining both reports.
+          cpp_status=0
+          python_status=0
+          ctest --test-dir build -j$(nproc) --output-on-failure --no-tests=error --output-junit ctest.xml || cpp_status=$?
+          python -m pytest tests/python python/tests tools/tests --import-mode=importlib --junitxml=pytest.xml -q || python_status=$?
+          test "$cpp_status" -eq 0 && test "$python_status" -eq 0
+
+      - name: Require executed tests without skips
+        if: ${{ !cancelled() }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for path in (Path('build/ctest.xml'), Path('pytest.xml')):
+              cases = list(ET.parse(path).getroot().iter('testcase'))
+              assert cases, f'No tests recorded in {path}'
+              skipped = [c.attrib.get('name') for c in cases if c.find('skipped') is not None]
+              assert not skipped, f'Required tests skipped in {path}: {skipped}'
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-reports
+          path: |
+            build/ctest.xml
+            pytest.xml
+            ${{ runner.temp }}/ngspice47/build-cli.log
+            ${{ runner.temp }}/ngspice47/build-shared.log
+            ${{ runner.temp }}/ngspice47/version.txt

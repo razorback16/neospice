@@ -10,9 +10,9 @@ Update relevant documentation (README, roadmap, etc.) before pushing to remote.
 
 ## Reference simulator
 
-ngspice is the reference implementation. neospice must match ngspice's behavior — never the other way around. When results differ, assume neospice is wrong until proven otherwise. Do not loosen tolerances or change ngspice options to hide discrepancies; fix the neospice implementation instead.
+ngspice 47 is the sole reference implementation. neospice must match ngspice 47's behavior — never the other way around. Do not maintain an older-version compatibility baseline or select a reference version per fixture. When results differ, assume neospice is wrong until proven otherwise. Do not loosen tolerances or change ngspice options to hide discrepancies; fix the neospice implementation instead.
 
-ngspice source code is available locally at `~/Codes/ngspice`.
+ngspice source code is available locally at `~/Codes/ngspice`. Verify its version before using it as a reference; the checksum-pinned version 47 build and source setup are documented in `docs/ngspice47-reference.md` and `docs/building.md`.
 
 ## Reference libraries
 

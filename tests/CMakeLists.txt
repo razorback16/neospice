@@ -14,6 +14,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 include(GoogleTest)
+include(reference_models.cmake)
 
 
 add_executable(neospice_tests
@@ -42,6 +43,10 @@ add_executable(neospice_tests
     unit/test_transient.cpp
     unit/test_ac.cpp
     unit/test_comparator.cpp
+    unit/test_ngspice_lib.cpp
+    unit/test_paired_measurement.cpp
+    unit/test_tlv3201_validation.cpp
+    unit/test_diagnostic_sampling.cpp
     unit/test_oscillator_comparator.cpp
     unit/test_api.cpp
     unit/test_sim_status.cpp
@@ -160,9 +165,20 @@ add_subdirectory(devices/hisimhv)
 add_subdirectory(devices/bsimsoi)
 add_subdirectory(devices/vdmos)
 
+# Required corpus regression; its PSpice mode stays in its own process.
+add_executable(test_rff70n06 unit/test_rff70n06.cpp framework/ngspice_runner.cpp)
+target_link_directories(test_rff70n06 PRIVATE ${NGSPICE_LIBRARY_DIRS})
+target_link_libraries(test_rff70n06 PRIVATE neospice_lib GTest::gtest_main ${NGSPICE_LIBRARIES})
+target_include_directories(test_rff70n06 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${NGSPICE_INCLUDE_DIRS})
+target_compile_definitions(test_rff70n06 PRIVATE
+    TEST_RFF70N06_CIRCUIT="${CMAKE_CURRENT_BINARY_DIR}/generated/rff70n06_op.cir")
+gtest_discover_tests(test_rff70n06)
+
 # Performance benchmarks (requires: apt install libngspice0-dev)
 add_executable(bench_ths4131
     bench/bench_ths4131.cpp
+    framework/comparator.cpp
+    framework/ngspice_runner.cpp
 )
 
 target_link_directories(bench_ths4131 PRIVATE ${NGSPICE_LIBRARY_DIRS})
@@ -175,6 +191,8 @@ target_compile_definitions(bench_ths4131 PRIVATE
 
 add_executable(bench_comprehensive
     bench/bench_comprehensive.cpp
+    framework/comparator.cpp
+    framework/ngspice_runner.cpp
 )
 target_link_directories(bench_comprehensive PRIVATE ${NGSPICE_LIBRARY_DIRS})
 target_link_libraries(bench_comprehensive PRIVATE neospice_lib ${NGSPICE_LIBRARIES})

@@ -8,12 +8,12 @@
 - CMake 3.20+
 - OpenBLAS
 - SLEEF (vectorized math library)
-- libngspice (shared library, required for test suite)
+- libngspice and ngspice CLI (required for the comparison tests)
 
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install cmake g++ libopenblas-dev libsleef-dev libngspice0-dev
+sudo apt install cmake g++ libopenblas-dev libsleef-dev libngspice0-dev ngspice pkg-config
 ```
 
 ### Build
@@ -31,28 +31,28 @@ cd build && ctest -j$(nproc) --output-on-failure
 
 #### ngspice Source (for migration tool tests)
 
-The migration tool roundtrip tests require an ngspice source checkout. Clone the ngspice repository and set the `NGSPICE_DIR` environment variable:
-
-```bash
-git clone https://github.com/imr/ngspice.git /path/to/ngspice
-export NGSPICE_DIR=/path/to/ngspice
-```
-
-Add the export to your `~/.bashrc` or `~/.zshrc` to persist it across sessions. These tests are automatically skipped when `NGSPICE_DIR` is not set or the directory does not exist.
+Migration roundtrip tests need the pinned ngspice source in addition to the
+installed reference library and executable. Follow the acquisition and complete
+test commands in [Building neospice](docs/building.md#python-and-tooling-development).
+Missing source can skip these tests locally; such a run does not satisfy the
+required validation suite. CI requires executed tests without skips.
 
 ## Python Development
 
-Install in editable mode with test dependencies:
+Use a fresh virtual environment and install the current checkout with both
+extras so the full tooling suite has its plotting dependency:
 
 ```bash
-pip install -e ".[dev]" -C cmake.args="-DNEOSPICE_BUILD_PYTHON=ON;-DNEOSPICE_BUILD_TESTS=OFF"
+python3 -m venv .venv-dev
+.venv-dev/bin/python -m pip install '.[dev,benchmarks]'
+NGSPICE_DIR=/path/to/pinned/ngspice .venv-dev/bin/python -m pytest \
+  tests/python python/tests tools/tests --import-mode=importlib -q
 ```
 
-Run Python tests:
-
-```bash
-pytest tests/python -v
-```
+A regular wheel installation avoids stale editable paths after moving the
+checkout. Reinstall after changing C++ bindings or Python sources. C++ tests
+remain a separate CMake build. Consult [JOSS progress](docs/joss-progress.md)
+for known failing reference checks; a documented failure is still a failure.
 
 ## Code Style
 
