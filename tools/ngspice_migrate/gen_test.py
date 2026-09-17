@@ -364,7 +364,7 @@ def generate_test_compare(desc) -> str:
     lines.append(f'class {cls} : public ::testing::Test {{')
     lines.append('protected:')
     lines.append('    void SetUp() override {')
-    lines.append('        ngspice_ = std::make_unique<NgspiceRunner>(NGSPICE_BINARY);')
+    lines.append('        ngspice_ = std::make_unique<NgspiceRunner>();')
     lines.append('    }')
     lines.append('    std::unique_ptr<NgspiceRunner> ngspice_;')
     lines.append('    Simulator sim_;')
@@ -374,9 +374,9 @@ def generate_test_compare(desc) -> str:
     # Generate DC OP tests
     dc_circuits = [(name, cir) for name, cir in circuits.items() if '_dc_op' in name]
     for cir_name, cir_content in dc_circuits:
-        test_label = cir_name.replace(f"{ns}_", "").replace("_dc_op.cir", "").title()
+        test_label = cir_name.removeprefix(f"{ns}_").removesuffix("dc_op.cir").rstrip("_").title()
         test_label = test_label.replace("_", "")
-        test_name = f'{test_label}OperatingPoint'
+        test_name = f'{test_label or "DC"}OperatingPoint'
 
         lines.append('// ============================================================================')
         lines.append(f'// DC Operating Point — {test_label}')
@@ -390,11 +390,11 @@ def generate_test_compare(desc) -> str:
         lines.append('    try {')
         lines.append('        ng_result = ngspice_->run_dc(cir_path);')
         lines.append('    } catch (const std::exception& e) {')
-        lines.append('        GTEST_SKIP() << "ngspice not available or failed: " << e.what();')
+        lines.append('        FAIL() << "required ngspice reference failed: " << e.what();')
         lines.append('    }')
         lines.append('')
         lines.append('    if (ng_result.node_voltages.empty()) {')
-        lines.append(f'        GTEST_SKIP() << "ngspice returned empty DC result ({name_upper} may not be compiled in)";')
+        lines.append(f'        FAIL() << "ngspice returned empty DC result ({name_upper})";')
         lines.append('    }')
         lines.append('')
         lines.append('    // Run neospice')
@@ -451,11 +451,11 @@ def generate_test_compare(desc) -> str:
         lines.append('    try {')
         lines.append('        ng_result = ngspice_->run_ac(cir_path);')
         lines.append('    } catch (const std::exception& e) {')
-        lines.append('        GTEST_SKIP() << "ngspice not available or failed: " << e.what();')
+        lines.append('        FAIL() << "required ngspice reference failed: " << e.what();')
         lines.append('    }')
         lines.append('')
         lines.append('    if (ng_result.frequency.empty()) {')
-        lines.append('        GTEST_SKIP() << "ngspice returned empty AC result";')
+        lines.append('        FAIL() << "ngspice returned empty AC result";')
         lines.append('    }')
         lines.append('')
         lines.append('    // Run neospice')
@@ -497,10 +497,11 @@ def generate_test_cmake(desc) -> str:
     ${{CMAKE_SOURCE_DIR}}/tests/framework/comparator.cpp
 )
 
-target_link_libraries(test_{ns}_compare PRIVATE gtest_main neospice_lib)
-target_include_directories(test_{ns}_compare PRIVATE ${{CMAKE_SOURCE_DIR}}/tests)
+target_link_directories(test_{ns}_compare PRIVATE ${{NGSPICE_LIBRARY_DIRS}})
+target_link_libraries(test_{ns}_compare PRIVATE gtest_main neospice_lib ${{NGSPICE_LIBRARIES}})
+target_include_directories(test_{ns}_compare PRIVATE
+    ${{CMAKE_SOURCE_DIR}}/tests ${{NGSPICE_INCLUDE_DIRS}})
 target_compile_definitions(test_{ns}_compare PRIVATE
-    NGSPICE_BINARY="/usr/bin/ngspice"
     TEST_CIRCUITS_DIR="${{CMAKE_SOURCE_DIR}}/tests/circuits"
 )
 
@@ -528,4 +529,4 @@ def generate_test_dc(desc) -> str:
 
 def generate_test_transient(desc) -> str:
     """Legacy: generate transient test stub. No longer emits separate file."""
-    return f"// Transient tests are included in test_{desc.neospice_name}_compare.cpp\n"
+    return "// No transient scaffold is generated; add device-specific transient validation.\n"

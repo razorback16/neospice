@@ -23,7 +23,7 @@ from ngspice_migrate.transformer import Transformer
 REPO_ROOT = Path(__file__).parent.parent.parent
 DESCRIPTOR = REPO_ROOT / "tools" / "descriptors" / "bsim4v7.yaml"
 _ngspice_root = os.environ.get("NGSPICE_DIR", "")
-NGSPICE_DIR = Path(_ngspice_root) / "src" / "spicelib" / "devices" / "bsim4v7" if _ngspice_root else Path("")
+NGSPICE_DIR = (Path(_ngspice_root) if _ngspice_root else REPO_ROOT / "third_party" / "ngspice47-reference" / "source") / "src" / "spicelib" / "devices" / "bsim4v7"
 EXISTING_DIR = REPO_ROOT / "src" / "devices" / "bsim4v7"
 
 
@@ -31,13 +31,29 @@ EXISTING_DIR = REPO_ROOT / "src" / "devices" / "bsim4v7"
 # TestBSIM4v7Roundtrip
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(not NGSPICE_DIR.exists(), reason="ngspice source not available")
+# A missing reference source must not silently remove these checks. The only
+# legitimate skip is an environment that has deliberately opted out; anything
+# else is an explicit failure naming the documented setup step.
+OPT_OUT = "NEOSPICE_ALLOW_MISSING_NGSPICE_SOURCE"
+MISSING_SOURCE = (
+    f"ngspice 47 source not found at {NGSPICE_DIR}. Build it with "
+    "scripts/build-ngspice47-reference.sh and set NGSPICE_DIR, or set "
+    f"{OPT_OUT}=1 to record a deliberate opt-out (see docs/building.md)."
+)
+
+
+@pytest.mark.skipif(
+    not NGSPICE_DIR.exists() and os.environ.get(OPT_OUT) == "1",
+    reason=f"{OPT_OUT}=1: reference source deliberately unavailable",
+)
 class TestBSIM4v7Roundtrip:
     """Roundtrip tests: translate ngspice C -> C++ and compare with hand-port."""
 
     @pytest.fixture(autouse=True)
     def _setup(self):
         """Load the descriptor and build a Transformer once per test."""
+        if not NGSPICE_DIR.exists():
+            pytest.fail(MISSING_SOURCE)
         self.desc = load_descriptor(DESCRIPTOR)
         self.cfg = self.desc.to_transformer_config()
         self.tx = Transformer(self.cfg)

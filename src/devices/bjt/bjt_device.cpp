@@ -60,6 +60,7 @@ BJTDevice::make(std::string name,
     inst.BJTsubstNode = neo_to_ucb(n_subst);
 
     // Geometry.
+    inst.BJToff = geom.off;
     inst.BJTarea = geom.area;
     inst.BJTareaGiven = geom.area_given ? 1 : 0;
     inst.BJTareab = geom.areab;

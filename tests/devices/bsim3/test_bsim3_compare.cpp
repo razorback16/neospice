@@ -80,17 +80,20 @@ TEST_F(BSIM3Validation, NMOS_IV_Sweep) {
     try {
         ng_result = ngspice_->run_dc_sweep(path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.sweep_values.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC sweep result";
+        FAIL() << "required ngspice returned empty DC sweep result";
     }
 
     // Run neospice
     auto ckt = sim_.load(path);
     DCSweepResult cs_result = sim_.run_dc_sweep(ckt,
         {{DCSweepParam{"VDS", 0.0, 1.8, 0.05}}});
+
+    const auto sweep_error = validate_dc_sweep_data(ng_result, cs_result);
+    ASSERT_TRUE(sweep_error.empty()) << sweep_error;
 
     ASSERT_FALSE(cs_result.sweep_values.empty());
     ASSERT_EQ(ng_result.sweep_values.size(), cs_result.sweep_values.size())
@@ -287,7 +290,7 @@ TEST_F(BSIM3Validation, CMOS_Inverter_Transient) {
 
     // Run neospice
     auto ckt = sim_.load(path);
-    ckt.options.interp = true;
+    // Use the same netlist options as the ngspice reference.
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis))
         << "Transient analysis result is missing";
@@ -303,7 +306,7 @@ TEST_F(BSIM3Validation, CMOS_Inverter_Transient) {
 
     ng_result.currents.clear();
     std::get<TransientResult>(cs_result.analysis).currents.clear();
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2e-1, 5e-2});
+    auto cmp = compare_transient(ng_result, std::get<TransientResult>(cs_result.analysis), {2e-1, 5e-2});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

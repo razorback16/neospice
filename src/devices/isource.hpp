@@ -56,6 +56,16 @@ public:
     /// Return source breakpoints in (tstart, tstop].
     std::vector<double> get_breakpoints(double tstart, double tstop) const;
 
+    /// Request the next PULSE corner after an accepted point. Reset on each
+    /// resolve_defaults() so a reused circuit starts with a fresh schedule.
+    std::optional<double> accept_pulse_breakpoint(double t, double min_break) {
+        if (func_ != SourceFunction::PULSE || pulse_.per <= 0 || t < pulse_next_request_)
+            return std::nullopt;
+        const double next = pulse_.next_breakpoint(t, min_break);
+        pulse_next_request_ = next - min_break;
+        return next;
+    }
+
     /// Return the source function type (DC, PULSE, SIN, etc.).
     SourceFunction source_function() const { return func_; }
 
@@ -80,11 +90,13 @@ private:
     // Transient
     SourceFunction func_ = SourceFunction::DC;
     PulseParams    pulse_;
+    double pulse_next_request_ = 0.0;
     SinParams      sin_;
     PwlParams      pwl_;
     ExpParams      exp_;
     SffmParams     sffm_;
     AmParams       am_;
+    double         am_tstop_ = 0.0;
     double         current_time_ = 0.0;
 };
 

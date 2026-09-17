@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB MES code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct MESModelCard {
+struct MESModelCard : ModelCardRuntime {
     mes::MESModel ucb{};   // aggregate UCB model fields
 
     MESModelCard() = default;

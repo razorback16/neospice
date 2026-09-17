@@ -16,7 +16,7 @@ std::unique_ptr<HSM2ModelCard> to_hisim2_card(const ModelCard& card) {
     namespace S = hisim2::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, hisim2::HSM2mPTable, hisim2::HSM2mPTSize,
-        hisim2::HSM2mParam, "HSM2");
+        hisim2::HSM2mParam, "HSM2", out.get());
 
     return out;
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB DIO code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct DIOModelCard {
+struct DIOModelCard : ModelCardRuntime {
     dio::DIOModel ucb{};   // aggregate UCB model fields
 
     DIOModelCard() = default;
@@ -33,6 +34,8 @@ public:
         double w = 0.0;
         double l = 0.0;
         double m = 1.0;
+        std::optional<double> temp;  // Instance temperature in degrees Celsius.
+        std::optional<double> dtemp; // Offset from circuit/model temperature.
     };
 
     static std::unique_ptr<DIODevice> make(

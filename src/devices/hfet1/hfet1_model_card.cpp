@@ -15,7 +15,7 @@ std::unique_ptr<HFETAModelCard> to_hfet1_card(const ModelCard& card) {
     namespace S = hfet1::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, hfet1::HFETAmPTable, hfet1::HFETAmPTSize,
-        hfet1::HFETAmParam, "HFETA");
+        hfet1::HFETAmParam, "HFETA", out.get());
 
     return out;
 }

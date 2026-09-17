@@ -3,10 +3,12 @@ VDD d 0 0.1
 VGS g 0 0.8
 VBS b 0 0
 M1 d g 0 b NMOD W=1u L=100n
-.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
+.model NMOD NMOS LEVEL=14 VERSION=4.7.0 VTH0=0.4 U0=0.04 TOXE=2e-9
 .op
 .control
+set numdgt=17
 op
 show M1
+print @m1[id]
 .endc
 .end

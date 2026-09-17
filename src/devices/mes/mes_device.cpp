@@ -339,9 +339,9 @@ std::optional<double> MESDevice::query_param(const std::string& name) const {
         if (key == "cqgd") return m * state0_[sb + 12];
     }
 
-    // Geometry (not scaled by m)
-    if (key == "area") return inst_.MESarea;
-    if (key == "m") return inst_.MESm;
+    // ngspice 47 accepts independent AREA and M inputs, but its public
+    // AREA and redundant M queries both report effective area (AREA*M).
+    if (key == "area" || key == "m") return inst_.MESarea * m;
     if (key == "icvds") return inst_.MESicVDS;
     if (key == "icvgs") return inst_.MESicVGS;
 
@@ -349,7 +349,7 @@ std::optional<double> MESDevice::query_param(const std::string& name) const {
 }
 
 // ---------------------------------------------------------------------------
-// noise_sources — TODO: implement device noise model
+// noise_sources — series resistance, channel thermal and flicker noise
 // ---------------------------------------------------------------------------
 std::vector<Device::NoiseSource> MESDevice::noise_sources(
         double freq, const std::vector<double>& /*dc_solution*/) const {

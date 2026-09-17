@@ -67,7 +67,10 @@ def generate_model_card_cpp(desc) -> str:
 
         # All model types share the same flag_field for a given device
         flag_field = desc.model_types[0].flag_field
-        lines.append(f'    ucb.{flag_field} = validate_model_type(card, types);')
+        if flag_field:
+            lines.append(f'    ucb.{flag_field} = validate_model_type(card, types);')
+        else:
+            lines.append('    (void)validate_model_type(card, types);')
 
         # Set the typeGiven field if applicable
         mt0 = desc.model_types[0]
@@ -81,7 +84,7 @@ def generate_model_card_cpp(desc) -> str:
     lines.append(f'    namespace S = {ns}::Shim;')
     lines.append(f'    convert_model_card_params<S::IfParm, S::IfValue>(')
     lines.append(f'        card, ucb, {ns}::{prefix}mPTable, {ns}::{prefix}mPTSize,')
-    lines.append(f'        {ns}::{prefix}mParam, "{prefix}");')
+    lines.append(f'        {ns}::{prefix}mParam, "{prefix}", out.get());')
 
     lines.append('')
     lines.append('    return out;')

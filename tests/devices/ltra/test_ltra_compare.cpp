@@ -42,7 +42,7 @@ TEST_F(LTRAValidation, DCOperatingPointRC) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -94,7 +94,7 @@ TEST_F(LTRAValidation, DCOperatingPointRG) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -137,7 +137,7 @@ TEST_F(LTRAValidation, TransientRC) {
     try {
         ng_result = ngspice_->run_transient(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -156,8 +156,14 @@ TEST_F(LTRAValidation, TransientRC) {
     double v_last = v_out.back();  // during pulse-on phase
     EXPECT_NEAR(v_first, 0.0, 0.01) << "v(out) should start at 0";
 
-    // Compare voltage waveform with ngspice (loose tolerance for edge timing)
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-2, 5e-3});
+    // Compare port voltages and source current. ngspice additionally exposes
+    // the two internal LTRA branch equations as voltage-named vectors; these
+    // implementation variables are not part of neospice's public results.
+    ng_result.voltages.erase("v(o1#i1)");
+    ng_result.voltages.erase("v(o1#i2)");
+    auto cmp = compare_transient(ng_result, std::get<TransientResult>(cs_result.analysis), {5e-2, 5e-3});
+    EXPECT_TRUE(cmp.passed)
+        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
     // We use very loose relative tolerance because edge timing differences
     // cause large relative errors at fast transients. Focus on absolute error.
     // Check that absolute error in v(out) is small (< 0.1V)
@@ -200,7 +206,7 @@ TEST_F(LTRAValidation, TransientRLC) {
     try {
         ng_result = ngspice_->run_transient(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -253,7 +259,7 @@ TEST_F(LTRAValidation, TransientLC) {
     try {
         ng_result = ngspice_->run_transient(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -289,4 +295,30 @@ TEST_F(LTRAValidation, TransientLC) {
         }
     }
     EXPECT_TRUE(v_out_ok) << "v(out) absolute error exceeds 0.15V, worst=" << worst_abs;
+}
+
+TEST_F(LTRAValidation, ACFrequencyResponseAllLineTypes) {
+    for (const std::string kind : {"lc", "rc", "rlc", "rg", "lc_floating", "rg_options"}) {
+        SCOPED_TRACE(kind);
+        const std::string path = std::string(TEST_CIRCUITS_DIR) + "/ltra_ac_" + kind + ".cir";
+        auto reference = ngspice_->run_ac(path);
+        // These are private branch-equation variables, not port voltages.
+        reference.voltages.erase("v(o1#i1)");
+        reference.voltages.erase("v(o1#i2)");
+        auto circuit = sim_.load(path);
+        const auto actual = std::get<ACResult>(sim_.run(circuit).analysis);
+        const auto cmp = compare_ac(reference, actual, {1e-8, 1e-9});
+        EXPECT_TRUE(cmp.passed) << cmp.worst_signal << " " << cmp.worst_error;
+        ASSERT_EQ(actual.frequency.size(), 29u);
+        if (kind.starts_with("lc")) {
+            // Matched 50-ohm line: half-amplitude delayed sinusoid. Checking
+            // the full complex voltage distinguishes propagation from a short.
+            const auto& output = actual.voltages.at("v(out)");
+            ASSERT_EQ(output.size(), actual.frequency.size());
+            for (size_t i = 0; i < output.size(); ++i) {
+                const auto expected = std::polar(0.5, -2 * M_PI * actual.frequency[i] * 5e-9);
+                EXPECT_NEAR(std::abs(output[i] - expected), 0.0, 1e-10);
+            }
+        }
+    }
 }

@@ -16,7 +16,7 @@ std::unique_ptr<B4SOIModelCard> to_bsimsoi_card(const ModelCard& card) {
     namespace S = bsimsoi::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, bsimsoi::B4SOImPTable, bsimsoi::B4SOImPTSize,
-        bsimsoi::B4SOImParam, "B4SOI");
+        bsimsoi::B4SOImParam, "B4SOI", out.get());
 
     return out;
 }

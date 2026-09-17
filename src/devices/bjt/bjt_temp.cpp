@@ -44,6 +44,14 @@ BJTtemp(BJTModel *inModel, Shim::Ckt *ckt)
 
         if(!model->BJTtnomGiven) model->BJTtnom = ckt->CKTnomTemp;
         fact1 = model->BJTtnom/REFTEMP;
+        // ngspice 47 separates the nominal junction-potential correction
+        // from the correction at the actual instance temperature.
+        const double vtnom = CONSTKoverQ * model->BJTtnom;
+        const double egfet1 = 1.16-(7.02e-4*model->BJTtnom*model->BJTtnom)/
+                (model->BJTtnom+1108);
+        const double arg1 = -egfet1/(2*CONSTboltz*model->BJTtnom)+
+                1.1150877/(CONSTboltz*(REFTEMP+REFTEMP));
+        const double pbfact1 = -2*vtnom*(1.5*log(fact1)+CHARGE*arg1);
 
         if(!model->BJTleakBEcurrentGiven) {
             if(model->BJTc2Given) {
@@ -226,7 +234,7 @@ BJTtemp(BJTModel *inModel, Shim::Ckt *ckt)
             }
 
             if (model->BJTtlevc == 0) {
-                pbo = (model->BJTpotentialBE-pbfact)/fact1;
+                pbo = (model->BJTpotentialBE-pbfact1)/fact1;
                 gmaold = (model->BJTpotentialBE-pbo)/pbo;
                 here->BJTtBEcap = model->BJTdepletionCapBE/
                     (1+here->BJTtjunctionExpBE*
@@ -241,7 +249,7 @@ BJTtemp(BJTModel *inModel, Shim::Ckt *ckt)
                 here->BJTtBEpot = model->BJTpotentialBE - model->BJTtvje*dt;
             }
             if (model->BJTtlevc == 0) {
-                pbo = (model->BJTpotentialBC-pbfact)/fact1;
+                pbo = (model->BJTpotentialBC-pbfact1)/fact1;
                 gmaold = (model->BJTpotentialBC-pbo)/pbo;
                 here->BJTtBCcap = model->BJTdepletionCapBC/
                     (1+here->BJTtjunctionExpBC*
@@ -256,7 +264,7 @@ BJTtemp(BJTModel *inModel, Shim::Ckt *ckt)
                 here->BJTtBCpot = model->BJTpotentialBC - model->BJTtvjc*dt;
             }
             if (model->BJTtlevc == 0) {
-                pbo = (model->BJTpotentialSubstrate-pbfact)/fact1;
+                pbo = (model->BJTpotentialSubstrate-pbfact1)/fact1;
                 gmaold = (model->BJTpotentialSubstrate-pbo)/pbo;
                 here->BJTtSubcap = model->BJTcapSub/
                         (1+here->BJTtjunctionExpSub*

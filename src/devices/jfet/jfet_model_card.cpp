@@ -15,7 +15,7 @@ std::unique_ptr<JFETModelCard> to_jfet_card(const ModelCard& card) {
     namespace S = jfet::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, jfet::JFETmPTable, jfet::JFETmPTSize,
-        jfet::JFETmParam, "JFET");
+        jfet::JFETmParam, "JFET", out.get());
 
     // PSpice per-device temperature (see to_dio_card): T_ABS forces operating
     // temperature for all instances; T_MEASURED is the measurement temp (TNOM).

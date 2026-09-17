@@ -15,7 +15,7 @@ std::unique_ptr<VBICModelCard> to_vbic_card(const ModelCard& card) {
     namespace S = vbic::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, vbic::VBICmPTable, vbic::VBICmPTSize,
-        vbic::VBICmParam, "VBIC");
+        vbic::VBICmParam, "VBIC", out.get());
 
     return out;
 }

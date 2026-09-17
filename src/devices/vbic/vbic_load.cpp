@@ -297,7 +297,8 @@ VBICload(VBICModel *inModel, Shim::Ckt *ckt)
                 Vrcx=Vrbx=Vre=Vrs=0.0;
             } else if((ckt->CKTmode & MODEINITJCT) && (here->VBICoff==0)) {
                 Vbe=Vbei=Vbex=model->VBICtype*here->VBICtVcrit;
-                Vbc=Vbci=Vbcx=Vbep=0.0;
+                Vbc=Vbcx=Vbep=0.0;
+                Vbci=-model->VBICtype*here->VBICtVcrit;
                 Vbcp=Vbc-Vbe;
                 Vrci=Vrbi=Vrbp=0.0;
                 Vrcx=Vrbx=Vre=Vrs=0.0;
@@ -938,6 +939,75 @@ c           Stamp element: Ibex
 /*
 c           Stamp element: Itzf
 */
+            if (here->VBICexcessPhase) {
+                // ngspice47 vbicload.c: TD*d(xf1)/dt + xf2 = Itzf,
+                // (TD/3)*d(xf2)/dt + xf2 - xf1 = 0. The collector
+                // receives xf2; the intrinsic junction charges still use
+                // the undelayed transport current from the model kernel.
+                const bool initialize = (ckt->CKTmode & MODEINITJCT) ||
+                    ((ckt->CKTmode & MODEINITFIX) && here->VBICoff);
+                const double xf1 = initialize ? 0.0 : ckt->CKTrhsOld[here->VBICxf1Node];
+                const double xf2 = initialize ? 0.0 : ckt->CKTrhsOld[here->VBICxf2Node];
+                ckt->CKTstate0[here->VBICvxf1] = xf1;
+                ckt->CKTstate0[here->VBICvxf2] = xf2;
+                double geq1 = 0.0, geq2 = 0.0, current1 = 0.0, current2 = 0.0;
+                if ((ckt->CKTmode & (MODETRAN | MODEAC)) ||
+                    ((ckt->CKTmode & MODETRANOP) && (ckt->CKTmode & MODEUIC))) {
+                    ckt->CKTstate0[here->VBICqxf1] = model->VBICdelayTimeF * xf1;
+                    ckt->CKTstate0[here->VBICqxf2] = model->VBICdelayTimeF * xf2 / 3.0;
+                    if (!(ckt->CKTmode & MODETRANOP) || !(ckt->CKTmode & MODEUIC)) {
+                        if (ckt->CKTmode & MODEINITTRAN) {
+                            ckt->CKTstate1[here->VBICqxf1] = ckt->CKTstate0[here->VBICqxf1];
+                            ckt->CKTstate1[here->VBICqxf2] = ckt->CKTstate0[here->VBICqxf2];
+                        }
+                        double companion = 0.0;
+                        error = NIintegrate(ckt, &geq1, &companion, model->VBICdelayTimeF, here->VBICqxf1);
+                        if (error) return error;
+                        error = NIintegrate(ckt, &geq2, &companion, model->VBICdelayTimeF / 3.0, here->VBICqxf2);
+                        if (error) return error;
+                        current1 = ckt->CKTstate0[here->VBICcqxf1];
+                        current2 = ckt->CKTstate0[here->VBICcqxf2];
+                        if (ckt->CKTmode & MODEINITTRAN) {
+                            ckt->CKTstate1[here->VBICcqxf1] = current1;
+                            ckt->CKTstate1[here->VBICcqxf2] = current2;
+                        }
+                    }
+                }
+                ckt->CKTstate0[here->VBICgxf1] = geq1;
+                ckt->CKTstate0[here->VBICgxf2] = 1.0 + geq2;
+                // Keep ngspice's combined delayed-forward/reverse stamp,
+                // including its arithmetic order near cancellation.
+                const double iciei = xf2 - Itzr;
+                const double iciei_vbei = -Itzr_Vbei;
+                const double iciei_vbci = -Itzr_Vbci;
+                rhs_current = model->VBICtype *
+                    (iciei - iciei_vbei * Vbei - iciei_vbci * Vbci);
+                ckt->CKTrhs[here->VBICcollCINode] -= rhs_current;
+                ckt->mat->add(here->VBICcollCIBaseBIPtr, iciei_vbei);
+                ckt->mat->add(here->VBICcollCIEmitEIPtr, -iciei_vbei);
+                ckt->mat->add(here->VBICcollCIBaseBIPtr, iciei_vbci);
+                ckt->mat->add(here->VBICcollCICollCIPtr, -iciei_vbci);
+                ckt->CKTrhs[here->VBICemitEINode] += rhs_current;
+                ckt->mat->add(here->VBICemitEIBaseBIPtr, -iciei_vbei);
+                ckt->mat->add(here->VBICemitEIEmitEIPtr, iciei_vbei);
+                ckt->mat->add(here->VBICemitEIBaseBIPtr, -iciei_vbci);
+                ckt->mat->add(here->VBICemitEICollCIPtr, iciei_vbci);
+                rhs_current = model->VBICtype * (-xf2);
+                ckt->CKTrhs[here->VBICcollCINode] -= rhs_current;
+                ckt->CKTrhs[here->VBICemitEINode] += rhs_current;
+                ckt->mat->add(here->VBICcollCIXf2Ptr, 1.0);
+                ckt->mat->add(here->VBICemitEIXf2Ptr, -1.0);
+                ckt->mat->add(here->VBICxf1BaseBIPtr, -Itzf_Vbei - Itzf_Vbci);
+                ckt->mat->add(here->VBICxf1EmitEIPtr, Itzf_Vbei);
+                ckt->mat->add(here->VBICxf1CollCIPtr, Itzf_Vbci);
+                ckt->mat->add(here->VBICxf1Xf1Ptr, geq1);
+                ckt->mat->add(here->VBICxf1Xf2Ptr, 1.0);
+                ckt->mat->add(here->VBICxf2Xf1Ptr, -1.0);
+                ckt->mat->add(here->VBICxf2Xf2Ptr, 1.0 + geq2);
+                ckt->CKTrhs[here->VBICxf1Node] +=
+                    Itzf - Itzf_Vbei * Vbei - Itzf_Vbci * Vbci - current1 + geq1 * xf1;
+                ckt->CKTrhs[here->VBICxf2Node] += -current2 + geq2 * xf2;
+            } else {
             rhs_current = model->VBICtype * (Itzf - Itzf_Vbei*Vbei - Itzf_Vbci*Vbci);
             *(ckt->CKTrhs + here->VBICcollCINode) += -rhs_current;
             ckt->mat->add(here->VBICcollCIBaseBIPtr, Itzf_Vbei);
@@ -949,9 +1019,11 @@ c           Stamp element: Itzf
             ckt->mat->add(here->VBICemitEIEmitEIPtr, Itzf_Vbei);
             ckt->mat->add(here->VBICemitEIBaseBIPtr, -Itzf_Vbci);
             ckt->mat->add(here->VBICemitEICollCIPtr, Itzf_Vbci);
+            }
 /*
 c           Stamp element: Itzr
 */
+            if (!here->VBICexcessPhase) {
             rhs_current = model->VBICtype * (Itzr - Itzr_Vbei*Vbei - Itzr_Vbci*Vbci);
             *(ckt->CKTrhs + here->VBICemitEINode) += -rhs_current;
             ckt->mat->add(here->VBICemitEIBaseBIPtr, Itzr_Vbei);
@@ -963,6 +1035,7 @@ c           Stamp element: Itzr
             ckt->mat->add(here->VBICcollCIEmitEIPtr, Itzr_Vbei);
             ckt->mat->add(here->VBICcollCIBaseBIPtr, -Itzr_Vbci);
             ckt->mat->add(here->VBICcollCICollCIPtr, Itzr_Vbci);
+            }
 /*
 c           Stamp element: Ibc
 */

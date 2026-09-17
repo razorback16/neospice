@@ -16,7 +16,7 @@ std::unique_ptr<BSIM3ModelCard> to_bsim3_card(const ModelCard& card) {
     namespace S = bsim3::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, bsim3::BSIM3mPTable, bsim3::BSIM3mPTSize,
-        bsim3::BSIM3mParam, "BSIM3");
+        bsim3::BSIM3mParam, "BSIM3", out.get());
 
     return out;
 }

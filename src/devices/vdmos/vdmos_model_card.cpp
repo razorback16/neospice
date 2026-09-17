@@ -16,7 +16,7 @@ std::unique_ptr<VDMOSModelCard> to_vdmos_card(const ModelCard& card) {
     namespace S = vdmos::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, vdmos::VDMOSmPTable, vdmos::VDMOSmPTSize,
-        vdmos::VDMOSmParam, "VDMOS");
+        vdmos::VDMOSmParam, "VDMOS", out.get());
 
     return out;
 }

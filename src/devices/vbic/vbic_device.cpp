@@ -51,6 +51,7 @@ VBICDevice::make(std::string name,
     inst.VBICsubsNode = neo_to_ucb(n_subs);
 
     // Geometry.
+    inst.VBICoff = geom.off;
     inst.VBICarea = geom.area;
     inst.VBICareaGiven = geom.area_given ? 1 : 0;
     inst.VBICm = geom.m;
@@ -154,6 +155,17 @@ void VBICDevice::assign_offsets(const SparsityPattern& pattern) {
     RESOLVE(VBICsubsSICollCIPtr);
     RESOLVE(VBICsubsSIBaseBIPtr);
     RESOLVE(VBICsubsSIBaseBPPtr);
+    if (inst_.VBICexcessPhase) {
+        RESOLVE(VBICcollCIXf2Ptr);
+        RESOLVE(VBICemitEIXf2Ptr);
+        RESOLVE(VBICxf1BaseBIPtr);
+        RESOLVE(VBICxf1EmitEIPtr);
+        RESOLVE(VBICxf1CollCIPtr);
+        RESOLVE(VBICxf1Xf1Ptr);
+        RESOLVE(VBICxf1Xf2Ptr);
+        RESOLVE(VBICxf2Xf1Ptr);
+        RESOLVE(VBICxf2Xf2Ptr);
+    }
 
 #undef RESOLVE
 }
@@ -363,6 +375,21 @@ void VBICDevice::ac_stamp(const std::vector<double>& /*voltages*/,
     G.add(inst.VBICemitEIBaseBXPtr, -Ibex_Vbex);
     G.add(inst.VBICemitEIEmitEIPtr,  Ibex_Vbex);
     // Itzf stamp
+    if (inst.VBICexcessPhase) {
+        G.add(inst.VBICcollCIXf2Ptr, 1.0);
+        G.add(inst.VBICemitEIXf2Ptr, -1.0);
+        G.add(inst.VBICxf1BaseBIPtr, -Itzf_Vbei - Itzf_Vbci);
+        G.add(inst.VBICxf1EmitEIPtr, Itzf_Vbei);
+        G.add(inst.VBICxf1CollCIPtr, Itzf_Vbci);
+        // ngspice preserves the last load's auxiliary conductances across
+        // small-signal initialization, including after transient OP fallback.
+        G.add(inst.VBICxf1Xf1Ptr, state0_[state_base_ + 72]);
+        G.add(inst.VBICxf1Xf2Ptr, 1.0);
+        G.add(inst.VBICxf2Xf1Ptr, -1.0);
+        G.add(inst.VBICxf2Xf2Ptr, state0_[state_base_ + 73]);
+        C.add(inst.VBICxf1Xf1Ptr, model_->VBICdelayTimeF);
+        C.add(inst.VBICxf2Xf2Ptr, model_->VBICdelayTimeF / 3.0);
+    } else {
     G.add(inst.VBICcollCIBaseBIPtr,  Itzf_Vbei);
     G.add(inst.VBICcollCIEmitEIPtr, -Itzf_Vbei);
     G.add(inst.VBICcollCIBaseBIPtr,  Itzf_Vbci);
@@ -371,6 +398,7 @@ void VBICDevice::ac_stamp(const std::vector<double>& /*voltages*/,
     G.add(inst.VBICemitEIEmitEIPtr,  Itzf_Vbei);
     G.add(inst.VBICemitEIBaseBIPtr, -Itzf_Vbci);
     G.add(inst.VBICemitEICollCIPtr,  Itzf_Vbci);
+    }
     // Itzr stamp
     G.add(inst.VBICemitEIBaseBIPtr,  Itzr_Vbci);
     G.add(inst.VBICemitEICollCIPtr, -Itzr_Vbci);
@@ -660,7 +688,10 @@ std::vector<Device::NoiseSource> VBICDevice::noise_sources(
     const double Irs_Vrs   = state0_[state_base_ + 64];
 
     // DC currents
-    const double Itzf = std::abs(state0_[state_base_ + 13]);
+    // ngspice 47 uses net delayed transport current for collector shot noise.
+    const double forward = inst_.VBICexcessPhase ?
+        state0_[state_base_ + 67] : state0_[state_base_ + 13];
+    const double Iciei = std::abs(forward - state0_[state_base_ + 16]);
     const double Ibe  = std::abs(state0_[state_base_ + 9]);
     const double Ibep = std::abs(state0_[state_base_ + 22]);
     const double Iccp = std::abs(state0_[state_base_ + 56]);
@@ -690,7 +721,7 @@ std::vector<Device::NoiseSource> VBICDevice::noise_sources(
 
     // 2. Shot noise on collector and base currents
     sources.push_back({collCI_node, emitEI_node,
-                       m * 2.0 * CHARGE_Q * Itzf});
+                       m * 2.0 * CHARGE_Q * Iciei});
     sources.push_back({baseBI_node, emitEI_node,
                        m * 2.0 * CHARGE_Q * Ibe});
     if (Ibep > 0.0)

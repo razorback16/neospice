@@ -12,7 +12,7 @@ std::unique_ptr<DIOModelCard> to_dio_card(const ModelCard& card) {
     namespace S = dio::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, dio::DIOmPTable, dio::DIOmPTSize,
-        dio::DIOmParam, "DIO");
+        dio::DIOmParam, "DIO", out.get());
 
     // PSpice per-device temperature (ngspice rewrites these to temp/tnom on the
     // model card, inpcompat.c:1014): T_ABS forces the operating temperature of

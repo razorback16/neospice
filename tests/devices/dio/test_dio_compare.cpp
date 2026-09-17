@@ -40,10 +40,10 @@ TEST_F(NgspiceCompareTest, DiodeRectifierTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/diode_rectifier.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
-    ckt.options.interp = true;
+    // Use the same netlist options as the ngspice reference.
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1.5e-1, 1e-1});
+    auto cmp = compare_transient(ng_result, std::get<TransientResult>(cs_result.analysis), {1.5e-1, 1e-1});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

@@ -33,10 +33,15 @@ class Terminal:
 
 @dataclass
 class CleanupLinkedList:
-    """A malloc'd linked list in the model struct that needs freeing."""
+    """An owned linked list with an explicit matching deallocator."""
 
     field: str       # e.g. "pSizeDependParamKnot"
     next_field: str  # e.g. "pNext"
+    deallocator: str = "free"  # free for malloc; delete_array for TMALLOC/new[].
+
+    def __post_init__(self) -> None:
+        if self.deallocator not in ("free", "delete_array"):
+            raise ValueError(f"Unsupported linked-list deallocator: {self.deallocator}")
 
 
 @dataclass
@@ -217,6 +222,9 @@ def load_descriptor(path: Path) -> ModelDescriptor:
         raise ValueError(f"YAML file {path} missing top-level 'model' key")
     m: Dict[str, Any] = raw["model"]
 
+    if m.get("migration") == "manual":
+        raise ValueError(f"{path} describes a manual migration; automatic generation is unsupported")
+
     # Validate required fields
     missing = _REQUIRED_FIELDS - set(m.keys())
     if missing:
@@ -245,7 +253,8 @@ def load_descriptor(path: Path) -> ModelDescriptor:
     ]
 
     cleanup_linked_lists = [
-        CleanupLinkedList(field=c["field"], next_field=c["next_field"])
+        CleanupLinkedList(field=c["field"], next_field=c["next_field"],
+                          deallocator=c.get("deallocator", "free"))
         for c in m.get("cleanup_linked_lists", [])
     ]
 

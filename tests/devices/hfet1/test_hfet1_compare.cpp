@@ -33,11 +33,11 @@ TEST_F(HFET1Validation, NhfetOperatingPoint) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.node_voltages.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC result";
+        FAIL() << "required ngspice returned empty DC result";
     }
 
     auto ckt = sim_.load(cir_path);
@@ -69,11 +69,11 @@ TEST_F(HFET1Validation, NhfetAcResponse) {
     try {
         ng_result = ngspice_->run_ac(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.frequency.empty()) {
-        GTEST_SKIP() << "ngspice returned empty AC result";
+        FAIL() << "required ngspice returned empty AC result";
     }
 
     auto ckt = sim_.load(cir_path);

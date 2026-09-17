@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB VDMOS code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct VDMOSModelCard {
+struct VDMOSModelCard : ModelCardRuntime {
     vdmos::VDMOSModel ucb{};   // aggregate UCB model fields
 
     VDMOSModelCard() = default;

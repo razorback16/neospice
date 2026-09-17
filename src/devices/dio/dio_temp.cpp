@@ -44,13 +44,8 @@ DIOtemp(DIOModel *inModel, Shim::Ckt *ckt)
             model->DIOnomTemp = ckt->CKTnomTemp;
         }
         vtnom = CONSTKoverQ * model->DIOnomTemp;
-        /* limit grading coeff to max of .9 */
-        if(model->DIOgradingCoeff>.9) {
-            Shim::report_error(Shim::ERR_WARNING,
-                    "%s: grading coefficient too large, limited to 0.9",
-                    model->DIOmodName);
-            model->DIOgradingCoeff=.9;
-        }
+        // ngspice 47 preserves the model grading coefficient, including
+        // values above 0.9 used in vendor depletion-capacitance models.
         /* limit activation energy to min of .1 */
         if(model->DIOactivationEnergy<.1) {
             Shim::report_error(Shim::ERR_WARNING,
@@ -110,15 +105,7 @@ DIOtemp(DIOModel *inModel, Shim::Ckt *ckt)
                          + (model->DIOgradCoeffTemp2 * dt * dt);
             here->DIOtGradingCoeff = model->DIOgradingCoeff * factor;
 
-            /* limit temperature adjusted grading coeff
-             * to max of .9
-             */
-            if(here->DIOtGradingCoeff>.9) {
-              Shim::report_error(Shim::ERR_WARNING,
-                    "%s: temperature adjusted grading coefficient too large, limited to 0.9",
-                    here->DIOname);
-              here->DIOtGradingCoeff=.9;
-            }
+            // Match ngspice 47 diotemp.c: no effective-coefficient cap.
 
             vt = CONSTKoverQ * here->DIOtemp;
             /* this part gets really ugly - I won't even try to

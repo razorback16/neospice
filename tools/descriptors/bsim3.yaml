@@ -50,7 +50,7 @@ model:
   temp_function: "BSIM3temp"
   load_function: "BSIM3load"
   cleanup_linked_lists:
-    - { field: "pSizeDependParamKnot", next_field: "pNext" }
+    - { field: "pSizeDependParamKnot", next_field: "pNext", deallocator: "delete_array" }
   version_stamp:
     field: "BSIM3version"
     given_field: "BSIM3versionGiven"

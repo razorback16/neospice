@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Protocol, Tuple
 class _CleanupLinkedList(Protocol):
     field: str
     next_field: str
+    deallocator: str
 
 
 class _VersionStamp(Protocol):
@@ -467,6 +468,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
     parts.append(f'// Adapter bridging the neospice Device interface to the UCB {prefix} code.\n')
     parts.append("\n")
     parts.append('#include "devices/device.hpp"\n')
+    parts.append('#include "devices/model_card_runtime.hpp"\n')
     parts.append(f'#include "devices/{ns}/{ns}_def.hpp"\n')
     parts.append(f'#include "devices/{ns}/{ns}_shim.hpp"\n')
     parts.append("#include <memory>\n")
@@ -480,7 +482,7 @@ def generate_adapter_hpp(desc: _Desc) -> str:
     parts.append("\n")
 
     # --- ModelCard struct ---------------------------------------------------
-    parts.append(f"struct {prefix}ModelCard {{\n")
+    parts.append(f"struct {prefix}ModelCard : ModelCardRuntime {{\n")
     parts.append(f"    {ns}::{desc.cpp_model} ucb{{}};   // aggregate UCB model fields\n")
     parts.append("\n")
     parts.append(f"    {prefix}ModelCard() = default;\n")
@@ -641,13 +643,20 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     if has_cleanup:
         parts.append(f"{prefix}ModelCard::~{prefix}ModelCard() {{\n")
         for cl in desc.cleanup_linked_lists:
+            parts.append("    {\n")
             parts.append(f"    auto* p = ucb.{cl.field};\n")
             parts.append("    while (p) {\n")
             parts.append(f"        auto* next = p->{cl.next_field};\n")
-            parts.append("        std::free(p);\n")
+            if cl.deallocator == "delete_array":
+                parts.append("        delete[] p;\n")
+            elif cl.deallocator == "free":
+                parts.append("        std::free(p);\n")
+            else:
+                raise ValueError(f"Unsupported linked-list deallocator: {cl.deallocator}")
             parts.append("        p = next;\n")
             parts.append("    }\n")
             parts.append(f"    ucb.{cl.field} = nullptr;\n")
+            parts.append("    }\n")
         parts.append("}\n")
     else:
         parts.append(f"{prefix}ModelCard::~{prefix}ModelCard() = default;\n")
@@ -857,6 +866,20 @@ def generate_adapter_cpp(desc: _Desc, setup_source: str = "", def_content: str =
     # First-call temp
     parts.append(f"    // First-call {desc.temp_function}.\n")
     parts.append("    if (!temp_done_) {\n")
+    for cl in desc.cleanup_linked_lists:
+        parts.append("        {\n")
+        parts.append("        // Release the old list before temperature preprocessing rebuilds it.\n")
+        parts.append(f"        auto* old = model_->{cl.field};\n")
+        parts.append("        while (old) {\n")
+        parts.append(f"            auto* next = old->{cl.next_field};\n")
+        if cl.deallocator == "delete_array":
+            parts.append("            delete[] old;\n")
+        else:
+            parts.append("            std::free(old);\n")
+        parts.append("            old = next;\n")
+        parts.append("        }\n")
+        parts.append(f"        model_->{cl.field} = nullptr;\n")
+        parts.append("        }\n")
     parts.append(f"        int rc = {desc.temp_function}(model_, &ckt);\n")
     parts.append("        if (rc != Shim::OK) {\n")
     parts.append(f'            throw std::runtime_error("{desc.temp_function} failed with rc=" + std::to_string(rc));\n')

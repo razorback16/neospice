@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB BJT code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct BJTModelCard {
+struct BJTModelCard : ModelCardRuntime {
     bjt::BJTModel ucb{};   // aggregate UCB model fields
 
     BJTModelCard() = default;
@@ -36,6 +37,7 @@ public:
         bool areab_given = false;
         bool areac_given = false;
         bool m_given = false;
+        bool off = false; // Zero junction bias during operating-point initialization.
     };
 
     static std::unique_ptr<BJTDevice> make(

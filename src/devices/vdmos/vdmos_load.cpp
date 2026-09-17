@@ -370,7 +370,7 @@ VDMOSload(VDMOSModel *inModel, Shim::Ckt *ckt)
                 /* scale vds with mtr (except with lambda) */
                 double vdss = vds*mtr*here->VDMOSmode;
                 double t0 = 1 + lambda*vds;
-                double t1 = 1 + theta*vgs;
+                double t1 = 1 + theta*vdsat;
                 double betap = Beta*t0/t1;
                 double dbetapdvgs = -Beta*theta*t0/(t1*t1);
                 double dbetapdvds = Beta*lambda/t1;

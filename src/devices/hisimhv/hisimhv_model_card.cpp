@@ -16,7 +16,7 @@ std::unique_ptr<HSMHVModelCard> to_hisimhv_card(const ModelCard& card) {
     namespace S = hisimhv::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, hisimhv::HSMHVmPTable, hisimhv::HSMHVmPTSize,
-        hisimhv::HSMHVmParam, "HSMHV");
+        hisimhv::HSMHVmParam, "HSMHV", out.get());
 
     return out;
 }

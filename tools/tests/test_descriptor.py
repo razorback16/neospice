@@ -282,15 +282,22 @@ def test_model_types_and_charge_states_default_empty(tmp_path):
 
 @pytest.mark.parametrize(
     "name",
-    ["dio", "bjt", "jfet", "mos1", "bsim3", "bsim4v7", "vbic"],
+    ["bjt", "bsim3", "bsim3v32", "bsim4v7", "bsimsoi", "dio",
+     "hfet1", "hfet2", "hisim2", "hisimhv", "jfet2", "mes",
+     "mos1", "mos2", "mos3", "mos9", "vbic", "vdmos"],
 )
 def test_existing_descriptors_still_load(name):
     """All existing YAML descriptors load without error (regression guard)."""
     path = FIXTURES / f"{name}.yaml"
-    if not path.exists():
-        pytest.skip(f"descriptor {name}.yaml not present")
     desc = load_descriptor(path)
     assert isinstance(desc, ModelDescriptor)
     # New fields should have safe defaults
     assert isinstance(desc.model_types, list)
     assert isinstance(desc.charge_states, list)
+
+
+@pytest.mark.parametrize("name", ["asrc", "ltra"])
+def test_manual_migration_notes_are_not_generator_descriptors(name):
+    """These files describe native implementations, not compact-model ports."""
+    with pytest.raises(ValueError, match="manual migration"):
+        load_descriptor(FIXTURES / f"{name}.yaml")

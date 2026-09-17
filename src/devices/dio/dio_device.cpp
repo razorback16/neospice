@@ -67,6 +67,14 @@ DIODevice::make(std::string name,
     inst.DIOlGiven = (geom.l != 0.0) ? 1 : 0;
     inst.DIOm = geom.m;
     inst.DIOmGiven = (geom.m != 1.0) ? 1 : 0;
+    if (geom.temp) {
+        inst.DIOtemp = *geom.temp + 273.15;
+        inst.DIOtempGiven = 1;
+    }
+    if (geom.dtemp) {
+        inst.DIOdtemp = *geom.dtemp;
+        inst.DIOdtempGiven = 1;
+    }
 
     // Thread onto the shared model's instance list.
     inst.DIOnextInstance = shared_card.ucb.DIOinstances;
@@ -353,7 +361,9 @@ std::vector<Device::NoiseSource> DIODevice::noise_sources(
     const int32_t neg_node       = inst_.DIOnegNode       - 1;
     const int32_t pos_prime_node = inst_.DIOposPrimeNode  - 1;
 
-    const double T = sim_temp();
+    // ngspice dionoise.c: explicit TEMP overrides DTEMP; otherwise thermal
+    // noise uses circuit temperature plus the instance offset.
+    const double T = inst_.DIOtempGiven ? inst_.DIOtemp : sim_temp() + inst_.DIOdtemp;
     const double m = inst_.DIOm;
 
     // Series resistance thermal noise: S = 4kT * G_series * area * m

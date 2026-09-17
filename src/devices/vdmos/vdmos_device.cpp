@@ -3,6 +3,7 @@
 
 #include "core/circuit.hpp"        // Circuit::node, tls_integrator_ctx
 #include "core/types.hpp"          // SimOptions defaults
+#include "core/sim_status.hpp"
 #include "devices/ckt_terr.hpp"
 #include "devices/ucb_device_init.hpp"
 #include "devices/ucb_utils.hpp"
@@ -254,15 +255,14 @@ void VDMOSDevice::evaluate(const std::vector<double>& voltages,
 }
 
 // ---------------------------------------------------------------------------
-// ac_stamp — TODO: implement G/C matrix split from ngspice AC load file
+// AC/noise require a G/C matrix split that this adapter does not implement.
 // ---------------------------------------------------------------------------
 void VDMOSDevice::ac_stamp(const std::vector<double>& /*voltages*/,
                              NumericMatrix& /*G*/,
                              NumericMatrix& /*C*/) {
-    // TODO: Port the AC stamp from the ngspice *acld.c file.
-    // Conductances (gm, gds, ...) go into G; capacitances (Cgs, Cgd, ...) into C.
-    // See existing implementations: bsim4v7_device.cpp, hisim2_device.cpp.
-
+    throw SimulationError("VDMOS '" + name() +
+        "': AC/noise linearization is not implemented",
+        SimStatus{.converged = false});
 }
 
 // ---------------------------------------------------------------------------
@@ -339,19 +339,13 @@ std::optional<double> VDMOSDevice::query_param(const std::string& name) const {
 }
 
 // ---------------------------------------------------------------------------
-// noise_sources — TODO: implement device noise model
+// A missing noise model must not appear to contribute zero noise.
 // ---------------------------------------------------------------------------
 std::vector<Device::NoiseSource> VDMOSDevice::noise_sources(
         double /*freq*/, const std::vector<double>& /*dc_solution*/) const {
-    // TODO: Port noise sources from the ngspice *noise.c file.
-    // Common noise types:
-    //   Thermal: 4*k*T*G  (conductance noise)
-    //   Shot:    2*q*|I|  (junction current noise)
-    //   Flicker: KF*|I|^AF / f^EF  (1/f noise)
-    // Use sim_temp() for temperature (inherited from Device base class).
-    // See bjt_device.cpp and bsim4v7_device.cpp for examples.
-    return {};
-
+    throw SimulationError("VDMOS '" + name() +
+        "': noise sources are not implemented",
+        SimStatus{.converged = false});
 }
 
 } // namespace neospice

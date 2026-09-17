@@ -1,3 +1,8 @@
+/* DDT history behavior follows ngspice's parser/PTddt and PTF_DDT.
+ * Copyright 1990 Regents of the University of California. All rights reserved.
+ * Original parse-tree functions: Wayne A. Christopher, U. C. Berkeley CAD Group.
+ * See NOTICE for the Berkeley SPICE terms and ngspice attribution.
+ */
 #include "devices/asrc/expression_ast.hpp"
 #include "core/types.hpp"       // ParseError
 #include "parser/tokenizer.hpp" // parse_spice_number
@@ -893,7 +898,6 @@ CompiledExpression CompiledExpression::compile(const std::string& expr) {
 double CompiledExpression::evaluate(const std::vector<double>& var_values,
                                     std::vector<double>& derivs) const {
     assert(static_cast<int>(var_values.size()) >= num_vars());
-    ddt_eval_idx_ = 0;  // reset DDT node counter for this evaluation
     idt_eval_idx_ = 0;  // reset IDT node counter for this evaluation
     auto dn = eval_node(root_.get(), var_values, num_vars(), true);
     derivs = std::move(dn.grad);
@@ -902,7 +906,6 @@ double CompiledExpression::evaluate(const std::vector<double>& var_values,
 
 double CompiledExpression::evaluate(const std::vector<double>& var_values) const {
     assert(static_cast<int>(var_values.size()) >= num_vars());
-    ddt_eval_idx_ = 0;  // reset DDT node counter for this evaluation
     idt_eval_idx_ = 0;  // reset IDT node counter for this evaluation
     auto dn = eval_node(root_.get(), var_values, num_vars(), false);
     return dn.val;
@@ -1457,34 +1460,25 @@ CompiledExpression::eval_node(const ASTNode* node,
     // --- Time-domain functions (stateful) ---
 
     case NodeType::DDT: {
-        auto a = eval_node(node->left.get(), var_values, nv, need_grad);
-
-        // Each DDT node gets a unique index within an evaluation pass
-        int ddt_idx = ddt_eval_idx_++;
-        if (ddt_idx >= static_cast<int>(ddt_prev_values_.size())) {
-            ddt_prev_values_.resize(ddt_idx + 1, 0.0);
-            ddt_has_prev_.resize(ddt_idx + 1, false);
-            ddt_current_values_.resize(ddt_idx + 1, 0.0);
-            ddt_has_current_.resize(ddt_idx + 1, false);
-        }
-
-        double dt = current_dt_;
-        if (dt > 0.0 && ddt_has_prev_[ddt_idx]) {
-            result.val = (a.val - ddt_prev_values_[ddt_idx]) / dt;
-        } else {
+        auto a = eval_node(node->left.get(), var_values, nv, false);
+        if (current_time_ == 0.0 || !transient_) {
             result.val = 0.0;
+            return result;
         }
-
-        // Gradient: d(DDT(f))/dx_i = (df/dx_i) / dt
-        if (need_grad && dt > 0.0 && ddt_has_prev_[ddt_idx]) {
-            for (int i = 0; i < nv; ++i)
-                result.grad[i] = a.grad[i] / dt;
+        auto& history = ddt_history_[node];
+        if (current_time_ > history.time) {
+            // ngspice PTddt divides by the preceding time interval, and
+            // retains the first argument seen at a new time across Newton
+            // iterations and backward retries. Its parse-tree Jacobian is 0.
+            if (history.samples > 1)
+                history.derivative = (a.val - history.value) /
+                                     (history.time - history.previous_time);
+            history.previous_time = history.time;
+            history.time = current_time_;
+            history.value = a.val;
+            ++history.samples;
         }
-
-        // Store current value in tentative buffer (promoted to prev by accept_ddt())
-        ddt_current_values_[ddt_idx] = a.val;
-        ddt_has_current_[ddt_idx] = true;
-
+        result.val = history.derivative;
         return result;
     }
 

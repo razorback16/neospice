@@ -1,6 +1,7 @@
 #pragma once
 #include "devices/device.hpp"
 #include <span>
+#include <array>
 #include <vector>
 
 namespace neospice {
@@ -9,31 +10,22 @@ namespace neospice {
 ///
 /// SPICE syntax: T<name> p1+ p1- p2+ p2- Z0=val TD=val
 ///
-/// At each transient timestep the TL is modelled as two independent
-/// Norton-equivalent circuits (one per port):
-///
-///   Port 1: conductance G0=1/Z0 || current source  I_hist1 = e1/Z0
-///   Port 2: conductance G0=1/Z0 || current source  I_hist2 = e2/Z0
+/// At each transient timestep the line uses independent delayed-wave port
+/// equations V1-Z0*I1=e1 and V2-Z0*I2=e2, with two MNA branch currents.
 ///
 /// where:
 ///   e1(t) = V2(t-TD) + Z0*I2(t-TD)   (wave incident on port 1)
 ///   e2(t) = V1(t-TD) + Z0*I1(t-TD)   (wave incident on port 2)
 ///
-/// History is stored as a circular time-ordered list of {time, V1, I1, V2, I2}
+/// History is stored as a time-ordered vector of {time, V1, I1, V2, I2}
 /// records.  After each accepted timestep the transient solver calls
 /// accept_step() to push the new record.  evaluate() interpolates the
 /// delayed values from this list.
 ///
-/// DC: a lossless transmission line is a short circuit at DC.  We model this
-/// by stamping a large conductance (1e9 S) that ties p1+ to p2+ and p1- to
-/// p2-.  This ensures correct DC coupling between the two ports.
-///
-/// AC: the exact frequency-domain Y-matrix is stamped per frequency via
-/// ac_stamp_freq().  The Y-parameters are:
-///   Y11 = Y22 = -j * G0 * cot(ω·TD)    (self-admittance)
-///   Y12 = Y21 =  j * G0 * csc(ω·TD)    (cross-admittance)
-/// These are purely imaginary for a lossless line and reproduce the exact
-/// phase shift and impedance at every frequency.
+/// DC: the branch equations enforce equal differential port voltages and
+/// opposite port currents, without tying the ports' common-mode voltages.
+/// AC: V1-Z0*I1 = exp(-j*w*TD)*(V2+Z0*I2), and the symmetric equation.
+/// This form remains well conditioned at the poles of the equivalent Y matrix.
 class TransmissionLine : public Device {
 public:
     TransmissionLine(std::string name,
@@ -42,6 +34,9 @@ public:
                      double z0, double td);
 
     // Device interface
+    int32_t extra_vars() const override { return 2; }
+    void assign_branch_index(int32_t& next) override;
+    int32_t branch_index() const override { return br1_; }
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;
     void evaluate(const std::vector<double>& voltages,
@@ -55,17 +50,19 @@ public:
     // Called by the transient solver after each accepted timestep.
     // Records the converged port voltages and currents into the history buffer
     // so that delayed values are available for future timesteps.
-    void accept_step(double time, const std::vector<double>& solution);
+    std::optional<double> accept_step(double time, const std::vector<double>& solution,
+                                     const IntegratorCtx& ctx, double min_break);
+
+    // TRAtrunc needs the converged solution, not a preceding Newton iterate.
+    double trunc_timestep(const IntegratorCtx& ctx,
+                          const std::vector<double>& solution) const;
 
     // Enable or disable the transient companion model.
-    // When false (DC mode), a shunt conductance is stamped on each port.
+    // When false (DC mode), the two wave equations use unit delay gain.
     void set_transient(bool enable);
 
-    // Initialize the delay-line history from the DC operating point solution.
-    void init_dc_state(const std::vector<double>& sol);
-
-    /// Return breakpoints at t = k*TD for k = 1, 2, ... up to tstop.
-    std::vector<double> get_breakpoints(double tstart, double tstop) const;
+    // Seed history from the DC operating point, or from IC values under UIC.
+    void init_dc_state(const std::vector<double>& sol, bool uic = false);
 
     void set_ic(double v1, double i1, double v2, double i2);
     bool has_ic() const { return has_ic_; }
@@ -83,7 +80,7 @@ public:
 private:
     int32_t p1p_, p1n_, p2p_, p2n_;
     double z0_, td_;
-    double g0_;           // 1/Z0
+    int32_t br1_ = -1, br2_ = -1;
 
     bool transient_ = false;
 
@@ -99,21 +96,20 @@ private:
         double i2;   // Port-2 current into the line
     };
     std::vector<HistoryPoint> history_;
+    HistoryPoint sample(double time, const std::vector<double>& solution) const;
+    bool wave_slope_changed(const HistoryPoint& latest, const HistoryPoint& previous,
+                            const HistoryPoint& older, double dt, double previous_dt) const;
 
     // Cached delayed source values (updated in evaluate() from the history).
     double e1_ = 0.0;   // wave arriving at port 1 from port 2 (delayed)
     double e2_ = 0.0;   // wave arriving at port 2 from port 1 (delayed)
 
-    // Port-1 matrix offsets: conductance shunt between p1p and p1n
-    MatrixOffset off_p1pp_ = -1, off_p1pn_ = -1, off_p1np_ = -1, off_p1nn_ = -1;
-    // Port-2 matrix offsets: conductance shunt between p2p and p2n
-    MatrixOffset off_p2pp_ = -1, off_p2pn_ = -1, off_p2np_ = -1, off_p2nn_ = -1;
-
-    // Cross-port matrix offsets (for DC short-circuit model: p1+↔p2+ and p1-↔p2-)
-    MatrixOffset off_p1p_p2p_ = -1, off_p1p_p2n_ = -1;
-    MatrixOffset off_p1n_p2p_ = -1, off_p1n_p2n_ = -1;
-    MatrixOffset off_p2p_p1p_ = -1, off_p2p_p1n_ = -1;
-    MatrixOffset off_p2n_p1p_ = -1, off_p2n_p1n_ = -1;
+    // Variable order: p1+, p1-, p2+, p2-, I1, I2.
+    std::array<int32_t, 6> variables() const {
+        return {p1p_, p1n_, p2p_, p2n_, br1_, br2_};
+    }
+    std::array<std::array<MatrixOffset, 6>, 6> offsets_{};
+    void stamp_port_equations(NumericMatrix& mat) const;
 
     /// Interpolate delayed wave values from the history buffer.
     /// Sets e1_ and e2_ for use in the next evaluate() call.

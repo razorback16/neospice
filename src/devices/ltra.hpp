@@ -29,13 +29,12 @@ struct LTRAModel;
 ///   - RLC/LC/RC: simple resistive model (R*L series)
 ///   - RG: exact DC (cosh/sinh formulation)
 ///
-/// AC analysis uses the exact frequency-domain two-port Y-matrix:
+/// AC analysis uses frequency-domain two-port propagation equations:
 ///   Y0(s) = sqrt((sC+G)/(sL+R))
 ///   lambda(s) = sqrt((sC+G)*(sL+R))
 ///
-/// The AC stamp is frequency-dependent and requires special handling since
-/// neospice uses the G+jwC split.  We implement this by stamping directly
-/// into the complex Y-matrix during ac_stamp().
+/// ac_stamp() supplies port KCL; ac_stamp_freq() supplies the complex branch
+/// equations at each frequency. RG retains its frequency-independent DC form.
 
 // ---- Line type classification ----
 enum LTRASpecialCase {
@@ -152,6 +151,8 @@ public:
                   NumericMatrix& mat, std::span<double> rhs) override;
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
+    bool ac_stamp_freq(double omega, std::vector<double>& ax, int32_t nnz,
+                       std::vector<std::complex<double>>& ac_rhs) override;
     int32_t extra_vars() const override { return 2; }  // two branch currents
     std::vector<int32_t> external_nodes() const override { return {p1p_, p1n_, p2p_, p2n_}; }
     void assign_branch_index(int32_t& next) override;
@@ -209,6 +210,7 @@ private:
     int32_t br1_ = -1, br2_ = -1;   // branch equation indices
     std::shared_ptr<LTRAModel> model_;
     bool transient_ = false;
+    double gmin_ = 1e-12; // effective device gmin from the latest DC/small-signal load
 
     // Initial condition values (from OP or user IC)
     double initVolt1_ = 0.0, initCur1_ = 0.0;

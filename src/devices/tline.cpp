@@ -15,8 +15,7 @@ TransmissionLine::TransmissionLine(std::string name,
     : Device(std::move(name)),
       p1p_(p1_pos), p1n_(p1_neg),
       p2p_(p2_pos), p2n_(p2_neg),
-      z0_(z0), td_(td),
-      g0_(1.0 / z0)
+      z0_(z0), td_(td)
 {
     assert(z0 > 0.0 && "Z0 must be positive");
     assert(td >= 0.0 && "TD must be non-negative");
@@ -26,50 +25,37 @@ TransmissionLine::TransmissionLine(std::string name,
 // stamp_pattern / assign_offsets
 // ---------------------------------------------------------------------------
 
+void TransmissionLine::assign_branch_index(int32_t& next) {
+    br1_ = next++;
+    br2_ = next++;
+}
+
 void TransmissionLine::stamp_pattern(SparsityBuilder& builder) const {
-    // Port 1 shunt conductance: between p1p and p1n
-    stamp_if_not_ground(builder, p1p_, p1p_);
-    stamp_if_not_ground(builder, p1p_, p1n_);
-    stamp_if_not_ground(builder, p1n_, p1p_);
-    stamp_if_not_ground(builder, p1n_, p1n_);
-
-    // Port 2 shunt conductance: between p2p and p2n
-    stamp_if_not_ground(builder, p2p_, p2p_);
-    stamp_if_not_ground(builder, p2p_, p2n_);
-    stamp_if_not_ground(builder, p2n_, p2p_);
-    stamp_if_not_ground(builder, p2n_, p2n_);
-
-    // Cross-port coupling (for DC short-circuit model: p1+↔p2+ and p1-↔p2-)
-    stamp_if_not_ground(builder, p1p_, p2p_);
-    stamp_if_not_ground(builder, p1p_, p2n_);
-    stamp_if_not_ground(builder, p1n_, p2p_);
-    stamp_if_not_ground(builder, p1n_, p2n_);
-    stamp_if_not_ground(builder, p2p_, p1p_);
-    stamp_if_not_ground(builder, p2p_, p1n_);
-    stamp_if_not_ground(builder, p2n_, p1p_);
-    stamp_if_not_ground(builder, p2n_, p1n_);
+    const auto vars = variables();
+    for (int row = 0; row < 6; ++row)
+        for (int col = 0; col < 6; ++col)
+            if (row >= 4 || (row < 2 ? col == 4 : col == 5))
+                stamp_if_not_ground(builder, vars[row], vars[col]);
 }
 
 void TransmissionLine::assign_offsets(const SparsityPattern& pattern) {
-    off_p1pp_ = offset_if_not_ground(pattern, p1p_, p1p_);
-    off_p1pn_ = offset_if_not_ground(pattern, p1p_, p1n_);
-    off_p1np_ = offset_if_not_ground(pattern, p1n_, p1p_);
-    off_p1nn_ = offset_if_not_ground(pattern, p1n_, p1n_);
+    const auto vars = variables();
+    for (int row = 0; row < 6; ++row)
+        for (int col = 0; col < 6; ++col)
+            offsets_[row][col] = (row >= 4 || (row < 2 ? col == 4 : col == 5))
+                ? offset_if_not_ground(pattern, vars[row], vars[col]) : -1;
+}
 
-    off_p2pp_ = offset_if_not_ground(pattern, p2p_, p2p_);
-    off_p2pn_ = offset_if_not_ground(pattern, p2p_, p2n_);
-    off_p2np_ = offset_if_not_ground(pattern, p2n_, p2p_);
-    off_p2nn_ = offset_if_not_ground(pattern, p2n_, p2n_);
-
-    // Cross-port offsets (DC short-circuit model)
-    off_p1p_p2p_ = offset_if_not_ground(pattern, p1p_, p2p_);
-    off_p1p_p2n_ = offset_if_not_ground(pattern, p1p_, p2n_);
-    off_p1n_p2p_ = offset_if_not_ground(pattern, p1n_, p2p_);
-    off_p1n_p2n_ = offset_if_not_ground(pattern, p1n_, p2n_);
-    off_p2p_p1p_ = offset_if_not_ground(pattern, p2p_, p1p_);
-    off_p2p_p1n_ = offset_if_not_ground(pattern, p2p_, p1n_);
-    off_p2n_p1p_ = offset_if_not_ground(pattern, p2n_, p1p_);
-    off_p2n_p1n_ = offset_if_not_ground(pattern, p2n_, p1n_);
+void TransmissionLine::stamp_port_equations(NumericMatrix& mat) const {
+    // Port KCL and outgoing waves: V1 - Z0*I1 and V2 - Z0*I2.
+    for (int port = 0; port < 2; ++port) {
+        const int pos = 2 * port, neg = pos + 1, branch = 4 + port;
+        add_if_valid(mat, offsets_[pos][branch], 1.0);
+        add_if_valid(mat, offsets_[neg][branch], -1.0);
+        add_if_valid(mat, offsets_[branch][pos], 1.0);
+        add_if_valid(mat, offsets_[branch][neg], -1.0);
+        add_if_valid(mat, offsets_[branch][branch], -z0_);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -173,135 +159,53 @@ void TransmissionLine::update_delayed_values(double t_delayed) {
 // evaluate
 // ---------------------------------------------------------------------------
 
-void TransmissionLine::evaluate(const std::vector<double>& voltages,
+void TransmissionLine::evaluate(const std::vector<double>& /*voltages*/,
                                 NumericMatrix& mat, std::span<double> rhs) {
-    if (!transient_) {
-        // DC: TL is a short circuit. Tie p1+↔p2+ and p1-↔p2- with large conductance.
-        double g_dc = 1e9;
-        // Tie p1p to p2p:
-        add_if_valid(mat, off_p1pp_,    g_dc);   // (p1p,p1p) += g_dc
-        add_if_valid(mat, off_p2pp_,    g_dc);   // (p2p,p2p) += g_dc
-        add_if_valid(mat, off_p1p_p2p_, -g_dc);  // (p1p,p2p) -= g_dc
-        add_if_valid(mat, off_p2p_p1p_, -g_dc);  // (p2p,p1p) -= g_dc
-        // Tie p1n to p2n:
-        add_if_valid(mat, off_p1nn_,    g_dc);   // (p1n,p1n) += g_dc
-        add_if_valid(mat, off_p2nn_,    g_dc);   // (p2n,p2n) += g_dc
-        add_if_valid(mat, off_p1n_p2n_, -g_dc);  // (p1n,p2n) -= g_dc
-        add_if_valid(mat, off_p2n_p1n_, -g_dc);  // (p2n,p1n) -= g_dc
-        e1_ = 0.0;
-        e2_ = 0.0;
+    stamp_port_equations(mat);
+    if (!transient_ || td_ == 0.0) {
+        // At DC (or zero delay), the wave equations imply V1=V2 and I1=-I2.
+        // No large-conductance approximation or common-mode connection is needed.
+        for (int port = 0; port < 2; ++port) {
+            const int branch = 4 + port, other = 1 - port;
+            add_if_valid(mat, offsets_[branch][2 * other], -1.0);
+            add_if_valid(mat, offsets_[branch][2 * other + 1], 1.0);
+            add_if_valid(mat, offsets_[branch][4 + other], -z0_);
+        }
+        e1_ = e2_ = 0.0;
         return;
     }
-
-    // Transient: compute delayed wave sources from history.
-    if (tls_integrator_ctx) {
-        double t_now = tls_integrator_ctx->current_time;
-        update_delayed_values(t_now - td_);
-    }
-
-    // Stamp port-1 Norton companion: conductance G0 + current source e1/Z0
-    // The Norton current source injects current from p1n to p1p: +e1/Z0 at p1p, -e1/Z0 at p1n.
-    add_if_valid(mat, off_p1pp_,  g0_);
-    add_if_valid(mat, off_p1pn_, -g0_);
-    add_if_valid(mat, off_p1np_, -g0_);
-    add_if_valid(mat, off_p1nn_,  g0_);
-
-    // Port-2 Norton companion
-    add_if_valid(mat, off_p2pp_,  g0_);
-    add_if_valid(mat, off_p2pn_, -g0_);
-    add_if_valid(mat, off_p2np_, -g0_);
-    add_if_valid(mat, off_p2nn_,  g0_);
-
-    // RHS current sources: I_hist = e/Z0 = e * G0
-    double i_h1 = e1_ * g0_;
-    double i_h2 = e2_ * g0_;
-
-    add_rhs_if_valid(rhs, p1p_,  i_h1);
-    add_rhs_if_valid(rhs, p1n_, -i_h1);
-    add_rhs_if_valid(rhs, p2p_,  i_h2);
-    add_rhs_if_valid(rhs, p2n_, -i_h2);
+    if (tls_integrator_ctx)
+        update_delayed_values(tls_integrator_ctx->current_time - td_);
+    add_rhs_if_valid(rhs, br1_, e1_);
+    add_rhs_if_valid(rhs, br2_, e2_);
 }
-
-// ---------------------------------------------------------------------------
-// ac_stamp
-// ---------------------------------------------------------------------------
 
 void TransmissionLine::ac_stamp(const std::vector<double>& /*voltages*/,
-                                NumericMatrix& /*G*/, NumericMatrix& /*C*/) {
-    // The lossless TL AC model uses frequency-dependent Y-parameters that are
-    // purely imaginary at all frequencies.  Nothing is stamped into the
-    // frequency-independent G or C matrices — all AC contributions are handled
-    // by ac_stamp_freq() which is called at each frequency point.
+                                NumericMatrix& G, NumericMatrix& /*C*/) {
+    stamp_port_equations(G);
 }
-
-// ---------------------------------------------------------------------------
-// ac_stamp_freq — frequency-dependent cross-port coupling
-// ---------------------------------------------------------------------------
 
 bool TransmissionLine::ac_stamp_freq(double omega,
                                       std::vector<double>& ax, int32_t /*nnz*/,
                                       std::vector<std::complex<double>>& /*ac_rhs*/) {
-    // Exact frequency-domain Y-matrix for a lossless transmission line:
-    //
-    //   Y11 = Y22 = -j * G0 * cot(omega * TD)     (self-admittance)
-    //   Y12 = Y21 =  j * G0 * csc(omega * TD)     (cross-admittance)
-    //
-    // These are purely imaginary for a lossless line.  Near omega*TD = n*pi
-    // the terms diverge; we use a large-value clamp for numerical stability.
-
-    double theta = omega * td_;
-
-    double sin_theta = std::sin(theta);
-    double cos_theta = std::cos(theta);
-
-    double y11_im, y12_im;
-
-    if (std::abs(sin_theta) < 1e-12) {
-        // Near resonance (omega*TD ~ n*pi): TL is approximately a short
-        // circuit.  Use a large admittance to model this.
-        double sign = (cos_theta > 0) ? 1.0 : -1.0;
-        double big = g0_ * 1e12;
-        y11_im = -sign * big;
-        y12_im =  sign * big;
-    } else {
-        // Y11 = -j * G0 * cos(theta) / sin(theta)
-        // Y12 =  j * G0 / sin(theta)
-        y11_im = -g0_ * cos_theta / sin_theta;
-        y12_im =  g0_ / sin_theta;
-    }
-
-    // Y11 and Y12 are purely imaginary: Y11 = j*y11_im, Y12 = j*y12_im
-    // Stamp into ax as imaginary parts (ax[2*off+1])
-    auto stamp_im = [&](MatrixOffset off, double im) {
+    // Eliminate TRA's two internal voltage nodes from ngspice traacld.c:
+    // V1-Z0*I1 = exp(-j*w*TD)*(V2+Z0*I2), and the symmetric equation.
+    // Unlike cot/csc Y parameters, these equations have no resonance poles.
+    const double phase = -omega * td_;
+    const std::complex<double> delay{std::cos(phase), std::sin(phase)};
+    const auto stamp = [&](int row, int col, std::complex<double> value) {
+        const auto off = offsets_[row][col];
         if (off >= 0) {
-            ax[2 * off + 1] += im;
+            ax[2 * off] += value.real();
+            ax[2 * off + 1] += value.imag();
         }
     };
-
-    // Self-admittance Y11 at port 1 (between p1p and p1n)
-    stamp_im(off_p1pp_,  y11_im);
-    stamp_im(off_p1pn_, -y11_im);
-    stamp_im(off_p1np_, -y11_im);
-    stamp_im(off_p1nn_,  y11_im);
-
-    // Self-admittance Y22 at port 2 (between p2p and p2n)
-    stamp_im(off_p2pp_,  y11_im);
-    stamp_im(off_p2pn_, -y11_im);
-    stamp_im(off_p2np_, -y11_im);
-    stamp_im(off_p2nn_,  y11_im);
-
-    // Cross-admittance Y12: port 1 ← port 2
-    stamp_im(off_p1p_p2p_,  y12_im);
-    stamp_im(off_p1p_p2n_, -y12_im);
-    stamp_im(off_p1n_p2p_, -y12_im);
-    stamp_im(off_p1n_p2n_,  y12_im);
-
-    // Cross-admittance Y21: port 2 ← port 1 (symmetric)
-    stamp_im(off_p2p_p1p_,  y12_im);
-    stamp_im(off_p2p_p1n_, -y12_im);
-    stamp_im(off_p2n_p1p_, -y12_im);
-    stamp_im(off_p2n_p1n_,  y12_im);
-
+    for (int port = 0; port < 2; ++port) {
+        const int branch = 4 + port, other = 1 - port;
+        stamp(branch, 2 * other, -delay);
+        stamp(branch, 2 * other + 1, delay);
+        stamp(branch, 4 + other, -z0_ * delay);
+    }
     return true;
 }
 
@@ -309,49 +213,61 @@ bool TransmissionLine::ac_stamp_freq(double omega,
 // accept_step
 // ---------------------------------------------------------------------------
 
-void TransmissionLine::accept_step(double time,
-                                   const std::vector<double>& solution) {
-    // Compute port voltages
-    double vp1p = (p1p_ >= 0) ? solution[p1p_] : 0.0;
-    double vp1n = (p1n_ >= 0) ? solution[p1n_] : 0.0;
-    double vp2p = (p2p_ >= 0) ? solution[p2p_] : 0.0;
-    double vp2n = (p2n_ >= 0) ? solution[p2n_] : 0.0;
+TransmissionLine::HistoryPoint TransmissionLine::sample(
+        double time, const std::vector<double>& solution) const {
+    const auto voltage = [&](int32_t index) { return index >= 0 ? solution[index] : 0.0; };
+    return {time, voltage(p1p_) - voltage(p1n_), solution[br1_],
+                  voltage(p2p_) - voltage(p2n_), solution[br2_]};
+}
 
-    double v1 = vp1p - vp1n;
-    double v2 = vp2p - vp2n;
+bool TransmissionLine::wave_slope_changed(const HistoryPoint& latest,
+        const HistoryPoint& previous, const HistoryPoint& older,
+        double dt, double previous_dt) const {
+    if (dt <= 0.0 || previous_dt <= 0.0) return false;
+    const auto changed = [&](double v, double p, double q) {
+        const double d1 = (v - p) / dt;
+        const double d2 = (p - q) / previous_dt;
+        // ngspice TRA's instance defaults are reltol=1 and abstol=1.
+        return std::abs(d1 - d2) >= std::max(std::abs(d1), std::abs(d2)) + 1.0;
+    };
+    return changed(latest.v1 + z0_ * latest.i1,
+                   previous.v1 + z0_ * previous.i1, older.v1 + z0_ * older.i1) ||
+           changed(latest.v2 + z0_ * latest.i2,
+                   previous.v2 + z0_ * previous.i2, older.v2 + z0_ * older.i2);
+}
 
-    // Port currents: I = G0*V - e*G0
-    // At the just-accepted timestep the stored e values are what was used
-    // during that Newton solve, i.e., the delayed values from (t-TD).
-    // Current into port 1 from the external circuit: I1 = G0*(V1 - e1/G0... wait
-    // The companion model stamps G0 shunt and current source e*G0 into the RHS.
-    // KCL at p1p: sum of currents = 0.
-    // The current flowing INTO the device (into p1p) = G0*(Vp1p - Vp1n) - e1*G0
-    //   = G0*v1 - e1*g0
-    // But we want I1 as defined by the physics: the current entering the port.
-    // In the Norton model: I1 = G0*V1 - I_src = G0*v1 - e1*g0
-    double i1 = g0_ * v1 - e1_ * g0_;
-    double i2 = g0_ * v2 - e2_ * g0_;
+std::optional<double> TransmissionLine::accept_step(double time,
+        const std::vector<double>& solution, const IntegratorCtx& ctx,
+        double min_break) {
+    if (td_ == 0.0 || history_.size() < 3) return std::nullopt;
+    // TRAaccept retains two points preceding the delayed interpolation bracket.
+    size_t i = 2;
+    while (i + 1 < history_.size() && time - td_ > history_[i].time) ++i;
+    if (i > 2) history_.erase(history_.begin(), history_.begin() + (i - 2));
+    if (time - history_.back().time <= min_break) return std::nullopt;
+    const auto latest = sample(time, solution);
+    const auto& previous = history_.back();
+    const auto& older = history_[history_.size() - 2];
+    std::optional<double> breakpoint;
+    if (wave_slope_changed(latest, previous, older,
+                           ctx.delta_old[0], ctx.delta_old[1]))
+        breakpoint = previous.time + td_;
+    history_.push_back(latest);
+    return breakpoint;
+}
 
-    HistoryPoint hp;
-    hp.time = time;
-    hp.v1 = v1;
-    hp.i1 = i1;
-    hp.v2 = v2;
-    hp.i2 = i2;
-    history_.push_back(hp);
-
-    // Trim history older than TD + a small margin (keep a few extra points for
-    // interpolation across large time jumps).
-    if (!history_.empty()) {
-        double t_keep = time - td_ - 2.0 * td_;   // keep 3 * TD of history
-        if (t_keep > 0.0) {
-            // Remove entries older than t_keep but keep at least 2 points.
-            while (history_.size() > 2 && history_.front().time < t_keep) {
-                history_.erase(history_.begin());
-            }
-        }
-    }
+double TransmissionLine::trunc_timestep(const IntegratorCtx& ctx,
+        const std::vector<double>& solution) const {
+    if (!transient_ || td_ == 0.0 || history_.size() < 2) return 1e30;
+    // Match TRAtrunc's historical step denominators. This pre-acceptance
+    // check prevents advancing past a delayed corner before TRAaccept can
+    // insert its breakpoint into the driver's queue.
+    const auto& previous = history_.back();
+    if (wave_slope_changed(sample(ctx.current_time, solution), previous,
+                           history_[history_.size() - 2],
+                           ctx.delta_old[1], ctx.delta_old[2]))
+        return previous.time + td_ - ctx.current_time;
+    return 1e30;
 }
 
 // ---------------------------------------------------------------------------
@@ -364,9 +280,10 @@ void TransmissionLine::set_ic(double v1, double i1, double v2, double i2) {
     ic_v2_ = v2; ic_i2_ = i2;
 }
 
-void TransmissionLine::init_dc_state(const std::vector<double>& sol) {
+void TransmissionLine::init_dc_state(const std::vector<double>& sol, bool uic) {
     double v1, i1, v2, i2;
-    if (has_ic_) {
+    // ngspice TRAload uses instance initial conditions only under MODEUIC.
+    if (uic) {
         v1 = ic_v1_; i1 = ic_i1_;
         v2 = ic_v2_; i2 = ic_i2_;
     } else {
@@ -376,8 +293,8 @@ void TransmissionLine::init_dc_state(const std::vector<double>& sol) {
         double vp2n = (p2n_ >= 0) ? sol[p2n_] : 0.0;
         v1 = vp1p - vp1n;
         v2 = vp2p - vp2n;
-        i1 = 0.0;
-        i2 = 0.0;
+        i1 = sol[br1_];
+        i2 = sol[br2_];
     }
     history_.clear();
     for (int k = 2; k >= 0; --k) {
@@ -400,25 +317,6 @@ void TransmissionLine::set_transient(bool enable) {
         e1_ = 0.0;
         e2_ = 0.0;
     }
-}
-
-// ---------------------------------------------------------------------------
-// get_breakpoints — return multiples of TD in (tstart, tstop]
-// ---------------------------------------------------------------------------
-
-std::vector<double> TransmissionLine::get_breakpoints(double tstart, double tstop) const {
-    std::vector<double> bps;
-    if (td_ <= 0.0) return bps;
-
-    // k*TD for k = 1, 2, ... while k*TD <= tstop
-    int kmax = static_cast<int>(tstop / td_);
-    for (int k = 1; k <= kmax; ++k) {
-        double t = k * td_;
-        if (t > tstart && t <= tstop) {
-            bps.push_back(t);
-        }
-    }
-    return bps;
 }
 
 } // namespace neospice

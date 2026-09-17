@@ -19,11 +19,12 @@ void register_bjt(DeviceRegistry& reg) {
         'q', 0,
         [](std::string_view name,
            std::span<const int32_t> nodes,
-           const std::unordered_map<std::string, double>& /*params*/,
+           const std::unordered_map<std::string, double>& params,
            Circuit::ModelCardHolder& holder) -> std::unique_ptr<Device> {
             auto* h = dynamic_cast<Circuit::TypedModelCardHolder<BJTModelCard>*>(&holder);
             if (!h) return nullptr;
             BJTDevice::Geom geom;
+            if (auto it = params.find("off"); it != params.end()) geom.off = it->second != 0.0;
             return BJTDevice::make(std::string(name), nodes[0], nodes[1],
                                    nodes[2], nodes[3], geom, *h->card);
         }

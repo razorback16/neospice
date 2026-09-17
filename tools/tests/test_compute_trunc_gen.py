@@ -25,11 +25,11 @@ def test_extract_charge_offsets_empty():
 
 
 def test_generated_compute_trunc_has_lte():
-    """Generated compute_trunc contains LTE formula when charge offsets found."""
+    """Generated compute_trunc delegates charge LTE to the shared helper."""
     from ngspice_migrate.gen_adapter import _gen_compute_trunc
     code = _gen_compute_trunc(None, ["DIOcapCharge"], [])
-    assert "lte_coefficient" in code
-    assert "dd2" in code
+    assert "ckt_terr(inst_.DIOcapCharge, states, ctx, opts, dt_min);" in code
+    assert "{state0_, state1_, state2_, state3_}" in code
     assert "dt_min" in code
     assert "inst_.DIOcapCharge" in code
     assert "TODO" not in code

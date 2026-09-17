@@ -19,11 +19,13 @@ void register_mes(DeviceRegistry& reg) {
         'z', 0,
         [](std::string_view name,
            std::span<const int32_t> nodes,
-           const std::unordered_map<std::string, double>& /*params*/,
+           const std::unordered_map<std::string, double>& params,
            Circuit::ModelCardHolder& holder) -> std::unique_ptr<Device> {
             auto* h = dynamic_cast<Circuit::TypedModelCardHolder<MESModelCard>*>(&holder);
             if (!h) return nullptr;
             MESDevice::Geom geom;
+            if (auto it = params.find("area"); it != params.end()) geom.area = it->second;
+            if (auto it = params.find("m"); it != params.end()) geom.m = it->second;
             return MESDevice::make(std::string(name), nodes[0], nodes[1],
                                    nodes[2], geom, *h->card);
         }

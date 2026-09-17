@@ -19,11 +19,13 @@ void register_dio(DeviceRegistry& reg) {
         'd', 0,
         [](std::string_view name,
            std::span<const int32_t> nodes,
-           const std::unordered_map<std::string, double>& /*params*/,
+           const std::unordered_map<std::string, double>& params,
            Circuit::ModelCardHolder& holder) -> std::unique_ptr<Device> {
             auto* h = dynamic_cast<Circuit::TypedModelCardHolder<DIOModelCard>*>(&holder);
             if (!h) return nullptr;
             DIODevice::Geom geom;
+            if (auto it = params.find("temp"); it != params.end()) geom.temp = it->second;
+            if (auto it = params.find("dtemp"); it != params.end()) geom.dtemp = it->second;
             return DIODevice::make(std::string(name), nodes[0], nodes[1],
                                    geom, *h->card);
         }

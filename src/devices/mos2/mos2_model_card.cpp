@@ -16,7 +16,7 @@ std::unique_ptr<MOS2ModelCard> to_mos2_card(const ModelCard& card) {
     namespace S = mos2::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, mos2::MOS2mPTable, mos2::MOS2mPTSize,
-        mos2::MOS2mParam, "MOS2");
+        mos2::MOS2mParam, "MOS2", out.get());
 
     return out;
 }

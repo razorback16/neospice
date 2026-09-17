@@ -34,6 +34,19 @@ std::string to_lower(const std::string& s) {
     std::transform(result.begin(), result.end(), result.begin(), ::tolower);
     return result;
 }
+// Model cards retain their declaration spelling in the cache. Prefer direct
+// lookups, then resolve mixed-case references to that same shared card.
+auto find_model(const std::unordered_map<std::string, ModelCard>& models,
+                const std::string& name) {
+    auto found = models.find(name);
+    if (found != models.end()) return found;
+    const auto lower = to_lower(name);
+    found = models.find(lower);
+    if (found != models.end()) return found;
+    return std::find_if(models.begin(), models.end(), [&](const auto& item) {
+        return to_lower(item.first) == lower;
+    });
+}
 } // anonymous namespace
 
 std::unique_ptr<ParsedElement> parse_mosfet_element(
@@ -42,8 +55,22 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
     // M name nd ng ns nb [nsub] modelname [W=.. L=.. NF=.. AD=.. AS=.. PD=..
     //                                      PS=.. NRD=.. NRS=.. SA=.. SB=.. SD=..]
     // 5-terminal form (e.g. HiSIM_HV): M1 d g s b sub modelname ...
-    if (tokens.size() < 6) {
-        ctx.error("M card requires name, nd, ng, ns, nb, modelname");
+    if (tokens.size() < 5) {
+        ctx.error("M card requires name, drain, gate, source and a model");
+        return nullptr;
+    }
+    // ngspice 47 INP2M starts looking for the model after three terminals.
+    // Only VDMOS may omit the fourth terminal (its optional thermal node).
+    auto third_model = find_model(ctx.models, tokens[4]);
+    const bool three_terminals = third_model != ctx.models.end();
+    if (three_terminals) {
+        const auto& type = third_model->second.type;
+        if (type != "vdmos" && type != "vdmosn" && type != "vdmosp") {
+            ctx.error("Three-terminal M card requires a VDMOS model");
+            return nullptr;
+        }
+    } else if (tokens.size() < 6) {
+        ctx.error("M card requires a valid model after its terminals");
         return nullptr;
     }
     auto m = std::make_unique<ParsedMosfet>();
@@ -51,7 +78,7 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
     m->nd          = ctx.node(tokens[1]);
     m->ng          = ctx.node(tokens[2]);
     m->ns          = ctx.node(tokens[3]);
-    m->nb          = ctx.node(tokens[4]);
+    m->nb          = three_terminals ? GROUND_INTERNAL : ctx.node(tokens[4]);
     m->line_number = ctx.line_number;
 
     // Detect 5- or 6-terminal M-cards by scanning forward from
@@ -62,38 +89,42 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
     // 5-terminal (HiSIM_HV):         M1 d g s b sub model [params]
     // 6-terminal (BSIMSOI):           M1 d g s e p b model [params]
     size_t param_start = 6;
-    std::string tok5_lower = to_lower(tokens[5]);
-    bool tok5_is_model = (ctx.models.find(tokens[5]) != ctx.models.end() ||
-                          ctx.models.find(tok5_lower) != ctx.models.end());
-    if (!tok5_is_model && tokens.size() >= 7 &&
-        tokens[5].find('=') == std::string::npos &&
-        tokens[6].find('=') == std::string::npos) {
-        // tokens[5] is an extra terminal.  Check whether tokens[6]
-        // is the model name (5-terminal) or yet another node
-        // (6-terminal).
-        std::string tok6_lower = to_lower(tokens[6]);
-        bool tok6_is_model = (ctx.models.find(tokens[6]) != ctx.models.end() ||
-                              ctx.models.find(tok6_lower) != ctx.models.end());
-        if (!tok6_is_model && tokens.size() >= 8 &&
-            tokens[6].find('=') == std::string::npos &&
-            tokens[7].find('=') == std::string::npos) {
-            // 6-terminal form (e.g. BSIMSOI): tokens[5]=p, tokens[6]=b
-            m->nsub = ctx.node(tokens[5]);
-            m->nsub_given = true;
-            m->npnode = ctx.node(tokens[6]);
-            m->nbulk_given = true;
-            m->model_name = tokens[7];
-            param_start = 8;
-        } else {
-            // 5-terminal form: tokens[5] is substrate node
-            m->nsub = ctx.node(tokens[5]);
-            m->nsub_given = true;
-            m->model_name = tokens[6];
-            param_start = 7;
-        }
+    if (three_terminals) {
+        m->model_name = tokens[4];
+        param_start = 5;
     } else {
-        m->model_name = tokens[5];
+        bool tok5_is_model = find_model(ctx.models, tokens[5]) != ctx.models.end();
+        if (!tok5_is_model && tokens.size() >= 7 &&
+            tokens[5].find('=') == std::string::npos &&
+            tokens[6].find('=') == std::string::npos) {
+            // tokens[5] is an extra terminal.  Check whether tokens[6]
+            // is the model name (5-terminal) or yet another node
+            // (6-terminal).
+            bool tok6_is_model = find_model(ctx.models, tokens[6]) != ctx.models.end();
+            if (!tok6_is_model && tokens.size() >= 8 &&
+                tokens[6].find('=') == std::string::npos &&
+                tokens[7].find('=') == std::string::npos) {
+                // 6-terminal form (e.g. BSIMSOI): tokens[5]=p, tokens[6]=b
+                m->nsub = ctx.node(tokens[5]);
+                m->nsub_given = true;
+                m->npnode = ctx.node(tokens[6]);
+                m->nbulk_given = true;
+                m->model_name = tokens[7];
+                param_start = 8;
+            } else {
+                // 5-terminal form: tokens[5] is substrate node
+                m->nsub = ctx.node(tokens[5]);
+                m->nsub_given = true;
+                m->model_name = tokens[6];
+                param_start = 7;
+            }
+        } else {
+            m->model_name = tokens[5];
+        }
     }
+
+    if (const auto model = find_model(ctx.models, m->model_name); model != ctx.models.end())
+        m->model_name = model->first;
 
     for (size_t i = param_start; i < tokens.size(); ++i) {
         // Reconstruct a "key", "valstr" pair from the token stream, tolerating
@@ -225,6 +256,10 @@ void resolve_mosfets(
         // ".MODEL name VDMOS(...)" card carries type "vdmos"/"vdmosn"/"vdmosp".
         const std::string& mtype = it->second.type;
         if (mtype == "vdmos" || mtype == "vdmosn" || mtype == "vdmosp") {
+            if (m.nbulk_given) {
+                throw ParseError("Line " + std::to_string(m.line_number) +
+                                 ": VDMOS accepts at most five terminals");
+            }
             auto card_it = vdmos_cards.find(m.model_name);
             if (card_it == vdmos_cards.end()) {
                 try {
@@ -238,11 +273,9 @@ void resolve_mosfets(
             VDMOSDevice::Geom vdmos_geom;
             vdmos_geom.M = m.geom.M;
             // ngspice VDMOS M-card node order: drain, gate, source, [Tj], [Tcase].
-            // neospice's M-card parser always captures a 4th positional (nb) and
-            // an optional 5th (nsub).  Map the 4th positional to the junction-
-            // temperature node and the optional 5th to the case node.  When the
-            // thermal model is off (default) VDMOSsetup force-grounds these, so
-            // the bound nodes are harmless — matching ngspice exactly.
+            // Optional thermal terminals occupy nb/nsub in ParsedMosfet.
+            // With the isothermal adapter, omitted terminals are ground and
+            // VDMOSsetup also grounds any supplied thermal terminals.
             int32_t n_tj = m.nb;
             int32_t n_tc = m.nsub_given ? m.nsub : GROUND_INTERNAL;
             auto dev = VDMOSDevice::make(m.name, m.nd, m.ng, m.ns, n_tj, n_tc,

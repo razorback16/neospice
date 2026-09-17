@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB JFET2 code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct JFET2ModelCard {
+struct JFET2ModelCard : ModelCardRuntime {
     jfet2::JFET2Model ucb{};   // aggregate UCB model fields
 
     JFET2ModelCard() = default;

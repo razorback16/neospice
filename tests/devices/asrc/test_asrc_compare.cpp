@@ -43,7 +43,7 @@ TEST_F(ASRCValidation, VoltageDoublerDC) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -76,7 +76,7 @@ TEST_F(ASRCValidation, CurrentModeVCCS) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -109,7 +109,7 @@ TEST_F(ASRCValidation, NonlinearSquare) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -142,7 +142,7 @@ TEST_F(ASRCValidation, TrigSin) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -175,7 +175,7 @@ TEST_F(ASRCValidation, MultiVariable) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -210,7 +210,7 @@ TEST_F(ASRCValidation, TempCoVoltageMode) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -244,7 +244,7 @@ TEST_F(ASRCValidation, TempCoCurrentMode) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice
@@ -278,7 +278,7 @@ TEST_F(ASRCValidation, ACGain) {
     try {
         ng_result = ngspice_->run_ac(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     // Run neospice

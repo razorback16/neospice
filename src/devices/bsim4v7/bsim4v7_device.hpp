@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB BSIM4v7 code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct BSIM4v7ModelCard {
+struct BSIM4v7ModelCard : ModelCardRuntime {
     bsim4v7::BSIM4v7Model ucb{};   // aggregate UCB model fields
 
     BSIM4v7ModelCard() = default;

@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB HSM2 code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct HSM2ModelCard {
+struct HSM2ModelCard : ModelCardRuntime {
     hisim2::HSM2Model ucb{};   // aggregate UCB model fields
 
     HSM2ModelCard() = default;

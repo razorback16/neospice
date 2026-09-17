@@ -3,6 +3,7 @@
 #include <span>
 #include <cmath>
 #include <complex>
+#include <optional>
 #include <vector>
 
 namespace neospice {
@@ -15,6 +16,35 @@ enum class SourceFunction { DC, PULSE, SIN, PWL, EXP, SFFM, AM };
 
 struct PulseParams {
     double v1 = 0, v2 = 0, td = 0, tr = -1, tf = -1, pw = -1, per = -1;
+
+    // After resolve_defaults(): preserve ngspice VSRC/ISRC period reduction,
+    // endpoint ordering and arithmetic order, including near-zero ramps.
+    double value_at(double t) const {
+        double local = t - td;
+        if (per > 0 && local > per)
+            local -= per * std::floor(local / per);
+        if (local <= 0 || local >= tr + pw + tf) return v1;
+        if (local >= tr && local <= tr + pw) return v2;
+        if (local > 0 && local < tr)
+            return v1 + (v2 - v1) * local / tr;
+        return v2 + (v1 - v2) * (local - (tr + pw)) / tf;
+    }
+
+    // ngspice VSRC/ISRCaccept: calculate the next corner from the accepted
+    // time, preserving floating-point operation order and minimum spacing.
+    double next_breakpoint(double t, double min_break) const {
+        double local = t - td;
+        if (per > 0 && local >= per)
+            local -= per * std::floor(local / per);
+        const double adjusted = local + min_break;
+        double wait;
+        if (adjusted < 0) wait = -local;
+        else if (adjusted < tr) wait = tr - local;
+        else if (adjusted < tr + pw) wait = tr + pw - local;
+        else if (adjusted < tr + pw + tf) wait = tr + pw + tf - local;
+        else wait = per - local;
+        return t + wait;
+    }
 };
 
 struct SinParams {
@@ -34,7 +64,20 @@ struct SffmParams {
 };
 
 struct AmParams {
-    double sa = 0, oc = 0, fm = -1, fc = -1, td = 0;
+    // ngspice 47: output offset, modulation offset/amplitude, frequencies,
+    // delay and independent phases in degrees. Omission differs from zero.
+    double vo = 0, vmo = 0, vma = 1;
+    std::optional<double> fm, fc;
+    double td = 0, phasem = 0, phasec = 0;
+
+    double value_at(double t, double tstop) const {
+        const double time = t - td;
+        if (time <= 0) return 0.0;
+        const double mod_freq = fm.value_or(tstop > 0 ? 5.0 / tstop : 0.0);
+        const double carrier_freq = fc.value_or(tstop > 0 ? 500.0 / tstop : 0.0);
+        return vo + (vmo + vma * std::sin(2.0 * M_PI * mod_freq * time + phasem * M_PI / 180.0))
+            * std::sin(2.0 * M_PI * carrier_freq * time + phasec * M_PI / 180.0);
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -96,6 +139,16 @@ public:
     /// Return source breakpoints in (tstart, tstop].
     std::vector<double> get_breakpoints(double tstart, double tstop) const;
 
+    /// Request the next PULSE corner after an accepted point. Reset on each
+    /// resolve_defaults() so a reused circuit starts with a fresh schedule.
+    std::optional<double> accept_pulse_breakpoint(double t, double min_break) {
+        if (func_ != SourceFunction::PULSE || pulse_.per <= 0 || t < pulse_next_request_)
+            return std::nullopt;
+        const double next = pulse_.next_breakpoint(t, min_break);
+        pulse_next_request_ = next - min_break;
+        return next;
+    }
+
     /// Return the source function type (DC, PULSE, SIN, etc.).
     SourceFunction source_function() const { return func_; }
 
@@ -129,11 +182,13 @@ private:
     // Transient
     SourceFunction func_ = SourceFunction::DC;
     PulseParams    pulse_;
+    double pulse_next_request_ = 0.0;
     SinParams      sin_;
     PwlParams      pwl_;
     ExpParams      exp_;
     SffmParams     sffm_;
     AmParams       am_;
+    double         am_tstop_ = 0.0;
     double         current_time_ = 0.0;
 
     // Cached offsets (assigned after pattern is built)

@@ -15,7 +15,7 @@ std::unique_ptr<MESModelCard> to_mes_card(const ModelCard& card) {
     namespace S = mes::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, mes::MESmPTable, mes::MESmPTSize,
-        mes::MESmParam, "MES");
+        mes::MESmParam, "MES", out.get());
 
     return out;
 }

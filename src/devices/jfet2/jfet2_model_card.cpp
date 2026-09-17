@@ -15,7 +15,7 @@ std::unique_ptr<JFET2ModelCard> to_jfet2_card(const ModelCard& card) {
     namespace S = jfet2::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, jfet2::JFET2mPTable, jfet2::JFET2mPTSize,
-        jfet2::JFET2mParam, "JFET2");
+        jfet2::JFET2mParam, "JFET2", out.get());
 
     return out;
 }

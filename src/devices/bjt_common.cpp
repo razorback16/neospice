@@ -71,7 +71,7 @@ std::unique_ptr<ParsedElement> parse_bjt_element(
         auto eq = tokens[i].find('=');
         if (eq == std::string::npos) {
             std::string lower = to_lower(tokens[i]);
-            if (lower == "off") continue; // ignore OFF flag
+            if (lower == "off") { q->geom.off = true; continue; }
             // Bare number = area factor (legacy SPICE2 syntax)
             try {
                 q->geom.area = parse_spice_number(tokens[i]);
@@ -107,6 +107,7 @@ std::unique_ptr<ParsedElement> parse_bjt_element(
         else if (key == "areab") { q->geom.areab = val; q->geom.areab_given = true; }
         else if (key == "areac") { q->geom.areac = val; q->geom.areac_given = true; }
         else if (key == "m") { q->geom.m = val; q->geom.m_given = true; }
+        else if (key == "off") { q->geom.off = val != 0.0; }
     }
     return q;
 }
@@ -117,7 +118,7 @@ void resolve_bjts(
     Circuit& ckt, ParseContext& ctx)
 {
     // Resolve deferred BJTs (Q-cards dispatch to BJT or VBIC based on LEVEL)
-    // LEVEL=1 (default, or unspecified) -> BJT (Gummel-Poon)
+    // LEVEL=0, 1 (default), or 2         -> BJT (Gummel-Poon)
     // LEVEL=4 or LEVEL=9               -> VBIC
     std::unordered_map<std::string, std::unique_ptr<BJTModelCard>> bjt_cards;
     std::unordered_map<std::string, std::unique_ptr<VBICModelCard>> vbic_cards;
@@ -137,9 +138,9 @@ void resolve_bjts(
         // ngspice treats as PNP polarity with a lateral substrate).
         std::string model_type = to_lower(it->second.type);
         if (model_type != "npn" && model_type != "pnp" && model_type != "lpnp") {
-            fprintf(stderr, "Warning: Line %d: Q card references non-BJT model '%s' — skipping\n",
-                    q.line_number, q.model_name.c_str());
-            continue;
+            throw ParseError("Line " + std::to_string(q.line_number) +
+                             ": Q card '" + q.name + "' references non-BJT model '" +
+                             q.model_name + "'");
         }
 
         // Determine level: default=1 (BJT), 4 or 9 = VBIC
@@ -147,7 +148,12 @@ void resolve_bjts(
         int level = (level_it == it->second.params.end()) ? 1
                     : static_cast<int>(level_it->second);
 
-        if (level == 4 || level == 9 || level == 12 || level == 13) {
+        if (level != 0 && level != 1 && level != 2 && level != 4 && level != 9) {
+            throw ParseError("Line " + std::to_string(q.line_number) +
+                             ": unsupported BJT model level " + std::to_string(level) +
+                             " for '" + q.model_name + "'");
+        }
+        if (level == 4 || level == 9) {
             // VBIC model
             auto card_it = vbic_cards.find(q.model_name);
             if (card_it == vbic_cards.end()) {
@@ -165,6 +171,7 @@ void resolve_bjts(
             vgeom.area_given = q.geom.area_given;
             vgeom.m = q.geom.m;
             vgeom.m_given = q.geom.m_given;
+            vgeom.off = q.geom.off;
             auto dev = VBICDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
                                         vgeom, *card_it->second);
             dev->set_ngspice_setup_order(it->second.effective_setup_order(), q.parse_order);

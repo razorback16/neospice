@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
+from pathlib import Path
+import shlex
 from typing import List, Optional
+from ngspice_migrate.descriptor import ModelType, load_descriptor
 
 import pytest
+import subprocess
 
 from ngspice_migrate.gen_adapter import (
     extract_output_params,
@@ -38,6 +43,7 @@ class StubGeomParam:
 class StubCleanupLinkedList:
     field: str
     next_field: str
+    deallocator: str = "free"
 
 
 @dataclass
@@ -75,6 +81,7 @@ class StubDescriptor:
     cleanup_linked_lists: List[StubCleanupLinkedList] = field(default_factory=list)
     version_stamp: Optional[StubVersionStamp] = None
     matrix_ptr_suffix: str = "Ptr"
+    model_types: list = field(default_factory=lambda: [ModelType("d", "", 0)])
 
 
 @pytest.fixture
@@ -142,7 +149,7 @@ class TestAdapterHpp:
         assert "void stamp_pattern(SparsityBuilder& builder) const override;" in hpp
         assert "void assign_offsets(const SparsityPattern& pattern) override;" in hpp
         assert "void evaluate(const std::vector<double>& voltages," in hpp
-        assert "void set_state_ptrs(double* s0, double* s1, double* s2, int32_t base) override;" in hpp
+        assert "void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override;" in hpp
         assert "void reset_temp() override { temp_done_ = false; }" in hpp
 
     def test_private_members(self, desc: StubDescriptor) -> None:
@@ -273,13 +280,14 @@ class TestAdapterCpp:
         cpp = generate_adapter_cpp(desc)
         assert "DIODevice::declare_internal_nodes" in cpp
         assert "DIOsetup" in cpp
-        assert "SparsityBuilder scratch(1);" in cpp
-        assert "Shim::Matrix shim_matrix(scratch);" in cpp
+        assert "ucb_declare_internal_nodes<Shim::Matrix, Shim::Ckt>" in cpp
+        assert '"DIOsetup", journal_, max_neo_node_' in cpp
 
     def test_internal_node_callback(self, desc: StubDescriptor) -> None:
         cpp = generate_adapter_cpp(desc)
-        assert "node_alloc" in cpp
-        assert "ckt.node(full)" in cpp
+        assert "[this](Shim::Matrix& m, Shim::Ckt& c)" in cpp
+        assert "int rc = DIOsetup(&m, model_, &c, &states);" in cpp
+        assert "return rc;" in cpp
 
     def test_no_node_alloc_without_internal_nodes(self) -> None:
         desc = StubDescriptor(has_internal_nodes=False)
@@ -289,14 +297,14 @@ class TestAdapterCpp:
     def test_stamp_pattern(self, desc: StubDescriptor) -> None:
         cpp = generate_adapter_cpp(desc)
         assert "DIODevice::stamp_pattern" in cpp
-        assert "builder.add(r - 1, c - 1);" in cpp
+        assert "ucb_stamp_pattern(journal_, builder);" in cpp
 
     def test_assign_offsets(self, desc: StubDescriptor) -> None:
         cpp = generate_adapter_cpp(desc)
         assert "DIODevice::assign_offsets" in cpp
         assert "#define RESOLVE(f)" in cpp
         assert "#undef RESOLVE" in cpp
-        assert "pattern.offset(r - 1, c - 1)" in cpp
+        assert "ucb_compute_offsets(journal_, pattern)" in cpp
 
     def test_set_state_ptrs(self, desc: StubDescriptor) -> None:
         cpp = generate_adapter_cpp(desc)
@@ -638,3 +646,40 @@ Shim::IfParm DIOpTable[] = {
         assert 'TODO: map DIO_VOLTAGE' in cpp
         # IOP entries should reference inst_ field
         assert 'inst_.DIOarea' in cpp
+
+
+@pytest.mark.parametrize('model', ['bsim3', 'bsim3v32', 'bsim4v7'])
+def test_generated_array_cleanup_runs_destructors(tmp_path, model):
+    """Exercise generated list traversal and allocation pairing, not just text."""
+    repo = Path(__file__).resolve().parents[2]
+    desc = load_descriptor(repo / 'tools/descriptors' / (model + '.yaml'))
+    cpp = generate_adapter_cpp(desc)
+    name = desc.prefix + 'ModelCard'
+    start = cpp.index(name + '::~' + name + '() {')
+    end = cpp.index('\n}', start) + 2
+    source = tmp_path / 'cleanup.cpp'
+    source.write_text('''#include <cstdlib>
+static int destroyed = 0;
+struct Node { Node* pNext = nullptr; ~Node() { ++destroyed; } };
+struct ''' + name + ''' {
+    struct { Node* pSizeDependParamKnot = nullptr; } ucb;
+    ~''' + name + '''();
+};
+''' + cpp[start:end] + '''
+int main() {
+    {
+        ''' + name + ''' card;
+        card.ucb.pSizeDependParamKnot = new Node[1];
+        card.ucb.pSizeDependParamKnot->pNext = new Node[1];
+    }
+    return destroyed == 2 ? 0 : 1;
+}
+''')
+    binary = tmp_path / 'cleanup'
+    command = shlex.split(os.environ.get('CXX', 'c++')) + [
+        '-std=c++20', str(source), '-o', str(binary),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr

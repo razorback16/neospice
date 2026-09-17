@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB VBIC code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct VBICModelCard {
+struct VBICModelCard : ModelCardRuntime {
     vbic::VBICModel ucb{};   // aggregate UCB model fields
 
     VBICModelCard() = default;
@@ -32,6 +33,7 @@ public:
         double m = 1.0;
         bool area_given = false;
         bool m_given = false;
+        bool off = false; // Zero junction bias during operating-point initialization.
     };
 
     static std::unique_ptr<VBICDevice> make(
@@ -47,7 +49,7 @@ public:
     void ac_stamp(const std::vector<double>& voltages,
                   NumericMatrix& G, NumericMatrix& C) override;
 
-    int32_t state_vars() const override { return 66; }
+    int32_t state_vars() const override { return inst_.VBICexcessPhase ? 74 : 66; }
     void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override;
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;

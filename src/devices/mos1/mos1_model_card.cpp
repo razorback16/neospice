@@ -34,7 +34,7 @@ std::unique_ptr<MOS1ModelCard> to_mos1_card(const ModelCard& card) {
     namespace S = mos1::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         filtered, ucb, mos1::MOS1mPTable, mos1::MOS1mPTSize,
-        mos1::MOS1mParam, "MOS1");
+        mos1::MOS1mParam, "MOS1", out.get());
 
     return out;
 }

@@ -11,6 +11,8 @@
 #include "devices/ltra.hpp"
 #include <span>
 #include "core/circuit.hpp"   // tls_integrator_ctx
+#include "core/sim_status.hpp"
+#include <complex>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -877,6 +879,8 @@ void LossyTransmissionLine::evaluate(
     NumericMatrix& mat, std::span<double> rhs)
 {
     auto& m = *model_;  // non-const: coefficients are updated each step
+    if (tls_integrator_ctx && tls_integrator_ctx->options)
+        gmin_ = tls_integrator_ctx->options->gmin;
 
     bool is_dc = !transient_;
     bool is_tran = transient_ && tls_integrator_ctx != nullptr;
@@ -895,7 +899,7 @@ void LossyTransmissionLine::evaluate(
             double rGsLrGRorR = (m.R <= 1.0e-10) ? m.len * m.G :
                 0.5 * (dummy1_val - dummy2_val) * std::sqrt(m.G / m.R);
 
-            double gmin = 1e-12;  // small conductance for numerical stability
+            const double gmin = gmin_;
 
             add_if_valid(mat, off_ibr1_pos1_,  1.0);
             add_if_valid(mat, off_ibr1_neg1_, -1.0);
@@ -980,6 +984,8 @@ void LossyTransmissionLine::evaluate(
     // -----------------------------------------------------------
     // Coefficient setup (called on first NR iteration of each step)
     // Must be done BEFORE matrix and RHS loading.
+    // Preserve chopReltol == 0: ngspice ltraset.c defaults it to zero,
+    // retaining convolution history unless the model requests truncation.
     // -----------------------------------------------------------
     if ((initPred || initTran) && timeIndex >= 0 && !times_.empty()) {
         switch (m.specialCase) {
@@ -990,7 +996,7 @@ void LossyTransmissionLine::evaluate(
                 static_cast<int>(m.h1dashCoeffs.size()),
                 m.td, m.alpha, m.beta,
                 currentTime, times_.data(), timeIndex,
-                m.chopReltol > 0 ? m.chopReltol : 1e-3, &m.auxIndex);
+                m.chopReltol, &m.auxIndex);
             break;
 
         case LTRA_CASE_RC:
@@ -1000,7 +1006,7 @@ void LossyTransmissionLine::evaluate(
                 static_cast<int>(m.h1dashCoeffs.size()),
                 m.cByR, m.rclsqr,
                 currentTime, times_.data(), timeIndex,
-                m.chopReltol > 0 ? m.chopReltol : 1e-3);
+                m.chopReltol);
             break;
 
         default:
@@ -1288,24 +1294,8 @@ void LossyTransmissionLine::ac_stamp(
 {
     const auto& m = *model_;
 
-    // The LTRA AC model uses complex frequency-dependent Y-parameters.
-    // The neospice framework uses the G + jwC split, which cannot represent
-    // arbitrary complex, frequency-dependent stamps.
-    //
-    // For the LTRA device, the AC equations are:
-    //   Y0(s)*V1 - I1 = exp(-lambda(s)*len) * (Y0(s)*V2 + I2)
-    //   Y0(s)*V2 - I2 = exp(-lambda(s)*len) * (Y0(s)*V1 + I1)
-    //
-    // Since we can't do frequency-dependent stamps in the G+jwC framework,
-    // we stamp a DC-like approximation into G.
-    //
-    // For RG case, the DC model is exact at all frequencies.
-    // For other cases, this is an approximation.
-    //
-    // TODO: The full AC implementation would require extending the framework
-    // to support frequency-dependent device evaluation, similar to how ngspice
-    // calls the AC load function at each frequency point.
-
+    // RG is frequency independent. The other supported types require the
+    // complex propagation equations from ngspice ltraacld.c, supplied below.
     switch (m.specialCase) {
     case LTRA_CASE_RG: {
         // DC model is exact - stamp the same as DC
@@ -1313,7 +1303,7 @@ void LossyTransmissionLine::ac_stamp(
         double dummy2 = std::exp(-dummy1);
         dummy1 = std::exp(dummy1);
         double coshlrootGR = 0.5 * (dummy1 + dummy2);
-        double gmin = 1e-12;
+        const double gmin = gmin_;
         double rRsLrGRorG = (m.G <= 1e-10) ? m.len * m.R :
             0.5 * (dummy1 - dummy2) * std::sqrt(m.R / m.G);
         double rGsLrGRorR = (m.R <= 1e-10) ? m.len * m.G :
@@ -1337,23 +1327,58 @@ void LossyTransmissionLine::ac_stamp(
         break;
     }
 
-    default: {
-        // For LC/RLC/RC cases: stamp the branch equations in a form
-        // that at least provides the correct DC behavior.
-        // V1 = Z0*I1 + Z0*I2 and V1 - V2 = R*L*I1 (resistive approx)
+    case LTRA_CASE_LC:
+    case LTRA_CASE_RC:
+    case LTRA_CASE_RLC:
         add_if_valid(G, off_pos1_ibr1_,  1.0);
         add_if_valid(G, off_neg1_ibr1_, -1.0);
         add_if_valid(G, off_pos2_ibr2_,  1.0);
         add_if_valid(G, off_neg2_ibr2_, -1.0);
-
-        add_if_valid(G, off_ibr1_ibr1_,  1.0);
-        add_if_valid(G, off_ibr1_ibr2_,  1.0);
-        add_if_valid(G, off_ibr2_pos1_,  1.0);
-        add_if_valid(G, off_ibr2_pos2_, -1.0);
-        add_if_valid(G, off_ibr2_ibr1_, -m.R * m.len);
         break;
+    default:
+        throw SimulationError("LTRA '" + name() + "': unsupported AC line type",
+                              SimStatus{.converged = false});
     }
+}
+
+bool LossyTransmissionLine::ac_stamp_freq(double omega, std::vector<double>& ax,
+        int32_t /*nnz*/, std::vector<std::complex<double>>& /*ac_rhs*/) {
+    const auto& m = *model_;
+    if (m.specialCase == LTRA_CASE_RG) return false;
+    if (!std::isfinite(omega) || omega < 0.0 ||
+        (omega == 0.0 && m.specialCase != LTRA_CASE_LC))
+        throw SimulationError("LTRA '" + name() + "': invalid AC frequency",
+                              SimStatus{.converged = false});
+    std::complex<double> y0, propagation;
+    if (m.specialCase == LTRA_CASE_LC) {
+        y0 = m.Y0;
+        propagation = {0.0, omega * std::sqrt(m.L * m.C)};
+    } else if (m.specialCase == LTRA_CASE_RC || m.specialCase == LTRA_CASE_RLC) {
+        const std::complex<double> series(m.R, omega * m.L);
+        const std::complex<double> shunt(0.0, omega * m.C);
+        y0 = std::sqrt(shunt / series);
+        propagation = std::sqrt(shunt * series);
+    } else {
+        throw SimulationError("LTRA '" + name() + "': unsupported AC line type",
+                              SimStatus{.converged = false});
     }
+    const auto delay = std::exp(-propagation * m.len);
+    const auto coupled = y0 * delay;
+    const auto stamp = [&](MatrixOffset offset, std::complex<double> value) {
+        if (offset >= 0) {
+            ax[2 * offset] += value.real();
+            ax[2 * offset + 1] += value.imag();
+        }
+    };
+    // Y0*V1-I1 = exp(-gamma*len)*(Y0*V2+I2), and the symmetric
+    // equation. This form avoids coth/csch singularities at LC resonances.
+    stamp(off_ibr1_pos1_, y0);       stamp(off_ibr1_neg1_, -y0);
+    stamp(off_ibr1_ibr1_, -1.0);     stamp(off_ibr1_ibr2_, -delay);
+    stamp(off_ibr1_pos2_, -coupled); stamp(off_ibr1_neg2_, coupled);
+    stamp(off_ibr2_pos2_, y0);       stamp(off_ibr2_neg2_, -y0);
+    stamp(off_ibr2_ibr2_, -1.0);     stamp(off_ibr2_ibr1_, -delay);
+    stamp(off_ibr2_pos1_, -coupled); stamp(off_ibr2_neg1_, coupled);
+    return true;
 }
 
 // ---------------------------------------------------------------------------

@@ -41,6 +41,18 @@ struct VBICInstance {
     int VBICemitEINode; /* number of internal emitter node of vbic */
     int VBICbaseBPNode; /* number of internal base node of vbic */
     int VBICsubsSINode; /* number of internal substrate node */
+    int VBICxf1Node = 0;
+    int VBICxf2Node = 0;
+    bool VBICexcessPhase = false;
+    neospice::MatrixOffset VBICcollCIXf2Ptr{-1};
+    neospice::MatrixOffset VBICemitEIXf2Ptr{-1};
+    neospice::MatrixOffset VBICxf1BaseBIPtr{-1};
+    neospice::MatrixOffset VBICxf1EmitEIPtr{-1};
+    neospice::MatrixOffset VBICxf1CollCIPtr{-1};
+    neospice::MatrixOffset VBICxf1Xf1Ptr{-1};
+    neospice::MatrixOffset VBICxf1Xf2Ptr{-1};
+    neospice::MatrixOffset VBICxf2Xf1Ptr{-1};
+    neospice::MatrixOffset VBICxf2Xf2Ptr{-1};
 
     double VBICarea;     /* area factor for the vbic */
     double VBICicVBE;    /* initial condition voltage B-E*/
@@ -341,6 +353,15 @@ struct VBICInstance {
 #define VBICire_Vre VBICstate+65
 
 #define VBICnumStates 66
+// Optional excess-phase state follows the original isothermal state block.
+#define VBICvxf1 VBICstate+66
+#define VBICvxf2 VBICstate+67
+#define VBICqxf1 VBICstate+68
+#define VBICcqxf1 VBICstate+69
+#define VBICqxf2 VBICstate+70
+#define VBICcqxf2 VBICstate+71
+#define VBICgxf1 VBICstate+72
+#define VBICgxf2 VBICstate+73
 
 #define VBICsensxpbe VBICstate+66 /* charge sensitivities and their
                               derivatives. +67 for the derivatives -

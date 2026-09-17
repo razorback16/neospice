@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB MOS3 code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct MOS3ModelCard {
+struct MOS3ModelCard : ModelCardRuntime {
     mos3::MOS3Model ucb{};   // aggregate UCB model fields
 
     MOS3ModelCard() = default;
@@ -59,6 +60,7 @@ public:
     double compute_trunc(const IntegratorCtx& ctx,
                          const SimOptions& opts) const override;
     bool device_converged() const override;
+    bool device_converged(const std::vector<double>& solution) const override;
     std::optional<double> query_param(const std::string& name) const override;
     void reset_temp() override { temp_done_ = false; }
 
@@ -87,6 +89,8 @@ private:
 
     mutable bool temp_done_ = false;
     mutable int last_noncon_ = 0;
+    double last_reltol_ = 1e-3;
+    double last_abstol_ = 1e-12;
 
     int32_t max_neo_node_ = -1;
 

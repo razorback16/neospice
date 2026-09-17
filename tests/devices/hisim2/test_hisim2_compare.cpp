@@ -44,11 +44,11 @@ TEST_F(HiSIM2Validation, NmosOperatingPoint) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.node_voltages.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC result (HiSIM2 may not be compiled in)";
+        FAIL() << "required ngspice returned empty DC result (HiSIM2 may not be compiled in)";
     }
 
     // Run neospice
@@ -98,11 +98,11 @@ TEST_F(HiSIM2Validation, PmosOperatingPoint) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.node_voltages.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC result (HiSIM2 may not be compiled in)";
+        FAIL() << "required ngspice returned empty DC result (HiSIM2 may not be compiled in)";
     }
 
     // Run neospice
@@ -139,17 +139,20 @@ TEST_F(HiSIM2Validation, NmosIvCurveSweep) {
     try {
         ng_result = ngspice_->run_dc_sweep(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.sweep_values.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC sweep result";
+        FAIL() << "required ngspice returned empty DC sweep result";
     }
 
     // Run neospice on the same circuit
     auto ckt = sim_.load(cir_path);
     DCSweepResult cs_result = sim_.run_dc_sweep(ckt,
         {{DCSweepParam{"Vds", 0.0, 1.8, 0.02}}});
+
+    const auto sweep_error = validate_dc_sweep_data(ng_result, cs_result);
+    ASSERT_TRUE(sweep_error.empty()) << sweep_error;
 
     ASSERT_FALSE(cs_result.sweep_values.empty());
 
@@ -235,11 +238,11 @@ TEST_F(HiSIM2Validation, NmosAcResponse) {
     try {
         ng_result = ngspice_->run_ac(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.frequency.empty()) {
-        GTEST_SKIP() << "ngspice returned empty AC result";
+        FAIL() << "required ngspice returned empty AC result";
     }
 
     // Run neospice

@@ -400,7 +400,8 @@ VBICsetup(Shim::Matrix *matrix, VBICModel *inModel, Shim::Ckt *ckt, int *states)
             }
 
             here->VBICstate = *states;
-            *states += VBICnumStates;
+            here->VBICexcessPhase = model->VBICdelayTimeF > 0.0;
+            *states += VBICnumStates + (here->VBICexcessPhase ? 8 : 0);
 
             if(model->VBICextCollResist == 0) {
                 here->VBICcollCXNode = here->VBICcollNode;
@@ -484,7 +485,27 @@ VBICsetup(Shim::Matrix *matrix, VBICModel *inModel, Shim::Ckt *ckt, int *states)
 /* macro to make elements with built in test for out of memory */
 #define TSTALLOC(ptr,first,second) \
 { here->ptr = matrix->make_elt(here->first, here->second); }
-            /* TODO(translator): TSTALLOC macro kept as-is; needs manual rewrite. */
+            if (here->VBICexcessPhase) {
+                if (here->VBICxf1Node == 0) {
+                    error = CKTmkVolt(ckt, &tmp, here->VBICname, "xf1");
+                    if (error) return error;
+                    here->VBICxf1Node = tmp->number;
+                }
+                if (here->VBICxf2Node == 0) {
+                    error = CKTmkVolt(ckt, &tmp, here->VBICname, "xf2");
+                    if (error) return error;
+                    here->VBICxf2Node = tmp->number;
+                }
+                TSTALLOC(VBICcollCIXf2Ptr,VBICcollCINode,VBICxf2Node);
+                TSTALLOC(VBICemitEIXf2Ptr,VBICemitEINode,VBICxf2Node);
+                TSTALLOC(VBICxf1BaseBIPtr,VBICxf1Node,VBICbaseBINode);
+                TSTALLOC(VBICxf1EmitEIPtr,VBICxf1Node,VBICemitEINode);
+                TSTALLOC(VBICxf1CollCIPtr,VBICxf1Node,VBICcollCINode);
+                TSTALLOC(VBICxf1Xf1Ptr,VBICxf1Node,VBICxf1Node);
+                TSTALLOC(VBICxf1Xf2Ptr,VBICxf1Node,VBICxf2Node);
+                TSTALLOC(VBICxf2Xf1Ptr,VBICxf2Node,VBICxf1Node);
+                TSTALLOC(VBICxf2Xf2Ptr,VBICxf2Node,VBICxf2Node);
+            }
 
             TSTALLOC(VBICcollCollPtr,VBICcollNode,VBICcollNode);
             TSTALLOC(VBICbaseBasePtr,VBICbaseNode,VBICbaseNode);

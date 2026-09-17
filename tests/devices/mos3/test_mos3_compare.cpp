@@ -15,6 +15,44 @@
 
 using namespace neospice;
 
+TEST(MOS3Convergence, RejectsChangedGateAfterSettledOperatingPoint) {
+    // Exercise both polarities and channel directions, with another stateful
+    // device preceding M1 so its state offsets are not assumed to start at zero.
+    for (double polarity : {1.0, -1.0}) {
+        for (double drain : {0.2, -0.2}) {
+            SCOPED_TRACE(::testing::Message() << "polarity=" << polarity
+                                             << " drain=" << drain);
+            Simulator sim;
+            auto ckt = sim.parse(
+                "MOS3 post-solve current convergence\n"
+                "Vd d 0 " + std::to_string(polarity * drain) + "\n"
+                "Vg g 0 " + std::to_string(polarity * 2.0) + "\n"
+                "Vb b 0 " + std::to_string(-polarity) + "\n"
+                "Cprefix d 0 1p\n"
+                "M1 d g 0 b model3 W=10u L=1u\n"
+                ".model model3 " + std::string(polarity > 0 ? "NMOS" : "PMOS") +
+                " (LEVEL=3 VTO=" + std::to_string(polarity * 0.7) +
+                " KP=100u)\n.op\n.end\n");
+            const auto result = sim.run_dc(ckt);
+            ASSERT_TRUE(result.status.converged);
+            ASSERT_NE(ckt.operating_point(), nullptr);
+            const Device* mos = nullptr;
+            for (const auto& dev : ckt.devices())
+                if (dev->name() == "M1" || dev->name() == "m1") mos = dev.get();
+            ASSERT_NE(mos, nullptr);
+            const auto settled = *ckt.operating_point();
+            ASSERT_TRUE(mos->device_converged());
+            EXPECT_TRUE(mos->device_converged(settled));
+            auto changed = settled;
+            const auto gate = ckt.node_index("g");
+            ASSERT_GE(gate, 0);
+            changed.at(gate) += polarity * 0.1;
+            EXPECT_FALSE(mos->device_converged(changed));
+            EXPECT_TRUE(mos->device_converged(settled));
+        }
+    }
+}
+
 // ============================================================================
 // Test fixture -- shared NgspiceRunner + Simulator for all MOS3 validation
 // ============================================================================
@@ -43,11 +81,11 @@ TEST_F(MOS3Validation, NmosOperatingPoint) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.node_voltages.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC result";
+        FAIL() << "required ngspice returned empty DC result";
     }
 
     // Run neospice
@@ -96,17 +134,20 @@ TEST_F(MOS3Validation, NmosIvCurveSweep) {
     try {
         ng_result = ngspice_->run_dc_sweep(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.sweep_values.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC sweep result";
+        FAIL() << "required ngspice returned empty DC sweep result";
     }
 
     // Run neospice on the same circuit
     auto ckt = sim_.load(cir_path);
     DCSweepResult cs_result = sim_.run_dc_sweep(ckt,
         {{DCSweepParam{"Vds", 0.0, 5.0, 0.05}}});
+
+    const auto sweep_error = validate_dc_sweep_data(ng_result, cs_result);
+    ASSERT_TRUE(sweep_error.empty()) << sweep_error;
 
     ASSERT_FALSE(cs_result.sweep_values.empty());
 
@@ -193,11 +234,11 @@ TEST_F(MOS3Validation, PmosOperatingPoint) {
     try {
         ng_result = ngspice_->run_dc(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.node_voltages.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC result";
+        FAIL() << "required ngspice returned empty DC result";
     }
 
     // Run neospice
@@ -234,11 +275,11 @@ TEST_F(MOS3Validation, NmosAcResponse) {
     try {
         ng_result = ngspice_->run_ac(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.frequency.empty()) {
-        GTEST_SKIP() << "ngspice returned empty AC result";
+        FAIL() << "required ngspice returned empty AC result";
     }
 
     // Run neospice
@@ -303,16 +344,16 @@ TEST_F(MOS3Validation, NmosTransientPulse) {
     try {
         ng_result = ngspice_->run_transient(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.time.empty()) {
-        GTEST_SKIP() << "ngspice returned empty transient result";
+        FAIL() << "required ngspice returned empty transient result";
     }
 
     // Run neospice
     auto ckt = sim_.load(cir_path);
-    ckt.options.interp = true;
+    // Use the same netlist options as the ngspice reference.
     TransientResult cs_result = sim_.run_transient(ckt, 50e-9, 15e-6);
 
     ASSERT_FALSE(cs_result.time.empty());

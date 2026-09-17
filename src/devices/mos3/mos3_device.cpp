@@ -207,6 +207,8 @@ void MOS3Device::evaluate(const std::vector<double>& voltages,
     ckt.CKTvoltTol = sim_opts->vntol;
     ckt.CKTbypass  = 0;
     ckt.CKTnoncon  = 0;
+    last_reltol_ = ckt.CKTreltol;
+    last_abstol_ = ckt.CKTabstol;
 
     // State ring.
     ckt.CKTstate0 = state0_;
@@ -371,6 +373,42 @@ double MOS3Device::compute_trunc(const IntegratorCtx& ctx,
 // ---------------------------------------------------------------------------
 bool MOS3Device::device_converged() const {
     return last_noncon_ == 0;
+}
+
+bool MOS3Device::device_converged(const std::vector<double>& solution) const {
+    if (last_noncon_ != 0) return false;
+    if (!state0_ || !model_) return true;
+
+    // MOS3convTest, ngspice (Thomas L. Quarles, UC Berkeley): test the
+    // newly solved CKTrhs against the currents and limited voltages from load.
+    // UCB node zero is ground; neospice's solution omits that entry.
+    const auto voltage = [&solution](int node) {
+        return node == 0 ? 0.0 : solution.at(node - 1);
+    };
+    const double type = model_->MOS3type;
+    const double vbs = type * (voltage(inst_.MOS3bNode) - voltage(inst_.MOS3sNodePrime));
+    const double vgs = type * (voltage(inst_.MOS3gNode) - voltage(inst_.MOS3sNodePrime));
+    const double vds = type * (voltage(inst_.MOS3dNodePrime) - voltage(inst_.MOS3sNodePrime));
+    const double vbd = vbs - vds;
+    const double vgd = vgs - vds;
+    const double vgdo = state0_[inst_.MOS3vgs] - state0_[inst_.MOS3vds];
+    const double delvbs = vbs - state0_[inst_.MOS3vbs];
+    const double delvbd = vbd - state0_[inst_.MOS3vbd];
+    const double delvgs = vgs - state0_[inst_.MOS3vgs];
+    const double delvds = vds - state0_[inst_.MOS3vds];
+    const double delvgd = vgd - vgdo;
+    const double cdhat = inst_.MOS3mode >= 0
+        ? inst_.MOS3cd - inst_.MOS3gbd * delvbd + inst_.MOS3gmbs * delvbs +
+              inst_.MOS3gm * delvgs + inst_.MOS3gds * delvds
+        : inst_.MOS3cd - (inst_.MOS3gbd - inst_.MOS3gmbs) * delvbd -
+              inst_.MOS3gm * delvgd + inst_.MOS3gds * delvds;
+    const double cb = inst_.MOS3cbs + inst_.MOS3cbd;
+    const double cbhat = cb + inst_.MOS3gbd * delvbd + inst_.MOS3gbs * delvbs;
+    if (!std::isfinite(cdhat) || !std::isfinite(cbhat)) return false;
+    double tol = last_reltol_ * std::max(std::abs(cdhat), std::abs(inst_.MOS3cd)) + last_abstol_;
+    if (std::abs(cdhat - inst_.MOS3cd) >= tol) return false;
+    tol = last_reltol_ * std::max(std::abs(cbhat), std::abs(cb)) + last_abstol_;
+    return std::abs(cbhat - cb) <= tol;
 }
 
 // ---------------------------------------------------------------------------

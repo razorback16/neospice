@@ -6,6 +6,7 @@
 # the pattern of the lossless TransmissionLine (tline.cpp).
 
 model:
+  migration: manual
   ngspice_prefix: "LTRA"
   neospice_name: "ltra"
   neospice_namespace: "ltra"

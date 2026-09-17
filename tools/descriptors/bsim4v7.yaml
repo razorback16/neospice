@@ -51,7 +51,7 @@ model:
   temp_function: "BSIM4v7temp"
   load_function: "BSIM4v7load"
   cleanup_linked_lists:
-    - { field: "pSizeDependParamKnot", next_field: "pNext" }
+    - { field: "pSizeDependParamKnot", next_field: "pNext", deallocator: "delete_array" }
   version_stamp:
     field: "BSIM4v7version"
     given_field: "BSIM4v7versionGiven"

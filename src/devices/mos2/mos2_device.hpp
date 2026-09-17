@@ -1,4 +1,5 @@
 #pragma once
+#include "devices/model_card_runtime.hpp"
 // Adapter bridging the neospice Device interface to the UCB MOS2 code.
 
 #include "devices/device.hpp"
@@ -12,7 +13,7 @@
 
 namespace neospice {
 
-struct MOS2ModelCard {
+struct MOS2ModelCard : ModelCardRuntime {
     mos2::MOS2Model ucb{};   // aggregate UCB model fields
 
     MOS2ModelCard() = default;

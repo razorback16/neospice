@@ -50,6 +50,7 @@ void VSource::set_am(AmParams p) {
 }
 
 void VSource::resolve_defaults(double tstep, double tstop) {
+    pulse_next_request_ = 0.0;
     if (func_ == SourceFunction::PULSE) {
         // ngspice (vsrcload.c): TR/TF default to CKTstep when 0 or unspecified,
         // PW/PER default to CKTfinalTime when 0 or unspecified.
@@ -72,9 +73,9 @@ void VSource::resolve_defaults(double tstep, double tstop) {
         if (sffm_.fc <= 0) sffm_.fc = (tstop > 0) ? 1.0 / tstop : 0.0;
         if (sffm_.fs <= 0) sffm_.fs = (tstop > 0) ? 1.0 / tstop : 0.0;
     } else if (func_ == SourceFunction::AM) {
-        // ngspice (vsrcload.c): FM/FC default to 1/tstop when 0 or unspecified.
-        if (am_.fm <= 0) am_.fm = (tstop > 0) ? 1.0 / tstop : 0.0;
-        if (am_.fc <= 0) am_.fc = (tstop > 0) ? 1.0 / tstop : 0.0;
+        // Preserve omitted frequencies so a subsequent .tran duration can
+        // resolve its own defaults; explicit zero/negative values stay given.
+        am_tstop_ = tstop;
     }
 }
 
@@ -83,26 +84,8 @@ double VSource::value_at(double t) const {
     case SourceFunction::DC:
         return dc_value_;
 
-    case SourceFunction::PULSE: {
-        const auto& p = pulse_;
-        if (t < p.td) return p.v1;
-        // Avoid division by zero for zero period
-        double t_rel = t - p.td;
-        double t_in  = (p.per > 0.0) ? std::fmod(t_rel, p.per) : t_rel;
-        if (t_in < p.tr) {
-            // Linear rise v1 -> v2
-            return p.v1 + (p.v2 - p.v1) * (t_in / p.tr);
-        }
-        if (t_in < p.tr + p.pw) {
-            return p.v2;
-        }
-        if (t_in < p.tr + p.pw + p.tf) {
-            double t_fall = t_in - (p.tr + p.pw);
-            // Linear fall v2 -> v1
-            return p.v2 + (p.v1 - p.v2) * (t_fall / p.tf);
-        }
-        return p.v1;
-    }
+    case SourceFunction::PULSE:
+        return pulse_.value_at(t);
 
     case SourceFunction::SIN: {
         const auto& s  = sin_;
@@ -150,13 +133,8 @@ double VSource::value_at(double t) const {
                                       + s.mdi * std::sin(2.0 * M_PI * s.fs * t));
     }
 
-    case SourceFunction::AM: {
-        const auto& a = am_;
-        if (t < a.td) return 0.0;
-        double dt = t - a.td;
-        return a.sa * (a.oc + std::sin(2.0 * M_PI * a.fm * dt))
-                     * std::sin(2.0 * M_PI * a.fc * dt);
-    }
+    case SourceFunction::AM:
+        return am_.value_at(t, am_tstop_);
     }
     return dc_value_;
 }

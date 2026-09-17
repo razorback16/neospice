@@ -92,14 +92,14 @@ TEST_F(JFET2Validation, NjfSwitchingTransient) {
 
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
-    ckt.options.interp = true;
+    // Use the same netlist options as the ngspice reference.
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
     strip_internal(ng_result.voltages);
     strip_internal(ng_result.currents);
 
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {1e-1, 1e-3});
+    auto cmp = compare_transient(ng_result, std::get<TransientResult>(cs_result.analysis), {1e-1, 1e-3});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

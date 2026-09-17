@@ -186,7 +186,7 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransient) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
-    ckt.options.interp = true;
+    // Use the same netlist options as the ngspice reference.
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
@@ -213,7 +213,7 @@ TEST_F(NgspiceCompareTest, CMOSInverterTransientWithResistance) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/cmos_inverter_resistance.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
-    ckt.options.interp = true;
+    // Use the same netlist options as the ngspice reference.
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
@@ -255,7 +255,7 @@ TEST_F(NgspiceCompareTest, RingOscillator5Stage) {
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/ring_osc_5stage.cir";
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
-    ckt.options.interp = true;
+    // Use the same netlist options as the ngspice reference.
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
     OscillatorTolerance tol{

@@ -18,7 +18,7 @@ std::unique_ptr<BJTModelCard> to_bjt_card(const ModelCard& card) {
     namespace S = bjt::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, bjt::BJTmPTable, bjt::BJTmPTSize,
-        bjt::BJTmParam, "BJT");
+        bjt::BJTmParam, "BJT", out.get());
 
     // PSpice per-device temperature (see to_dio_card): T_ABS forces operating
     // temperature for all instances; T_MEASURED is the measurement temp (TNOM).

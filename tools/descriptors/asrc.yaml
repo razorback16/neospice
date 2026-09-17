@@ -12,6 +12,7 @@
 #   - Symbolic derivatives via dual numbers (no numerical perturbation)
 
 model:
+  migration: manual
   ngspice_prefix: "ASRC"
   neospice_name: "asrc"
   neospice_namespace: "asrc"

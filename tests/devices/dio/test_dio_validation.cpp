@@ -12,6 +12,7 @@
 #include <complex>
 #include <string>
 #include <algorithm>
+#include <numbers>
 
 using namespace neospice;
 
@@ -40,17 +41,20 @@ TEST_F(DiodeValidation, DCSweepNgspice) {
     try {
         ng_result = ngspice_->run_dc_sweep(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.sweep_values.empty()) {
-        GTEST_SKIP() << "ngspice returned empty DC sweep result";
+        FAIL() << "required ngspice returned empty DC sweep result";
     }
 
     // Run neospice on the same circuit
     auto ckt = sim_.load(cir_path);
     DCSweepResult cs_result = sim_.run_dc_sweep(ckt,
         {{DCSweepParam{"V1", -1.0, 1.0, 0.01}}});
+
+    const auto sweep_error = validate_dc_sweep_data(ng_result, cs_result);
+    ASSERT_TRUE(sweep_error.empty()) << sweep_error;
 
     ASSERT_FALSE(cs_result.sweep_values.empty());
 
@@ -152,11 +156,11 @@ TEST_F(DiodeValidation, ACResponseNgspice) {
     try {
         ng_result = ngspice_->run_ac(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.frequency.empty()) {
-        GTEST_SKIP() << "ngspice returned empty AC result";
+        FAIL() << "required ngspice returned empty AC result";
     }
 
     // Run neospice
@@ -202,11 +206,11 @@ TEST_F(DiodeValidation, TransientSwitchingNgspice) {
     try {
         ng_result = ngspice_->run_transient(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.time.empty()) {
-        GTEST_SKIP() << "ngspice returned empty transient result";
+        FAIL() << "required ngspice returned empty transient result";
     }
 
     // Run neospice
@@ -397,4 +401,67 @@ TEST_F(DiodeValidation, ForwardKneeAboveEpsminActive) {
         << "a real IKF=1mA must still roll off forward current";
     EXPECT_LT(std::abs(i_small_knee), std::abs(i_no_knee))
         << "the 1mA knee should limit current below the un-kneed case";
+}
+
+// ngspice 47 diotemp.c preserves M and M*(1+TM1*dT+TM2*dT*dT).
+// Values above0.9 remain valid inputs to the ngspice47 capacitance model.
+TEST_F(DiodeValidation, GradingCoefficientCapacitanceAnalytic) {
+    auto ckt = sim_.load(std::string(TEST_CIRCUITS_DIR) + "/diode_grading_ac.cir");
+    const auto result = sim_.run_ac(ckt, AnalysisCommand::DEC, 2, 1e3, 1e5);
+    ASSERT_TRUE(result.status.converged);
+    ASSERT_EQ(result.frequency.size(), 5u);
+    EXPECT_DOUBLE_EQ(result.frequency.front(), 1e3);
+    EXPECT_NEAR(result.frequency.back(), 1e5, 1e-9);
+    // TLEVC=1, CTA=TPB=0 keep CJO and VJ fixed while TM1/TM2 vary M.
+    // Reverse-bias capacitance: C = CJO * (1 - V/VJ)^(-M(T)).
+    const std::pair<const char*, double> branches[] = {
+        {"vhalf", .5}, {"vlimit", .9}, {"vabove", .91}, {"vhigh", 1.2},
+        {"vcold", .8 * (1 - .2 + .04)}, {"vhot", .8 * (1 + .2 + .04)},
+        {"vrawcold", 1.2 * .8}, {"vrawhot", 1.2 * 1.2},
+        {"vdelta", .8 * (1 + .2 + .04)}, {"vzero", .8 * (1 - .27 + .0729)},
+    };
+    for (const auto& [source, grading] : branches) {
+        SCOPED_TRACE(source);
+        const auto& current = result.current(source);
+        ASSERT_EQ(current.size(), result.frequency.size());
+        const double expected = 100e-12 * std::pow(3.0, -grading);
+        for (std::size_t i = 0; i < current.size(); ++i) {
+            ASSERT_TRUE(std::isfinite(current[i].real()));
+            ASSERT_TRUE(std::isfinite(current[i].imag()));
+            const double capacitance = -current[i].imag() /
+                (2 * std::numbers::pi * result.frequency[i]);
+            EXPECT_NEAR(capacitance, expected, expected * 1e-10);
+        }
+    }
+}
+
+TEST_F(DiodeValidation, GradingCoefficientACNgspice) {
+    const auto path = std::string(TEST_CIRCUITS_DIR) + "/diode_grading_ac.cir";
+    const auto reference = ngspice_->run_ac(path);
+    auto ckt = sim_.load(path);
+    const auto actual = sim_.run_ac(ckt, AnalysisCommand::DEC, 2, 1e3, 1e5);
+    const auto cmp = compare_ac(reference, actual, {1e-4, 1e-9});
+    EXPECT_TRUE(cmp.passed) << cmp.worst_signal << ": " << cmp.worst_error;
+}
+
+TEST_F(DiodeValidation, GradingCoefficientTransientNgspice) {
+    const auto path = std::string(TEST_CIRCUITS_DIR) + "/diode_grading_transient.cir";
+    const auto reference = ngspice_->run_transient(path);
+    auto ckt = sim_.load(path);
+    const auto actual = sim_.run_transient(ckt, 10e-9, 4e-6);
+    const auto cmp = compare_transient(reference, actual, {1e-3, 1e-9});
+    EXPECT_TRUE(cmp.passed) << cmp.worst_signal << ": " << cmp.worst_error;
+}
+
+TEST_F(DiodeValidation, InstanceTemperatureNoiseNgspice) {
+    for (const auto* variant : {"hot", "delta", "zero"}) {
+        SCOPED_TRACE(variant);
+        const auto path = std::string(TEST_CIRCUITS_DIR) +
+            "/diode_temperature_noise_" + variant + ".cir";
+        const auto reference = ngspice_->run_noise(path);
+        auto ckt = sim_.load(path);
+        const auto actual = sim_.run_noise(ckt, "out", "v1", ACMode::DEC, 2, 100, 1e4);
+        const auto cmp = compare_noise(reference, actual, {3e-4, 1e-15});
+        EXPECT_TRUE(cmp.passed) << cmp.worst_signal << ": " << cmp.worst_error;
+    }
 }

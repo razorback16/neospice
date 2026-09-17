@@ -16,7 +16,7 @@ std::unique_ptr<MOS3ModelCard> to_mos3_card(const ModelCard& card) {
     namespace S = mos3::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, mos3::MOS3mPTable, mos3::MOS3mPTSize,
-        mos3::MOS3mParam, "MOS3");
+        mos3::MOS3mParam, "MOS3", out.get());
 
     return out;
 }

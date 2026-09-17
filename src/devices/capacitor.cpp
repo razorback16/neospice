@@ -43,7 +43,12 @@ void Capacitor::evaluate(const std::vector<double>& voltages,
 
         double vcap;
         if (cond1) {
-            vcap = has_ic() ? ic_ : 0.0;
+            // CAPgetic derives an omitted instance IC from the initial node
+            // voltages. Preserve that value for MODEINITTRAN, rather than
+            // replacing a .ic node voltage with zero.
+            const double initial_voltage = (ic->mode & MODEINITTRAN_BIT) ? v_prev_ :
+                (np_ >= 0 ? voltages[np_] : 0.0) - (nn_ >= 0 ? voltages[nn_] : 0.0);
+            vcap = has_ic() ? ic_ : ((ic->mode & MODEUIC_BIT) ? initial_voltage : 0.0);
         } else {
             double vp = (np_ >= 0 ? voltages[np_] : 0.0);
             double vn = (nn_ >= 0 ? voltages[nn_] : 0.0);

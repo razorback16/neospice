@@ -2,6 +2,7 @@
 #include <span>
 #include "devices/vsource.hpp"
 #include "core/circuit.hpp"   // tls_integrator_ctx
+#include "core/ckt_mode.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -304,7 +305,9 @@ void ASRCDevice::evaluate(const std::vector<double>& voltages,
                           NumericMatrix& mat, std::span<double> rhs) {
     fill_var_values(voltages);
 
-    // Set dt for DDT() evaluation
+    // DDT uses analysis time/mode; IDT uses the integration timestep.
+    expr_.set_time(current_time_, tls_integrator_ctx &&
+                   (tls_integrator_ctx->mode & MODETRAN_BIT));
     if (tls_integrator_ctx) {
         expr_.set_dt(tls_integrator_ctx->delta);
         expr_.set_gmin(tls_integrator_ctx->options

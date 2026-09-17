@@ -19,7 +19,7 @@ std::string to_lower(const std::string& s) {
 std::unique_ptr<ParsedElement> parse_diode_element(
     const std::vector<std::string>& tokens, ParseContext& ctx)
 {
-    // D name anode cathode modelname [area=.. pj=.. m=.. ic=..]
+    // D name anode cathode modelname [area=.. pj=.. m=.. ic=.. temp=.. dtemp=..]
     if (tokens.size() < 4) {
         ctx.error("Diode requires name, anode, cathode, modelname");
         return nullptr;
@@ -46,6 +46,8 @@ std::unique_ptr<ParsedElement> parse_diode_element(
         else if (key == "w")   dd->geom.w = v;
         else if (key == "l")   dd->geom.l = v;
         else if (key == "m")   dd->geom.m = v;
+        else if (key == "temp") dd->geom.temp = parse_spice_number(tokens[i].substr(eq + 1));
+        else if (key == "dtemp") dd->geom.dtemp = parse_spice_number(tokens[i].substr(eq + 1));
         else if (key == "ic")  { dd->ic_vd = v; dd->ic_vd_given = true; }
     }
     return dd;

@@ -16,7 +16,7 @@ std::unique_ptr<MOS9ModelCard> to_mos9_card(const ModelCard& card) {
     namespace S = mos9::Shim;
     convert_model_card_params<S::IfParm, S::IfValue>(
         card, ucb, mos9::MOS9mPTable, mos9::MOS9mPTSize,
-        mos9::MOS9mParam, "MOS9");
+        mos9::MOS9mParam, "MOS9", out.get());
 
     return out;
 }

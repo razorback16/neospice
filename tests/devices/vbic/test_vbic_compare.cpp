@@ -10,6 +10,9 @@
 #include "api/neospice.hpp"
 #include "framework/ngspice_runner.hpp"
 #include "framework/comparator.hpp"
+#include <algorithm>
+#include <cmath>
+#include <complex>
 
 using namespace neospice;
 
@@ -82,6 +85,10 @@ TEST_F(VBICValidation, GummelPlot) {
             ++it;
     }
 
+    const auto sweep_error = validate_dc_sweep_data(
+        ng_result, std::get<DCSweepResult>(cs_result.analysis));
+    ASSERT_TRUE(sweep_error.empty()) << sweep_error;
+
     // Compare sweep values — check both have same number of points.
     ASSERT_EQ(ng_result.sweep_values.size(), std::get<DCSweepResult>(cs_result.analysis).sweep_values.size());
 
@@ -93,7 +100,7 @@ TEST_F(VBICValidation, GummelPlot) {
     // Relative tolerance of 1% catches real model discrepancies.
     for (const auto& [name, ng_vec] : ng_result.currents) {
         auto it = std::get<DCSweepResult>(cs_result.analysis).currents.find(name);
-        if (it == std::get<DCSweepResult>(cs_result.analysis).currents.end()) continue;
+        ASSERT_NE(it, std::get<DCSweepResult>(cs_result.analysis).currents.end()) << name;
         const auto& cs_vec = it->second;
         ASSERT_EQ(ng_vec.size(), cs_vec.size());
 
@@ -177,12 +184,13 @@ TEST_F(VBICValidation, AcSmallSignal) {
 
 TEST_F(VBICValidation, SwitchingTransient) {
     // VBIC NPN switching transient: pulse input drives base through Rb,
-    // collector loaded with Rc.  Compare waveform at key timepoints.
+    // collector loaded with Rc. Compare every required waveform on the
+    // combined adaptive grids using the standard comparator tolerance.
     std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_transient.cir";
 
     auto ng_result = ngspice_->run_transient(path);
     auto ckt = sim_.load(path);
-    ckt.options.interp = true;
+    // Use the same netlist options as the ngspice reference.
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
 
@@ -202,7 +210,86 @@ TEST_F(VBICValidation, SwitchingTransient) {
             ++it;
     }
 
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {2.7e-1, 5e-2});
+    auto cmp = compare_transient(ng_result, std::get<TransientResult>(cs_result.analysis));
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+}
+
+TEST_F(VBICValidation, ExcessPhaseAC) {
+    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_delay_ac.cir";
+    auto expected = ngspice_->run_ac(path);
+    auto circuit = sim_.load(path);
+    const auto result = sim_.run(circuit);
+    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis));
+    std::erase_if(expected.voltages, [](const auto& item) {
+        return item.first.find('#') != std::string::npos;
+    });
+    const auto& actual = std::get<ACResult>(result.analysis);
+    const auto comparison = compare_ac(expected, actual);
+    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
+    // For this zero-charge, zero-Early-effect transistor, the independent
+    // small-signal delay transfer is H(s)=1/(1+s*TD+s*s*TD*TD/3).
+    const auto& zero = actual.current("vc_zero");
+    const auto& slow = actual.current("vc_slow");
+    ASSERT_EQ(zero.size(), actual.frequency.size());
+    ASSERT_EQ(slow.size(), actual.frequency.size());
+    ASSERT_FALSE(actual.frequency.empty());
+    for (size_t i = 0; i < actual.frequency.size(); ++i) {
+        const std::complex<double> s(0.0, 2.0 * std::acos(-1.0) * actual.frequency[i]);
+        const auto expected_ratio = 1.0 / (1.0 + s * 1e-6 + s * s * (1e-12 / 3.0));
+        ASSERT_GT(std::abs(zero[i]), 1e-3);
+        EXPECT_LT(std::abs(slow[i] / zero[i] - expected_ratio), 1e-7);
+    }
+}
+
+TEST_F(VBICValidation, ExcessPhaseTransient) {
+    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_delay_transient.cir";
+    auto expected = ngspice_->run_transient(path);
+    auto circuit = sim_.load(path);
+    const auto result = sim_.run(circuit);
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    std::erase_if(expected.voltages, [](const auto& item) {
+        return item.first.find('#') != std::string::npos;
+    });
+    const auto comparison = compare_transient(expected, std::get<TransientResult>(result.analysis));
+    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
+}
+
+TEST_F(VBICValidation, ExcessPhaseGear) {
+    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_delay_gear.cir";
+    auto expected = ngspice_->run_transient(path);
+    auto circuit = sim_.load(path);
+    const auto result = sim_.run(circuit);
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    std::erase_if(expected.voltages, [](const auto& item) {
+        return item.first.find('#') != std::string::npos;
+    });
+    const auto comparison = compare_transient(expected, std::get<TransientResult>(result.analysis));
+    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
+}
+
+TEST_F(VBICValidation, ExcessPhaseUIC) {
+    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_delay_uic.cir";
+    auto expected = ngspice_->run_transient(path);
+    auto circuit = sim_.load(path);
+    const auto result = sim_.run(circuit);
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    std::erase_if(expected.voltages, [](const auto& item) {
+        return item.first.find('#') != std::string::npos;
+    });
+    const auto comparison = compare_transient(expected, std::get<TransientResult>(result.analysis));
+    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
+}
+
+TEST_F(VBICValidation, ExcessPhaseNoise) {
+    for (const std::string name : {"vbic_delay_noise.cir", "vbic_delay_noise_pnp.cir"}) {
+        SCOPED_TRACE(name);
+        const std::string path = std::string(TEST_CIRCUITS_DIR) + "/" + name;
+        const auto expected = ngspice_->run_noise(path);
+        auto circuit = sim_.load(path);
+        const auto result = sim_.run(circuit);
+        ASSERT_TRUE(std::holds_alternative<NoiseResult>(result.analysis));
+        const auto comparison = compare_noise(expected, std::get<NoiseResult>(result.analysis));
+        EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
+    }
 }

@@ -45,6 +45,7 @@ void ISource::set_am(AmParams p) {
 }
 
 void ISource::resolve_defaults(double tstep, double tstop) {
+    pulse_next_request_ = 0.0;
     if (func_ == SourceFunction::PULSE) {
         if (pulse_.tr <= 0) pulse_.tr = tstep;
         if (pulse_.tf <= 0) pulse_.tf = tstep;
@@ -64,9 +65,9 @@ void ISource::resolve_defaults(double tstep, double tstop) {
         if (sffm_.fc <= 0) sffm_.fc = (tstop > 0) ? 1.0 / tstop : 0.0;
         if (sffm_.fs <= 0) sffm_.fs = (tstop > 0) ? 1.0 / tstop : 0.0;
     } else if (func_ == SourceFunction::AM) {
-        // ngspice (vsrcload.c): FM/FC default to 1/tstop when 0 or unspecified.
-        if (am_.fm <= 0) am_.fm = (tstop > 0) ? 1.0 / tstop : 0.0;
-        if (am_.fc <= 0) am_.fc = (tstop > 0) ? 1.0 / tstop : 0.0;
+        // Preserve omitted frequencies so a subsequent .tran duration can
+        // resolve its own defaults; explicit zero/negative values stay given.
+        am_tstop_ = tstop;
     }
 }
 
@@ -75,23 +76,8 @@ double ISource::value_at(double t) const {
     case SourceFunction::DC:
         return dc_value_;
 
-    case SourceFunction::PULSE: {
-        const auto& p = pulse_;
-        if (t < p.td) return p.v1;
-        double t_rel = t - p.td;
-        double t_in  = (p.per > 0.0) ? std::fmod(t_rel, p.per) : t_rel;
-        if (t_in < p.tr) {
-            return p.v1 + (p.v2 - p.v1) * (t_in / p.tr);
-        }
-        if (t_in < p.tr + p.pw) {
-            return p.v2;
-        }
-        if (t_in < p.tr + p.pw + p.tf) {
-            double t_fall = t_in - (p.tr + p.pw);
-            return p.v2 + (p.v1 - p.v2) * (t_fall / p.tf);
-        }
-        return p.v1;
-    }
+    case SourceFunction::PULSE:
+        return pulse_.value_at(t);
 
     case SourceFunction::SIN: {
         const auto& s    = sin_;
@@ -139,13 +125,8 @@ double ISource::value_at(double t) const {
                                       + s.mdi * std::sin(2.0 * M_PI * s.fs * t));
     }
 
-    case SourceFunction::AM: {
-        const auto& a = am_;
-        if (t < a.td) return 0.0;
-        double dt = t - a.td;
-        return a.sa * (a.oc + std::sin(2.0 * M_PI * a.fm * dt))
-                     * std::sin(2.0 * M_PI * a.fc * dt);
-    }
+    case SourceFunction::AM:
+        return am_.value_at(t, am_tstop_);
     }
     return dc_value_;
 }

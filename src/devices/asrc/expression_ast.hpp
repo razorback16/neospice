@@ -70,7 +70,7 @@ enum class NodeType {
     PWL,            // PWL(x, x1,y1, x2,y2, ...) — piecewise linear
     DB,             // DB(x) = 20 * log10(|x|) — decibel
     // Time-domain functions (stateful)
-    DDT,            // DDT(expr) — time derivative via backward difference
+    DDT,            // DDT(expr) — ngspice transient history derivative
     IDT,            // IDT(expr [, ic]) — time integral via trapezoidal accumulation
 };
 
@@ -102,19 +102,18 @@ public:
     /// Evaluate without derivatives (for convergence test etc.)
     double evaluate(const std::vector<double>& var_values) const;
 
-    /// Set the current timestep for DDT/IDT evaluation.
-    /// Must be called before evaluate() when DDT/IDT nodes are present.
+    /// Set the current timestep for IDT evaluation.
     void set_dt(double dt) const { current_dt_ = dt; }
+
+    /// Supply analysis time and mode for ngspice-compatible DDT evaluation.
+    void set_time(double time, bool transient) const {
+        current_time_ = time;
+        transient_ = transient;
+        if (time == 0.0) ddt_history_.clear();
+    }
 
     /// Set the device gmin used by ngspice's parse-tree PTfudge_factor.
     void set_gmin(double gmin) const { current_gmin_ = gmin; }
-
-    /// Accept the current DDT argument values as the "previous" for the
-    /// next timestep.  Call once per accepted timestep after evaluate().
-    void accept_ddt() const {
-        ddt_prev_values_ = ddt_current_values_;
-        ddt_has_prev_ = ddt_has_current_;
-    }
 
     /// Accept the current IDT integral values after an accepted timestep.
     /// Commits the tentative accumulator and previous-argument state.
@@ -150,16 +149,22 @@ private:
                          const std::vector<double>& var_values,
                          int num_vars, bool need_grad) const;
 
-    // DDT state — mutable because evaluate() is const but DDT needs history
+    // DDT samples the first evaluation at each increasing transient time,
+    // rather than committing at accepted steps (ngspice parser/PTddt).
+    struct DdtHistory {
+        int samples = 0;
+        double time = 0.0;
+        double value = 0.0;
+        double previous_time = 0.0;
+        double derivative = 0.0;
+    };
     mutable double current_dt_ = 0.0;
+    mutable double current_time_ = 0.0;
+    mutable bool transient_ = false;
     mutable double current_gmin_ = 1e-12;
-    mutable std::vector<double> ddt_prev_values_;      // accepted previous argument values
-    mutable std::vector<bool>   ddt_has_prev_;          // whether we have accepted previous values
-    mutable std::vector<double> ddt_current_values_;    // current eval argument values (tentative)
-    mutable std::vector<bool>   ddt_has_current_;       // whether current values have been set
-    mutable int ddt_eval_idx_ = 0;                      // counter reset each evaluate call
+    mutable std::unordered_map<const ASTNode*, DdtHistory> ddt_history_;
 
-    // IDT state — two-buffer pattern mirroring DDT
+    // IDT state — tentative and committed buffers
     mutable std::vector<double> idt_accumulators_;       // tentative integral values
     mutable std::vector<double> idt_prev_arg_values_;    // tentative previous argument values
     mutable std::vector<bool>   idt_has_prev_arg_;       // tentative has-previous flags

@@ -32,7 +32,7 @@ BSIM3ModelCard::~BSIM3ModelCard() {
     auto* p = ucb.pSizeDependParamKnot;
     while (p) {
         auto* next = p->pNext;
-        std::free(p);
+        delete[] p;  // TMALLOC in ucb_compat.hpp allocates a typed array.
         p = next;
     }
     ucb.pSizeDependParamKnot = nullptr;
@@ -252,6 +252,15 @@ void BSIM3Device::evaluate(const std::vector<double>& voltages,
 
     // First-call BSIM3temp.
     if (!temp_done_) {
+        // The temperature routine rebuilds the shared model's entire list.
+        // Release the previous list before it resets the owning head pointer.
+        auto* old = model_->pSizeDependParamKnot;
+        while (old) {
+            auto* next = old->pNext;
+            delete[] old;
+            old = next;
+        }
+        model_->pSizeDependParamKnot = nullptr;
         int rc = BSIM3temp(model_, &ckt);
         if (rc != Shim::OK) {
             throw std::runtime_error("BSIM3temp failed with rc=" + std::to_string(rc));

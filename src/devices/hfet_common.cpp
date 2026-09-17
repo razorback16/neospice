@@ -126,8 +126,9 @@ void resolve_hfets(
                 }
             }
             MESDevice::Geom geom;
-            geom.area = z.area_given ? z.area : 1.0;
-            geom.m = z.m_given ? z.m : 1.0;
+            // ngspice 47: area scales each instance; M counts parallel copies.
+            geom.area = z.area;
+            geom.m = z.m;
             auto dev = MESDevice::make(z.name, nd, ng, ns,
                                        geom, *card_it->second);
             dev->set_ngspice_setup_order(it->second.effective_setup_order(), z.parse_order);
