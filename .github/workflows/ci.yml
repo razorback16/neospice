@@ -33,6 +33,9 @@ jobs:
           echo "LD_LIBRARY_PATH=${RUNNER_TEMP}/ngspice47/shared/lib" >> "$GITHUB_ENV"
           echo "SPICE_SCRIPTS=${RUNNER_TEMP}/ngspice47/shared/share/ngspice/scripts" >> "$GITHUB_ENV"
 
+      - name: Require the support matrix to match the test suite
+        run: python3 tools/support_matrix.py --check
+
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_RPATH="${RUNNER_TEMP}/ngspice47/shared/lib"
 
