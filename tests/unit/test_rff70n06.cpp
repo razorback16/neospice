@@ -4,49 +4,69 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
 using namespace neospice;
 
-TEST(RFF70N06, OriginalCorpusOperatingPoint) {
+// `uncategorized/spice_complete/harprmos.lib::RFF70N06_HA` is retained from the
+// original corpus, where it was recorded as a case ngspice solved and neospice
+// did not. Against the pinned reference that is no longer true: ngspice 47's
+// operating-point analysis aborts on this fixture with
+//
+//   doAnalyses: OP: Timestep too small; trouble with x1:dbdmod-instance
+//   d.x1.dbody
+//
+// so it produces no operating point at all. With no reference answer there is
+// nothing to compare against, in either direction: the fixture cannot be
+// counted as agreement, and neospice's own failure on it cannot be called a
+// defect relative to the reference. It is therefore classified
+// reference-inconclusive -- kept in corpus accounting, never deleted, and never
+// counted as a match.
+//
+// This test makes that classification executable instead of leaving it as a
+// comment beside a permanently red assertion. It pins both halves of the
+// observed state, so the classification cannot quietly go stale: if ngspice 47
+// ever returns an operating point, or neospice ever converges on the fixture,
+// this test fails and the classification must be revisited -- at which point a
+// real comparison becomes possible and should replace this one.
+TEST(RFF70N06, ReferenceIsInconclusive) {
     // Dedicated executable: compatibility mode is process-global. This is
     // the original corpus's ngspice -D ngbehavior=psa configuration.
     NgspiceLib configuration;
     configuration.command("set ngbehavior=psa");
     NgspiceRunner reference_runner;
     const std::string path = TEST_RFF70N06_CIRCUIT;
-    const auto reference = reference_runner.run_dc(path);
-    ASSERT_TRUE(reference.status.converged);
-    for (const std::string node : {"net_1", "net_2", "net_3"}) {
-        const std::string name = "v(" + node + ")";
-        ASSERT_TRUE(reference.node_voltages.contains(name));
-        const double value = reference.node_voltages.at(name);
-        ASSERT_TRUE(std::isfinite(value));
-        std::cerr << std::setprecision(17) << "DETAIL_RFF_REFERENCE|"
-                  << name << '|' << value << '\n';
-    }
 
+    bool reference_produced_a_result = false;
+    std::string reference_diagnostic;
+    try {
+        const auto reference = reference_runner.run_dc(path);
+        reference_produced_a_result = reference.status.converged;
+    } catch (const std::exception& e) {
+        reference_diagnostic = e.what();
+    }
+    std::cerr << "DETAIL_RFF_REFERENCE|" << reference_diagnostic << '\n';
+    EXPECT_FALSE(reference_produced_a_result)
+        << "ngspice 47 now solves RFF70N06. The reference-inconclusive "
+           "classification no longer holds: restore a real operating-point "
+           "comparison and update docs/rff70n06-investigation.md.";
+    EXPECT_FALSE(reference_diagnostic.empty())
+        << "ngspice 47 neither solved the fixture nor reported why.";
+
+    // neospice must fail explicitly on the same fixture: no exception escaping
+    // past no_throw, no fabricated operating point, and a reported status.
     Simulator simulator;
     auto circuit = simulator.load(path);
     circuit.options.no_throw = true;
     const auto actual = simulator.run_dc(circuit);
-    ASSERT_TRUE(actual.status.converged)
-        << "iterations=" << actual.status.iterations
-        << " residual=" << actual.status.residual;
-
-    // Require the original corpus's three external observables. This test's
-    // reference-magnitude allowance is stricter than the corpus's symmetric one.
-    for (const std::string node : {"net_1", "net_2", "net_3"}) {
-        const std::string name = "v(" + node + ")";
-        ASSERT_TRUE(reference.node_voltages.contains(name));
-        ASSERT_TRUE(actual.node_voltages.contains(name));
-        const double expected = reference.node_voltages.at(name);
-        const double observed = actual.node_voltages.at(name);
-        ASSERT_TRUE(std::isfinite(expected));
-        ASSERT_TRUE(std::isfinite(observed));
-        const double allowance = 1e-3 * std::abs(expected) + 1e-6;
-        std::cerr << std::setprecision(17) << "DETAIL_RFF_OP|" << name << '|'
-                  << expected << '|' << observed << '|'
-                  << std::abs(observed - expected) << '|' << allowance << '\n';
-        EXPECT_LE(std::abs(observed - expected), allowance) << name;
-    }
+    std::cerr << std::setprecision(17) << "DETAIL_RFF_NEOSPICE|"
+              << actual.status.converged << '|' << actual.status.iterations
+              << '|' << actual.status.residual << '\n';
+    EXPECT_FALSE(actual.status.converged)
+        << "neospice now converges on RFF70N06 while ngspice 47 still aborts. "
+           "That is a NEO_ONLY outcome to adjudicate, not a silent pass: see "
+           "docs/rff70n06-investigation.md.";
+    EXPECT_TRUE(std::isfinite(actual.status.residual))
+        << "a failed solve must still report a finite residual";
 }
