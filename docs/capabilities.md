@@ -122,7 +122,15 @@ Reference tests cover these four cases, floating LC ports and a nondefault RG
 `gmin`. Noise analysis now applies device frequency-dependent matrix updates
 to both gain and adjoint solves. Matched lossless T/LTRA fixtures verify
 propagation of external resistor noise; they do not validate intrinsic thermal
-noise in lossy lines. A final device-by-analysis support matrix is still pending.
+noise in lossy lines.
+
+The device-by-analysis support matrix is no longer pending: see
+[support matrix](support-matrix.md), which is generated from the test suite by
+`tools/support_matrix.py` rather than maintained by hand. Read it alongside this
+page: the lists above say what is *implemented*, the matrix says what is
+*verified against ngspice 47*, and those are not the same claim. In particular,
+no `.tf`, `.sens`, `.pz` or `.four` result has ever been compared against the
+reference, because the test harness has no path to obtain one.
 The Python `SimulatorOptions.no_throw` property exposes the same
 numerical-failure option as C++. Sensitivity entries after a failed perturbation
 are partial results: always inspect `result.status.converged` before using them

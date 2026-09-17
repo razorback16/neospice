@@ -80,6 +80,31 @@ demonstration that neospice models the same quantity and that the excluded
 observables agree -- rather than a comment asserting they are private. Until
 that is done, item 1 is passing on port voltages and the source current only.
 
+The supported matrix that item 4 was blocked on now exists:
+[docs/support-matrix.md](support-matrix.md), generated from the test suite by
+`tools/support_matrix.py` and regenerable at freeze. It is derived, not
+declared: each cell records whether a test compares that device/analysis pair
+against ngspice 47 (`V`), merely runs it (`~`), asserts that it fails (`X`), or
+never touches it (`-`). Of 198 cells, 65 are reference-verified and 128 have no
+coverage at all.
+
+Three things it surfaced that were not previously written down:
+
+- `.tf`, `.sens`, `.pz` and `.four` have **no reference comparison path at
+  all**. `NgspiceRunner` exposes only DC, DC sweep, transient, AC and noise, so
+  no result from those four analyses has ever been checked against ngspice 47.
+  `test_pz.cpp` and `test_fourier.cpp` assert against analytic values instead.
+- `tests/devices/bjt/test_bjt_compare.cpp` never calls ngspice despite its
+  name; BJT's reference coverage comes from `tests/unit/test_bjt.cpp` and the
+  KiCad fixtures. The BJT transient and DC-sweep cells are `~`, not `V`.
+- `NgspiceCompareTest.BSIM4v7_DC_Audit_BiasRegions` runs a reference comparison
+  at a `1e30` tolerance and asserts `EXPECT_TRUE(true)`. It cannot fail. It is
+  excluded from the matrix and named in it; it is the only such test in the
+  suite.
+
+What remains for item 4 is the *declaration* step -- deciding which cells the
+paper claims -- which is a scope decision rather than a measurement.
+
 Item 5's remaining gap closed this checkpoint. neospice ignored the VDMOS
 `thermal` instance flag, so the self-heating form returned a converged operating
 point with the thermal network absent (`v(tj) = v(tc) = 0` against 36.477 and
