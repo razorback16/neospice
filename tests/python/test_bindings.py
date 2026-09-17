@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import pytest
 
 import neospice
 
@@ -297,6 +298,33 @@ class TestTFResult:
 
 
 class TestSensResult:
+    def test_failed_baseline_reports_failure(self):
+        sim = neospice.Simulator()
+        ckt = sim.parse("Conflict\nV1 out 0 1\nV2 out 0 2\nR1 out 0 1k\n.end\n")
+        ckt.options.no_throw = True
+        result = sim.run_sens(ckt, "v(out)")
+        assert not result.status.converged
+        assert not result.entries
+
+    @pytest.mark.parametrize("no_throw", [False, True])
+    def test_failed_perturbation_restores_circuit(self, no_throw):
+        sim = neospice.Simulator()
+        ckt = sim.parse("Fold\nV1 in 0 1\n"
+                        "B1 out 0 I={v(out)^2+v(out)+10000*(v(in)-1)}\n.end\n")
+        ckt.options.no_throw = no_throw
+        if no_throw:
+            result = sim.run_sens(ckt, "v(out)")
+            assert not result.status.converged
+            assert not result.entries
+        else:
+            with pytest.raises(RuntimeError, match="Sensitivity perturbation"):
+                sim.run_sens(ckt, "v(out)")
+        # A fresh DC solve verifies that the original source value survived.
+        restored = sim.run_dc(ckt)
+        assert restored.status.converged
+        assert restored.voltage("in") == pytest.approx(1.0, abs=1e-12)
+        assert restored.voltage("out") == pytest.approx(0.0, abs=1e-12)
+
     def test_divider_sensitivity(self):
         sim = neospice.Simulator()
         ckt = sim.load(os.path.join(CIRCUITS_DIR, "sens_divider.cir"))
@@ -337,6 +365,15 @@ class TestSensResult:
 
 
 class TestSimulationResult:
+    @pytest.mark.parametrize("analysis", ["ac", "noise"])
+    @pytest.mark.parametrize("no_throw", [False, True])
+    def test_unsupported_vdmos_analyses_raise(self, analysis, no_throw):
+        sim = neospice.Simulator()
+        ckt = sim.load(os.path.join(CIRCUITS_DIR, f"vdmos_nmos_{analysis}.cir"))
+        ckt.options.no_throw = no_throw
+        with pytest.raises(RuntimeError, match="VDMOS.*not implemented"):
+            sim.run(ckt)
+
     def test_run_returns_simulation_result(self):
         sim = neospice.Simulator()
         ckt = sim.load(os.path.join(CIRCUITS_DIR, "resistor_divider.cir"))

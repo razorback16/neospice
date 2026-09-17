@@ -101,6 +101,7 @@ NB_MODULE(_core, m) {
         .def_rw("itl1", &SimOptions::itl1)
         .def_rw("itl4", &SimOptions::itl4)
         .def_rw("method", &SimOptions::method)
+        .def_rw("no_throw", &SimOptions::no_throw)
         .def_rw("verbose", &SimOptions::verbose);
 
     nb::class_<SourceSpec>(m, "SourceSpec")
