@@ -100,22 +100,38 @@ documented with the [experiment](kicad-experiment.md), and
 `VDMOSValidation.GeneratedInternalNodesAreModeledButPrivate` keeps both halves of
 the argument under test.
 
-## Thermal VDMOS returns an apparently valid partial result
+## Thermal VDMOS self-heating is rejected explicitly
 
-Open defect, found while enumerating the generated-node namespace. neospice
-accepts the self-heating form (`M1 d g s tj tc MODEL thermal` with `Rthjc`) and
-returns a converged operating point with the thermal network ignored:
+ngspice 47 solves a VDMOS thermal network only when the instance carries the
+`thermal` flag **and** the model gives `Rthjc` (`vdmosset.c:401`,
+`vdmosload.c:87`). In every other case, including a five-terminal instance that
+supplies Tj and Tcase without the flag, ngspice grounds both thermal nodes.
 
-| Observable | ngspice 47 | neospice |
+neospice previously ignored the `thermal` instance flag altogether: the M-card
+parser skips bare flag tokens, so `VDMOSthermal` was never set, the thermal
+terminals were grounded, and the self-heating form returned a *converged*
+operating point with the thermal network silently absent:
+
+| Observable | ngspice 47 | neospice (before) |
 |---|---|---|
 | `v(tj)` | 36.477 | 0 |
 | `v(tc)` | 36.172 | 0 |
 | `i(vd1)` | -0.15286 | -0.16016 |
 
-ngspice additionally creates `v(<inst>#cktTemp)` and `v(<inst>#VdevTemp)` for this
-form. These are deliberately **not** added to the internal-observable filter:
-excluding a generated node is only defensible where neospice models the same node
-and merely keeps it private, which is not the case here. The junction and case
-terminals are ordinary public nodes and must keep failing until the thermal
-network is implemented or the form is rejected explicitly. No corpus model
-declares `Rthjc`/`Rthca`, so no frozen fixture is affected.
+That is an apparently valid partial result, which milestone 3 forbids. The
+parser now reads `thermal` as an instance flag and rejects the self-heating
+combination with an explicit error naming this document. The rejection mirrors
+ngspice's activation condition exactly, so it is as narrow as possible: Tj/Tc
+terminals without the flag, and the flag without `Rthjc`, both still run and
+still agree with ngspice (both engines ground the thermal nodes).
+`VDMOSValidation.SelfHeatingFailsExplicitlyAndOnlyThatForm` holds both halves,
+checking first that the reference really does solve the rejected form.
+
+ngspice additionally creates `v(<inst>#cktTemp)` and `v(<inst>#VdevTemp)` for the
+self-heating form. These are deliberately **not** added to the corpus
+internal-observable filter: excluding a generated node is only defensible where
+neospice models the same node and merely keeps it private, which is not the case
+here. No corpus model declares `Rthjc`/`Rthca`, so no frozen fixture is affected.
+
+Implementing the thermal network remains open; until then the boundary is a
+refusal rather than a wrong number.

@@ -16,6 +16,9 @@ struct ParsedMosfet : ParsedElement {
     // Instance initial conditions from ic=VDS,VGS,VBS
     double ic_vds = 0.0, ic_vgs = 0.0, ic_vbs = 0.0;
     bool ic_vds_given = false, ic_vgs_given = false, ic_vbs_given = false;
+    /// ngspice 47 VDMOS instance flag enabling self-heating (vdmosset.c:401,
+    /// active only when the model also gives Rthjc).
+    bool thermal_flag = false;
 };
 
 std::unique_ptr<ParsedElement> parse_mosfet_element(

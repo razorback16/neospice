@@ -1,0 +1,11 @@
+VDMOS self-heating, unsupported
+* ngspice 47 activates self-heating only when the instance carries the
+* `thermal` flag and the model gives Rthjc (vdmosset.c:401). neospice does not
+* solve the thermal network, so this form must fail explicitly rather than
+* return a converged point with v(tj) = v(tc) = 0.
+Vd1 d 0 2
+Vg1 g 0 1.5
+M1 d g 0 tj tc THERM thermal
+.model THERM VDMOS(Vto=.6468 Kp=.44 Rthjc=1.0 Rthca=10.0)
+.op
+.end

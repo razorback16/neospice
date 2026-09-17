@@ -79,6 +79,13 @@ unimplemented analysis. DC operating-point and IV-sweep tests remain enabled.
 Unsupported AC/noise fixtures must remain in experiment accounting and must not
 be counted as accuracy matches or accepted performance samples.
 
+VDMOS self-heating is **explicitly unsupported** on the same terms. ngspice 47
+activates its thermal network only when an instance carries the `thermal` flag
+and the model gives `Rthjc`; that combination is rejected at parse time with an
+error naming `docs/vdmos-compatibility.md`. Every isothermal form still runs,
+including a five-terminal instance supplying Tj and Tcase, because ngspice
+grounds those nodes too.
+
 Candidate 36's Release suite passes 1,261 of 1,262 tests against ngspice
 47, including the JFET2, MOS3 and VBIC transient fixtures. ngspice47 is the sole
 reference. The remaining supported-scope corpus discrepancies and RFF70N06

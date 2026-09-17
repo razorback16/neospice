@@ -1,0 +1,12 @@
+VDMOS thermal terminals without self-heating
+* Neither instance activates self-heating: M1 supplies Tj/Tc but no `thermal`
+* flag, M2 carries the flag but its model gives no Rthjc. ngspice 47 grounds
+* Tj and Tcase in both cases, so neospice must run them and agree.
+Vd1 d1 0 2
+Vg1 g1 0 1.5
+M1 d1 g1 0 tj1 tc1 THERM
+M2 d1 g1 0 tj2 tc2 PLAIN thermal
+.model THERM VDMOS(Vto=.6468 Kp=.44 Rthjc=1.0 Rthca=10.0)
+.model PLAIN VDMOS(Vto=.6468 Kp=.44)
+.op
+.end

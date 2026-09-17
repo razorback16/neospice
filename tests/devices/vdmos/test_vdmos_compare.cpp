@@ -54,6 +54,44 @@ TEST_F(VDMOSValidation, TerminalFormsBindAndMatchNgspice47) {
     }
 }
 
+// ngspice 47 solves a VDMOS thermal network only when the instance carries the
+// `thermal` flag AND the model gives Rthjc (vdmosset.c:401, vdmosload.c:87);
+// otherwise it grounds Tj and Tcase. neospice used to ignore the flag entirely,
+// so the self-heating form returned a converged operating point with
+// v(tj) = v(tc) = 0 while ngspice reported ~36 V on both — an apparently valid
+// partial result. It must now fail explicitly, and only that form may fail.
+TEST_F(VDMOSValidation, SelfHeatingFailsExplicitlyAndOnlyThatForm) {
+    const std::string unsupported =
+        std::string(TEST_CIRCUITS_DIR) + "/vdmos_thermal_selfheat.cir";
+
+    // The reference does solve it, so this is a real capability gap, not a
+    // shared limitation. Were that to change, the exclusion below would need
+    // rewriting rather than silently still passing.
+    const auto reference = ngspice_->run_dc(unsupported);
+    ASSERT_TRUE(reference.status.converged);
+    ASSERT_GT(reference.node_voltages.at("v(tj)"), 1.0);
+    ASSERT_GT(reference.node_voltages.at("v(tc)"), 1.0);
+
+    EXPECT_THROW(sim_.load(unsupported), ParseError);
+
+    // The rejection is narrow: supplying Tj/Tc without the flag, or the flag
+    // without Rthjc, leaves ngspice isothermal, and neospice must still agree.
+    const auto supported =
+        std::string(TEST_CIRCUITS_DIR) + "/vdmos_thermal_isothermal.cir";
+    auto ckt = sim_.load(supported);
+    auto expected = ngspice_->run_dc(supported);
+    std::erase_if(expected.node_voltages, [](const auto& item) {
+        return item.first.find('#') != std::string::npos;
+    });
+    const auto actual = sim_.run_dc(ckt);
+    const auto comparison = compare_dc(expected, actual);
+    EXPECT_TRUE(comparison.passed)
+        << comparison.worst_signal << " " << comparison.worst_error;
+    for (const std::string node : {"v(tj1)", "v(tc1)", "v(tj2)", "v(tc2)"}) {
+        EXPECT_NEAR(expected.node_voltages.at(node), 0.0, 1e-12) << node;
+    }
+}
+
 // The corpus comparator excludes ngspice's generated v(<inst>#gate) and
 // v(<inst>#body_diode) observables. That exclusion is only like-for-like if
 // neospice models the same nodes and merely keeps them private, and only

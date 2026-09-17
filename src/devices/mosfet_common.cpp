@@ -171,6 +171,9 @@ std::unique_ptr<ParsedElement> parse_mosfet_element(
                 valstr = nxt.substr(1);
             }
         } else {
+            // ngspice 47 reads `thermal` as an instance flag (vdmosdev.c IOP
+            // "thermal"); every other bare token stays ignored as before.
+            if (to_lower(tokens[i]) == "thermal") m->thermal_flag = true;
             continue;  // bare token, no associated value
         }
         if (key == "ic") {
@@ -270,12 +273,28 @@ void resolve_mosfets(
                                      ": " + e.what());
                 }
             }
+            // ngspice 47 activates self-heating exactly when the instance
+            // carries the `thermal` flag and the model gives Rthjc
+            // (vdmosset.c:401, vdmosload.c:87); otherwise it grounds Tj and
+            // Tcase, which the isothermal adapter below reproduces. neospice
+            // does not solve the thermal network, so the self-heating form must
+            // fail here rather than return a converged operating point with
+            // v(Tj) = v(Tcase) = 0 while ngspice reports the true junction and
+            // case temperatures.
+            if (m.thermal_flag && card_it->second->ucb.VDMOSrthjcGiven) {
+                throw ParseError(
+                    "Line " + std::to_string(m.line_number) + ": VDMOS '" +
+                    m.name + "': self-heating (instance flag 'thermal' with "
+                    "model Rthjc) is not implemented; see "
+                    "docs/vdmos-compatibility.md");
+            }
+
             VDMOSDevice::Geom vdmos_geom;
             vdmos_geom.M = m.geom.M;
             // ngspice VDMOS M-card node order: drain, gate, source, [Tj], [Tcase].
             // Optional thermal terminals occupy nb/nsub in ParsedMosfet.
-            // With the isothermal adapter, omitted terminals are ground and
-            // VDMOSsetup also grounds any supplied thermal terminals.
+            // Without self-heating ngspice grounds Tj and Tcase, so omitted and
+            // supplied thermal terminals alike are grounded here.
             int32_t n_tj = m.nb;
             int32_t n_tc = m.nsub_given ? m.nsub : GROUND_INTERNAL;
             auto dev = VDMOSDevice::make(m.name, m.nd, m.ng, m.ns, n_tj, n_tc,
