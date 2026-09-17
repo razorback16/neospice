@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "generator": "tools/generate_paired_circuits.py",
+  "families": {
+    "mesh_sides": [
+      10,
+      32,
+      71,
+      141
+    ],
+    "diode_ladder_stages": [
+      100,
+      1000,
+      5000,
+      20000
+    ],
+    "dynamic_grid_sides": [
+      8,
+      24,
+      48
+    ]
+  },
+  "fixtures": {
+    "mesh_10.cir": {
+      "bytes": 3174,
+      "sha256": "ebed7384b598808c960bb0e3c67cbf1c888849442536561a23a298b709539231"
+    },
+    "mesh_32.cir": {
+      "bytes": 42106,
+      "sha256": "f19d914dd1d80c3c36c78c59321469ee5fe808c8614efa492dd6ec4b4d443326"
+    },
+    "mesh_71.cir": {
+      "bytes": 222052,
+      "sha256": "2cba23446f692e1a55aa9cece4e9bc05537a8b59d440d3a6c5baf8903f9d080d"
+    },
+    "mesh_141.cir": {
+      "bytes": 971292,
+      "sha256": "0843c22927d876d56d9de8e442af2c192c5b322620659afadd6341833dfbe773"
+    },
+    "diode_ladder_100.cir": {
+      "bytes": 3247,
+      "sha256": "765ec124be6993574b90178e73703d6e2910b370e43be288763c4eef28d20d70"
+    },
+    "diode_ladder_1000.cir": {
+      "bytes": 36550,
+      "sha256": "8dd4d4e13853451fc018daf18c71d781b551f1b9dfd53d43bd3009503c92ddd1"
+    },
+    "diode_ladder_5000.cir": {
+      "bytes": 204550,
+      "sha256": "e0dd743b8c4e150357844ded4c3cf32a4182c4cb214fe2608531945fb9b53ea4"
+    },
+    "diode_ladder_20000.cir": {
+      "bytes": 884553,
+      "sha256": "191af96c9d1fcec7cd4c78916836caf1bdc91872d4f7bb977805012070e10729"
+    },
+    "rc_grid_8.cir": {
+      "bytes": 3205,
+      "sha256": "3956bef333e0f2b17296f0b3f9a56ad28fc4604326fec8553ef570b377c4b0a7"
+    },
+    "rc_grid_24.cir": {
+      "bytes": 34923,
+      "sha256": "f068402bdcc7e763f7866e5b61047560da84d25f6e9100b546d379c2e66a234d"
+    },
+    "rc_grid_48.cir": {
+      "bytes": 149163,
+      "sha256": "6bbba13d5608f20623ed1f95bd81d5f79461d90cdef6358ebbf33a173b5bccf3"
+    },
+    "diode_rc_grid_8.cir": {
+      "bytes": 4417,
+      "sha256": "c9745b34a60e275e35978e03c0f9bf4023bc9a8f6de3ce891789325135cb1f97"
+    },
+    "diode_rc_grid_24.cir": {
+      "bytes": 46693,
+      "sha256": "4b9b7312c0717cc2c1137667dcd000edd4758c57498e86c98924d1df56673e70"
+    },
+    "diode_rc_grid_48.cir": {
+      "bytes": 197989,
+      "sha256": "8fee87967e763386d16ac578662b74ec3f78fa5fa2459f0320ff32914e27945c"
+    }
+  }
+}

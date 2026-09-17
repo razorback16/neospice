@@ -84,7 +84,7 @@ TEST_F(THS4131Test, NgspiceDCComparison) {
     try {
         ng_result = ngspice_->run_dc(cir_path_);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     auto ckt = sim_.load(cir_path_);
@@ -129,11 +129,11 @@ TEST_F(THS4131Test, NgspiceACComparison) {
     try {
         ng_result = ngspice_->run_ac(cir_path_);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.frequency.empty()) {
-        GTEST_SKIP() << "ngspice returned empty AC result";
+        FAIL() << "required ngspice returned empty AC result";
     }
 
     auto ckt = sim_.load(cir_path_);

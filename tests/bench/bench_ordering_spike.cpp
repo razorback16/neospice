@@ -1,14 +1,9 @@
-// bench_ordering_spike — MEASUREMENT SPIKE (branch: solver-amd-ordering-spike)
-//
-// Goal: prove (or disprove) that neospice's OWN existing amd_ordering()
-// (src/core/amd.cpp) produces a fill-reducing ordering good enough to predict
-// the large factorization speedup measured externally (ngspice KLU is 5.8x at
-// 5k nodes and 26.7x at 20k nodes vs neospice's Sparse1.3 Markowitz solver).
-//
-// This bench is ADDITIVE ONLY. It touches no production solver/device code; it
-// uses amd_ordering() and NeoSolver exactly as-is. It is NOT registered with
-// ctest (benchmarks must not gate CI), following the bench_neo_solver /
-// bench_solver_throughput pattern.
+// Exploratory matrix ordering/factorization diagnostic.
+// amd_ordering() is neospice's explicit minimum-degree implementation, not
+// SuiteSparse AMD. This program does not link or measure ngspice/KLU, and its
+// synthetic factor timings cannot establish a circuit speedup or its cause.
+// Numeric factors are not checked against a residual or known solution here;
+// retain these outputs as unqualified diagnostics, not paper evidence.
 //
 // What it measures, per matrix:
 //   1. nnz(A)
@@ -18,7 +13,7 @@
 //   5. (numeric) factor TIME: a no-pivot left-looking sparse LU under the AMD
 //      permutation vs the production NeoSolver (Sparse1.3 Markowitz) on the SAME
 //      pattern/values. The mesh/ladder matrices are diagonally dominant, so a
-//      no-pivot LU is numerically fine for a representative TIMING estimate.
+//      no-pivot method has favorable input conditions, but is not validated here.
 //
 // The symbolic fill counter is the classic "elimination game": for a
 // structurally symmetric matrix A, eliminating node v in a given order turns the
@@ -357,9 +352,9 @@ static Row analyze(const std::string& name, const SparsityPattern& pat,
 // ---------------------------------------------------------------------------
 
 int main() {
-    std::printf("=== bench_ordering_spike (branch solver-amd-ordering-spike) ===\n");
-    std::printf("Question: does neospice's existing amd_ordering() reduce LU fill\n");
-    std::printf("enough to predict the ngspice-KLU 5.8x-27x factor speedup?\n\n");
+    std::printf("=== bench_ordering_spike: unqualified matrix diagnostic ===\n");
+    std::printf("Ordering labels refer to in-tree amd_ordering(), not SuiteSparse AMD.\n");
+    std::printf("No ngspice/KLU run or numerical factor/solve validation is performed.\n\n");
 
     // ---- Sanity check: arrowhead (hand-checkable) -------------------------
     // n=12 arrowhead. Natural order: eliminate hub (node 0) first ->
@@ -442,9 +437,9 @@ int main() {
     // ---- Timing table -----------------------------------------------------
     std::printf("\nFACTOR TIME (median us): production Markowitz (NeoSolver) vs\n");
     std::printf("AMD-permuted no-pivot left-looking LU (TIMING ESTIMATE only;\n");
-    std::printf("numerically valid for these diagonally-dominant matrices):\n");
+    std::printf("unchecked factors on diagonally-dominant synthetic values):\n");
     std::printf("  %-14s %7s %14s %14s %10s %16s\n",
-                "matrix", "n", "Markowitz(us)", "AMD-LU(us)", "speedup", "fill nat/AMD");
+                "matrix", "n", "Markowitz(us)", "scratch-LU(us)", "time ratio", "fill nat/AMD");
     std::printf("  %-14s %7s %14s %14s %10s %16s\n",
                 "--------------", "-------", "--------------", "--------------",
                 "----------", "----------------");
@@ -464,15 +459,11 @@ int main() {
                     (long long)r.fill_amd_numeric, ok ? "OK" : "DIFF");
     }
 
-    std::printf("\nInterpretation:\n");
-    std::printf("  - fill ratio nat/AMD > 1 means AMD produces a sparser factor.\n");
-    std::printf("  - Factor cost scales super-linearly with fill, so a large fill\n");
-    std::printf("    reduction predicts a large factor-time reduction (the ngspice\n");
-    std::printf("    KLU advantage comes from exactly this AMD+BTF ordering).\n");
-    std::printf("  - CAVEAT: the AMD-LU column above is an UNOPTIMISED teaching LU\n");
-    std::printf("    (sorted-insert pattern growth, no supernodes/BLAS), so it\n");
-    std::printf("    UNDERSTATES the achievable speedup. The fill ratio is the more\n");
-    std::printf("    trustworthy predictor; treat AMD-LU time as a conservative lower\n");
-    std::printf("    bound that already beats Markowitz and widens with size.\n");
+    std::printf("\nInterpretation limits:\n");
+    std::printf("  - Natural/ordered fill ratios describe these fixed sparsity patterns.\n");
+    std::printf("  - Numeric values are synthetic, including for the parsed ladder pattern.\n");
+    std::printf("  - Scratch LU and production refactorization perform different work.\n");
+    std::printf("  - These observations establish no ngspice advantage, causal attribution,\n");
+    std::printf("    lower bound on speedup, or general circuit scaling claim.\n");
     return 0;
 }

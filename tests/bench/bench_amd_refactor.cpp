@@ -1,11 +1,13 @@
-// bench_amd_refactor — isolate the Stage-3 refactor-REUSE gain in AmdLuSolver.
+// bench_amd_refactor — diagnostic of factorization and reuse in AmdLuSolver.
 //
 // We build a fixed sparsity pattern (2-D mesh -> nontrivial fill, like a real
 // MNA matrix) and measure, on the SAME pattern:
 //   FULL   : numeric()      — from-scratch Gilbert-Peierls (DFS + pivot search)
 //   REUSE  : refactorize()  — KLU-style replay (no DFS, no pivot search)
 // Both recompute numeric values for a changed matrix; only REUSE reuses the
-// stored structure + pivot order. Reported ratio = per-solve speedup from reuse.
+// stored structure + pivot order. Ratios describe these synthetic matrix calls.
+// No solve, residual check or paired reference simulation validates the timings;
+// separate sampling blocks also prevent treating them as a production ablation.
 
 #include "core/amd_lu_solver.hpp"
 #include "core/matrix.hpp"
@@ -55,10 +57,11 @@ static double median(std::vector<double>& v) {
 }
 
 int main() {
-    std::printf("=== bench_amd_refactor (Stage-3 reuse gain) ===\n");
+    std::printf("=== bench_amd_refactor (unqualified matrix diagnostic) ===\n");
+    std::printf("No numerical factor/solve validation; not circuit performance evidence.\n");
     std::printf("Per-call factor time: FULL numeric() vs REUSE refactorize().\n");
     std::printf("  %6s %8s  %12s %12s %9s\n",
-                "side", "n", "full(us)", "reuse(us)", "speedup");
+                "side", "n", "full(us)", "reuse(us)", "ratio");
     std::printf("  %6s %8s  %12s %12s %9s\n",
                 "------", "--------", "------------", "------------", "---------");
 

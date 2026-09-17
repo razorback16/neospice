@@ -1,38 +1,12 @@
-// bench_solver_throughput — solve-phase throughput on large, scalable circuits.
-//
-// Motivation (docs/performance-analysis.md Priority 4, "the measurement gap"):
-// the Phase 1-3 parser wins were measured on tiny .op fixtures dominated by
-// parse/startup. This benchmark instead generates genuinely LARGE circuits
-// in-memory and reports SOLVE time isolated from PARSE time, so future parser
-// optimizations cannot mask a solver regression (and vice-versa).
-//
-// Two scalable circuit classes are exercised:
-//   1) LINEAR  — a 2-D resistor mesh (R grid). Purely linear, so DC converges in
-//      one Newton step: this isolates symbolic + numeric LU factorization and the
-//      triangular solve (the sparse-LU hot path).
-//   2) NONLINEAR — a chain of diode+resistor stages. Each stage adds a nonlinear
-//      junction, so DC needs multiple Newton iterations: this isolates Newton
-//      iteration count and per-iteration device evaluation.
-//
-// Phase isolation via the *public* API:
-//   - PARSE: time Simulator::parse(netlist_text) (build + finalize).
-//   - SOLVE: time Simulator::run_dc(ckt).
-//   - Newton iterations + convergence method come from DCResult::status
-//     (SimStatus::iterations / convergence_method).
-//
-// Finer granularity (symbolic-factor vs numeric-factor vs triangular-solve vs
-// device-eval microseconds) is NOT exposed by the public API: newton_solve()
-// and NeoSolver do not return per-phase timers. Splitting those cleanly would
-// need lightweight instrumentation hooks inside newton_solve()/NeoSolver
-// (e.g. an optional out-param timing struct). That is intentionally left as a
-// follow-up — see docs/performance-analysis.md — to avoid adding timers to the
-// solver hot path here. The existing scratch profiler tests/bench/
-// bench_newton_profile.cpp shows what such a manual breakdown looks like by
-// re-implementing the Newton loop, but that duplicates solver internals and is
-// not representative of the production path.
+// Single-engine diagnostic of public parse() and run_dc() calls.
+// These phases include API/setup/result work and do not isolate LU or device cost.
+// All eight original workloads also exist in the reference-validated comprehensive
+// population; use that experiment for publication claims. This tool checks only
+// convergence and finite nonempty output, not numerical agreement with ngspice.
 
 #include "api/neospice.hpp"
 #include "core/circuit.hpp"
+#include "bench/diagnostic_sampling.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -42,7 +16,7 @@
 #include <vector>
 
 using namespace neospice;
-using Clock = std::chrono::high_resolution_clock;
+using Clock = std::chrono::steady_clock;
 
 // ---------------------------------------------------------------------------
 // Netlist generators
@@ -50,7 +24,7 @@ using Clock = std::chrono::high_resolution_clock;
 
 // 2-D resistor mesh: a (w x h) grid of nodes, each connected to its right and
 // bottom neighbour by a 1k resistor. A 1V source drives the top-left corner,
-// the bottom-right corner is grounded. Purely linear -> 1 Newton step.
+// the bottom-right corner is grounded. The DC driver determines the actual iteration count.
 // Node count ~= w*h; nnz grows with the mesh connectivity.
 static std::string make_resistor_mesh(int w, int h) {
     std::string s = "* 2D resistor mesh " + std::to_string(w) + "x" + std::to_string(h) + "\n";
@@ -122,6 +96,8 @@ static PhaseTiming run_once(const std::string& netlist) {
     DCResult res = sim.run_dc(ckt);
     auto t2 = Clock::now();
 
+    bench::require_diagnostic_dc(res); // outside both timers
+
     pt.parse_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     pt.solve_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
     pt.iterations = res.status.iterations;
@@ -136,19 +112,16 @@ static PhaseTiming run_once(const std::string& netlist) {
 
 // Median over `runs` repetitions after `warmup` discarded iterations.
 // Parse and solve medians are taken independently (each phase's own median).
-static PhaseTiming bench(const std::string& netlist, int warmup, int runs) {
-    for (int i = 0; i < warmup; ++i) (void)run_once(netlist);
-
-    std::vector<PhaseTiming> samples;
-    samples.reserve(runs);
-    for (int i = 0; i < runs; ++i) samples.push_back(run_once(netlist));
+static PhaseTiming benchmark_case(const std::string& netlist, int warmup, int runs) {
+    auto samples = neospice::bench::diagnostic_samples(warmup, runs,
+        [&] { return run_once(netlist); });
 
     std::vector<double> parse_ms, solve_ms;
     for (auto& s : samples) { parse_ms.push_back(s.parse_ms); solve_ms.push_back(s.solve_ms); }
     std::sort(parse_ms.begin(), parse_ms.end());
     std::sort(solve_ms.begin(), solve_ms.end());
 
-    PhaseTiming out = samples.back();   // copy stats (identical across runs)
+    PhaseTiming out = samples.back();   // diagnostic metadata from final sample
     out.parse_ms = parse_ms[runs / 2];
     out.solve_ms = solve_ms[runs / 2];
     return out;
@@ -184,8 +157,17 @@ static void print_row(const PhaseTiming& pt) {
 
 int main() {
     std::printf("=== bench_solver_throughput ===\n");
-    std::printf("Solve-phase throughput on scalable circuits (parse isolated from solve).\n");
+    std::printf("Single-engine diagnostic; no reference accuracy qualification.\n");
     std::printf("Timings are medians over N repetitions (after warmup).\n");
+
+    bool failed = false;
+    auto report = [&](const std::string& label, const std::string& net, int warmup, int runs) {
+        try { print_row(benchmark_case(net, warmup, runs)); }
+        catch (const std::exception& error) {
+            failed = true;
+            std::printf("  %s FAILED: %s; no median for this case\n", label.c_str(), error.what());
+        }
+    };
 
     // ---- Linear: 2D resistor mesh ----
     // Square-ish meshes sized so node count ~= target.
@@ -196,7 +178,7 @@ int main() {
         std::string net = make_resistor_mesh(side, side);
         // estimate node count to scale iteration counts
         auto [warmup, runs] = scale_iters(side * side);
-        print_row(bench(net, warmup, runs));
+        report("mesh " + std::to_string(side), net, warmup, runs);
     }
 
     // ---- Nonlinear: diode ladder ----
@@ -205,17 +187,16 @@ int main() {
     for (int stages : ladder_stages) {
         std::string net = make_diode_ladder(stages);
         auto [warmup, runs] = scale_iters(stages);
-        print_row(bench(net, warmup, runs));
+        report("ladder " + std::to_string(stages), net, warmup, runs);
     }
 
     std::printf("\nNotes:\n");
     std::printf("  - parse(ms): Simulator::parse() = netlist build + finalize.\n");
     std::printf("  - solve(ms): Simulator::run_dc() = full Newton DC solve.\n");
     std::printf("  - iter: Newton iterations (DCResult::status.iterations).\n");
-    std::printf("  - us/iter: solve time / iteration (per-iteration solver+device cost).\n");
-    std::printf("  - Linear mesh -> a small fixed iteration count (load + confirm\n");
-    std::printf("    passes); us/iter ~= one full factor+solve cycle.\n");
+    std::printf("  - us/iter: median run_dc time divided by the final sample iteration count.\n");
+    std::printf("    This is not a measured individual Newton iteration or factorization.\n");
     std::printf("  - Finer factor/solve/device-eval split needs solver instrumentation\n");
     std::printf("    hooks (not exposed by the public API). See performance-analysis.md.\n");
-    return 0;
+    return failed ? 1 : 0;
 }

@@ -1,5 +1,6 @@
 // Micro-benchmark: NeoSolver per-point timing.
 // Measures self-contained Sparse-compatible refactorize+solve at various matrix sizes.
+// No residual/known-solution checks or reference comparisons qualify these timings.
 
 #include "core/neo_solver.hpp"
 #include <span>
@@ -103,7 +104,8 @@ int main() {
     const int BW = 3;       // half-bandwidth (total bandwidth = 2*BW+1 = 7)
     const std::vector<int32_t> sizes = {5, 10, 25, 50, 87, 100, 150, 199, 300, 500, 1000, 2000, 5000, 10000};
 
-    std::printf("=== NeoSolver Benchmark ===\n");
+    std::printf("=== NeoSolver: unqualified matrix diagnostic ===\n");
+    std::printf("No residual/known-solution validation; not circuit performance evidence.\n");
     std::printf("Matrix: banded sparse (bandwidth=%d, diag-dominant)\n", 2 * BW + 1);
     std::printf("Timing: median of refactorize+solve cycles (iterations scale with size)\n\n");
 
