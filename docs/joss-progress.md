@@ -97,8 +97,13 @@ archive, a guard destructor and `-O2`. It is therefore most likely a GCC 14
 instrumentation artifact rather than a defect, but that is **not proven**, and it
 is recorded as unresolved rather than dismissed.
 
-Nothing here is yet a clean baseline for the final candidate: this run predates
-the self-heating and RFF70N06 changes, and must be repeated on the frozen tree.
+Repeating the run on the tree that includes the self-heating rejection and the
+RFF70N06 reclassification gives the same picture with the one real failure gone:
+1,268 cases, 19 failures, **zero assertion failures** -- every remaining failure
+is a leak-only non-zero exit, all 19 leak stacks allocate through
+`tmalloc`/`trealloc` in the reference library, and no leak stack contains a
+single neospice frame. This is the milestone 3 baseline; it still has to be
+repeated on the frozen candidate for milestone 4.
 
 Nothing in this section changes corpus totals: checkpoint 36 remains the latest
 complete corpus experiment.
