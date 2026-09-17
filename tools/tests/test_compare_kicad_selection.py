@@ -54,3 +54,22 @@ def test_isolated_case_keys_preserve_saved_fixture_choice():
         {'file': 'c.lib', 'name': 'C'},
     ]
     assert isolated_case_keys(baseline) == {('a.lib', 'A')}
+
+
+@pytest.mark.parametrize('same_status', [False, True])
+def test_legacy_transitions_reject_ambiguous_baselines(same_status):
+    baseline = [
+        {'file': 'a.lib', 'name': 'DUP', 'kind': 'model', 'status': 'MATCH'},
+        {'file': 'a.lib', 'name': 'DUP', 'kind': 'subckt',
+         'status': 'MATCH' if same_status else 'NG_ONLY'},
+    ]
+    with pytest.raises(ValueError, match='ambiguous legacy case'):
+        status_transitions([], baseline)
+    with pytest.raises(ValueError, match='ambiguous legacy case'):
+        isolated_case_keys(baseline)
+
+
+def test_legacy_transitions_reject_ambiguous_current_rows():
+    row = {'file': 'a.lib', 'name': 'DUP', 'status': 'MATCH'}
+    with pytest.raises(ValueError, match='ambiguous legacy case'):
+        status_transitions([row, dict(row, status='MISMATCH')], [row])

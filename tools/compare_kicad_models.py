@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import re
 import struct
@@ -74,9 +75,27 @@ def load_baseline_rows(path):
     return data['results']
 
 
+def unique_case_rows(rows):
+    """Legacy FILE::NAME comparisons must never silently collapse duplicates.
+
+    The frozen experiment uses declaration IDs. Historical rows cannot recover
+    those identities from a file/name pair alone, even if statuses happen to agree.
+    """
+    indexed = {}
+    for row in rows:
+        key = case_key(row)
+        if key in indexed:
+            raise ValueError(
+                f"ambiguous legacy case {key[0]}::{key[1]}; "
+                "use declaration IDs from tools/kicad_experiment.py")
+        indexed[key] = row
+    return indexed
+
+
 def status_transitions(results, baseline_rows):
     """Return deterministic status transitions for identities in ``results``."""
-    old = {case_key(row): row['status'] for row in baseline_rows}
+    old = {key: row['status'] for key, row in unique_case_rows(baseline_rows).items()}
+    unique_case_rows(results)
     transitions = []
     for row in sorted(results, key=case_key):
         key = case_key(row)
@@ -93,7 +112,8 @@ def isolated_case_keys(baseline_rows):
     converge can silently switch both simulators back to a different fixture.
     """
     return {
-        case_key(row) for row in baseline_rows if row.get('isolated') is True
+        key for key, row in unique_case_rows(baseline_rows).items()
+        if row.get('isolated') is True
     }
 
 
@@ -107,6 +127,7 @@ def _parse_raw_plot(header_text, binary):
     plotname = ''
     flags = ''
     num_vars = 0
+    num_points = 0
     variables = []
     in_vars = False
     for line in header_text.splitlines():
@@ -115,7 +136,15 @@ def _parse_raw_plot(header_text, binary):
         elif line.startswith('Flags:'):
             flags = line.split(':', 1)[1].strip().lower()
         elif line.startswith('No. Variables:'):
-            num_vars = int(line.split(':')[1].strip())
+            try:
+                num_vars = int(line.split(':')[1].strip())
+            except ValueError:
+                return None
+        elif line.startswith('No. Points:'):
+            try:
+                num_points = int(line.split(':')[1].strip())
+            except ValueError:
+                return None
         elif line.startswith('Variables:'):
             in_vars = True
         elif in_vars:
@@ -125,12 +154,15 @@ def _parse_raw_plot(header_text, binary):
             if num_vars and len(variables) >= num_vars:
                 break
 
-    if not variables:
+    if (num_vars <= 0 or num_points <= 0 or len(variables) != num_vars or
+            len(set(variables)) != num_vars):
         return None
 
     # Real plots store 8 bytes/value; complex store 16 bytes (re, im).
     complex_plot = 'complex' in flags
     stride = 16 if complex_plot else 8
+    if len(binary) < num_vars * num_points * stride:
+        return None
     values = {}
     for i, name in enumerate(variables):
         offset = i * stride
@@ -139,12 +171,16 @@ def _parse_raw_plot(header_text, binary):
         # For complex data take the real part (first double) — the op-point
         # path never relies on complex plots, this is only a fallback.
         val = struct.unpack('d', binary[offset:offset + 8])[0]
+        if not math.isfinite(val):
+            return None
+        if complex_plot and not math.isfinite(struct.unpack('d', binary[offset + 8:offset + 16])[0]):
+            return None
         values[name] = val
 
     return plotname, flags, values
 
 
-def parse_raw_file(path):
+def parse_raw_file(path, require_operating_point=False):
     """Parse a SPICE binary .raw file, returning the operating-point values.
 
     A single .raw may contain MULTIPLE plots (ngspice honors stray file-scope
@@ -157,6 +193,9 @@ def parse_raw_file(path):
       1. the plot whose Plotname starts with "operating point"
       2. else the first real-valued (non-complex) plot
       3. else the first plot
+
+    When require_operating_point is True, only a real Operating Point plot
+    qualifies: transient/AC first points must not substitute for a missing OP.
 
     Returns dict mapping variable name (lowercase) to the first data point's
     value, or None if the file can't be parsed.
@@ -203,8 +242,10 @@ def parse_raw_file(path):
 
     # 1. prefer an Operating Point plot
     for plotname, flags, values in parsed:
-        if plotname.lower().startswith('operating point'):
+        if plotname.lower().startswith('operating point') and 'complex' not in flags:
             return values
+    if require_operating_point:
+        return None
     # 2. else first real (non-complex) plot
     for plotname, flags, values in parsed:
         if 'complex' not in flags:
@@ -255,7 +296,7 @@ def run_simulator(netlist_text, sim_bin, is_ngspice=False, timeout=10):
         if not os.path.exists(tmp_raw):
             return False, None, 'No raw file produced', elapsed
 
-        values = parse_raw_file(tmp_raw)
+        values = parse_raw_file(tmp_raw, require_operating_point=True)
         if values is None:
             return False, None, 'Failed to parse raw file', elapsed
 
@@ -274,35 +315,51 @@ def run_simulator(netlist_text, sim_bin, is_ngspice=False, timeout=10):
 
 
 def is_internal_var(name):
-    """Check if a variable is internal to a subcircuit expansion."""
+    """Classify generated nodes; explicit fixture ports override this filter."""
     # Internal node voltages: v(x1.42), v(x1.foo)
     # Internal branch currents: i(v.x1.vb), i(v.x1.vc)
-    return '.x' in name or 'x1.' in name or 'x2.' in name
+    # ngspice 47 vdmosset.c creates these voltages for RG and RB. Do not
+    # exclude arbitrary hash names or branch currents such as i(auto_dac3).
+    vdmos_internal = re.fullmatch(r'v\(m[^()#]*#(?:gate|body_diode)\)', name,
+                                  flags=re.IGNORECASE) is not None
+    return vdmos_internal or '.x' in name or 'x1.' in name or 'x2.' in name
 
 
 def compare_values(neo_vals, ng_vals, external_only=False):
     """Compare two sets of operating point values.
 
-    Returns (match, details) where match is True if all common variables
-    agree within tolerance, and details is a list of per-variable diffs.
+    The ngspice signal set is required, apart from the explicitly excluded
+    axes/internal nodes. Empty or incomplete comparisons cannot be MATCH.
+    Details retain successful comparisons and invalid-data reasons as well
+    as differences. Nonfinite values are represented as strings for JSON.
     """
     details = []
     all_match = True
 
-    # Find common variables (skip time/frequency sweep vars)
-    common = set(neo_vals.keys()) & set(ng_vals.keys())
+    # ngspice defines the required outputs; extra neospice outputs are allowed.
+    required = set(ng_vals)
     skip = {'time', 'frequency', 'v-sweep'}
-    common -= skip
+    required -= skip
 
     if external_only:
-        common = {v for v in common if not is_internal_var(v)}
+        required = {v for v in required if not is_internal_var(v)}
 
-    if not common:
-        return True, [{'var': '(no common vars)', 'status': 'skip'}]
+    if not required:
+        return False, [{'var': '(no reference signals)', 'status': 'empty',
+                        'neo': None, 'ng': None, 'diff': None, 'tol': None, 'ok': False}]
 
-    for var in sorted(common):
-        nv = neo_vals[var]
+    for var in sorted(required):
+        nv = neo_vals.get(var)
         gv = ng_vals[var]
+        if nv is None or not math.isfinite(nv) or not math.isfinite(gv):
+            details.append({
+                'var': var, 'neo': nv if nv is None or math.isfinite(nv) else str(nv),
+                'ng': gv if math.isfinite(gv) else str(gv),
+                'diff': None, 'tol': None, 'ok': False,
+                'status': 'missing' if nv is None else 'nonfinite',
+            })
+            all_match = False
+            continue
         diff = abs(nv - gv)
 
         # Choose tolerance based on variable type
@@ -311,7 +368,7 @@ def compare_values(neo_vals, ng_vals, external_only=False):
         else:
             tol = RELTOL * max(abs(nv), abs(gv)) + ABSTOL
 
-        ok = diff <= tol
+        ok = math.isfinite(diff) and math.isfinite(tol) and diff <= tol
         if not ok:
             all_match = False
 
@@ -319,9 +376,10 @@ def compare_values(neo_vals, ng_vals, external_only=False):
             'var': var,
             'neo': nv,
             'ng': gv,
-            'diff': diff,
-            'tol': tol,
+            'diff': diff if math.isfinite(diff) else None,
+            'tol': tol if math.isfinite(tol) else None,
             'ok': ok,
+            'status': 'compared' if math.isfinite(diff) and math.isfinite(tol) else 'overflow',
         })
 
     return all_match, details
@@ -450,7 +508,7 @@ def build_isolated_lib(target, lib_path):
             if dep in models:
                 needed_models.add(dep)
     out = [models[m] for m in sorted(needed_models)]
-    for n in want:
+    for n in sorted(want):
         out += blocks[n] + ['']
     return "\n".join(out), True
 
@@ -565,6 +623,7 @@ def run_one_test(args_tuple):
         'neo_time': neo_time,
         'ng_time': ng_time,
         'mismatches': mismatches,
+        'comparisons': details,
         'netlist': netlist,
     }
 
@@ -725,10 +784,13 @@ def main():
             transition_rows = load_baseline_rows(args.transition_baseline)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             parser.error(str(exc))
-    force_isolated_keys = (
-        isolated_case_keys(transition_rows) if transition_rows is not None
-        else set()
-    )
+    try:
+        force_isolated_keys = (
+            isolated_case_keys(transition_rows) if transition_rows is not None
+            else set()
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
 
     total = len(all_tests)
     print(f"Running {total} test circuits through both simulators...")
@@ -776,6 +838,10 @@ def main():
                 print(f"[{tag:11s}] {result['kind']:7s} {result['name']:30s} ({result['file']})")
                 if result['status'] == 'MISMATCH' and result['mismatches']:
                     for m in result['mismatches'][:3]:
+                        if m.get('status', 'compared') != 'compared':
+                            print(f"             {m['var']}: {m['status']} "
+                                  f"neo={m['neo']} ng={m['ng']}")
+                            continue
                         print(f"             {m['var']}: neo={m['neo']:.6g} ng={m['ng']:.6g} "
                               f"diff={m['diff']:.3g} tol={m['tol']:.3g}")
                 if result['status'] == 'NG_ONLY' and result['neo_err']:
@@ -875,6 +941,8 @@ def main():
         worst = []
         for r in mismatch_details:
             for m in r.get('mismatches', []):
+                if m.get('status', 'compared') != 'compared':
+                    continue
                 rel_err = m['diff'] / max(abs(m['ng']), 1e-15)
                 worst.append((rel_err, r['name'], m['var'], m['neo'], m['ng'], r['file']))
         worst.sort(key=lambda x: -x[0])
@@ -940,6 +1008,7 @@ def main():
                 'neo_time': r['neo_time'],
                 'ng_time': r['ng_time'],
                 'mismatches': r['mismatches'],
+                'comparisons': r['comparisons'],
             } for r in all_results],
         }
         with open(args.save, 'w') as f:

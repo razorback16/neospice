@@ -67,7 +67,7 @@ EXPECT_LT(gain_high, gain_low - 3.0)
         try {
             ng_result = ngspice_->run_dc(cir_path_);
         } catch (const std::exception& e) {
-            GTEST_SKIP() << "ngspice not available: " << e.what();
+            FAIL() << "required ngspice not available: " << e.what();
         }
 
         auto ckt = sim_.load(cir_path_);
@@ -84,11 +84,11 @@ EXPECT_LT(gain_high, gain_low - 3.0)
         try {
             ng_result = ngspice_->run_ac(cir_path_);
         } catch (const std::exception& e) {
-            GTEST_SKIP() << "ngspice not available: " << e.what();
+            FAIL() << "required ngspice not available: " << e.what();
         }
 
         if (ng_result.frequency.empty()) {
-            GTEST_SKIP() << "ngspice returned empty AC result";
+            FAIL() << "required ngspice returned empty AC result";
         }
 
         auto ckt = sim_.load(cir_path_);

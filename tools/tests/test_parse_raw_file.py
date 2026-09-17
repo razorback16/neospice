@@ -97,3 +97,30 @@ def test_falls_back_to_first_real_plot_when_no_op(tmp_path):
 
 def test_missing_file_returns_none(tmp_path):
     assert parse_raw_file(str(tmp_path / "nope.raw")) is None
+
+
+def test_op_comparison_does_not_substitute_a_transient_point(tmp_path):
+    path = _write_raw(tmp_path, [_emit_plot('Transient Analysis', False, ['v(a)'], [1.0])])
+    assert parse_raw_file(path, require_operating_point=True) is None
+
+
+def test_op_comparison_rejects_complex_plot(tmp_path):
+    path = _write_raw(tmp_path, [_emit_plot('Operating Point', True, ['v(a)'], [1.0])])
+    assert parse_raw_file(path, require_operating_point=True) is None
+
+
+def test_rejects_truncated_payload_and_zero_points(tmp_path):
+    data = _emit_plot('Operating Point', False, ['v(a)', 'v(b)'], [1.0, 2.0])
+    path = _write_raw(tmp_path, [data[:-4]])
+    assert parse_raw_file(path) is None
+    path = _write_raw(tmp_path, [data.replace(b'No. Points: 1', b'No. Points: 0')])
+    assert parse_raw_file(path) is None
+
+
+def test_rejects_nonfinite_values_and_duplicate_signals(tmp_path):
+    for bad in [float('nan'), float('inf'), -float('inf')]:
+        path = _write_raw(tmp_path, [_emit_plot('Operating Point', False, ['v(a)'], [bad])])
+        assert parse_raw_file(path) is None
+    path = _write_raw(tmp_path, [_emit_plot('Operating Point', False,
+                                          ['v(a)', 'v(a)'], [1.0, 2.0])])
+    assert parse_raw_file(path) is None

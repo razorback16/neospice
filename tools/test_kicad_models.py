@@ -58,7 +58,7 @@ def is_binary_file(filepath):
         return True
 
 
-def extract_models(filepath):
+def extract_models(filepath, *, with_source=False):
     """Extract top-level .model definitions from a SPICE file.
 
     Models defined inside .subckt/.ends blocks are internal to that
@@ -94,7 +94,10 @@ def extract_models(filepath):
             continue  # skip models inside subcircuit blocks
         name = m.group(1)
         mtype = m.group(2).upper()
-        models.append((name, mtype, str(filepath.resolve())))
+        row = (name, mtype, str(filepath.resolve()))
+        if with_source:
+            row += ({'line': text[:m.start(1)].count('\n') + 1},)
+        models.append(row)
     return models
 
 
@@ -304,7 +307,7 @@ def detect_file_convention(lines):
     return None
 
 
-def extract_subcircuits(filepath):
+def extract_subcircuits(filepath, *, with_source=False):
     """Extract top-level .subckt definitions from a SPICE file.
 
     Nested subcircuits (defined inside another .subckt/.ends block)
@@ -392,7 +395,10 @@ def extract_subcircuits(filepath):
         if ov is not None and len(ov) == len(ports):
             roles = list(ov)
 
-        subcircuits.append((name, ports, str(filepath.resolve()), roles, params))
+        row = (name, ports, str(filepath.resolve()), roles, params)
+        if with_source:
+            row += ({'line': text[:m.start(1)].count('\n') + 1},)
+        subcircuits.append(row)
     return subcircuits
 
 

@@ -1,8 +1,9 @@
 # KiCad SPICE Library Parity Tests
 
-How to run neospice's parity test against the KiCad SPICE Library and read the
-results. ngspice is the reference simulator: every model is simulated in both
-tools and the node values are compared.
+This page describes the historical diagnostic harness. Its adaptive rescue
+selection and older measurements are not a publication-ready experiment.
+For the JOSS work, see [frozen experiment inputs](kicad-experiment.md) and
+[the current progress tracker](joss-progress.md). ngspice remains the reference.
 
 ## Prerequisites
 
@@ -20,12 +21,13 @@ tools and the node values are compared.
 
 ## Running
 
-The harness is `tools/compare_kicad_models.py`. It extracts every `.model` and
-`.subckt` from the library, runs each in both simulators, and classifies the
-result.
+The harness is `tools/compare_kicad_models.py`. It generates minimal operating-point
+fixtures for a subset of model/subcircuit declarations, runs both simulators,
+and classifies the results. Nested declarations, unsupported types and generator
+limitations affect coverage. Repeated declarations can produce duplicate fixtures.
 
 ```bash
-# Full suite (all 34,908 models), saving results to JSON
+# Historical generated cohort (34,908 fixtures, not independent models), saving results to JSON
 python3 tools/compare_kicad_models.py --save results/compare_full.json --jobs 8
 
 # Quick subset (first N models)
@@ -44,7 +46,12 @@ python3 tools/compare_kicad_models.py --max 200 --verbose --mismatches-only
 Common flags: `--max N` (0 = all), `--jobs N` (parallel workers), `--file SUB`,
 `--category NAME`, `--save PATH`, `--verbose`, `--mismatches-only`,
 `--neospice PATH` / `--ngspice PATH` (binary overrides), and
-`--baseline OLD.json` (diff this run against a previous saved run).
+`--baseline OLD.json` (select and rerun both simulators on previously passing
+neospice-only rows; this is a filtered population, not a full comparison).
+Use `--transition-baseline RESULTS.json` for old/new status transitions, or
+`--select-baseline RESULTS.json --select-status STATUS` for a selected cohort.
+Ambiguous legacy file/name identities are rejected for transitions and saved
+isolation choices; declaration IDs are required to distinguish repeated names.
 
 ### Seeing error margins
 
@@ -56,8 +63,10 @@ cmake -B build -DNEOSPICE_DEBUG_COMPARE=ON
 cmake --build build -j$(nproc)
 ```
 
-This emits `MARGIN_TRAN|signal|actual_err|tolerance|headroom` to stderr for each
-`compare_transient` / `compare_dc` / `compare_ac` call.
+This affects C++ reference tests that call the comparison helpers; it does not
+enable extra diagnostics in the Python corpus harness. The C++ helpers emit
+analysis-specific margin/detail records; see [validation methods](validation-methods.md).
+The Python harness saves its per-signal `comparisons` records with `--save`.
 
 ## Reading the results
 
