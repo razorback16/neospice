@@ -1,0 +1,78 @@
+{
+  "checkpoint": 25,
+  "phase": "sampling remains active; continuation snapshot only",
+  "observed_utc": "2026-09-11T08:03:18.016822+00:00",
+  "goal_status": "active; not submission ready",
+  "previous_progress": {
+    "path": "docs/evidence/joss/2026-09-11-validation-25-progress.json",
+    "bytes": 102833,
+    "sha256": "bb5a8b21b1b699b1a025701844e9c86180a79f401d69d1c3946fb747cc0b6632"
+  },
+  "changes": {
+    ".github/workflows/ci.yml": {
+      "path": ".github/workflows/ci.yml",
+      "bytes": 2223,
+      "sha256": "183b166a0d83ef9804ee1a7932939f6b2d134616690b5add6ce193619fcfff42"
+    },
+    "CONTRIBUTING.md": {
+      "path": "CONTRIBUTING.md",
+      "bytes": 2754,
+      "sha256": "20a7f2448e4066fd034ed1d551a27666996f6c3c8b0e0e5f728a0ddbd979b327"
+    },
+    "docs/building.md": {
+      "path": "docs/building.md",
+      "bytes": 4766,
+      "sha256": "8c926b274e090845eb012f567434533c00210fb4408712a0cb9ca16beba56bd7"
+    },
+    "docs/joss-progress.md": {
+      "path": "docs/joss-progress.md",
+      "bytes": 109531,
+      "sha256": "014aa972a0ba2b2e037153b27a1ee0ff22254dae389e024618530a95512db17f"
+    },
+    "docs/joss-attribution-audit.md": {
+      "path": "docs/joss-attribution-audit.md",
+      "bytes": 3301,
+      "sha256": "0a44dac12ee0ecb752c2614d734e0ebe9c12b76f9e28e89853de1bedb962e65c"
+    },
+    "docs/joss-requirements-checklist.md": {
+      "path": "docs/joss-requirements-checklist.md",
+      "bytes": 4908,
+      "sha256": "f5a7d6c7931030a7088dc9e48ac796379790df4e9562d593587f1ff1137a3147"
+    }
+  },
+  "verification": {
+    "path": "/tmp/neospice-joss-checkpoint25-ci-dependency-check.json",
+    "bytes": 470,
+    "sha256": "c53501ce190cf156e3cb69004def780f0ac388abb773150ea44991e96cd3e3d9"
+  },
+  "attribution_inputs": {
+    "path": "/tmp/neospice-joss-checkpoint25-attribution-inputs.json",
+    "bytes": 1767,
+    "sha256": "f24407711510574eb026ade818d48616b2c9ed2921fbe4a15040b0997255f6be"
+  },
+  "installed_wheel_notice_inventory": {
+    "path": "/tmp/neospice-joss-checkpoint25-installed-license-inventory.json",
+    "bytes": 366,
+    "sha256": "3f30eee40a365c617075334047a43a0c4321804cb97fa6cc02aacd1bd06836df"
+  },
+  "live_job": {
+    "session_id": 72683,
+    "output": "/tmp/neospice-joss-checkpoint25-measure47",
+    "last_observed_case": "tran_diode_rc_grid_48",
+    "last_observed_iteration": 4,
+    "last_observed_phase": "sample",
+    "terminal_result_received": false
+  },
+  "prepared_archive_script": {
+    "path": "/tmp/neospice-joss-checkpoint25-record.py",
+    "bytes": 9394,
+    "sha256": "8a14a00801dd134794b6ae36ca697198f9cd39fb54fc5a27ccaf64bdc42ab77c"
+  },
+  "scope": "CI install and contributor instructions now include benchmark plotting extra; static checks passed. No benchmark-inventoried source, binary or runtime input changed. Source notices remain unchanged pending terminal benchmark validation.",
+  "pending": [
+    "Collect session72683 terminal result and verify inventories",
+    "Generate and inspect measured report; compile and visually inspect updated paper",
+    "Finalize progress and run checkpoint25 archive script only after required timing-review and paper-render records exist",
+    "Complete original seven-milestone goal; numerical, scope, attribution, research-use, release and human/public-history requirements remain"
+  ]
+}

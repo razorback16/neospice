@@ -1,0 +1,166 @@
+{
+  "reference_policy": "ngspice47 only",
+  "corpus_revision": "a8688952bcaab19f567bc4db237b60bde03ef310",
+  "manifest_sha256": "b888f92eca7d5ea3934815f1cd3461cb36b968d40808dae81057947ae25f7b79",
+  "source_files_verified": 2073,
+  "vbic_declarations": 3,
+  "rows": [
+    {
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Infineon-RFTransistor-SPICE.lib-SM-v02_10-EN.lib",
+        "kind": "model",
+        "scope": [
+          {
+            "kind": "subckt",
+            "name": "bfp780",
+            "occurrence": 1
+          }
+        ],
+        "name": "m_bfp780",
+        "occurrence": 1
+      },
+      "case_id": "case-v1-bd516745342a6b1653c7f2ad745042ce53deb82fabeecf1198987c37f1b324e2",
+      "source_line": 3871,
+      "declared_name": "M_BFP780",
+      "source_sha256": "2cf81688deccb521c40f5ea49358d6652c6ba85aec9cd0ab8151ec21f8eabc63",
+      "model_card_sha256": "eb8e23c6c67e09f5c5f331b7f6bfe1c88bbf6b0616b356bec2c91a3a6f73ff36",
+      "level": "4",
+      "td_token": "500E-015",
+      "direct_fixture_count": 0,
+      "missing_fixture_reason": "not_selected_by_historical_generator",
+      "lexically_enclosing_generated_wrappers": [
+        {
+          "case_id": "case-v1-eca2efbdeb2b23a702176af4c20c785617ab1c1c3fdca8ce2da41bd73215a598",
+          "identity": {
+            "file": "uncategorized/Bordodynovs Electronics Lib/sub/Infineon-RFTransistor-SPICE.lib-SM-v02_10-EN.lib",
+            "kind": "subckt",
+            "scope": [],
+            "name": "bfp780",
+            "occurrence": 1
+          },
+          "checkpoint32_outcomes": {
+            "primary": {
+              "status": "MATCH",
+              "neospice_failure": null,
+              "reference_failure": null,
+              "record": "/tmp/neospice-joss-corpus-run-32-ng47-full/cases/case-v1-eca2efbdeb2b23a702176af4c20c785617ab1c1c3fdca8ce2da41bd73215a598/primary/comparison.json"
+            },
+            "isolated_driven": {
+              "status": "MATCH",
+              "neospice_failure": null,
+              "reference_failure": null,
+              "record": "/tmp/neospice-joss-corpus-run-32-ng47-full/cases/case-v1-eca2efbdeb2b23a702176af4c20c785617ab1c1c3fdca8ce2da41bd73215a598/isolated_driven/comparison.json"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Infineon-RFTransistor-SPICE.lib-SM-v02_10-EN.lib",
+        "kind": "model",
+        "scope": [
+          {
+            "kind": "subckt",
+            "name": "bfq790",
+            "occurrence": 1
+          }
+        ],
+        "name": "m_bfq790",
+        "occurrence": 1
+      },
+      "case_id": "case-v1-ce10b8b75ebe8c38b5a6468aa477724bcd3b21f35d241a7a37d9d77e17a433ac",
+      "source_line": 4857,
+      "declared_name": "M_BFQ790",
+      "source_sha256": "2cf81688deccb521c40f5ea49358d6652c6ba85aec9cd0ab8151ec21f8eabc63",
+      "model_card_sha256": "1e42214876bafb56b3f1ad4d1550be5a377ef3512503369c17fbc2d0660ee817",
+      "level": "4",
+      "td_token": "1E-015",
+      "direct_fixture_count": 0,
+      "missing_fixture_reason": "not_selected_by_historical_generator",
+      "lexically_enclosing_generated_wrappers": [
+        {
+          "case_id": "case-v1-fd1f4e99ac03d596def1133d3f0267e0c832d94e78fa05ffafaa23d0daee365f",
+          "identity": {
+            "file": "uncategorized/Bordodynovs Electronics Lib/sub/Infineon-RFTransistor-SPICE.lib-SM-v02_10-EN.lib",
+            "kind": "subckt",
+            "scope": [],
+            "name": "bfq790",
+            "occurrence": 1
+          },
+          "checkpoint32_outcomes": {
+            "primary": {
+              "status": "MATCH",
+              "neospice_failure": null,
+              "reference_failure": null,
+              "record": "/tmp/neospice-joss-corpus-run-32-ng47-full/cases/case-v1-fd1f4e99ac03d596def1133d3f0267e0c832d94e78fa05ffafaa23d0daee365f/primary/comparison.json"
+            },
+            "isolated_driven": {
+              "status": "MISMATCH",
+              "neospice_failure": null,
+              "reference_failure": null,
+              "record": "/tmp/neospice-joss-corpus-run-32-ng47-full/cases/case-v1-fd1f4e99ac03d596def1133d3f0267e0c832d94e78fa05ffafaa23d0daee365f/isolated_driven/comparison.json"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "model",
+        "scope": [
+          {
+            "kind": "subckt",
+            "name": "bfq790",
+            "occurrence": 1
+          }
+        ],
+        "name": "m_bfq790",
+        "occurrence": 1
+      },
+      "case_id": "case-v1-d2ebe2b70d9b9e61f657d835da7fd4fcd7a38cec14e60f351813bba0943b5f14",
+      "source_line": 2154,
+      "declared_name": "M_BFQ790",
+      "source_sha256": "4e8d7a6bf0bd47bd876d4fa21302fd7cd2fad4eb84720b0201a76d27d401e793",
+      "model_card_sha256": "a4f110bbba9447e2ad2a0e330afea0c9a60a06888eea109218be9b840d118160",
+      "level": "4",
+      "td_token": "1E-015",
+      "direct_fixture_count": 0,
+      "missing_fixture_reason": "not_selected_by_historical_generator",
+      "lexically_enclosing_generated_wrappers": [
+        {
+          "case_id": "case-v1-115ad58a6f0347190f33a1c968a2cd609764dfa3dafffe61f807bb92e35c6114",
+          "identity": {
+            "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+            "kind": "subckt",
+            "scope": [],
+            "name": "bfq790",
+            "occurrence": 1
+          },
+          "checkpoint32_outcomes": {
+            "primary": {
+              "status": "NEO_TRIVIAL",
+              "neospice_failure": null,
+              "reference_failure": "process_error",
+              "record": "/tmp/neospice-joss-corpus-run-32-ng47-full/cases/case-v1-115ad58a6f0347190f33a1c968a2cd609764dfa3dafffe61f807bb92e35c6114/primary/comparison.json"
+            },
+            "isolated_driven": {
+              "status": "MISMATCH",
+              "neospice_failure": null,
+              "reference_failure": null,
+              "record": "/tmp/neospice-joss-corpus-run-32-ng47-full/cases/case-v1-115ad58a6f0347190f33a1c968a2cd609764dfa3dafffe61f807bb92e35c6114/isolated_driven/comparison.json"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "scope": "Lexical scan of NPN/PNP model cards with numeric LEVEL=4 or LEVEL=9 and continuation lines. This does not resolve expressions, aliases, include precedence, simulator binding, instance reachability or effective TD.",
+  "limitations": [
+    "Wrappers with lexical VBIC declarations are not proof that a simulator bound or exercised that declaration.",
+    "Minimal OP fixtures cannot establish delay response; final dedicated AC/transient/noise regression circuits supply that evidence.",
+    "Directly ungenerated declarations remain in full accounting; no denominator change or exclusion."
+  ],
+  "generation_script": "from pathlib import Path\nimport json,re,hashlib,sys\nsys.path.insert(0,'tools')\nfrom kicad_experiment import declarations\nroot=Path('third_party/KiCad-Spice-Library/Models')\nfrozen=Path('/tmp/neospice-joss-corpus-freeze-11-final')\nm=json.loads((frozen/'manifest.json').read_text())\nindexed={r['case_id']:r for r in m['cases']+m['declarations_without_fixtures']}\nrows=[]\nfor name,digest in m['source_files'].items():\n    p=root/name;raw=p.read_bytes()\n    assert hashlib.sha256(raw).hexdigest()==digest,name\n    text=raw.decode(errors='replace');lines=text.split('\\n');index=None\n    for i,line in enumerate(lines):\n        if not re.match(r'^[ \\t]*\\.model\\s+\\S+\\s+(npn|pnp)\\b',line,re.I):continue\n        card=line.strip();j=i+1\n        while j<len(lines) and lines[j].lstrip().startswith('+'):\n            card+=' '+lines[j].lstrip()[1:].strip();j+=1\n        level=re.search(r'\\blevel\\s*=\\s*([\\d.]+)',card,re.I)\n        if not level or float(level.group(1)) not in [4,9]:continue\n        if index is None:index=declarations(text,name)\n        entry=index[i+1];manifest=indexed[entry['case_id']]\n        td=re.search(r'\\btd\\s*=\\s*([^\\s)]+)',card,re.I)\n        wrappers=[]\n        for r in m['cases']:\n            if r['identity']['file']!=name or r['identity']['kind']!='subckt':continue\n            own_scope=r['identity']['scope']+[dict(kind='subckt',name=r['identity']['name'],occurrence=r['identity']['occurrence'])]\n            if own_scope!=entry['identity']['scope']:continue\n            outcomes={}\n            for f in r['fixtures']:\n                path=Path('/tmp/neospice-joss-corpus-run-32-ng47-full/cases')/r['case_id']/f['variant']/'comparison.json'\n                c=json.loads(path.read_text())\n                outcomes[f['variant']]=dict(status=c['status'],neospice_failure=c['neospice']['failure_class'],reference_failure=c['reference']['failure_class'],record=str(path))\n            wrappers.append(dict(case_id=r['case_id'],identity=r['identity'],checkpoint32_outcomes=outcomes))\n        rows.append(dict(**entry,source_sha256=digest,model_card_sha256=hashlib.sha256(card.encode()).hexdigest(),level=level.group(1),td_token=td.group(1) if td else None,direct_fixture_count=len(manifest.get('fixtures',[])),missing_fixture_reason=manifest.get('reason'),lexically_enclosing_generated_wrappers=wrappers))\nreport=dict(reference_policy='ngspice47 only',corpus_revision=m['corpus_revision'],manifest_sha256=hashlib.sha256((frozen/'manifest.json').read_bytes()).hexdigest(),source_files_verified=len(m['source_files']),vbic_declarations=len(rows),rows=rows,scope='Lexical scan of NPN/PNP model cards with numeric LEVEL=4 or LEVEL=9 and continuation lines. This does not resolve expressions, aliases, include precedence, simulator binding, instance reachability or effective TD.',limitations=['Wrappers with lexical VBIC declarations are not proof that a simulator bound or exercised that declaration.','Minimal OP fixtures cannot establish delay response; final dedicated AC/transient/noise regression circuits supply that evidence.','Directly ungenerated declarations remain in full accounting; no denominator change or exclusion.'],generation_script=Path(__file__).read_text())\np=Path('docs/evidence/joss/2026-09-11-checkpoint33-vbic-corpus-scope.json');p.write_text(json.dumps(report,indent=2)+'\\n');print(json.dumps(dict(declarations=len(rows),files=len(m['source_files']),out=str(p))))\n"
+}

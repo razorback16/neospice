@@ -1,0 +1,472 @@
+--- a/src/devices/bjt_common.cpp
++++ b/src/devices/bjt_common.cpp
+@@ -118,7 +118,7 @@
+     Circuit& ckt, ParseContext& ctx)
+ {
+     // Resolve deferred BJTs (Q-cards dispatch to BJT or VBIC based on LEVEL)
+-    // LEVEL=1 (default, or unspecified) -> BJT (Gummel-Poon)
++    // LEVEL=0, 1 (default), or 2         -> BJT (Gummel-Poon)
+     // LEVEL=4 or LEVEL=9               -> VBIC
+     std::unordered_map<std::string, std::unique_ptr<BJTModelCard>> bjt_cards;
+     std::unordered_map<std::string, std::unique_ptr<VBICModelCard>> vbic_cards;
+@@ -138,9 +138,9 @@
+         // ngspice treats as PNP polarity with a lateral substrate).
+         std::string model_type = to_lower(it->second.type);
+         if (model_type != "npn" && model_type != "pnp" && model_type != "lpnp") {
+-            fprintf(stderr, "Warning: Line %d: Q card references non-BJT model '%s' — skipping\n",
+-                    q.line_number, q.model_name.c_str());
+-            continue;
++            throw ParseError("Line " + std::to_string(q.line_number) +
++                             ": Q card '" + q.name + "' references non-BJT model '" +
++                             q.model_name + "'");
+         }
+ 
+         // Determine level: default=1 (BJT), 4 or 9 = VBIC
+@@ -148,7 +148,12 @@
+         int level = (level_it == it->second.params.end()) ? 1
+                     : static_cast<int>(level_it->second);
+ 
+-        if (level == 4 || level == 9 || level == 12 || level == 13) {
++        if (level != 0 && level != 1 && level != 2 && level != 4 && level != 9) {
++            throw ParseError("Line " + std::to_string(q.line_number) +
++                             ": unsupported BJT model level " + std::to_string(level) +
++                             " for '" + q.model_name + "'");
++        }
++        if (level == 4 || level == 9) {
+             // VBIC model
+             auto card_it = vbic_cards.find(q.model_name);
+             if (card_it == vbic_cards.end()) {
+--- a/src/parser/model_cards.cpp
++++ b/src/parser/model_cards.cpp
+@@ -59,36 +59,13 @@
+         }
+     }
+ 
+-    // Find the type name. In SPICE, the .model line is either
+-    //   .model NAME TYPE(k=v ...)       (parenthesized)
+-    //   .model NAME TYPE k=v k=v ...    (bare — paren-less form)
+-    // In both cases, TYPE is the first whitespace-delimited token of `rest`.
+-    size_t paren_pos = rest.find('(');
+-    std::string type_str;
+-    std::string params_str;
+-    if (paren_pos == std::string::npos) {
+-        // No parens: first token is type, everything after is params
+-        size_t first_space = rest.find_first_of(" \t");
+-        if (first_space == std::string::npos) {
+-            type_str = rest;
+-            params_str = "";
+-        } else {
+-            type_str = rest.substr(0, first_space);
+-            params_str = rest.substr(first_space + 1);
+-        }
+-    } else {
+-        // Parens: type is everything before '(' (trimmed)
+-        type_str = rest.substr(0, paren_pos);
+-        size_t close_paren = rest.rfind(')');
+-        if (close_paren != std::string::npos && close_paren > paren_pos) {
+-            params_str = rest.substr(paren_pos + 1, close_paren - paren_pos - 1);
+-        } else {
+-            params_str = rest.substr(paren_pos + 1);
+-        }
+-    }
+-    // Trim whitespace from type
+-    while (!type_str.empty() && std::isspace(static_cast<unsigned char>(type_str.back())))
+-        type_str.pop_back();
++    // INPgetTok reads the model type as one token; optional parentheses
++    // delimit parameters, not the end of the type-and-prefix field. Keep
++    // parameters on either side of the group (e.g. NPN LEVEL=4(IS=...) TD=1n).
++    const size_t type_end = rest.find_first_of(" \t\r\n(),=");
++    const std::string type_str = rest.substr(0, type_end);
++    const std::string params_str = type_end == std::string::npos ?
++        std::string{} : rest.substr(type_end);
+     card.type = to_lower(type_str);
+ 
+     // Normalize PSpice model type aliases
+@@ -98,7 +75,7 @@
+     else if (card.type == "vswitch") card.type = "sw";
+     else if (card.type == "iswitch") card.type = "csw";
+ 
+-    // Parse parameters (from paren block or bare params)
++    // Parse parameters across optional parenthesized groups and bare fields.
+     if (!params_str.empty()) {
+ 
+         // Replace '=' with ' = ' for easier parsing, then split. Commas are
+@@ -108,7 +85,7 @@
+         for (char c : params_str) {
+             if (c == '=') {
+                 normalized += " = ";
+-            } else if (c == ',') {
++            } else if (c == ',' || c == '(' || c == ')') {
+                 normalized += ' ';
+             } else {
+                 normalized += c;
+--- a/src/parser/netlist_parser.cpp
++++ b/src/parser/netlist_parser.cpp
+@@ -2050,15 +2050,12 @@
+                     throw ParseError("Line " + std::to_string(line.line_number) + ": " + msg);
+                 };
+                 ParseContext parse_ctx{ckt, node_raw, models, line.line_number, error_fn};
+-                try {
+-                    auto elem = handler->parse(tokens, parse_ctx);
+-                    if (elem) {
+-                        elem->parse_order = state.next_element_order++;
+-                        parsed_elements[elem_type].push_back(std::move(elem));
+-                    }
+-                } catch (const ParseError& e) {
+-                    fprintf(stderr, "Warning: %s — skipping\n", e.what());
+-                    continue;
++                // A malformed semiconductor card must not become a valid
++                // circuit with that device silently omitted.
++                auto elem = handler->parse(tokens, parse_ctx);
++                if (elem) {
++                    elem->parse_order = state.next_element_order++;
++                    parsed_elements[elem_type].push_back(std::move(elem));
+                 }
+             }
+ 
+--- /dev/null
++++ b/tests/circuits/vbic_model_syntax.cir
+@@ -0,0 +1,39 @@
++Model syntax: all nine transistors must use their requested device family
++VC_nparen c_nparen 0 5
++VB_nparen b_nparen 0 0.65
++Q_nparen c_nparen b_nparen 0 M_nparen
++.model M_nparen NPN(LEVEL=4 IS=1e-14 TD=1u)
++VC_nbare c_nbare 0 5
++VB_nbare b_nbare 0 0.65
++Q_nbare c_nbare b_nbare 0 M_nbare
++.model M_nbare NPN LEVEL=4 IS=1e-14 TD=1u
++VC_nmixed c_nmixed 0 5
++VB_nmixed b_nmixed 0 0.65
++Q_nmixed c_nmixed b_nmixed 0 M_nmixed
++.model M_nmixed NPN LEVEL=4(IS=1e-14) TD=1u
++VC_pparen c_pparen 0 -5
++VB_pparen b_pparen 0 -0.65
++Q_pparen c_pparen b_pparen 0 M_pparen
++.model M_pparen PNP(LEVEL=9 IS=1e-14 TD=1u)
++VC_pbare c_pbare 0 -5
++VB_pbare b_pbare 0 -0.65
++Q_pbare c_pbare b_pbare 0 M_pbare
++.model M_pbare PNP LEVEL=9 IS=1e-14 TD=1u
++VC_pmixed c_pmixed 0 -5
++VB_pmixed b_pmixed 0 -0.65
++Q_pmixed c_pmixed b_pmixed 0 M_pmixed
++.model M_pmixed PNP LEVEL=9(IS=1e-14) TD=1u
++VC_gp0 c_gp0 0 5
++VB_gp0 b_gp0 0 0.65
++Q_gp0 c_gp0 b_gp0 0 M_gp0
++.model M_gp0 NPN LEVEL=0(IS=1e-14)
++VC_gp1 c_gp1 0 5
++VB_gp1 b_gp1 0 0.65
++Q_gp1 c_gp1 b_gp1 0 M_gp1
++.model M_gp1 NPN(LEVEL=1 IS=1e-14)
++VC_gp2 c_gp2 0 5
++VB_gp2 b_gp2 0 0.65
++Q_gp2 c_gp2 b_gp2 0 M_gp2
++.model M_gp2 NPN LEVEL=2 IS=1e-14
++.op
++.end
+--- a/tests/unit/test_bjt.cpp
++++ b/tests/unit/test_bjt.cpp
+@@ -4,6 +4,7 @@
+ #include "parser/netlist_parser.hpp"
+ #include "parser/model_cards.hpp"
+ #include "devices/bjt/bjt_device.hpp"
++#include "devices/vbic/vbic_device.hpp"
+ #include "devices/device_registry.hpp"
+ #include "core/ckt_mode.hpp"
+ #include "core/neo_solver.hpp"
+@@ -18,6 +19,34 @@
+ #include <string>
+ 
+ using namespace neospice;
++
++TEST(BJTParser, MixedModelSyntaxInstantiatesVbicAndMatchesNgspice47) {
++    const auto path = std::string(TEST_CIRCUITS_DIR) + "/vbic_model_syntax.cir";
++    NetlistParser parser;
++    auto circuit = parser.parse_file(path);
++    for (const std::string name : {"Q_nparen", "Q_nbare", "Q_nmixed",
++                                   "Q_pparen", "Q_pbare", "Q_pmixed"}) {
++        SCOPED_TRACE(name);
++        const auto* device = circuit.find_device_ptr(name);
++        ASSERT_NE(dynamic_cast<const VBICDevice*>(device), nullptr);
++        EXPECT_EQ(device->state_vars(), 74);
++    }
++    // ngspice 47 dispatches levels 0, 1 and 2 to its same BJT kernel.
++    for (const std::string name : {"Q_gp0", "Q_gp1", "Q_gp2"}) {
++        SCOPED_TRACE(name);
++        ASSERT_NE(dynamic_cast<const BJTDevice*>(circuit.find_device_ptr(name)), nullptr);
++    }
++    NgspiceRunner reference;
++    auto expected = reference.run_dc(path);
++    std::erase_if(expected.node_voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto actual = solve_dc(circuit);
++    const auto comparison = compare_dc(expected, actual);
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++    EXPECT_GT(std::abs(actual.current("vc_nmixed")), 1e-4);
++    EXPECT_GT(std::abs(actual.current("vc_pmixed")), 1e-4);
++}
+ 
+ namespace {
+ void check_off_initialization(Circuit& circuit, bool off) {
+@@ -296,14 +325,30 @@
+     EXPECT_EQ(1, bjt_count);
+ }
+ 
+-TEST(BJTParser, UnknownModelSkipsWithWarning) {
++TEST(BJTParser, UnknownModelThrows) {
+     const std::string netlist =
+         "* Unknown model\n"
+         "Q1 c b 0 BOGUS\n"
+         ".end\n";
+ 
+     NetlistParser p;
+-    EXPECT_NO_THROW(p.parse(netlist));
++    EXPECT_THROW(p.parse(netlist), ParseError);
++}
++
++TEST(BJTParser, WrongModelTypeCannotDropTheTransistor) {
++    NetlistParser parser;
++    EXPECT_THROW(parser.parse("Wrong model type\nVc c 0 5\nVb b 0 .65\n"
++                              "Q1 c b 0 QM\n.model QM D(IS=1e-14)\n.op\n.end\n"), ParseError);
++}
++
++TEST(BJTParser, UnsupportedLevelsCannotFallBackToAnotherDevice) {
++    NetlistParser parser;
++    for (int level : {8, 12, 13}) {
++        SCOPED_TRACE(level);
++        EXPECT_THROW(parser.parse("Unsupported BJT level\nVc c 0 5\nVb b 0 .65\n"
++            "Q1 c b 0 QM\n.model QM NPN(LEVEL=" + std::to_string(level) +
++            " IS=1e-14)\n.op\n.end\n"), ParseError);
++    }
+ }
+ 
+ TEST(BJTParser, MultiDeviceSameModel) {
+--- a/tests/unit/test_parser.cpp
++++ b/tests/unit/test_parser.cpp
+@@ -11,6 +11,28 @@
+ 
+ using namespace neospice;
+ 
++TEST(Parser, ModelParametersBeforeInsideAndAfterParentheses) {
++    for (const std::string body : {
++             "NPN(LEVEL=4 IS=1e-14 TD=2n BF=120)",
++             "NPN LEVEL=4 IS=1e-14 TD=2n BF=120",
++             "NPN LEVEL=4(IS=1e-14 TD=2n) BF=120",
++             "NPN LEVEL=4 (IS=1e-14 TD=2n) BF=120",
++             "NPN (LEVEL=4) IS=1e-14 (TD=2n BF=120)",
++             "NPN (LEVEL=4, IS=1e-14) TD=2n BF=120"}) {
++        SCOPED_TRACE(body);
++        const auto card = parse_model_card({".model", "QM", body});
++        EXPECT_EQ(card.type, "npn");
++        ASSERT_TRUE(card.params.contains("level"));
++        ASSERT_TRUE(card.params.contains("is"));
++        ASSERT_TRUE(card.params.contains("td"));
++        ASSERT_TRUE(card.params.contains("bf"));
++        EXPECT_DOUBLE_EQ(card.params.at("level"), 4.0);
++        EXPECT_DOUBLE_EQ(card.params.at("is"), 1e-14);
++        EXPECT_DOUBLE_EQ(card.params.at("td"), 2e-9);
++        EXPECT_DOUBLE_EQ(card.params.at("bf"), 120.0);
++    }
++}
++
+ TEST(Parser, ResistorDivider) {
+     std::string netlist = R"(
+ Resistor Divider
+--- a/docs/capabilities.md
++++ b/docs/capabilities.md
+@@ -79,7 +79,7 @@
+ Unsupported AC/noise fixtures must remain in experiment accounting and must not
+ be counted as accuracy matches or accepted performance samples.
+ 
+-Candidate 33's Release suite passes 1,244 of 1,245 tests against ngspice
++Candidate 34's Release suite passes 1,248 of 1,249 tests against ngspice
+ 47, including the JFET2, MOS3 and VBIC transient fixtures. ngspice47 is the sole
+ reference. The remaining supported-scope corpus discrepancies and RFF70N06
+ regression remain release blockers. See
+--- a/docs/joss-progress.md
++++ b/docs/joss-progress.md
+@@ -13,14 +13,56 @@
+ | Milestone | Status and remaining work |
+ |---|---|
+ | 1. Scope, eligibility and environment | Pinned ngspice47 CLI/shared build verified locally. CI and migration tests use the same47 source. Full support matrix, actual public timeline and eligibility remain. |
+-| 2. Trustworthy validation | Checkpoint 33: 1,244/1,245 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. The VBIC switching test now passes the standard, stricter comparator tolerance. |
+-| 3. Numerical correctness | VBIC delay, UIC startup and noise operating-point recovery corrected. Ten VBIC and 52 isolated core sanitizer cases pass; a broader run retains the reference T-line leak. Earlier OFF correction resolved 35 corpus mismatches. PA84, remaining CoolMOS/IRF/RFF/TLV discrepancies, broader option coverage and the reference T-line leak remain. |
+-| 4. Compatibility experiment | Checkpoint 33 executes and audits all 67,359 fixtures against 47, with no outcome or engine-result changes from 32. All raw run files are archived and verified. The binding audit proves six VBIC wrapper fixtures skip their transistor. Binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
++| 2. Trustworthy validation | Candidate 34: 1,248/1,249 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. The VBIC switching test uses the standard, stricter comparator tolerance. |
++| 3. Numerical correctness | Mixed model-card syntax now binds VBIC/JFET devices correctly; semiconductor parse errors propagate. Candidate 34 passes 51 parser/BJT and ten VBIC sanitizer tests with leak detection. Three-terminal VDMOS parsing, PA84, remaining CoolMOS/IRF/RFF/TLV discrepancies, broader option coverage and the earlier reference T-line leak remain. |
++| 4. Compatibility experiment | Checkpoint 34 executes and audits all 67,359 fixtures against 47. Four mismatches become matches; 456 previously successful native runs now fail explicitly on previously skipped cards, including three earlier false matches. Reference results are unchanged. Broader binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
+ | 5. Benchmarks | All34 comprehensive workloads qualify47; THS4131 qualifies5/5. TLV passes its original edge/DC-port contract but retains a strict pointwise discrepancy. Final candidate measurements and interpretation remain. |
+ | 6. Documentation and attribution | Current documentation uses47 exclusively. Component copyright/license/distribution audit remains incomplete. |
+ | 7. Manuscript and release | Draft paper exists. Actual research use, author confirmations, final release metadata, independent installation and final evidence reconciliation remain. |
+ 
+-## Latest verified checkpoint: 33
++## Latest verified checkpoint: 34
++
++ngspice 47 remains the sole target; there is no older-version build, benchmark
++or migration-test obligation. The current configuration and documentation have
++been checked again for stale baseline instructions. Rejected-version regression
++inputs and immutable experiment records remain evidence only.
++
++Mixed syntax such as `NPN LEVEL=4(IS=1e-14) TD=1u` now preserves the model type
++and parameters. The new nine-cell regression checks actual BJT/VBIC device
++classes, positive-delay states, nonzero collector currents and ngspice 47
++operating-point agreement. All six affected corpus wrappers now instantiate a
++VBIC device with 74 states. Missing/wrong Q models and unsupported BJT levels
++fail explicitly; classical levels 0/1/2 and VBIC levels 4/9 remain supported.
++See [model-card compatibility](model-card-compatibility.md).
++
++The frozen candidate passes 1,248/1,249 C++ tests, all 393 Python/tooling tests,
++51 parser/BJT and ten VBIC sanitizer tests with leak detection, and all
++34 + 5 + 1 benchmark accuracy gates. RFF remains the sole C++ failure. No
++tolerance was relaxed and no new performance timing was collected.
++
++All 67,359 corpus fixtures complete and their outcomes are independently
++recomputed. Four mismatches become matches: two driven BFQ790 fixtures and
++both TL072-R variants. All 456 newly explicit native failures have an earlier
++warning that the same offending card was skipped. Of these, 452 also fail in
++the reference. The other four are SGN20N40L and VT6K1, whose three-terminal
++VDMOS cards were omitted; three had misleading MATCH outcomes and one was
++a MISMATCH. The underlying VDMOS parser defect remains a blocker. No reference
++result changes, fixtures are removed, or tolerances are relaxed.
++
++Primary results contain 20,227 MATCH and 1,273 MISMATCH; driven results contain
++22,887 MATCH and 1,273 MISMATCH. All failure and trivial-result categories are
++retained in the [summary](evidence/joss/2026-09-11-checkpoint34-corpus-run47-summary.json),
++[ledger](evidence/joss/2026-09-11-checkpoint34-corpus-run47-records.json.gz),
++[transitions](evidence/joss/2026-09-11-checkpoint34-candidate47-transitions.json)
++and [case-level triage](evidence/joss/2026-09-11-checkpoint34-transition-triage.json).
++The [complete raw archive](evidence/joss/2026-09-11-checkpoint34-full-corpus.tar.gz)
++and its [verification](evidence/joss/2026-09-11-checkpoint34-full-corpus-archive.json)
++preserve all 649,334 regular files, including successful and unsuccessful
++outputs. The [checkpoint record](evidence/joss/2026-09-11-validation-34.json)
++includes the reconstructable source patch, tests, benchmark accuracy checks
++and artifact hashes.
++
++## Previous verified checkpoint: 33
+ 
+ The remaining active BSIM4 golden-value provenance now uses unmodified ngspice
+ 47 and its explicitly selected BSIM4 4.7.0 kernel. All 13 preprocessing values
+@@ -59,7 +101,7 @@
+ measurements or full-option certification.
+ 
+ The [model-binding diagnostic](evidence/joss/2026-09-11-checkpoint33-model-binding-audit.json)
+-proves a parser defect: `NPN LEVEL=4(...)` becomes an incorrect model type and
++proved a parser defect in candidate 33: `NPN LEVEL=4(...)` became an incorrect model type and
+ its Q device is skipped. All six corpus fixtures enclosing the three lexical
+ VBIC declarations report that skip. A two-format minimal control gives the
+ same reference current in ngspice 47, but neospice omits Q1 and returns zero
+--- /dev/null
++++ b/docs/model-card-compatibility.md
+@@ -0,0 +1,62 @@
++# Model-card syntax and device binding
++
++ngspice 47 is the sole reference. Candidate 34 corrects model cards whose
++parameters occur before, inside or after optional parentheses. For example,
++`NPN LEVEL=4(IS=1e-14) TD=1u` now selects VBIC and retains both `IS` and `TD`.
++Previously the parser interpreted `NPN LEVEL=4` as the model type, and Q-card
++handling could silently omit the transistor.
++
++The model type is the first token, with whitespace, parentheses, commas and
++equals signs treated as delimiters. Numeric parameters accept whitespace,
++commas and optional parenthesized groups. This follows the token boundaries
++in ngspice 47's `src/spicelib/parser/inpdomod.c` and `inpgtok.c`; it does not
++establish complete expression, alias or model-language compatibility.
++
++The regression `Parser.ModelParametersBeforeInsideAndAfterParentheses`
++checks six parameter layouts. `BJTParser.MixedModelSyntaxInstantiatesVbicAndMatchesNgspice47`
++loads a nine-cell fixture with NPN/PNP VBIC levels 4/9 and classical BJT levels
++0/1/2. It checks the actual device classes and delay-state allocation, compares
++all public operating-point observables with ngspice 47, and requires nonzero
++collector supply currents in the mixed-syntax cells. Tolerances are unchanged.
++
++The three pinned-corpus VBIC declarations occur inside BFP780 and BFQ790
++subcircuits. An explicit device inspection confirms one VBIC instance and 74
++state entries in every enclosing primary/driven fixture, six fixtures total.
++These checks establish binding and delay-state allocation; minimally excited
++operating-point fixtures alone do not validate the full model or its options.
++The complete corpus rerun repairs two driven BFQ790 mismatches and both TL072-R
++variants. TL072-R still emits ignored-parameter/expression warnings; its improved
++operating point is not complete model-language validation.
++
++## Explicit errors and remaining scope
++
++The semiconductor registry dispatch for D/M/Q/J/Z now propagates `ParseError`
++instead of warning and continuing with a missing device. Q cards referencing
++an absent model, a non-BJT model, or an unsupported BJT level fail explicitly.
++The absent-model and wrong-type controls also fail in unmodified ngspice 47.
++
++| BJT level | Candidate behavior |
++|---|---|
++| 0, 1, 2 | Classical BJT, matching ngspice 47's dispatch. |
++| 4, 9 | VBIC. |
++| 8 | Explicitly unsupported; ngspice 47 selects HICUM2. |
++| 12, 13 | Rejected; no fallback to VBIC or classical BJT. |
++
++Other parser warning paths, model-conversion exceptions, fractional or
++out-of-range level handling, and general expression/alias support still need
++audit. The change is not a claim that every malformed netlist is rejected.
++
++The full corpus also exposes 456 previously successful native runs whose error
++logs showed skipped cards. They now fail explicitly. The reference already
++fails 452 of those fixtures; the other four cover SGN20N40L and VT6K1, whose
++three-terminal VDMOS cards remain unsupported by the native parser. Three
++earlier MATCH results omitted those transistors. All fixtures and failures
++remain in the accounting; the parser limitation remains a blocker. See the
++[complete transition triage](evidence/joss/2026-09-11-checkpoint34-transition-triage.json).
++
++Candidate 34 passes 1,248/1,249 Release C++ tests, all 393 Python/tooling tests,
++51 parser/BJT sanitizer tests and all 10 VBIC sanitizer tests. Leak detection
++is enabled for both sanitizer groups. The existing RFF70N06 C++ failure remains.
++All 34 comprehensive, five THS4131 and one TLV benchmark accuracy gates pass;
++no new performance measurement is implied. The [progress tracker](joss-progress.md)
++records the complete corpus results and remaining publication blockers.
+--- a/docs/ngspice47-reference.md
++++ b/docs/ngspice47-reference.md
+@@ -52,6 +52,9 @@
+ - UIC startup skips the DC solve and preserves capacitor node initial conditions.
+ - Noise uses the common operating-point fallback sequence; VBIC delay noise
+   follows the tested NPN/PNP behavior described in the option audit.
++- Mixed model-card syntax such as `NPN LEVEL=4(IS=1e-14) TD=1u` preserves
++  the model type and all parameters. Missing or incompatible Q models and
++  unsupported BJT levels fail explicitly; see [model-card compatibility](model-card-compatibility.md).
+ 
+ See [source compatibility](source-compatibility.md),
+ [capabilities](capabilities.md), and [diode investigation](diode-coolmos-investigation.md).
+@@ -59,7 +62,7 @@
+ 
+ ## Remaining compatibility work
+ 
+-Candidate 33 passes 1,244 of 1,245 C++ tests against 47; the required RFF70N06
++Candidate 34 passes 1,248 of 1,249 C++ tests against 47; the required RFF70N06
+ operating-point regression remains failing. It is retained even though the
+ reference also fails this fixture. The full frozen corpus contains67,359 cases
+ across two distinct fixture variants; remaining mismatches, model binding,
+--- a/docs/vbic-compatibility.md
++++ b/docs/vbic-compatibility.md
+@@ -91,7 +91,7 @@
+ | Positive `TD` | Implemented and exercised by the tests above. Coverage remains limited to the stated circuits and options. |
+ | Fifth thermal terminal | Not supported by the current Q-card parser. The authored five-terminal self-heating example fails parsing in neospice and runs in ngspice 47. No thermal compatibility claim is made. |
+ | Levels 4 and 9 | Both dispatch to VBIC in ngspice 47 and are covered by the initialization regression. |
+-| Levels 12 and 13 | neospice additionally routes these numbers to VBIC. They are not VBIC levels accepted by the reference parser; their extra acceptance does not establish ngspice compatibility. Classification and parser diagnostics still need review. |
++| Levels 12 and 13 | Rejected with a parse error in candidate 34. They are not VBIC levels accepted by the reference parser. |
+ 
+ The pre-fix checkpoint 32 delay diagnostic fixes collector voltage at 5 V and drives the base through
+ 1 kΩ from a source biased at 0.65 V with AC amplitude 1. At 1 MHz, with `TD=1u`,
+@@ -130,9 +130,11 @@
+ `NPN LEVEL=4(...)` syntax is incorrectly treated as the model type. ngspice 47
+ accepts it. A minimal two-format control reproduces the missing transistor and
+ zero native supply current, versus approximately -0.820434 mA in the reference.
+-This parser defect remains unresolved in checkpoint 33. These wrappers cannot
+-validate VBIC behavior until binding is repaired. The lexical scan itself does
+-not resolve expressions or aliases.
++Candidate 34 repairs this parser defect. A device inspection now confirms one
++VBIC instance with 74 state entries in each of the six wrappers, including the
++positive-delay states. The lexical scan itself does not resolve expressions
++or aliases. See [model-card compatibility](model-card-compatibility.md) for the
++regression and the explicit unsupported-level handling.
+ 
+ Further source-audit leads require dedicated regressions: VBIC current query
+ aliases still expose undelayed forward current, some query/noise expressions

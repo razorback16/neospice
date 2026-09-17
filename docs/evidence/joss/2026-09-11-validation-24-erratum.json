@@ -1,0 +1,9 @@
+{
+  "checkpoint_record": "docs/evidence/joss/2026-09-11-validation-24.json",
+  "checkpoint_sha256": "bff69ce002e6310b8890c68ca932301272c0826f0c688b52e7cf00eb5b5c94cc",
+  "corrections": {
+    "commands.cpp": "OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 ctest --test-dir BUILD -j4 --output-on-failure --timeout 120 --output-junit OUTPUT.xml",
+    "sanitizer_scope_typography": "uninstrumented reference library"
+  },
+  "scope": "Corrects the display-only --timeout120 transcription and split word in the checkpoint record; does not alter test execution, results, source hashes or archived evidence."
+}

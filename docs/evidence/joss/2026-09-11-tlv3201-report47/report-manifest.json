@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "source_manifest": {
+    "path": "/tmp/neospice-joss-checkpoint27-tlv47/manifest.json",
+    "bytes": 594721,
+    "sha256": "0e5dc34422ecd232873fdb1275dc334adee61e5fb742e1aebcabfa3f4305ddfb"
+  },
+  "source_pairs": {
+    "path": "/tmp/neospice-joss-checkpoint27-tlv47/pairs.jsonl",
+    "bytes": 58802,
+    "sha256": "05d31ec14298729150aceb423ca8bee5d004dc084af565cec70c94379e0465a4"
+  },
+  "generator": {
+    "path": "/home/subhagato/Codes/neospice/tools/report_paired_benchmark.py",
+    "bytes": 13033,
+    "sha256": "f35f2f21d94fc62199509d293943cc234abb31941def06803dd4b58ecf2b51c0"
+  },
+  "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+  "matplotlib": "3.11.1",
+  "reference_version": 47,
+  "verify_only": true,
+  "population": [
+    "tran_tlv3201"
+  ],
+  "validation_policy": {
+    "kind": "tlv3201-v1",
+    "crossing_absolute_s": 5e-08,
+    "crossing_strict": true,
+    "port_relative": 0.01,
+    "port_denominator_floor_v": 0.01,
+    "edge_low_v": 0.3,
+    "edge_high_v": 3.0,
+    "settle_window_s": 1e-06,
+    "required_voltages": [
+      "v(vcc)",
+      "v(inm)",
+      "v(inp)",
+      "v(out)"
+    ],
+    "dc_ports": [
+      "v(vcc)",
+      "v(inm)"
+    ],
+    "start_s": 0,
+    "stop_s": 3e-05,
+    "error_scale": "fraction_of_allowance"
+  },
+  "artifacts": {
+    "qualification.csv": {
+      "path": "/tmp/neospice-joss-checkpoint27-tlv47-report/qualification.csv",
+      "bytes": 151,
+      "sha256": "79dfff889bb24122eec8b7a07ad74c8b4ba0d3d8a63a238d1cfea7626eb84c12"
+    },
+    "qualification.pdf": {
+      "path": "/tmp/neospice-joss-checkpoint27-tlv47-report/qualification.pdf",
+      "bytes": 17181,
+      "sha256": "001eb47f95b8a37a15608fb8a317df6f016b63d29f03ec8cedb64f42d7f79e09"
+    },
+    "qualification.svg": {
+      "path": "/tmp/neospice-joss-checkpoint27-tlv47-report/qualification.svg",
+      "bytes": 12687,
+      "sha256": "c821d4f51bb50630009e276d32b69dc6ba9404c7bd990b175b9a2710b2927761"
+    },
+    "report.md": {
+      "path": "/tmp/neospice-joss-checkpoint27-tlv47-report/report.md",
+      "bytes": 1009,
+      "sha256": "732ce0d8eb4ecd3881ddf8ef646c08f2bb4f618050a65c3b8f8db822c1a8298d"
+    }
+  },
+  "limits": [
+    "Pre/post hashes detect persistent changes, not every transient mutation.",
+    "Build/source association requires the recorded build verification; inventory alone does not prove a clean rebuild.",
+    "System observations do not prove absence of competing host jobs.",
+    "Literal include/startup reader supports the declared benchmark inputs, not arbitrary SPICE control scripts."
+  ]
+}

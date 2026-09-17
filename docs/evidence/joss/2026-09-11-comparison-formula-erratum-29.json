@@ -1,0 +1,14 @@
+{
+  "date": "2026-09-11",
+  "correction": "The corpus comparator has used abs(neo-ng) <= RELTOL*max(abs(neo),abs(ng)) + absolute_tolerance. Earlier validation-methods snapshots incorrectly used abs(ng) only. The dedicated RFF test intentionally uses the stricter reference-only expression; its description as the original corpus formula was inaccurate.",
+  "implementation_changed": false,
+  "thresholds_changed": false,
+  "historical_artifacts_modified": false,
+  "source": "tools/compare_kicad_models.py",
+  "source_sha256": "ecb74bf81e679c589ef688d1f4f2bc5b1efeeef5a7683fa59ce5aa44f7db07c2",
+  "documents": [
+    "docs/validation-methods.md",
+    "docs/rff70n06-investigation.md"
+  ],
+  "historical_scope": "Earlier archived versions of these document paragraphs; earlier numeric experiment outputs are preserved."
+}

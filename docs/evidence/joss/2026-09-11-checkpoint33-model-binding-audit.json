@@ -1,0 +1,153 @@
+{
+  "candidate_sha256": "db85f6cdb74c4883f2e749fb921149fc923233f56f7f7469eebbc47ca398dc6f",
+  "reference": "ngspice47",
+  "scope": "Diagnostic finding, not a repaired behavior",
+  "probes": {
+    "parenthesized": {
+      "device_names": [
+        "Vc",
+        "Vb",
+        "Q1"
+      ],
+      "reference_values": {
+        "v(c)": 5.0,
+        "v(b)": 0.65,
+        "v(q1#collci)": 4.999917956588495,
+        "v(q1#xf1)": 0.0008204341019986796,
+        "v(q1#xf2)": 0.0008204341019986796,
+        "i(vb)": -8.203600998513139e-08,
+        "i(vc)": -0.0008204341157025397
+      },
+      "neospice_values": {
+        "v(b)": 0.65,
+        "v(c)": 5.0,
+        "i(vb)": -8.203600998513139e-08,
+        "i(vc)": -0.0008204341157167505
+      }
+    },
+    "mixed": {
+      "device_names": [
+        "Vc",
+        "Vb"
+      ],
+      "reference_values": {
+        "v(c)": 5.0,
+        "v(b)": 0.65,
+        "v(q1#collci)": 4.999917956588495,
+        "v(q1#xf1)": 0.0008204341019986796,
+        "v(q1#xf2)": 0.0008204341019986796,
+        "i(vb)": -8.203600998513139e-08,
+        "i(vc)": -0.0008204341157025397
+      },
+      "neospice_values": {
+        "v(b)": 0.65,
+        "v(c)": 5.0,
+        "i(vb)": 0.0,
+        "i(vc)": 0.0
+      }
+    }
+  },
+  "corpus_wrapper_diagnostics": [
+    {
+      "case_id": "case-v1-eca2efbdeb2b23a702176af4c20c785617ab1c1c3fdca8ce2da41bd73215a598",
+      "variant": "primary",
+      "stderr": "/tmp/neospice-joss-corpus-run-33-ng47-full/cases/case-v1-eca2efbdeb2b23a702176af4c20c785617ab1c1c3fdca8ce2da41bd73215a598/primary/neospice.stderr",
+      "sha256": "3cfb6875b6b9676e5e00135898b042733f3c0c8e3f50d9de052eada9d0059117",
+      "skipped_non_bjt_model": true
+    },
+    {
+      "case_id": "case-v1-eca2efbdeb2b23a702176af4c20c785617ab1c1c3fdca8ce2da41bd73215a598",
+      "variant": "isolated_driven",
+      "stderr": "/tmp/neospice-joss-corpus-run-33-ng47-full/cases/case-v1-eca2efbdeb2b23a702176af4c20c785617ab1c1c3fdca8ce2da41bd73215a598/isolated_driven/neospice.stderr",
+      "sha256": "96b0af4c8aeebca45d075c240dea83eb914dbee394d7e1636e9a694d31fb06c1",
+      "skipped_non_bjt_model": true
+    },
+    {
+      "case_id": "case-v1-fd1f4e99ac03d596def1133d3f0267e0c832d94e78fa05ffafaa23d0daee365f",
+      "variant": "primary",
+      "stderr": "/tmp/neospice-joss-corpus-run-33-ng47-full/cases/case-v1-fd1f4e99ac03d596def1133d3f0267e0c832d94e78fa05ffafaa23d0daee365f/primary/neospice.stderr",
+      "sha256": "608f33b8341241c971c67d20ecd63d68dd5ed2101b827c721571f2231cd9e5b8",
+      "skipped_non_bjt_model": true
+    },
+    {
+      "case_id": "case-v1-fd1f4e99ac03d596def1133d3f0267e0c832d94e78fa05ffafaa23d0daee365f",
+      "variant": "isolated_driven",
+      "stderr": "/tmp/neospice-joss-corpus-run-33-ng47-full/cases/case-v1-fd1f4e99ac03d596def1133d3f0267e0c832d94e78fa05ffafaa23d0daee365f/isolated_driven/neospice.stderr",
+      "sha256": "f9c24f87d81ea54af96bd22ec9ef97cae8cc339887202fdcb557a85530fb1ea2",
+      "skipped_non_bjt_model": true
+    },
+    {
+      "case_id": "case-v1-115ad58a6f0347190f33a1c968a2cd609764dfa3dafffe61f807bb92e35c6114",
+      "variant": "primary",
+      "stderr": "/tmp/neospice-joss-corpus-run-33-ng47-full/cases/case-v1-115ad58a6f0347190f33a1c968a2cd609764dfa3dafffe61f807bb92e35c6114/primary/neospice.stderr",
+      "sha256": "e4927c1616ad303f9afa4c65a8339d3b2ddcfecd27771f526b418d5aa805f4d3",
+      "skipped_non_bjt_model": true
+    },
+    {
+      "case_id": "case-v1-115ad58a6f0347190f33a1c968a2cd609764dfa3dafffe61f807bb92e35c6114",
+      "variant": "isolated_driven",
+      "stderr": "/tmp/neospice-joss-corpus-run-33-ng47-full/cases/case-v1-115ad58a6f0347190f33a1c968a2cd609764dfa3dafffe61f807bb92e35c6114/isolated_driven/neospice.stderr",
+      "sha256": "c1db936ce4cce583b90c87167e84bbe141636161ecbbcccc42ee83bc990afe06",
+      "skipped_non_bjt_model": true
+    }
+  ],
+  "conclusion": "The current model parser treats NPN LEVEL=4 before the opening parenthesis as the model type, and Q dispatch then skips the transistor. ngspice47 accepts that syntax. The parser/binding defect remains a publication blocker.",
+  "artifacts": [
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/audit.py",
+      "sha256": "f0a59aa317abcaa8a6ba220ec8cad98d60fd1e6020b12e31d1446071260646a5",
+      "bytes": 2325
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/mixed-neospice.log",
+      "sha256": "1dbaeee9461c8bbeb54bbc375bc7b3a13c18db2498b00e11514acb85ed1f3a77",
+      "bytes": 371
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/mixed-neospice.raw",
+      "sha256": "c96bf6a587946c1c7390d0386bf1187a1a5795209e9f7801977f18355b6a9621",
+      "bytes": 251
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/mixed-reference.log",
+      "sha256": "629b70d9c8b9c71f4470df7fca46ba4f885dd5044dc47737355b1b8ab3d79e0a",
+      "bytes": 676
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/mixed-reference.raw",
+      "sha256": "da9290106139d7a6650eb335432df9a7588ced5c28b57ca140f3477a3bb1e204",
+      "bytes": 405
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/mixed.cir",
+      "sha256": "c7f7e3cbf7c3c8508ae7062b6edc3ef5746eed7c9628e11a767f3d386175085a",
+      "bytes": 106
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/parenthesized-neospice.log",
+      "sha256": "bb43d07cce3f63c33ac319cdde2216be1ce8a3e078fc7800fffde2628f0c75c1",
+      "bytes": 175
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/parenthesized-neospice.raw",
+      "sha256": "e45ceaf9cff1088c03354cc839817542dc80cd5bdb1f924fbf21eaf2d42ff598",
+      "bytes": 251
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/parenthesized-reference.log",
+      "sha256": "d57a03e49093d42a182705c3184d92db9129224be4ecb630f6da6b55dc561169",
+      "bytes": 684
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/parenthesized-reference.raw",
+      "sha256": "da9290106139d7a6650eb335432df9a7588ced5c28b57ca140f3477a3bb1e204",
+      "bytes": 405
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint33/model-binding/parenthesized.cir",
+      "sha256": "d8b89f4f6f1e89a15e3201bfed63700f7c163d67eda540384daa50f7eb4e81de",
+      "bytes": 106
+    }
+  ],
+  "generation_script": "from pathlib import Path\nimport sys,json,hashlib\nsys.path.insert(0,'tools')\nfrom compare_kicad_models import parse_raw_file\nimport neospice\nw=Path('/tmp/neospice-joss-checkpoint33/model-binding');sim=neospice.Simulator();rows={}\nfor name in ['parenthesized','mixed']:\n    deck=w/(name+'.cir');circuit=sim.load(str(deck))\n    rows[name]=dict(device_names=circuit.device_names(),reference_values=parse_raw_file(w/(name+'-reference.raw'),require_operating_point=True),neospice_values=parse_raw_file(w/(name+'-neospice.raw'),require_operating_point=True))\nassert 'Q1' in rows['parenthesized']['device_names'] and 'Q1' not in rows['mixed']['device_names']\nassert abs(rows['mixed']['reference_values']['i(vc)'])>1e-4\nassert abs(rows['mixed']['neospice_values']['i(vc)'])<1e-12\nscope=json.loads(Path('docs/evidence/joss/2026-09-11-checkpoint33-vbic-corpus-scope.json').read_text())\nactual=[]\nfor row in scope['rows']:\n    for wrapper in row['lexically_enclosing_generated_wrappers']:\n        for variant in ['primary','isolated_driven']:\n            p=Path('/tmp/neospice-joss-corpus-run-33-ng47-full/cases')/wrapper['case_id']/variant/'neospice.stderr'\n            text=p.read_text()\n            actual.append(dict(case_id=wrapper['case_id'],variant=variant,stderr=str(p),sha256=hashlib.sha256(p.read_bytes()).hexdigest(),skipped_non_bjt_model='references non-BJT model' in text and 'skipping' in text))\nreport=dict(candidate_sha256=hashlib.sha256(Path('/tmp/neospice-joss-checkpoint33/neospice').read_bytes()).hexdigest(),reference='ngspice47',scope='Diagnostic finding, not a repaired behavior',probes=rows,corpus_wrapper_diagnostics=actual,conclusion='The current model parser treats NPN LEVEL=4 before the opening parenthesis as the model type, and Q dispatch then skips the transistor. ngspice47 accepts that syntax. The parser/binding defect remains a publication blocker.',artifacts=[dict(path=str(p),sha256=hashlib.sha256(p.read_bytes()).hexdigest(),bytes=p.stat().st_size) for p in sorted(w.iterdir()) if p.is_file()],generation_script=Path(__file__).read_text())\np=Path('docs/evidence/joss/2026-09-11-checkpoint33-model-binding-audit.json');p.write_text(json.dumps(report,indent=2)+'\\n');print(json.dumps(dict(probes=rows,corpus_skip_count=sum(r['skipped_non_bjt_model'] for r in actual),wrappers=len(actual)),indent=2))\n"
+}

@@ -1,0 +1,1129 @@
+{
+  "reference_version": "47",
+  "roots": [
+    "/tmp/neospice-joss-corpus-run-29-ng47-full",
+    "/tmp/neospice-joss-corpus-run-29-stage2-ng47-full"
+  ],
+  "fixtures_reconciled": 67359,
+  "input_manifest_sha256": "b888f92eca7d5ea3934815f1cd3461cb36b968d40808dae81057947ae25f7b79",
+  "fixture_bytes_identical": true,
+  "neospice_binaries": [
+    {
+      "path": "/tmp/neospice-joss-checkpoint29-neospice",
+      "sha256": "3e7cc56e9280b74b37a969733f0dce57a736c00a1602671d2f920cf437d0165d",
+      "bytes": 5123920
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint29-stage2-neospice",
+      "sha256": "f364375eca348e77062f86788636ecd50f1491d51b1d00d0725223813096fee0",
+      "bytes": 5128016
+    }
+  ],
+  "transitions_by_variant": {
+    "primary": {
+      "MISMATCH -> MISMATCH": 1274,
+      "NEO_TRIVIAL -> NEO_TRIVIAL": 5364,
+      "NEO_ONLY -> NEO_ONLY": 4716,
+      "MATCH -> MATCH": 20224,
+      "BOTH_FAIL -> BOTH_FAIL": 3304,
+      "NG_ONLY -> NG_ONLY": 22,
+      "MISMATCH -> MATCH": 4
+    },
+    "isolated_driven": {
+      "MISMATCH -> MISMATCH": 1312,
+      "NEO_ONLY -> NEO_ONLY": 6939,
+      "MATCH -> MATCH": 22844,
+      "BOTH_FAIL -> BOTH_FAIL": 1300,
+      "NG_ONLY -> NG_ONLY": 50,
+      "MISMATCH -> MATCH": 6
+    }
+  },
+  "changed_outcomes": [
+    {
+      "case_id": "case-v1-aa165093661d078abfbe3d731baba18d02922f1c215bb2122abaa96423c34dc4",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "spa20n60cfd_l0",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-dd85cb139b0df2d48d5a033ee2ad1a82258c2ae20c23c50f534fa90848128bec",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "spi20n60cfd_l0",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-4e1f4b301fd5d154f7dd6f5b5fbba64054bc4c55a9912c04b3b3880e61f1ee0e",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "spp20n60cfd_l0",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-1a0badf57eb918a6879ce339b51ee4fbc42bb2f571f274f8aa9701e436cd2842",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "spw11n60cfd_l0",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-bd59cf7e16c3de3621d0011658366b27c3e207d941c4940179b4b6be6b76bdb8",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "spw20n60cfd_l0",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-c728cf3b48afcc618832338a35798da5c432460d0c5a9072eb576dc635f9dc1d",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "ipw50r045cp_l0",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-ea1eb8c56823ddb505e4422f25f81d79ee00b1e35ed68bd844e938ec22d55dd7",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/spice_complete/zmodels.lib",
+        "kind": "model",
+        "scope": [],
+        "name": "zv950v2",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-3e26218d200a58b6dfb314ae16aa7f4191898ba702d55cfa0fc6b42496882741",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/spice_complete/zmodels.lib",
+        "kind": "model",
+        "scope": [],
+        "name": "zv952v2",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-932d582d9f2e59251fc8a9fac91ce7f87952bb33adb2db8f8b6c1df5139c47c2",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/spice_complete/zmodels.lib",
+        "kind": "model",
+        "scope": [],
+        "name": "zv953v2",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-c4d326ef9246a66af6b9d76fb85131a508521aa28724599d53e70e7ce265845c",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/spice_complete/zmodels.lib",
+        "kind": "model",
+        "scope": [],
+        "name": "zmdc953",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    }
+  ],
+  "engine_result_changes": {
+    "neospice": [
+      {
+        "case_id": "case-v1-e2c4cc06dd922c39e53530b7943a5a2246152a41e0a081b01250573b05afbb08",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spa11n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-10cd957f4d9c022ede3701a47f7c19e18a07874449573f058ac7c7a03719e763",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spa15n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-aa165093661d078abfbe3d731baba18d02922f1c215bb2122abaa96423c34dc4",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spa20n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-dab34cece90e330deb030eb67196733e8fd9bb9e2b318169c7f68f3537ff21bf",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spi11n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-f7a46a33eeb6112088a9483677e3ee6e265b2fc90a7a32517433c8d27fe1e8dc",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spi15n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-dd85cb139b0df2d48d5a033ee2ad1a82258c2ae20c23c50f534fa90848128bec",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spi20n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b05e4d5acfd792d3aa989092d20f34d888ef88ee265a20617b5ddfbd94b53d15",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spp11n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-152eb165eb24ca59034af6411859923f0d05d78b9aa190f744a798824af7dfcd",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spp15n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-4e1f4b301fd5d154f7dd6f5b5fbba64054bc4c55a9912c04b3b3880e61f1ee0e",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spp20n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-86b5e066a27d1de478eaed2ab93d6bf5fbe54e847b900eeba5d591bdd4ff8dca",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spp24n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-1a0badf57eb918a6879ce339b51ee4fbc42bb2f571f274f8aa9701e436cd2842",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spw11n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-db2855a715214dcc55b319e28e381042a97ade9dae14faafebe9f1af526d373d",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spw15n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-bd59cf7e16c3de3621d0011658366b27c3e207d941c4940179b4b6be6b76bdb8",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spw20n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-cb0d0a952ba86bab9f73616427295739b6a8e66e5bf98a0d84d37109b46e7a15",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spw24n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-124a9ff1909c00e1064d56fd0fcd2b5863fa6e70ffd15e3da3a07960bdcd571c",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "spw35n60cfd_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c728cf3b48afcc618832338a35798da5c432460d0c5a9072eb576dc635f9dc1d",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/CoolMOSsimp.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "ipw50r045cp_l0",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-baa1215405f5c7fd22bf04d37830bad736780911effe660bae6d7623671d8332",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/ph_diode.lib",
+          "kind": "model",
+          "scope": [],
+          "name": "1n5259b",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-2295299c5f133ac6883eb1c00c8d013ef0b839003ecab40d64336fa5b43449a8",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "bby31_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-2295299c5f133ac6883eb1c00c8d013ef0b839003ecab40d64336fa5b43449a8",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "bby31_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-e486d3ace33ef248bce3dd7c06d0a32c5a0632ee7ce3a32fc4f1bfdbe56ee348",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "bby40_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-e486d3ace33ef248bce3dd7c06d0a32c5a0632ee7ce3a32fc4f1bfdbe56ee348",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "bby40_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-d40ba35a9c83b272694f087eb724d7bbf76bee69532aca661210ab8e691d33a6",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "fmmv105g_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-d40ba35a9c83b272694f087eb724d7bbf76bee69532aca661210ab8e691d33a6",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "fmmv105g_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a201961fcd585680242c140587580d4cb3a2810704345b547ac3a0e367a79310",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "fmmv109_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a201961fcd585680242c140587580d4cb3a2810704345b547ac3a0e367a79310",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "fmmv109_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-1ba1e20e9ea555190633b96bba4d919e1be7d892429f7ec49cc82bf81483175c",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "fmmv3102_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-1ba1e20e9ea555190633b96bba4d919e1be7d892429f7ec49cc82bf81483175c",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "fmmv3102_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-8fa714455a4fb2cf7d17bb1c89c66a15681486cea5729e40f5e53b9d391b43a7",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc820a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-8fa714455a4fb2cf7d17bb1c89c66a15681486cea5729e40f5e53b9d391b43a7",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc820a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-bbfd505a10dc58dbbc11699b5fbc5ab7540d1ad0cdf0980c950e75d0da556fc6",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc821a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-bbfd505a10dc58dbbc11699b5fbc5ab7540d1ad0cdf0980c950e75d0da556fc6",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc821a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-e2208252d0af9dee20300ab0c9a699ca5f2c367176a9bb0c263a940647beb33a",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc822a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-e2208252d0af9dee20300ab0c9a699ca5f2c367176a9bb0c263a940647beb33a",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc822a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-4fee954065ed2ebe957c895c63767e9ee458eaafe1f980dc8013f8788e4ba398",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc823a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-4fee954065ed2ebe957c895c63767e9ee458eaafe1f980dc8013f8788e4ba398",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc823a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-5b40c6b5eb68ca793beeff2f18a64553b768649d1fcc4142d59597ea6bc37831",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc824a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-5b40c6b5eb68ca793beeff2f18a64553b768649d1fcc4142d59597ea6bc37831",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc824a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-7831f3771ad26ba8620b907fe341a93d76ac84f66e9f32f1b4e71e186af31f7e",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc825a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-7831f3771ad26ba8620b907fe341a93d76ac84f66e9f32f1b4e71e186af31f7e",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc825a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-59b03081ceb537f784fbd427cb252deaf362f9728d9004c5ea036320d06bde1f",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc826a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-59b03081ceb537f784fbd427cb252deaf362f9728d9004c5ea036320d06bde1f",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc826a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-566ffe906dfaa0f3680b5e1764abe1f5ab8d07ba6ca2de8a2a5c36ab442fe5af",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc830a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-566ffe906dfaa0f3680b5e1764abe1f5ab8d07ba6ca2de8a2a5c36ab442fe5af",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc830a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-e6ad23f98b0aeafd8d5fd7abed104093b71f64d6bef0076b862d98d0278a956e",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc831a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-e6ad23f98b0aeafd8d5fd7abed104093b71f64d6bef0076b862d98d0278a956e",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc831a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a709937a6451daa4963b0d82ecfe2f41ad687c1273da31c8ee5dcf7fbc6e0593",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc832a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a709937a6451daa4963b0d82ecfe2f41ad687c1273da31c8ee5dcf7fbc6e0593",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc832a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-85cc58afc43d8bec0e10aaf9550503d51f31f89862335dd1505815c52f841c8a",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc833a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-85cc58afc43d8bec0e10aaf9550503d51f31f89862335dd1505815c52f841c8a",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc833a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-9c57d9e14b01d0f7f8bca461633a0d8ec377c0848943d8023bcc22a152bb4a20",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc834a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-9c57d9e14b01d0f7f8bca461633a0d8ec377c0848943d8023bcc22a152bb4a20",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc834a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b0974a41e463a8b2798666b6979706ee6d4ecf750864b21d0a4f01e8913be07c",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc835a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b0974a41e463a8b2798666b6979706ee6d4ecf750864b21d0a4f01e8913be07c",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc835a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-06b0524a8fbb64b7c382d075c6d896957f016bc74168e4e9419746fa7cf5fcbe",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc836a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-06b0524a8fbb64b7c382d075c6d896957f016bc74168e4e9419746fa7cf5fcbe",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/zetex.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "zc836a_zx",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-ea1eb8c56823ddb505e4422f25f81d79ee00b1e35ed68bd844e938ec22d55dd7",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zmodels.lib",
+          "kind": "model",
+          "scope": [],
+          "name": "zv950v2",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-3e26218d200a58b6dfb314ae16aa7f4191898ba702d55cfa0fc6b42496882741",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zmodels.lib",
+          "kind": "model",
+          "scope": [],
+          "name": "zv952v2",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-932d582d9f2e59251fc8a9fac91ce7f87952bb33adb2db8f8b6c1df5139c47c2",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zmodels.lib",
+          "kind": "model",
+          "scope": [],
+          "name": "zv953v2",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c4d326ef9246a66af6b9d76fb85131a508521aa28724599d53e70e7ce265845c",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/zmodels.lib",
+          "kind": "model",
+          "scope": [],
+          "name": "zmdc953",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      }
+    ],
+    "reference": []
+  },
+  "limitations": [
+    "Different neospice candidates and separate executions; unchanged reference can still have timeout or floating-point runtime differences",
+    "No outcome transition is attributed to a source correction without case-level analysis",
+    "Reference47 repairs the known42 convergence-flag loss; successful minimal OP alone does not certify full models",
+    "Frozen lexical identities do not prove independently bound model definitions; no full-model certification"
+  ],
+  "generation_script": "from pathlib import Path\nfrom collections import Counter, defaultdict\nimport json, hashlib\n\nroots = [Path('/tmp/neospice-joss-corpus-run-29-ng47-full'), Path('/tmp/neospice-joss-corpus-run-29-stage2-ng47-full')]\nplans = [json.loads((p/'run.json').read_text()) for p in roots]\nassert all(p['complete'] and p['completed_fixtures']==67359 for p in plans)\nassert plans[0]['fixtures']==plans[1]['fixtures']\npre = [json.loads((p/'preflight.json').read_text()) for p in roots]\nassert pre[0]['inventory']['reference']['sha256']==pre[1]['inventory']['reference']['sha256']\nassert pre[0]['inventory']['startup_and_codemodels']==pre[1]['inventory']['startup_and_codemodels']\ncounts = defaultdict(Counter)\nchanged = []\nengine_changes = {'neospice':[], 'reference':[]}\nfor item in plans[0]['fixtures']:\n    rel = Path('cases')/item['case_id']/item['variant']/'comparison.json'\n    a,b = [json.loads((root/rel).read_text()) for root in roots]\n    assert a['identity']==b['identity'] and a['materialized_fixture']['sha256']==b['materialized_fixture']['sha256']\n    counts[item['variant']][a['status']+' -> '+b['status']] += 1\n    identity = dict(case_id=item['case_id'],variant=item['variant'],identity=a['identity'])\n    if a['status']!=b['status']:\n        changed.append(dict(identity, before=a['status'], after=b['status']))\n    for engine in engine_changes:\n        fields = [k for k in ['ok','failure_class','returncode','values'] if a[engine][k]!=b[engine][k]]\n        if fields:\n            engine_changes[engine].append(dict(identity, differing_fields=fields,\n                before_failure=a[engine]['failure_class'],after_failure=b[engine]['failure_class']))\nreport = dict(reference_version='47',roots=list(map(str,roots)),fixtures_reconciled=67359,\n    input_manifest_sha256=plans[0]['input_manifest']['sha256'],fixture_bytes_identical=True,\n    neospice_binaries=[p['inventory']['neospice'] for p in pre],\n    transitions_by_variant={k:dict(v) for k,v in counts.items()},changed_outcomes=changed,\n    engine_result_changes=engine_changes,\n    limitations=['Different neospice candidates and separate executions; unchanged reference can still have timeout or floating-point runtime differences',\n        'No outcome transition is attributed to a source correction without case-level analysis',\n        'Reference47 repairs the known42 convergence-flag loss; successful minimal OP alone does not certify full models',\n        'Frozen lexical identities do not prove independently bound model definitions; no full-model certification'],\n    generation_script=Path(__file__).read_text())\nout=Path('docs/evidence/joss/2026-09-11-checkpoint29-stage2-candidate47-transitions.json')\nout.write_text(json.dumps(report,indent=2,allow_nan=False)+'\\n')\nprint(json.dumps({'outcome_changes':len(changed),'engine_result_changes':{k:len(v) for k,v in engine_changes.items()},\n    'transitions':report['transitions_by_variant'],'path':str(out),'sha256':hashlib.sha256(out.read_bytes()).hexdigest()},indent=2))\n"
+}

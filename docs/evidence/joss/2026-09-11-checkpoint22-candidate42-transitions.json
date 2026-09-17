@@ -1,0 +1,51 @@
+{
+  "reference_version": "42",
+  "roots": [
+    "/tmp/neospice-joss-corpus-run-19-ng42-full",
+    "/tmp/neospice-joss-corpus-run-22-ng42-full"
+  ],
+  "fixtures_reconciled": 67359,
+  "input_manifest_sha256": "b888f92eca7d5ea3934815f1cd3461cb36b968d40808dae81057947ae25f7b79",
+  "fixture_bytes_identical": true,
+  "neospice_binaries": [
+    {
+      "path": "/tmp/neospice-joss-checkpoint19-neospice",
+      "sha256": "11c59bfbe4b4414cfc97303891544a836e23049acd72e04fdfd30df73ecd3077",
+      "bytes": 5112232
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint22-neospice",
+      "sha256": "36174334843ee7b1666ac0d69147a4d274642d658545dee83dbc9a4c87c6a378",
+      "bytes": 5112312
+    }
+  ],
+  "transitions_by_variant": {
+    "primary": {
+      "MISMATCH -> MISMATCH": 1063,
+      "NEO_TRIVIAL -> NEO_TRIVIAL": 5347,
+      "NEO_ONLY -> NEO_ONLY": 4949,
+      "MATCH -> MATCH": 20218,
+      "BOTH_FAIL -> BOTH_FAIL": 3330,
+      "NG_ONLY -> NG_ONLY": 1
+    },
+    "isolated_driven": {
+      "MISMATCH -> MISMATCH": 1316,
+      "NEO_ONLY -> NEO_ONLY": 7150,
+      "MATCH -> MATCH": 22632,
+      "BOTH_FAIL -> BOTH_FAIL": 1330,
+      "NG_ONLY -> NG_ONLY": 23
+    }
+  },
+  "changed_outcomes": [],
+  "engine_result_changes": {
+    "neospice": [],
+    "reference": []
+  },
+  "limitations": [
+    "Different neospice candidates and separate executions; unchanged reference can still have timeout or floating-point runtime differences",
+    "No outcome transition is attributed to a source correction without case-level analysis",
+    "Reference42 post-solve device-convergence flag loss qualifies successful reference results",
+    "Frozen lexical identities do not prove independently bound model definitions; no full-model certification"
+  ],
+  "generation_script": "from pathlib import Path\nfrom collections import Counter, defaultdict\nimport json, hashlib\n\nroots = [Path('/tmp/neospice-joss-corpus-run-19-ng42-full'), Path('/tmp/neospice-joss-corpus-run-22-ng42-full')]\nplans = [json.loads((p/'run.json').read_text()) for p in roots]\nassert all(p['complete'] and p['completed_fixtures']==67359 for p in plans)\nassert plans[0]['fixtures']==plans[1]['fixtures']\npre = [json.loads((p/'preflight.json').read_text()) for p in roots]\nassert pre[0]['inventory']['reference']['sha256']==pre[1]['inventory']['reference']['sha256']\nassert pre[0]['inventory']['startup_and_codemodels']==pre[1]['inventory']['startup_and_codemodels']\ncounts = defaultdict(Counter)\nchanged = []\nengine_changes = {'neospice':[], 'reference':[]}\nfor item in plans[0]['fixtures']:\n    rel = Path('cases')/item['case_id']/item['variant']/'comparison.json'\n    a,b = [json.loads((root/rel).read_text()) for root in roots]\n    assert a['identity']==b['identity'] and a['materialized_fixture']['sha256']==b['materialized_fixture']['sha256']\n    counts[item['variant']][a['status']+' -> '+b['status']] += 1\n    identity = dict(case_id=item['case_id'],variant=item['variant'],identity=a['identity'])\n    if a['status']!=b['status']:\n        changed.append(dict(identity, before=a['status'], after=b['status']))\n    for engine in engine_changes:\n        fields = [k for k in ['ok','failure_class','returncode','values'] if a[engine][k]!=b[engine][k]]\n        if fields:\n            engine_changes[engine].append(dict(identity, differing_fields=fields,\n                before_failure=a[engine]['failure_class'],after_failure=b[engine]['failure_class']))\nreport = dict(reference_version='42',roots=list(map(str,roots)),fixtures_reconciled=67359,\n    input_manifest_sha256=plans[0]['input_manifest']['sha256'],fixture_bytes_identical=True,\n    neospice_binaries=[p['inventory']['neospice'] for p in pre],\n    transitions_by_variant={k:dict(v) for k,v in counts.items()},changed_outcomes=changed,\n    engine_result_changes=engine_changes,\n    limitations=['Different neospice candidates and separate executions; unchanged reference can still have timeout or floating-point runtime differences',\n        'No outcome transition is attributed to a source correction without case-level analysis',\n        'Reference42 post-solve device-convergence flag loss qualifies successful reference results',\n        'Frozen lexical identities do not prove independently bound model definitions; no full-model certification'],\n    generation_script=Path(__file__).read_text())\nout=Path('docs/evidence/joss/2026-09-11-checkpoint22-candidate42-transitions.json')\nout.write_text(json.dumps(report,indent=2,allow_nan=False)+'\\n')\nprint(json.dumps({'outcome_changes':len(changed),'engine_result_changes':{k:len(v) for k,v in engine_changes.items()},\n    'transitions':report['transitions_by_variant'],'path':str(out),'sha256':hashlib.sha256(out.read_bytes()).hexdigest()},indent=2))\n"
+}

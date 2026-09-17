@@ -1,0 +1,215 @@
+{
+  "checkpoint": 35,
+  "reference_version": "47",
+  "outcome_changes": 11,
+  "classifications": {
+    "VDMOS binding repaired; minimal OP comparison matches": 4,
+    "Native parser now succeeds; reference still fails, no accuracy claim": 7
+  },
+  "cases": [
+    {
+      "case_id": "case-v1-a5d52bb37fcc7ea8405d1ccd9615becf4010ddda0370f70b866104fc216fa53c",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Igbt.sub",
+        "kind": "subckt",
+        "scope": [],
+        "name": "sgn20n40l",
+        "occurrence": 1
+      },
+      "before": "NG_ONLY",
+      "after": "MATCH",
+      "classification": "VDMOS binding repaired; minimal OP comparison matches",
+      "before_native_stderr": "Parse error: Line 26: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "[topology WARNING] Floating node 'x1.4' has only one device connection\n[topology WARNING] Floating node 'net_2' has only one device connection\n[neospice] parse=0.245928 ms, sim=0.054214 ms, write=0.10492 ms, total=0.405062 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": ""
+    },
+    {
+      "case_id": "case-v1-a5d52bb37fcc7ea8405d1ccd9615becf4010ddda0370f70b866104fc216fa53c",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Igbt.sub",
+        "kind": "subckt",
+        "scope": [],
+        "name": "sgn20n40l",
+        "occurrence": 1
+      },
+      "before": "NG_ONLY",
+      "after": "MATCH",
+      "classification": "VDMOS binding repaired; minimal OP comparison matches",
+      "before_native_stderr": "Parse error: Line 5: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "[topology WARNING] Floating node 'x1.4' has only one device connection\n[topology WARNING] Floating node 'net_2' has only one device connection\n[neospice] parse=0.194745 ms, sim=0.044501 ms, write=0.125662 ms, total=0.364908 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": ""
+    },
+    {
+      "case_id": "case-v1-3edb6fbbf92c8ecf4290d8ee865466906c3b781074f459987a73946f322b06f7",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "mic1557",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY",
+      "classification": "Native parser now succeeds; reference still fails, no accuracy claim",
+      "before_native_stderr": "Warning: Line 3314: B element expression error: ASRC expression: unexpected character 'R' at position 75 \u2014 skipping\nWarning: Line 3317: B element expression error: ASRC expression: unexpected character 'R' at position 52 \u2014 skipping\nWarning: Line 3318: B element expression error: ASRC expression: unexpected character 'R' at position 53 \u2014 skipping\nWarning: Line 3322: B element expression error: ASRC expression: unexpected character 'R' at position 28 \u2014 skipping\nParse error: Line 3323: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "Warning: Line 3314: B element expression error: ASRC expression: unexpected character 'R' at position 75 \u2014 skipping\nWarning: Line 3317: B element expression error: ASRC expression: unexpected character 'R' at position 52 \u2014 skipping\nWarning: Line 3318: B element expression error: ASRC expression: unexpected character 'R' at position 53 \u2014 skipping\nWarning: Line 3322: B element expression error: ASRC expression: unexpected character 'R' at position 28 \u2014 skipping\nWarning: model 'x1.p': unknown VDMOS parameter 'pchan' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'roff' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'ron' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'vfwd' (ignored)\n[topology WARNING] Floating node 'x1.y' has only one device connection\n[neospice] parse=10.2079 ms, sim=0.783572 ms, write=0.132715 ms, total=11.1241 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "\nError: Mismatch of .subckt ... .ends statements!\n    in file /tmp/neospice-joss-corpus-run-35-ng47-full/cases/case-v1-3edb6fbbf92c8ecf4290d8ee865466906c3b781074f459987a73946f322b06f7/primary/fixture.cir\n    This will cause subsequent errors.\n\nCheck line .subckt dc_dc_12v 1 2 3 4\n\nERROR: fatal error in ngspice, exit(1)\n"
+    },
+    {
+      "case_id": "case-v1-3edb6fbbf92c8ecf4290d8ee865466906c3b781074f459987a73946f322b06f7",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "mic1557",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY",
+      "classification": "Native parser now succeeds; reference still fails, no accuracy claim",
+      "before_native_stderr": "Warning: Line 8: B element expression error: ASRC expression: unexpected character 'R' at position 75 \u2014 skipping\nWarning: Line 11: B element expression error: ASRC expression: unexpected character 'R' at position 52 \u2014 skipping\nWarning: Line 12: B element expression error: ASRC expression: unexpected character 'R' at position 53 \u2014 skipping\nWarning: Line 16: B element expression error: ASRC expression: unexpected character 'R' at position 28 \u2014 skipping\nParse error: Line 17: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "Warning: Line 8: B element expression error: ASRC expression: unexpected character 'R' at position 75 \u2014 skipping\nWarning: Line 11: B element expression error: ASRC expression: unexpected character 'R' at position 52 \u2014 skipping\nWarning: Line 12: B element expression error: ASRC expression: unexpected character 'R' at position 53 \u2014 skipping\nWarning: Line 16: B element expression error: ASRC expression: unexpected character 'R' at position 28 \u2014 skipping\nWarning: model 'x1.p': unknown VDMOS parameter 'pchan' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'roff' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'ron' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'vfwd' (ignored)\n[topology WARNING] Floating node 'x1.y' has only one device connection\n[neospice] parse=0.352343 ms, sim=0.747355 ms, write=0.121408 ms, total=1.22111 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "Error in netlist line no. 27, new internal line no. 7:\n\nUndefined parameter [rpar]\nError in netlist line no. 27, new internal line no. 7:\n\nCannot compute substitute\nError in netlist line no. 32, new internal line no. 10:\n\nUndefined parameter [rpar]\nError in netlist line no. 32, new internal line no. 10:\n\nCannot compute substitute\nError in netlist line no. 34, new internal line no. 11:\n\nUndefined parameter [rpar]\nError in netlist line no. 34, new internal line no. 11:\n\nCannot compute substitute\nError in netlist line no. 39, new internal line no. 15:\n\nUndefined parameter [rpar]\nError in netlist line no. 39, new internal line no. 15:\n\nCannot compute substitute\n\nERROR: fatal error in ngspice, exit(1)\n"
+    },
+    {
+      "case_id": "case-v1-f8d0a5ccd2d5871b009376b3a59ad6c21cc5a3eb795996e2ab7c0289321a16b6",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "mic1557_",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY",
+      "classification": "Native parser now succeeds; reference still fails, no accuracy claim",
+      "before_native_stderr": "Warning: Line 3338: B element expression error: ASRC expression: unexpected character 'R' at position 75 \u2014 skipping\nWarning: Line 3355: B element expression error: ASRC expression: unknown function 'mylimit' \u2014 skipping\nWarning: Line 3342: B element expression error: ASRC expression: unexpected character 'R' at position 64 \u2014 skipping\nWarning: Line 3359: B element expression error: ASRC expression: unexpected character 'R' at position 113 \u2014 skipping\nParse error: Line 3344: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "Warning: Line 3338: B element expression error: ASRC expression: unexpected character 'R' at position 75 \u2014 skipping\nWarning: Line 3355: B element expression error: ASRC expression: unknown function 'mylimit' \u2014 skipping\nWarning: Line 3342: B element expression error: ASRC expression: unexpected character 'R' at position 64 \u2014 skipping\nWarning: Line 3359: B element expression error: ASRC expression: unexpected character 'R' at position 113 \u2014 skipping\nWarning: model 'x1.p': unknown VDMOS parameter 'pchan' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'roff' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'ron' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'vfwd' (ignored)\n[neospice] parse=12.5074 ms, sim=0.652365 ms, write=0.116752 ms, total=13.2765 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "\nError: Mismatch of .subckt ... .ends statements!\n    in file /tmp/neospice-joss-corpus-run-35-ng47-full/cases/case-v1-f8d0a5ccd2d5871b009376b3a59ad6c21cc5a3eb795996e2ab7c0289321a16b6/primary/fixture.cir\n    This will cause subsequent errors.\n\nCheck line .subckt dc_dc_12v 1 2 3 4\n\nERROR: fatal error in ngspice, exit(1)\n"
+    },
+    {
+      "case_id": "case-v1-f8d0a5ccd2d5871b009376b3a59ad6c21cc5a3eb795996e2ab7c0289321a16b6",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "mic1557_",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY",
+      "classification": "Native parser now succeeds; reference still fails, no accuracy claim",
+      "before_native_stderr": "Warning: Line 17: B element expression error: ASRC expression: unexpected character 'R' at position 75 \u2014 skipping\nWarning: Line 34: B element expression error: ASRC expression: unknown function 'mylimit' \u2014 skipping\nWarning: Line 21: B element expression error: ASRC expression: unexpected character 'R' at position 64 \u2014 skipping\nWarning: Line 38: B element expression error: ASRC expression: unexpected character 'R' at position 113 \u2014 skipping\nParse error: Line 23: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "Warning: Line 17: B element expression error: ASRC expression: unexpected character 'R' at position 75 \u2014 skipping\nWarning: Line 34: B element expression error: ASRC expression: unknown function 'mylimit' \u2014 skipping\nWarning: Line 21: B element expression error: ASRC expression: unexpected character 'R' at position 64 \u2014 skipping\nWarning: Line 38: B element expression error: ASRC expression: unexpected character 'R' at position 113 \u2014 skipping\nWarning: model 'x1.p': unknown VDMOS parameter 'pchan' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'roff' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'ron' (ignored)\nWarning: model 'x1.dmy': unknown DIO parameter 'vfwd' (ignored)\n[neospice] parse=0.34046 ms, sim=0.653161 ms, write=0.106723 ms, total=1.10034 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "Error in netlist line no. 43, new internal line no. 16:\n\nUndefined parameter [rpar]\nError in netlist line no. 43, new internal line no. 16:\n\nCannot compute substitute\nError in netlist line no. 66, new internal line no. 33:\n\nUndefined parameter [rpar]\nError in netlist line no. 66, new internal line no. 33:\n\nCannot compute substitute\nError in netlist line no. 48, new internal line no. 20:\n\nUndefined parameter [rpar]\nError in netlist line no. 48, new internal line no. 20:\n\nCannot compute substitute\nError in netlist line no. 75, new internal line no. 37:\n\nUndefined parameter [rpar]\nError in netlist line no. 75, new internal line no. 37:\n\nCannot compute substitute\n\nERROR: fatal error in ngspice, exit(1)\n"
+    },
+    {
+      "case_id": "case-v1-d385c777382d60c2e74c68188ec96ff5eb90487e3d281b6489215dbef74891b8",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "vp2450",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_TRIVIAL",
+      "classification": "Native parser now succeeds; reference still fails, no accuracy claim",
+      "before_native_stderr": "Parse error: Line 14561: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "Warning: Line 14562: B element expression error: ASRC expression: unexpected character 'R' at position 20 \u2014 skipping\nWarning: model 'x1.vp2450_': unknown VDMOS parameter 'pchan' (ignored)\nWarning: model 'x1.vp2450_c': unknown VDMOS parameter 'pchan' (ignored)\n[topology WARNING] Floating node 'x1.gate' has only one device connection\n[topology WARNING] Floating node 'x1.3' has only one device connection\n[topology WARNING] Floating node 'x1.1' has only one device connection\n[neospice] parse=9.79976 ms, sim=0.106178 ms, write=0.112546 ms, total=10.0185 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "\nError: Mismatch of .subckt ... .ends statements!\n    in file /tmp/neospice-joss-corpus-run-35-ng47-full/cases/case-v1-d385c777382d60c2e74c68188ec96ff5eb90487e3d281b6489215dbef74891b8/primary/fixture.cir\n    This will cause subsequent errors.\n\nCheck line .subckt dc_dc_12v 1 2 3 4\n\nERROR: fatal error in ngspice, exit(1)\n"
+    },
+    {
+      "case_id": "case-v1-d385c777382d60c2e74c68188ec96ff5eb90487e3d281b6489215dbef74891b8",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "vp2450",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY",
+      "classification": "Native parser now succeeds; reference still fails, no accuracy claim",
+      "before_native_stderr": "Parse error: Line 8: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "Warning: Line 9: B element expression error: ASRC expression: unexpected character 'R' at position 20 \u2014 skipping\nWarning: model 'x1.vp2450_': unknown VDMOS parameter 'pchan' (ignored)\nWarning: model 'x1.vp2450_c': unknown VDMOS parameter 'pchan' (ignored)\n[topology WARNING] Floating node 'x1.gate' has only one device connection\n[topology WARNING] Floating node 'x1.3' has only one device connection\n[topology WARNING] Floating node 'x1.1' has only one device connection\n[neospice] parse=0.266652 ms, sim=1.42743 ms, write=0.104774 ms, total=1.79886 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "Error in netlist line no. 27, new internal line no. 8:\n\nUndefined parameter [rpar]\nError in netlist line no. 27, new internal line no. 8:\n\nCannot compute substitute\n\nERROR: fatal error in ngspice, exit(1)\n"
+    },
+    {
+      "case_id": "case-v1-c935d13c52b3b2c8a911f46be17ac90e642a238e66d9c24a09574daa2167478e",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/VT6K1.sub",
+        "kind": "subckt",
+        "scope": [],
+        "name": "vt6k1",
+        "occurrence": 1
+      },
+      "before": "NG_ONLY",
+      "after": "MATCH",
+      "classification": "VDMOS binding repaired; minimal OP comparison matches",
+      "before_native_stderr": "Warning: Unknown parameter 'TEMP' \u2014 defaulting to 0\nWarning: Unknown parameter 'TEMP' \u2014 defaulting to 0\nParse error: Line 4: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "Warning: Unknown parameter 'TEMP' \u2014 defaulting to 0\nWarning: Unknown parameter 'TEMP' \u2014 defaulting to 0\nWarning: model 'x1.dz': unknown DIO parameter 'vrev' (ignored)\nWarning: model 'x1.dz': unknown DIO parameter 'ron' (ignored)\nWarning: model 'x1.dz': unknown DIO parameter 'vfwd' (ignored)\n[topology WARNING] Floating node 'net_6' has only one device connection\n[topology WARNING] Floating node 'net_3' has only one device connection\n[neospice] parse=0.20841 ms, sim=0.124941 ms, write=0.10709 ms, total=0.440441 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "Warning: Model issue on line 10 :\n  .model x1:dz d vfwd=8 ron=1 vrev=8 ...\nunrecognized parameter (vfwd) - ignored\nunrecognized parameter (ron) - ignored\nunrecognized parameter (vrev) - ignored\n\nNote: Starting dynamic gmin stepping\nNote: Dynamic gmin stepping completed\n"
+    },
+    {
+      "case_id": "case-v1-c935d13c52b3b2c8a911f46be17ac90e642a238e66d9c24a09574daa2167478e",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/VT6K1.sub",
+        "kind": "subckt",
+        "scope": [],
+        "name": "vt6k1",
+        "occurrence": 1
+      },
+      "before": "NG_ONLY",
+      "after": "MATCH",
+      "classification": "VDMOS binding repaired; minimal OP comparison matches",
+      "before_native_stderr": "Warning: Unknown parameter 'TEMP' \u2014 defaulting to 0\nWarning: Unknown parameter 'TEMP' \u2014 defaulting to 0\nParse error: Line 6: M card requires name, nd, ng, ns, nb, modelname\n",
+      "after_native_stderr": "Warning: Unknown parameter 'TEMP' \u2014 defaulting to 0\nWarning: Unknown parameter 'TEMP' \u2014 defaulting to 0\nWarning: model 'x1.dz': unknown DIO parameter 'vrev' (ignored)\nWarning: model 'x1.dz': unknown DIO parameter 'ron' (ignored)\nWarning: model 'x1.dz': unknown DIO parameter 'vfwd' (ignored)\n[topology WARNING] Floating node 'net_6' has only one device connection\n[topology WARNING] Floating node 'net_3' has only one device connection\n[neospice] parse=0.199399 ms, sim=0.128319 ms, write=0.094283 ms, total=0.422001 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "Warning: Model issue on line 12 :\n  .model x1:dz d vfwd=8 ron=1 vrev=8 ...\nunrecognized parameter (vfwd) - ignored\nunrecognized parameter (ron) - ignored\nunrecognized parameter (vrev) - ignored\n\nNote: Starting dynamic gmin stepping\nNote: Dynamic gmin stepping completed\n"
+    },
+    {
+      "case_id": "case-v1-f4bb3ae47839f605b92658921c3e0d56706d2469804d5ca5e255304de98695d7",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/bsim3test1.cir",
+        "kind": "model",
+        "scope": [],
+        "name": "n1",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY",
+      "classification": "Native parser now succeeds; reference still fails, no accuracy claim",
+      "before_native_stderr": "Parse error: Line 5: Unknown model 'n1' for MOSFET 'm1'\n",
+      "after_native_stderr": "BSIM3v3.3.0 Parameter Checking.\nModel = (null)\nWarning: Pd = 0 is less than W.\nWarning: Ps = 0 is less than W.\nBSIM3v3.3.0 Parameter Checking.\nModel = (null)\nWarning: Pd = 0 is less than W.\nWarning: Ps = 0 is less than W.\nBSIM3v3.3.0 Parameter Checking.\nModel = (null)\nWarning: Pd = 0 is less than W.\nWarning: Ps = 0 is less than W.\nBSIM3v3.3.0 Parameter Checking.\nModel = (null)\nWarning: Pd = 0 is less than W.\nWarning: Ps = 0 is less than W.\n[neospice] parse=0.234303 ms, sim=0.050091 ms, write=0.10394 ms, total=0.388334 ms\n",
+      "reference_result_unchanged": true,
+      "current_reference_stderr": "Warning: Model issue on line 15 :\n  .model n1 nmos level=14 version=4.5.0 tnom=27.0 nch=2.498e+17 tox=9e-09  ...\nunrecognized parameter (nch) - ignored\nunrecognized parameter (tox) - ignored\nunrecognized parameter (nlx) - ignored\n\nError on line 6 or its substitute:\n  m1 drain gg 0 0 n1 w=10u l=1u\ndevice already exists, bail out\n    Simulation interrupted due to error!\n\nError: circuit not parsed.\nNote: no resource usage information for 'time',\n\tor no active circuit available\n"
+    }
+  ],
+  "limitations": [
+    "All fixtures and original tolerances retained.",
+    "The stronger VT6K1 temperature/bias diagnostic fails despite its minimal OP matches. Model-expression and global-model scoping diagnostics are retained separately.",
+    "No declaration-level or full-analysis certification from these minimal fixtures."
+  ],
+  "generation_script": "from pathlib import Path\nfrom collections import Counter\nimport json\n\nout=Path('docs/evidence/joss')\ntrans=json.loads((out/'2026-09-11-checkpoint35-candidate47-transitions.json').read_text())\nroots=[Path(p) for p in trans['roots']]\nrows=[];counts=Counter()\nfor change in trans['changed_outcomes']:\n    rel=Path('cases')/change['case_id']/change['variant']/'comparison.json'\n    a,b=[json.loads((root/rel).read_text()) for root in roots]\n    before=Path(a['neospice']['stderr']['path']).read_text()\n    after=Path(b['neospice']['stderr']['path']).read_text()\n    if a['neospice']['failure_class']=='parse_error' and b['neospice']['ok']:\n        if b['status']=='MATCH':category='VDMOS binding repaired; minimal OP comparison matches'\n        elif not b['reference']['ok']:category='Native parser now succeeds; reference still fails, no accuracy claim'\n        else:category='Native parser now succeeds; numerical discrepancy remains'\n    else:category='Needs further investigation'\n    counts[category]+=1\n    rows.append(dict(change,classification=category,before_native_stderr=before,after_native_stderr=after,\n        reference_result_unchanged=all(a['reference'][k]==b['reference'][k] for k in ['ok','failure_class','returncode','values']),\n        current_reference_stderr=Path(b['reference']['stderr']['path']).read_text()))\nreport=dict(checkpoint=35,reference_version='47',outcome_changes=len(rows),classifications=dict(counts),cases=rows,\n    limitations=['All fixtures and original tolerances retained.',\n        'The stronger VT6K1 temperature/bias diagnostic fails despite its minimal OP matches. Model-expression and global-model scoping diagnostics are retained separately.',\n        'No declaration-level or full-analysis certification from these minimal fixtures.'],generation_script=Path(__file__).read_text())\np=out/'2026-09-11-checkpoint35-transition-triage.json';p.write_text(json.dumps(report,indent=2,allow_nan=False)+'\\n')\nprint(json.dumps(dict(outcome_changes=len(rows),classifications=dict(counts),unclassified=[r['identity'] for r in rows if r['classification']=='Needs further investigation']),indent=2))\n"
+}

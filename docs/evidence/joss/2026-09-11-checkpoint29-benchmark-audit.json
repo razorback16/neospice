@@ -1,0 +1,116 @@
+{
+  "results": {
+    "stage1-comprehensive42": {
+      "total": 34,
+      "accepted": 30,
+      "failed": [
+        "tran_rc",
+        "tran_rlc",
+        "tran_rc_grid_24",
+        "tran_diode_rc_grid_48"
+      ],
+      "returncode": 1,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "c16da960de5ec29cbf297ef61f02cf6f85897bd84b928d3057a56fe714be3257"
+    },
+    "stage1-ths413142": {
+      "total": 5,
+      "accepted": 5,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "9d148054d9f2dcae8cb371f9538409dc766e8f69cc7a3451024242fb98027105"
+    },
+    "stage1-tlv320142": {
+      "total": 1,
+      "accepted": 1,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "6b0be38ae2219c38c5f133565fc4b817935545ec18287d25ab194ee614acc014",
+      "informational_waveform_passed": false
+    },
+    "stage1-comprehensive47": {
+      "total": 34,
+      "accepted": 34,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "bb38f77b9b7215a650f885bab938cb20a92ea5b25ff39ada1ffcbaf085645ef8"
+    },
+    "stage1-ths413147": {
+      "total": 5,
+      "accepted": 5,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "8817f478dc7182ffd1f2a8979c4ba53df28ff338f21951184e80348f414e0904"
+    },
+    "stage1-tlv320147": {
+      "total": 1,
+      "accepted": 1,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "1f660e1f361a9381c0a09c63dd93621f5ecad914e19782c2c6364bda07111e9e",
+      "informational_waveform_passed": false
+    },
+    "stage2-comprehensive42": {
+      "total": 34,
+      "accepted": 30,
+      "failed": [
+        "tran_rc",
+        "tran_rlc",
+        "tran_rc_grid_24",
+        "tran_diode_rc_grid_48"
+      ],
+      "returncode": 1,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "efbd49a4aed5afb40ad4279d244dfffcef9dbd3b86f9b680c236f5acbbc4a601"
+    },
+    "stage2-ths413142": {
+      "total": 5,
+      "accepted": 5,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "aeaf4f60c50acf0babfb6bcc89bb32f46f955d810fa692940be5cca0dadd92f1"
+    },
+    "stage2-tlv320142": {
+      "total": 1,
+      "accepted": 1,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "10e478b4be7f10531a730e63f6d8589c41cbb20d2f198bf4970124e64237d35d",
+      "informational_waveform_passed": false
+    },
+    "stage2-comprehensive47": {
+      "total": 34,
+      "accepted": 34,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "18eee1d20d2dcee387487cd9cafaa193833793d73a041cc77aaf3d5745f6ce76"
+    },
+    "stage2-ths413147": {
+      "total": 5,
+      "accepted": 5,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "6523da08c3ee11737f819303c515709d08c6c878feecd0a5440725fb2ec14e23"
+    },
+    "stage2-tlv320147": {
+      "total": 1,
+      "accepted": 1,
+      "failed": [],
+      "returncode": 0,
+      "scalars_equal_checkpoint27": true,
+      "manifest_sha256": "eb2c8527ad74520e3202f617f3952a3b6f70c032ae256b218f5d6eddb8408217",
+      "informational_waveform_passed": false
+    }
+  },
+  "scope": "All twelve verification-only runs. Artifact hashes and within-run source/build inventories checked; historical build paths have subsequently been rebuilt, so no claim their current bytes equal stage1 inventories. No new performance timings.",
+  "script": "from pathlib import Path\nimport json,hashlib\n\ndef sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()\ndef scalars(p):\n rows=[]\n for line in Path(p).read_text().splitlines():\n  r=json.loads(line)\n  if r['type'] in ('pair','failure'):\n   c=r.get('comparison',{});rows.append([r['id'],r['type']]+[c.get(k) for k in ['passed','points','worst_error','worst_signal']])\n return rows\nreport={}\nfor stage,prefix in [('stage1','/tmp/neospice-joss-checkpoint29-'),('stage2','/tmp/neospice-joss-checkpoint29-stage2-')]:\n for version in ['42','47']:\n  for population,total in [('comprehensive',34),('ths4131',5),('tlv3201',1)]:\n   d=Path(prefix+population+version);m=json.loads((d/'manifest.json').read_text());s=json.loads((d/'summary.json').read_text())\n   assert m['complete'] and m['evidence_valid'] and m['verify_only'] and m['inventory_before']==m['inventory_after']\n   for r in m['artifacts'].values():assert sha(r['path'])==r['sha256'] and Path(r['path']).stat().st_size==r['bytes']\n   assert len(s['cases'])==total\n   accepted=sum(c['accepted'] for c in s['cases']);assert m['returncode']==(0 if accepted==total else 1)\n   old=Path('/tmp/neospice-joss-checkpoint27-'+('tlv' if population=='tlv3201' else population)+version)\n   pair_records=[json.loads(x) for x in (d/'pairs.jsonl').read_text().splitlines()]\n   report[stage+'-'+population+version]=dict(total=total,accepted=accepted,failed=[c['id'] for c in s['cases'] if not c['accepted']],returncode=m['returncode'],scalars_equal_checkpoint27=scalars(d/'pairs.jsonl')==scalars(old/'pairs.jsonl'),manifest_sha256=sha(d/'manifest.json'))\n   if population=='tlv3201':\n    r=next(r for r in pair_records if r['type']=='pair');assert len(r['reference_edges'])==len(r['actual_edges'])==6\n    report[stage+'-'+population+version]['informational_waveform_passed']=r['informational_waveform_comparison']['passed']\nr=dict(results=report,scope='All twelve verification-only runs. Artifact hashes and within-run source/build inventories checked; historical build paths have subsequently been rebuilt, so no claim their current bytes equal stage1 inventories. No new performance timings.',script=Path(__file__).read_text())\np=Path('docs/evidence/joss/2026-09-11-checkpoint29-benchmark-audit.json');assert not p.exists();p.write_text(json.dumps(r,indent=2)+'\\n');print(json.dumps(report,indent=2))\n"
+}

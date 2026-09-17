@@ -1,0 +1,438 @@
+--- a/src/devices/bjt/bjt_device.cpp
++++ b/src/devices/bjt/bjt_device.cpp
+@@ -60,6 +60,7 @@
+     inst.BJTsubstNode = neo_to_ucb(n_subst);
+ 
+     // Geometry.
++    inst.BJToff = geom.off;
+     inst.BJTarea = geom.area;
+     inst.BJTareaGiven = geom.area_given ? 1 : 0;
+     inst.BJTareab = geom.areab;
+--- a/src/devices/bjt/bjt_device.hpp
++++ b/src/devices/bjt/bjt_device.hpp
+@@ -36,6 +36,7 @@
+         bool areab_given = false;
+         bool areac_given = false;
+         bool m_given = false;
++        bool off = false; // Zero junction bias during operating-point initialization.
+     };
+ 
+     static std::unique_ptr<BJTDevice> make(
+--- a/src/devices/bjt/bjt_factory.cpp
++++ b/src/devices/bjt/bjt_factory.cpp
+@@ -19,11 +19,12 @@
+         'q', 0,
+         [](std::string_view name,
+            std::span<const int32_t> nodes,
+-           const std::unordered_map<std::string, double>& /*params*/,
++           const std::unordered_map<std::string, double>& params,
+            Circuit::ModelCardHolder& holder) -> std::unique_ptr<Device> {
+             auto* h = dynamic_cast<Circuit::TypedModelCardHolder<BJTModelCard>*>(&holder);
+             if (!h) return nullptr;
+             BJTDevice::Geom geom;
++            if (auto it = params.find("off"); it != params.end()) geom.off = it->second != 0.0;
+             return BJTDevice::make(std::string(name), nodes[0], nodes[1],
+                                    nodes[2], nodes[3], geom, *h->card);
+         }
+--- a/src/devices/bjt_common.cpp
++++ b/src/devices/bjt_common.cpp
+@@ -71,7 +71,7 @@
+         auto eq = tokens[i].find('=');
+         if (eq == std::string::npos) {
+             std::string lower = to_lower(tokens[i]);
+-            if (lower == "off") continue; // ignore OFF flag
++            if (lower == "off") { q->geom.off = true; continue; }
+             // Bare number = area factor (legacy SPICE2 syntax)
+             try {
+                 q->geom.area = parse_spice_number(tokens[i]);
+@@ -107,6 +107,7 @@
+         else if (key == "areab") { q->geom.areab = val; q->geom.areab_given = true; }
+         else if (key == "areac") { q->geom.areac = val; q->geom.areac_given = true; }
+         else if (key == "m") { q->geom.m = val; q->geom.m_given = true; }
++        else if (key == "off") { q->geom.off = val != 0.0; }
+     }
+     return q;
+ }
+@@ -165,6 +166,7 @@
+             vgeom.area_given = q.geom.area_given;
+             vgeom.m = q.geom.m;
+             vgeom.m_given = q.geom.m_given;
++            vgeom.off = q.geom.off;
+             auto dev = VBICDevice::make(q.name, q.nc, q.nb, q.ne, q.ns,
+                                         vgeom, *card_it->second);
+             dev->set_ngspice_setup_order(it->second.effective_setup_order(), q.parse_order);
+--- a/src/devices/vbic/vbic_device.cpp
++++ b/src/devices/vbic/vbic_device.cpp
+@@ -51,6 +51,7 @@
+     inst.VBICsubsNode = neo_to_ucb(n_subs);
+ 
+     // Geometry.
++    inst.VBICoff = geom.off;
+     inst.VBICarea = geom.area;
+     inst.VBICareaGiven = geom.area_given ? 1 : 0;
+     inst.VBICm = geom.m;
+--- a/src/devices/vbic/vbic_device.hpp
++++ b/src/devices/vbic/vbic_device.hpp
+@@ -32,6 +32,7 @@
+         double m = 1.0;
+         bool area_given = false;
+         bool m_given = false;
++        bool off = false; // Zero junction bias during operating-point initialization.
+     };
+ 
+     static std::unique_ptr<VBICDevice> make(
+--- a/src/devices/vbic/vbic_factory.cpp
++++ b/src/devices/vbic/vbic_factory.cpp
+@@ -20,11 +20,12 @@
+         'q', 0,
+         [](std::string_view name,
+            std::span<const int32_t> nodes,
+-           const std::unordered_map<std::string, double>& /*params*/,
++           const std::unordered_map<std::string, double>& params,
+            Circuit::ModelCardHolder& holder) -> std::unique_ptr<Device> {
+             auto* h = dynamic_cast<Circuit::TypedModelCardHolder<VBICModelCard>*>(&holder);
+             if (!h) return nullptr;
+             VBICDevice::Geom geom;
++            if (auto it = params.find("off"); it != params.end()) geom.off = it->second != 0.0;
+             return VBICDevice::make(std::string(name), nodes[0], nodes[1],
+                                     nodes[2], nodes[3], geom, *h->card);
+         }
+--- /dev/null
++++ b/tests/circuits/bjt_off_bias.cir
+@@ -0,0 +1,27 @@
++OFF initializes a transistor; it does not disable its final operating point
++VCC pos 0 5
++VEE neg 0 -5
++VBN bn 0 0.65
++VBP bp 0 -0.65
++RCN pos cn 1k
++RCNON pos cnon 1k
++RCP neg cp 1k
++RCPON neg cpon 1k
++RVN pos vn 1k
++RVNON pos vnon 1k
++RVP neg vp 1k
++RVPON neg vpon 1k
++QCN cn bn 0 N OFF
++QCNON cnon bn 0 N
++QCP cp bp 0 P OFF
++QCPON cpon bp 0 P
++QVN vn bn 0 VN OFF
++QVNON vnon bn 0 VN
++QVP vp bp 0 VP OFF
++QVPON vpon bp 0 VP
++.model N NPN(IS=1e-14 BF=100)
++.model P PNP(IS=1e-14 BF=100)
++.model VN NPN(LEVEL=4 IS=1e-14)
++.model VP PNP(LEVEL=4 IS=1e-14)
++.op
++.end
+--- a/tests/unit/test_bjt.cpp
++++ b/tests/unit/test_bjt.cpp
+@@ -4,13 +4,115 @@
+ #include "parser/netlist_parser.hpp"
+ #include "parser/model_cards.hpp"
+ #include "devices/bjt/bjt_device.hpp"
++#include "devices/device_registry.hpp"
++#include "core/ckt_mode.hpp"
++#include "core/neo_solver.hpp"
++#include "core/newton.hpp"
+ #include "core/dc.hpp"
+ #include "core/types.hpp"
+-
++#include "framework/ngspice_runner.hpp"
++#include "framework/comparator.hpp"
++
++#include <algorithm>
+ #include <cmath>
+ #include <string>
+ 
+ using namespace neospice;
++
++namespace {
++void check_off_initialization(Circuit& circuit, bool off) {
++    NeoSolver solver;
++    solver.symbolic(circuit.pattern());
++    auto options = circuit.options;
++    options.max_iter = 0; // Inspect the state after exactly one device load/solve.
++    std::vector<double> solution(circuit.num_vars(), 0.0);
++    circuit.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
++    EXPECT_FALSE(newton_solve(circuit, solver, solution, options).converged);
++    const Device* transistor = nullptr;
++    for (const auto& device : circuit.devices())
++        if (device->query_param("vbe")) transistor = device.get();
++    ASSERT_NE(transistor, nullptr);
++    auto vbe = transistor->query_param("vbe");
++    ASSERT_TRUE(vbe.has_value());
++    // ngspice47 bjtload.c/vbicload.c initialize OFF junctions at zero;
++    // ordinary devices start at their critical forward junction voltage.
++    if (off) EXPECT_DOUBLE_EQ(*vbe, 0.0);
++    else EXPECT_GT(std::abs(*vbe), 0.5);
++
++    // OFF also holds junctions at zero in INITFIX even with a biased guess.
++    if (off) {
++        std::fill(solution.begin(), solution.end(), 0.7);
++        circuit.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
++        EXPECT_FALSE(newton_solve(circuit, solver, solution, options).converged);
++        EXPECT_DOUBLE_EQ(*transistor->query_param("vbe"), 0.0);
++        EXPECT_DOUBLE_EQ(*transistor->query_param("vbc"), 0.0);
++    }
++}
++}
++
++TEST(BJTParser, OffInitializesJunctionsForBothPolaritiesAndModelFamilies) {
++    for (int level : {1, 4}) {
++        for (const std::string polarity : {"NPN", "PNP"}) {
++            for (const std::string flag : {"", "OFF", "oFf", "off=1", "off=0"}) {
++                SCOPED_TRACE(std::to_string(level) + " " + polarity + " " + flag);
++                NetlistParser parser;
++                auto circuit = parser.parse(
++                    "BJT OFF initialization\nRc c 0 1k\nRb b 0 10k\n"
++                    "Q1 c b 0 QM " + flag + "\n.model QM " + polarity +
++                    "(LEVEL=" + std::to_string(level) + " IS=1e-14)\n.op\n.end\n");
++                check_off_initialization(circuit, !flag.empty() && flag != "off=0");
++            }
++        }
++    }
++}
++
++TEST(BJTParser, RegistryOffInitializesJunctionsForBothModelFamilies) {
++    for (int level : {1, 4}) {
++        for (double off : {0.0, 1.0}) {
++            SCOPED_TRACE(std::to_string(level) + " off=" + std::to_string(off));
++            Circuit circuit;
++            circuit.R("Rc", circuit.node("c"), GND, 1e3);
++            circuit.R("Rb", circuit.node("b"), GND, 1e4);
++            ModelCard model;
++            model.name = "QM";
++            model.type = "npn";
++            model.params = {{"level", level}, {"is", 1e-14}};
++            auto& registry = DeviceRegistry::get_default();
++            auto holder = registry.create_model_card("npn", level, model);
++            ASSERT_NE(holder, nullptr);
++            const int32_t nodes[] = {static_cast<int32_t>(circuit.node("c")),
++                static_cast<int32_t>(circuit.node("b")), -1, -1};
++            auto device = registry.build_device('q', "Q1", nodes, {{"off", off}}, *holder);
++            ASSERT_NE(device, nullptr);
++            circuit.add_model_card_raw(std::move(holder), "QM", "npn");
++            circuit.add_device(std::move(device));
++            circuit.finalize();
++            check_off_initialization(circuit, off != 0.0);
++        }
++    }
++}
++
++TEST(BJTParser, OffDoesNotDisableBiasedTransistorsNgspice47) {
++    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/bjt_off_bias.cir";
++    NetlistParser parser;
++    auto circuit = parser.parse_file(path);
++    const auto actual = solve_dc(circuit);
++    ASSERT_TRUE(actual.status.converged);
++    NgspiceRunner reference;
++    auto expected = reference.run_dc(path);
++    // Compare every public node and supply current. ngspice exposes additional
++    // VBIC internal nodes whose names are not part of neospice's result API.
++    std::erase_if(expected.node_voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto comparison = compare_dc(expected, actual, {1e-4, 1e-9});
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++    for (const std::string name : {"cn", "cp", "vn", "vp"}) {
++        EXPECT_GT(std::abs(actual.voltage(name)), 0.1);
++        EXPECT_LT(std::abs(actual.voltage(name)), 4.9);
++        EXPECT_NEAR(actual.voltage(name), actual.voltage(name + "on"), 1e-7);
++    }
++}
+ 
+ // ---------------------------------------------------------------------------
+ // Parser tests — verify Q element and .model NPN/PNP parsing
+--- /dev/null
++++ b/docs/bjt-off-investigation.md
+@@ -0,0 +1,94 @@
++# BJT OFF initialization and IGBT operating points
++
++Checkpoint 31 fixes a dropped Q-card `OFF` parameter. The parser previously
++ignored the flag, and the BJT/VBIC adapters and registry builders did not pass
++it to their underlying device instances. Both translated load implementations
++already implement the required behavior: zero junction bias during INITJCT
++and, for an OFF device, INITFIX. This is an initialization condition, not a
++permanent switch that disables the transistor.
++
++The reference is the checksum-pinned ngspice 47 source: `bjt/bjtload.c` and
++`vbic/vbicload.c` in `src/spicelib/devices`, together with their instance
++parameter handlers. No reference options or numerical tolerances changed.
++`OFF`, mixed-case spelling, and numeric `off=1`/`off=0` now reach the adapters.
++The registry's numeric `off` parameter follows the same path.
++
++## Regression evidence
++
++Two new behavioral tests inspect junction voltages after one Newton load:
++parser coverage includes NPN/PNP and BJT/VBIC; registry coverage includes both
++model families. They fail before the production correction and pass afterward.
++A separate authored fixture, `tests/circuits/bjt_off_bias.cir`, checks that
++biased transistors marked OFF reach the same final operating point as their
++ordinary counterparts. Every public voltage and supply current is compared
++with ngspice 47 at relative tolerance 1e-4 and absolute floor 1e-9; reference
++implementation-specific internal node names are excluded explicitly.
++
++The Release suite passes 1,237 of 1,238 tests; the existing RFF70N06 failure
++remains. All 393 Python/tooling tests pass after rebuilding the wheel. The
++three OFF tests and complete BJT/VBIC comparison executables pass 14 sanitizer
++tests with AddressSanitizer, UndefinedBehaviorSanitizer and leak detection.
++This does not certify unrelated device paths or resolve the reference T-line leak.
++
++The first sanitizer attempt caught a double-finalization error in the new
++test helper, corrected before the final run. An initial benchmark verification
++attempt rejected a changing source inventory during that test edit. Subsequent
++verification runs use stable source: all 34 comprehensive workloads, all five
++THS4131 workflows and the original TLV edge/DC-port contract pass. There are no
++new performance measurements; the stricter TLV pointwise discrepancy remains.
++
++## Family evaluation
++
++Selection retains every frozen declaration from
++`uncategorized/spice_complete/irf.lib`, plus PA84 from `apex.lib`: 411
++declarations and all 790 planned fixtures. Selection follows the earlier
++regression investigation and is not held out. The reference executable,
++startup configuration and materialized fixture hashes match checkpoint 29.
++The audit recomputes outcome decisions and verifies raw artifact hashes.
++
++| Variant | MATCH | MISMATCH | Total |
++|---|---:|---:|---:|
++| Primary | 410 | 1 | 411 |
++| Isolated/driven | 372 | 7 | 379 |
++
++The correction changes 26 driven fixtures from MISMATCH to MATCH, including
++all six IGBT regressions introduced during the earlier true-gmin correction.
++There are no outcome regressions in this population. Native values change in
++109 fixtures; reference values and status remain unchanged throughout.
++The seven driven mismatches and the PA84 primary mismatch remain blockers.
++These minimal operating-point fixtures do not certify transient, AC or noise
++behavior, nor prove that all lexical declarations bind independently.
++
++PA84 still finishes through transient operating-point fallback with substantially
++different terminal voltages. Both engines report exceptionally large internal
++source currents on this fixture. That observation alone neither proves a valid
++DC equilibrium nor justifies excluding it. The continuation and stationary-state
++checks need further diagnosis.
++
++## Evidence and next work
++
++[Checkpoint 31](evidence/joss/2026-09-11-validation-31.json) records source hashes,
++commands, test results, the source patch and archived diagnostics. The family
++[summary](evidence/joss/2026-09-11-checkpoint31-irf-family47-summary.json),
++[ledger](evidence/joss/2026-09-11-checkpoint31-irf-family47-records.json.gz) and
++[transitions](evidence/joss/2026-09-11-checkpoint31-irf-family47-transitions.json)
++retain the population and unresolved results.
++
++The full 67,359-fixture evaluation completes against the frozen corrected
++binary. Relative to checkpoint 29, 35 driven fixtures change from MISMATCH to
++MATCH: the 26 IRF cases, eight triac cases in `tectriac.lib`, and one IGBT in
++`m_igbt.lib`. There are no outcome regressions; 1,628 native results change and
++all reference results remain unchanged. The audit retains all other outcomes:
++
++| Variant | MATCH | MISMATCH | NG_ONLY | NEO_ONLY | NEO_TRIVIAL | BOTH_FAIL |
++|---|---:|---:|---:|---:|---:|---:|
++| Primary | 20,228 | 1,274 | 22 | 4,716 | 5,364 | 3,304 |
++| Isolated/driven | 22,885 | 1,277 | 50 | 6,939 | 0 | 1,300 |
++
++The full [summary](evidence/joss/2026-09-11-checkpoint31-corpus-run47-summary.json),
++[ledger](evidence/joss/2026-09-11-checkpoint31-corpus-run47-records.json.gz) and
++[transitions](evidence/joss/2026-09-11-checkpoint31-candidate47-transitions.json)
++record these results. Unchanged labels do not imply improved error margins at
++every signal. Remaining supported mismatches need case-level diagnosis.
++No vendor model source is added to the authored regression fixture; corpus
++redistribution review remains open.
+--- a/docs/capabilities.md
++++ b/docs/capabilities.md
+@@ -79,7 +79,7 @@
+ Unsupported AC/noise fixtures must remain in experiment accounting and must not
+ be counted as accuracy matches or accepted performance samples.
+ 
+-Checkpoint 29's current Release suite passes 1,234 of 1,235 tests against ngspice
++Checkpoint 31's current Release suite passes 1,237 of 1,238 tests against ngspice
+ 47, including the JFET2, MOS3 and VBIC transient fixtures. ngspice47 is the sole
+ reference. The remaining supported-scope corpus discrepancies and RFF70N06
+ regression remain release blockers. See
+--- a/docs/joss-progress.md
++++ b/docs/joss-progress.md
+@@ -13,14 +13,37 @@
+ | Milestone | Status and remaining work |
+ |---|---|
+ | 1. Scope, eligibility and environment | Pinned ngspice47 CLI/shared build verified locally. CI and migration tests use the same47 source. Full support matrix, actual public timeline and eligibility remain. |
+-| 2. Trustworthy validation | Full47 suite:1,234/1,235 C++ tests pass; RFF remains failing. All393 Python/tooling tests pass with47 source. Invalid data, missing signals and skipped required checks are rejected. |
+-| 3. Numerical correctness | Diode grading and instance-temperature fixes verified; all13 diode sanitizer tests pass. Remaining CoolMOS, RFF, corpus regressions, option coverage and the separate reference T-line leak need investigation. |
+-| 4. Compatibility experiment | All67,359 frozen fixtures executed and audited against47. Binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
++| 2. Trustworthy validation | Checkpoint 31: 1,237/1,238 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. Invalid data, missing signals and skipped required checks are rejected. |
++| 3. Numerical correctness | BJT/VBIC OFF initialization fixed; 35 full-corpus mismatches resolved, including six IGBT regressions. All 14 focused BJT/VBIC sanitizer tests pass. PA84, remaining CoolMOS/IRF/RFF discrepancies, wider option coverage and the separate reference T-line leak remain. |
++| 4. Compatibility experiment | Checkpoint 31 executes and audits all 67,359 frozen fixtures against 47. No outcome regressions; 1,628 native results change and reference results remain unchanged. Binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
+ | 5. Benchmarks | All34 comprehensive workloads qualify47; THS4131 qualifies5/5. TLV passes its original edge/DC-port contract but retains a strict pointwise discrepancy. Final candidate measurements and interpretation remain. |
+ | 6. Documentation and attribution | Current documentation uses47 exclusively. Component copyright/license/distribution audit remains incomplete. |
+ | 7. Manuscript and release | Draft paper exists. Actual research use, author confirmations, final release metadata, independent installation and final evidence reconciliation remain. |
+ 
+ ## Latest numerical evidence
++
++[Checkpoint 31](evidence/joss/2026-09-11-validation-31.json) fixes the ignored
++BJT/VBIC `OFF` initialization parameter. In the entire IRF-library population
++plus PA84 (790 fixtures), 26 driven mismatches become matches, with no outcome
++regressions and unchanged reference results. All six IGBT regressions below
++are resolved in this family rerun; PA84 remains. See the
++[investigation and family evidence](bjt-off-investigation.md).
++
++The full 67,359-fixture run also completes: 35 driven mismatches become matches,
++with no outcome regressions and no changed reference results. Primary has
++20,228 MATCH and 1,274 MISMATCH; driven has 22,885 MATCH and 1,277 MISMATCH.
++All failure and trivial-result categories remain in the accounting. Native
++values/status change in 1,628 fixtures, so unchanged outcome labels must not
++be read as proof that every individual error margin improved. Benchmark
++accuracy verification passes all 34 comprehensive workloads, five THS4131
++workflows and the original TLV contract; no new timing claims are made.
++
++Current full-corpus evidence:
++[summary](evidence/joss/2026-09-11-checkpoint31-corpus-run47-summary.json),
++[ledger](evidence/joss/2026-09-11-checkpoint31-corpus-run47-records.json.gz),
++[transitions](evidence/joss/2026-09-11-checkpoint31-candidate47-transitions.json).
++Next: diagnose PA84 and remaining supported mismatches, including initialization
++differences beyond OFF, and complete the support/option and model-binding audits.
+ 
+ [Checkpoint29](evidence/joss/2026-09-11-validation-29.json) contains the source
+ inventories, reconstructable patch, build/test logs, full-corpus ledgers and
+@@ -40,14 +63,14 @@
+   MISMATCH and1 reference failure. Selection was made from previously observed
+   data and is not held out.
+ - The diode fix repairs ten full-corpus outcome mismatches against47. Seven
+-  earlier MATCH-to-MISMATCH transitions introduced in stage1 remain for
+-  case-level diagnosis. Neither aggregate gains nor reference failures erase
+-  those blockers.
++  earlier MATCH-to-MISMATCH transitions were introduced in stage1. Checkpoint
++  31 resolves the six IGBT cases in a family rerun; PA84 remains. Neither
++  aggregate gains nor reference failures erase the remaining blockers.
+ - Twelve earlier benchmark verification runs preserved their input inventories;
+   the47 comparison scalars are unchanged from checkpoint27. No new performance
+   timing was collected in checkpoint29.
+ 
+-Current47 corpus:
++Earlier full-corpus evidence (checkpoint 29; predates the OFF fix):
+ [summary](evidence/joss/2026-09-11-checkpoint29-stage2-corpus-run47-summary.json),
+ [ledger](evidence/joss/2026-09-11-checkpoint29-stage2-corpus-run47-records.json.gz),
+ [transitions](evidence/joss/2026-09-11-checkpoint29-stage2-candidate47-transitions.json).
+--- a/docs/ngspice47-reference.md
++++ b/docs/ngspice47-reference.md
+@@ -38,6 +38,8 @@
+ - Diode grading coefficients retain values above0.9. Instance `TEMP`/`DTEMP`
+   and series-resistance noise follow47.
+ - True-gmin slow-step reduction retains47's factor floor3; dynamic gmin uses1.00005.
++- BJT/VBIC `OFF` reaches junction initialization without disabling the final
++  biased operating point; see the [OFF investigation](bjt-off-investigation.md).
+ 
+ See [source compatibility](source-compatibility.md),
+ [capabilities](capabilities.md), and [diode investigation](diode-coolmos-investigation.md).
+@@ -45,7 +47,7 @@
+ 
+ ## Remaining compatibility work
+ 
+-Checkpoint29 passes1,234 of1,235 C++ tests against47; the required RFF70N06
++Checkpoint31 passes 1,237 of 1,238 C++ tests against47; the required RFF70N06
+ operating-point regression remains failing. It is retained even though the
+ reference also fails this fixture. The full frozen corpus contains67,359 cases
+ across two distinct fixture variants; remaining mismatches, model binding,

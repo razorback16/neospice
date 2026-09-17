@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="10" failures="0" disabled="0" errors="0" time="0.015" timestamp="2026-09-11T09:58:17.271" name="AllTests">
+  <testsuite name="Convergence" tests="1" failures="0" disabled="0" skipped="0" errors="0" time="0." timestamp="2026-09-11T09:58:17.271">
+    <testcase name="RejectsDeviceFailureWithSettledTerminalVoltages" file="/home/subhagato/Codes/neospice/tests/unit/test_convergence.cpp" line="13" status="run" result="completed" time="0." timestamp="2026-09-11T09:58:17.271" classname="Convergence" />
+  </testsuite>
+  <testsuite name="FrequencyGrid" tests="3" failures="0" disabled="0" skipped="0" errors="0" time="0.001" timestamp="2026-09-11T09:58:17.271">
+    <testcase name="MatchesNgspiceACAndNoiseRules" file="/home/subhagato/Codes/neospice/tests/unit/test_ac.cpp" line="75" status="run" result="completed" time="0.001" timestamp="2026-09-11T09:58:17.271" classname="FrequencyGrid" />
+    <testcase name="SingleAndNarrowDecadeSweepsRemainDefined" file="/home/subhagato/Codes/neospice/tests/unit/test_ac.cpp" line="110" status="run" result="completed" time="0." timestamp="2026-09-11T09:58:17.273" classname="FrequencyGrid" />
+    <testcase name="RejectsInvalidGrids" file="/home/subhagato/Codes/neospice/tests/unit/test_ac.cpp" line="121" status="run" result="completed" time="0." timestamp="2026-09-11T09:58:17.273" classname="FrequencyGrid" />
+  </testsuite>
+  <testsuite name="NgspiceLibrary" tests="3" failures="0" disabled="0" skipped="0" errors="0" time="0." timestamp="2026-09-11T09:58:17.273">
+    <testcase name="RejectsFrontendErrorsEvenWhenCommandReturnsZero" file="/home/subhagato/Codes/neospice/tests/unit/test_ngspice_lib.cpp" line="4" status="run" result="completed" time="0." timestamp="2026-09-11T09:58:17.273" classname="NgspiceLibrary" />
+    <testcase name="RejectsMissingSourceInsteadOfReusingAnEarlierCircuit" file="/home/subhagato/Codes/neospice/tests/unit/test_ngspice_lib.cpp" line="11" status="run" result="completed" time="0." timestamp="2026-09-11T09:58:17.273" classname="NgspiceLibrary" />
+    <testcase name="RejectsAbortedAnalysisWithPartialPlot" file="/home/subhagato/Codes/neospice/tests/unit/test_ngspice_lib.cpp" line="19" status="run" result="completed" time="0." timestamp="2026-09-11T09:58:17.273" classname="NgspiceLibrary" />
+  </testsuite>
+  <testsuite name="BSIM4v7UCBSetup" tests="1" failures="0" disabled="0" skipped="0" errors="0" time="0." timestamp="2026-09-11T09:58:17.273">
+    <testcase name="NmosPreprocChainMatchesNgspice" file="/home/subhagato/Codes/neospice/tests/unit/test_bsim4v7_ucb_setup.cpp" line="111" status="run" result="completed" time="0." timestamp="2026-09-11T09:58:17.273" classname="BSIM4v7UCBSetup" />
+  </testsuite>
+  <testsuite name="BSIM4v7UCBLoad" tests="2" failures="0" disabled="0" skipped="0" errors="0" time="0.013" timestamp="2026-09-11T09:58:17.273">
+    <testcase name="NmosDcOpMatchesNgspice" file="/home/subhagato/Codes/neospice/tests/unit/test_bsim4v7_ucb_load.cpp" line="50" status="run" result="completed" time="0.013" timestamp="2026-09-11T09:58:17.273" classname="BSIM4v7UCBLoad" />
+    <testcase name="DeclareInternalNodesSucceedsWithRgateMod" file="/home/subhagato/Codes/neospice/tests/unit/test_bsim4v7_ucb_load.cpp" line="131" status="run" result="completed" time="0." timestamp="2026-09-11T09:58:17.287" classname="BSIM4v7UCBLoad" />
+  </testsuite>
+</testsuites>

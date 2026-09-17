@@ -1,0 +1,170 @@
+{
+  "observed_utc": "2026-09-11T07:48:21.273529+00:00",
+  "sources": {
+    "github": {
+      "path": "/tmp/neospice-joss-checkpoint25-public-metadata/github.json",
+      "sha256": "df340e337c585391c47091517c27f3757a1c862611fde33706adb8d660d84fa9"
+    },
+    "pypi": {
+      "path": "/tmp/neospice-joss-checkpoint25-public-metadata/pypi.json",
+      "sha256": "02c4783f75d2eb779fa57675cd72e3f1ad7c2fd38bbf5023ca0e7a0b5487b44d"
+    }
+  },
+  "github": {
+    "full_name": "razorback16/neospice",
+    "html_url": "https://github.com/razorback16/neospice",
+    "private": false,
+    "visibility": "public",
+    "created_at": "2026-04-18T17:59:37Z",
+    "pushed_at": "2026-08-07T18:44:09Z",
+    "archived": false
+  },
+  "first_local_commit_record": "129755534706d5207e290f4543f00d5cd01ee2b4 2026-04-15T22:02:00-07:00 2026-04-15T22:02:00-07:00",
+  "package_project_urls": {
+    "Homepage": "https://github.com/Razorback16/neospice"
+  },
+  "package_releases": [
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp310-cp310-macosx_14_0_arm64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:10.046987Z",
+      "sha256": "dae7d69fc726105e58a962ceba24e2f4a52d3c9b92caaf1e4cb98397babb7e8a",
+      "url": "https://files.pythonhosted.org/packages/20/a8/8851208ff81fe485f58ae70e688703e450f3dbaf5859ec46bdb0aedde322/neospice-0.1.0-cp310-cp310-macosx_14_0_arm64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:12.446957Z",
+      "sha256": "50482c5b19c7618d1a3ca6b13e31fb6997aed3d24ea04d0416cc101dc9aed146",
+      "url": "https://files.pythonhosted.org/packages/ea/86/d8031227039ca3b2af45df547662c8e5c9e36131cddf86e11521f254c77e/neospice-0.1.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:14.892110Z",
+      "sha256": "0d555cf23283696da97715c18622db35c57cba194941e59f1c748eda1a579ccf",
+      "url": "https://files.pythonhosted.org/packages/f7/f5/de3e0ba9e3dee2e003e1fb8ba87266296d58f8aafd1a80c70717b2f15bb5/neospice-0.1.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp311-cp311-macosx_14_0_arm64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:17.587421Z",
+      "sha256": "ee77448e59e744143e5cfea7b4dfae55e318150608554696a16da438b0dad53e",
+      "url": "https://files.pythonhosted.org/packages/81/ed/d4ae103c5d92aa735fcaf127850d3db36a32a5fe9aced4671b385f802c47/neospice-0.1.0-cp311-cp311-macosx_14_0_arm64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:20.050208Z",
+      "sha256": "8cf13b2f9b3a8530e020530f1376d00b974e960a5b161a77b8a6e19f5306956e",
+      "url": "https://files.pythonhosted.org/packages/a4/2a/7a14bbaf36dc40efcad286add30bcd07bff85069a0730355d31e1dbde67b/neospice-0.1.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:22.818941Z",
+      "sha256": "489a3c48c382baa74421b43280c1520afc55fc528228b0a8e8b87c8bed747ca5",
+      "url": "https://files.pythonhosted.org/packages/0e/f5/efce8b776379349b6eabb0a6359dc602936ad92e0d7dece4c3bd83b8c29e/neospice-0.1.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp312-cp312-macosx_14_0_arm64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:25.577721Z",
+      "sha256": "96d26697f77c668ed349f5c5f504efa745c1f97459c764620cc5df5b22358e73",
+      "url": "https://files.pythonhosted.org/packages/da/aa/43f21f9a331e7f43ee9326dcb3aeacdf98ebbb72ccfdb430ce2f75232c83/neospice-0.1.0-cp312-cp312-macosx_14_0_arm64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:28.332675Z",
+      "sha256": "d6f49273bccfeb07ac4902286a188b1c8decf9b19d9dbab9d417f3e29fecbf89",
+      "url": "https://files.pythonhosted.org/packages/11/a2/bde02270e000b61d406815c1810f9cafbf3e78f7122332a500e263cd94cb/neospice-0.1.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:30.936210Z",
+      "sha256": "d096847ca6e073d26b0895b3b1d3088ebe7d16cde0ef2081588117a8d8b30800",
+      "url": "https://files.pythonhosted.org/packages/04/43/b8eddf14c6287b00d3e0e029e82547112a62f13fcbb04d8a5a2b1a3083a2/neospice-0.1.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp313-cp313-macosx_14_0_arm64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:34.365586Z",
+      "sha256": "9ed84350315e55071a270253eb9de053d38444f5001b5301678741faba1a1030",
+      "url": "https://files.pythonhosted.org/packages/b2/5e/afc2fd75f55eea54b13bf70615bb0219160bf7de7559a77ebe1d30fcf439/neospice-0.1.0-cp313-cp313-macosx_14_0_arm64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:36.855231Z",
+      "sha256": "4ea415a93dc5a2934438d64ab00866318c6a4bc114d9803ed676a4c5339cfd37",
+      "url": "https://files.pythonhosted.org/packages/9f/ba/50f4cc639609987c1b52ec5ce38a151ba1018017d81a4fe2213191c6e6b3/neospice-0.1.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:39.108851Z",
+      "sha256": "5cb52bc9e081fe44261614e811c96d9bda3e7ba1045b21ac381e0fb861afb511",
+      "url": "https://files.pythonhosted.org/packages/68/68/b4ba1b8d13c1bf69977d3d5d859ab0c974849fec451eca6b4db337d4ed4d/neospice-0.1.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp314-cp314-macosx_14_0_arm64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:41.938505Z",
+      "sha256": "450190b7d1e03887658822e5b2f3db3b01544283052376625fb3c95c79d0575d",
+      "url": "https://files.pythonhosted.org/packages/20/3f/33b7ee7c2454db237737824ca199030db2a6b532c4498f40cb41e90320e6/neospice-0.1.0-cp314-cp314-macosx_14_0_arm64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:44.656981Z",
+      "sha256": "6854b96934048a48de6a161151704bcc38890d783ddd28f54fa274adbff0170b",
+      "url": "https://files.pythonhosted.org/packages/06/1e/5d8df014fe90b7cffc7d9b11027c29b0a927ccf919c4b87a6ad9d36385c7/neospice-0.1.0-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "package_type": "bdist_wheel",
+      "uploaded_utc": "2026-06-17T00:13:46.994657Z",
+      "sha256": "d7304165219177f4fd8e04ff8e8476432fc33d2b15a37322271fa97a19763c82",
+      "url": "https://files.pythonhosted.org/packages/f9/08/fa732a0c4c22f28463d7cf19108344f5152225bca2686c0e90eed08bd1de/neospice-0.1.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+    },
+    {
+      "version": "0.1.0",
+      "filename": "neospice-0.1.0.tar.gz",
+      "package_type": "sdist",
+      "uploaded_utc": "2026-06-17T00:13:49.153387Z",
+      "sha256": "45a81bad4f15b24a6fafbdcd58946e3faa3d00656b2a08d79a0d72584357ae4f",
+      "url": "https://files.pythonhosted.org/packages/90/11/60520374607d4e65140a2674715e713571a6576afd4e8a2ba185fe362e80/neospice-0.1.0.tar.gz"
+    }
+  ],
+  "earliest_package_upload": "2026-06-17T00:13:10.046987Z",
+  "reddit": {
+    "url": "https://www.reddit.com/r/ElectricalEngineering/comments/1u7yn43/i_built_a_spice_simulator_in_c20_from_scratch/",
+    "observation": "Public rendered page links the repository; exact timestamp was not returned by text extraction. JSON metadata request403; no circumvention attempted."
+  },
+  "actual_first_public_repository_date": null,
+  "eligibility_established": false,
+  "limits": [
+    "Commit author/committer timestamps do not establish public availability.",
+    "GitHub creation time does not identify when visibility became public.",
+    "PyPI upload timestamps establish recorded package release activity, not the repository visibility transition or research adoption.",
+    "Current metadata does not prove uninterrupted public development for more than six months.",
+    "A project announcement and its claims are not independent validation, verified authorship or research-use evidence."
+  ]
+}

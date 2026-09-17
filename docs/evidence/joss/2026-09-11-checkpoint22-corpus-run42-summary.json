@@ -1,0 +1,450 @@
+{
+  "full_run": "/tmp/neospice-joss-corpus-run-22-ng42-full",
+  "complete": true,
+  "fixture_records": 67359,
+  "artifact_files_verified": 650112,
+  "counts_by_variant": {
+    "primary": {
+      "MISMATCH": 1063,
+      "NEO_TRIVIAL": 5347,
+      "NEO_ONLY": 4949,
+      "MATCH": 20218,
+      "BOTH_FAIL": 3330,
+      "NG_ONLY": 1
+    },
+    "isolated_driven": {
+      "MISMATCH": 1316,
+      "NEO_ONLY": 7150,
+      "MATCH": 22632,
+      "BOTH_FAIL": 1330,
+      "NG_ONLY": 23
+    }
+  },
+  "failure_classes": {
+    "primary:reference": {
+      "process_error": 7910,
+      "invalid_or_missing_operating_point": 809,
+      "parse_error": 4158,
+      "analysis_error": 378,
+      "timeout": 77,
+      "input_file_error": 95,
+      "reported_error": 199
+    },
+    "isolated_driven:reference": {
+      "process_error": 3481,
+      "invalid_or_missing_operating_point": 917,
+      "analysis_error": 811,
+      "timeout": 52,
+      "parse_error": 3209,
+      "input_file_error": 2,
+      "reported_error": 8
+    },
+    "primary:neospice": {
+      "parse_error": 1657,
+      "analysis_error": 1595,
+      "input_file_error": 70,
+      "process_error": 4,
+      "timeout": 5
+    },
+    "isolated_driven:neospice": {
+      "analysis_error": 1178,
+      "parse_error": 170,
+      "timeout": 5
+    }
+  },
+  "by_declaration_kind": {
+    "primary:subckt": {
+      "MISMATCH": 1063,
+      "NEO_TRIVIAL": 5347,
+      "NEO_ONLY": 4813,
+      "MATCH": 17937,
+      "BOTH_FAIL": 3296,
+      "NG_ONLY": 1
+    },
+    "isolated_driven:subckt": {
+      "MISMATCH": 1316,
+      "NEO_ONLY": 7150,
+      "MATCH": 22632,
+      "BOTH_FAIL": 1330,
+      "NG_ONLY": 23
+    },
+    "primary:model": {
+      "MATCH": 2281,
+      "NEO_ONLY": 136,
+      "BOTH_FAIL": 34
+    }
+  },
+  "metrics": {
+    "primary": {
+      "total": 34908,
+      "both_successful": 21281,
+      "matched_fraction_all": 0.5791795576945112,
+      "conditional_match_fraction": 0.9500493397866642,
+      "both_trivial_matches": 10342
+    },
+    "isolated_driven": {
+      "total": 32451,
+      "both_successful": 23948,
+      "matched_fraction_all": 0.697420726634002,
+      "conditional_match_fraction": 0.9450476031401369,
+      "both_trivial_matches": 0
+    }
+  },
+  "ng_only": [
+    {
+      "case_id": "case-v1-6db66fd80344ba01275a1d694d8dc06debf7d567a4e06924714ae871a8acca70",
+      "identity": {
+        "file": "Manufacturer/Linear Technology Corporation/LinearTech.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "ltc1541_ref",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-6db66fd80344ba01275a1d694d8dc06debf7d567a4e06924714ae871a8acca70/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-2addaaad762dd973beb8f35a2c081e79650001a82dd7b986aa81da35f5610951",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/IGBT_ST.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "stgf14nc60kd",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-2addaaad762dd973beb8f35a2c081e79650001a82dd7b986aa81da35f5610951/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-c484956a1471299ef2f86966cbffecd74768de4a9c7fe9230b87f6cbb5084ccb",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Ltc_Old_Big.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "ltc1541_ref",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-c484956a1471299ef2f86966cbffecd74768de4a9c7fe9230b87f6cbb5084ccb/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-5e7c7fe03b9a80fdcfb67f5d9515e7d9deac41a0f820499d5c5094d7e1e16f7e",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Maths.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "div",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-5e7c7fe03b9a80fdcfb67f5d9515e7d9deac41a0f820499d5c5094d7e1e16f7e/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-8a1df819149696e752af73274fa31685739a86b5a89e5761e4f618f3fbd4f6c8",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/OpAmp_ST.lib",
+        "kind": "subckt",
+        "scope": [
+          {
+            "kind": "subckt",
+            "name": "lm2902",
+            "occurrence": 1
+          },
+          {
+            "kind": "subckt",
+            "name": "lm2904",
+            "occurrence": 1
+          },
+          {
+            "kind": "subckt",
+            "name": "lm324",
+            "occurrence": 1
+          },
+          {
+            "kind": "subckt",
+            "name": "lm358",
+            "occurrence": 1
+          },
+          {
+            "kind": "subckt",
+            "name": "tl07x",
+            "occurrence": 1
+          },
+          {
+            "kind": "subckt",
+            "name": "ts321",
+            "occurrence": 1
+          },
+          {
+            "kind": "subckt",
+            "name": "ts94x",
+            "occurrence": 1
+          }
+        ],
+        "name": "tsh70",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "timeout",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-8a1df819149696e752af73274fa31685739a86b5a89e5761e4f618f3fbd4f6c8/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-029def83689ad2ccab73b7592e0483a1f3d1c6871f451b8dd95b1d7cafb39ea0",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "lmc6772bim",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-029def83689ad2ccab73b7592e0483a1f3d1c6871f451b8dd95b1d7cafb39ea0/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-b0c296ee5bf09295ba02a27f1995dad7ac104f7f6393938cb506ab2337d39699",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "opa192",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-b0c296ee5bf09295ba02a27f1995dad7ac104f7f6393938cb506ab2337d39699/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-11b7a68e18048d39de7f11506bbb6c4ad1db1746c3bc61f4fe07c0b652c49b21",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sig&SysProc.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "div",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-11b7a68e18048d39de7f11506bbb6c4ad1db1746c3bc61f4fe07c0b652c49b21/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-1a88c8cfcc9fa4380412516017d8ca552debcce8d86d7087ab9f4d40088dc562",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/TAUelements.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "div",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-1a88c8cfcc9fa4380412516017d8ca552debcce8d86d7087ab9f4d40088dc562/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-bd1c8ca548732436645dbfd7e5fc390ec7b96f80f1cbbb3818c5244f60ae2d4b",
+      "identity": {
+        "file": "uncategorized/spice_complete/LTC_ampliop.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "ltc1541_ref",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-bd1c8ca548732436645dbfd7e5fc390ec7b96f80f1cbbb3818c5244f60ae2d4b/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-553c2d1980ec786e1300fded232871c379aa5e7024371240e88231116e0e092e",
+      "identity": {
+        "file": "uncategorized/spice_complete/harprmos.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "rff70n06_ha",
+        "occurrence": 1
+      },
+      "variant": "primary",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-553c2d1980ec786e1300fded232871c379aa5e7024371240e88231116e0e092e/primary/comparison.json"
+    },
+    {
+      "case_id": "case-v1-553c2d1980ec786e1300fded232871c379aa5e7024371240e88231116e0e092e",
+      "identity": {
+        "file": "uncategorized/spice_complete/harprmos.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "rff70n06_ha",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-553c2d1980ec786e1300fded232871c379aa5e7024371240e88231116e0e092e/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-39ab4f5fbc280396c31867a8127b9d70f46969ef9681949958b04934a23fbbfe",
+      "identity": {
+        "file": "uncategorized/spice_complete/lin_tech.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "ltc1541_ref/lt",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-39ab4f5fbc280396c31867a8127b9d70f46969ef9681949958b04934a23fbbfe/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-2cab97f52227721796afa4ce3b717ad2ed15443c9389b36f7427ba32056b0dfd",
+      "identity": {
+        "file": "uncategorized/spice_complete/linear.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "ltc1541_ref_lt",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-2cab97f52227721796afa4ce3b717ad2ed15443c9389b36f7427ba32056b0dfd/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-158ae8b7b59114f08cdced296aa5ce482165f40d1cc0a9dcd006d1fd26e7b2bc",
+      "identity": {
+        "file": "uncategorized/spice_complete/movs.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "v130l20c",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-158ae8b7b59114f08cdced296aa5ce482165f40d1cc0a9dcd006d1fd26e7b2bc/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-3cdc0509f17d09bfe19dba9047c4a692ace0faed2faa636e9a02fcb1106a785a",
+      "identity": {
+        "file": "uncategorized/spice_complete/movs.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "v150l10c",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-3cdc0509f17d09bfe19dba9047c4a692ace0faed2faa636e9a02fcb1106a785a/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-1f1297a226fb211fd91f7091b2898680b142073f57ff14078f89bac77911e0d2",
+      "identity": {
+        "file": "uncategorized/spice_complete/movs.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "v230l20c",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-1f1297a226fb211fd91f7091b2898680b142073f57ff14078f89bac77911e0d2/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-cce0a8b79d15d7471bbe76979cc3fe099b9c747a7894252ce9035cc951c3cb29",
+      "identity": {
+        "file": "uncategorized/spice_complete/movs.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "v242ca60",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-cce0a8b79d15d7471bbe76979cc3fe099b9c747a7894252ce9035cc951c3cb29/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-228c0053d7c350455f1ff88a07de1cbf0eced3d489303700c5020c44d618b11a",
+      "identity": {
+        "file": "uncategorized/spice_complete/movs.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "v130l20a",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-228c0053d7c350455f1ff88a07de1cbf0eced3d489303700c5020c44d618b11a/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-17c074350ba4b6828c94658b0c6ae2e22aa9b7a00f799085cd0a8f2fdcde0b79",
+      "identity": {
+        "file": "uncategorized/spice_complete/movs.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "v250l40a",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-17c074350ba4b6828c94658b0c6ae2e22aa9b7a00f799085cd0a8f2fdcde0b79/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-46f1fbc3293f65aba695a7b270dda6a75dff9c3a55fcc5a0c3f369d75bf703e9",
+      "identity": {
+        "file": "uncategorized/spice_complete/smps_cb.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "boostdcm",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-46f1fbc3293f65aba695a7b270dda6a75dff9c3a55fcc5a0c3f369d75bf703e9/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-118404a78b64a737cfb52e9c115300aa5de3052d5f5e5e1e232006e720fcbb1b",
+      "identity": {
+        "file": "uncategorized/spice_complete/smps_cb.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "boostvm",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-118404a78b64a737cfb52e9c115300aa5de3052d5f5e5e1e232006e720fcbb1b/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-6d0180374f854786979a1207af2a6796f6ec00ad2f5d600748b189a1cbc0698c",
+      "identity": {
+        "file": "uncategorized/spice_complete/smps_cb.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "boostcm",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-6d0180374f854786979a1207af2a6796f6ec00ad2f5d600748b189a1cbc0698c/isolated_driven/comparison.json"
+    },
+    {
+      "case_id": "case-v1-df0e627c3ce8ba796f1d3ecb4b034c048184e791bd250f4e5bb2889f1d6b5786",
+      "identity": {
+        "file": "uncategorized/tswitch.cir",
+        "kind": "subckt",
+        "scope": [],
+        "name": "tswitch",
+        "occurrence": 1
+      },
+      "variant": "isolated_driven",
+      "neospice_failure": "analysis_error",
+      "record": "/tmp/neospice-joss-corpus-run-22-ng42-full/cases/case-v1-df0e627c3ce8ba796f1d3ecb4b034c048184e791bd250f4e5bb2889f1d6b5786/isolated_driven/comparison.json"
+    }
+  ],
+  "limitations": [
+    "Minimal generated OP fixtures; lexical declaration origins do not prove independently exercised model definitions",
+    "Primary and rescue populations differ; never combine them into a single matched-model percentage",
+    "Both-trivial count uses the retained historical all-node voltage threshold, not proof of meaningful excitation",
+    "Status labels need root-cause triage; no failed reference run is a correctness win",
+    "No speedup or benchmark claim"
+  ]
+}

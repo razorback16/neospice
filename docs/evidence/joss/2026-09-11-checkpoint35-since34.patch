@@ -1,0 +1,414 @@
+--- a/src/devices/mosfet_common.cpp
++++ b/src/devices/mosfet_common.cpp
+@@ -34,6 +34,19 @@
+     std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+     return result;
+ }
++// Model cards retain their declaration spelling in the cache. Prefer direct
++// lookups, then resolve mixed-case references to that same shared card.
++auto find_model(const std::unordered_map<std::string, ModelCard>& models,
++                const std::string& name) {
++    auto found = models.find(name);
++    if (found != models.end()) return found;
++    const auto lower = to_lower(name);
++    found = models.find(lower);
++    if (found != models.end()) return found;
++    return std::find_if(models.begin(), models.end(), [&](const auto& item) {
++        return to_lower(item.first) == lower;
++    });
++}
+ } // anonymous namespace
+ 
+ std::unique_ptr<ParsedElement> parse_mosfet_element(
+@@ -42,8 +55,22 @@
+     // M name nd ng ns nb [nsub] modelname [W=.. L=.. NF=.. AD=.. AS=.. PD=..
+     //                                      PS=.. NRD=.. NRS=.. SA=.. SB=.. SD=..]
+     // 5-terminal form (e.g. HiSIM_HV): M1 d g s b sub modelname ...
+-    if (tokens.size() < 6) {
+-        ctx.error("M card requires name, nd, ng, ns, nb, modelname");
++    if (tokens.size() < 5) {
++        ctx.error("M card requires name, drain, gate, source and a model");
++        return nullptr;
++    }
++    // ngspice 47 INP2M starts looking for the model after three terminals.
++    // Only VDMOS may omit the fourth terminal (its optional thermal node).
++    auto third_model = find_model(ctx.models, tokens[4]);
++    const bool three_terminals = third_model != ctx.models.end();
++    if (three_terminals) {
++        const auto& type = third_model->second.type;
++        if (type != "vdmos" && type != "vdmosn" && type != "vdmosp") {
++            ctx.error("Three-terminal M card requires a VDMOS model");
++            return nullptr;
++        }
++    } else if (tokens.size() < 6) {
++        ctx.error("M card requires a valid model after its terminals");
+         return nullptr;
+     }
+     auto m = std::make_unique<ParsedMosfet>();
+@@ -51,7 +78,7 @@
+     m->nd          = ctx.node(tokens[1]);
+     m->ng          = ctx.node(tokens[2]);
+     m->ns          = ctx.node(tokens[3]);
+-    m->nb          = ctx.node(tokens[4]);
++    m->nb          = three_terminals ? GROUND_INTERNAL : ctx.node(tokens[4]);
+     m->line_number = ctx.line_number;
+ 
+     // Detect 5- or 6-terminal M-cards by scanning forward from
+@@ -62,38 +89,42 @@
+     // 5-terminal (HiSIM_HV):         M1 d g s b sub model [params]
+     // 6-terminal (BSIMSOI):           M1 d g s e p b model [params]
+     size_t param_start = 6;
+-    std::string tok5_lower = to_lower(tokens[5]);
+-    bool tok5_is_model = (ctx.models.find(tokens[5]) != ctx.models.end() ||
+-                          ctx.models.find(tok5_lower) != ctx.models.end());
+-    if (!tok5_is_model && tokens.size() >= 7 &&
+-        tokens[5].find('=') == std::string::npos &&
+-        tokens[6].find('=') == std::string::npos) {
+-        // tokens[5] is an extra terminal.  Check whether tokens[6]
+-        // is the model name (5-terminal) or yet another node
+-        // (6-terminal).
+-        std::string tok6_lower = to_lower(tokens[6]);
+-        bool tok6_is_model = (ctx.models.find(tokens[6]) != ctx.models.end() ||
+-                              ctx.models.find(tok6_lower) != ctx.models.end());
+-        if (!tok6_is_model && tokens.size() >= 8 &&
+-            tokens[6].find('=') == std::string::npos &&
+-            tokens[7].find('=') == std::string::npos) {
+-            // 6-terminal form (e.g. BSIMSOI): tokens[5]=p, tokens[6]=b
+-            m->nsub = ctx.node(tokens[5]);
+-            m->nsub_given = true;
+-            m->npnode = ctx.node(tokens[6]);
+-            m->nbulk_given = true;
+-            m->model_name = tokens[7];
+-            param_start = 8;
++    if (three_terminals) {
++        m->model_name = tokens[4];
++        param_start = 5;
++    } else {
++        bool tok5_is_model = find_model(ctx.models, tokens[5]) != ctx.models.end();
++        if (!tok5_is_model && tokens.size() >= 7 &&
++            tokens[5].find('=') == std::string::npos &&
++            tokens[6].find('=') == std::string::npos) {
++            // tokens[5] is an extra terminal.  Check whether tokens[6]
++            // is the model name (5-terminal) or yet another node
++            // (6-terminal).
++            bool tok6_is_model = find_model(ctx.models, tokens[6]) != ctx.models.end();
++            if (!tok6_is_model && tokens.size() >= 8 &&
++                tokens[6].find('=') == std::string::npos &&
++                tokens[7].find('=') == std::string::npos) {
++                // 6-terminal form (e.g. BSIMSOI): tokens[5]=p, tokens[6]=b
++                m->nsub = ctx.node(tokens[5]);
++                m->nsub_given = true;
++                m->npnode = ctx.node(tokens[6]);
++                m->nbulk_given = true;
++                m->model_name = tokens[7];
++                param_start = 8;
++            } else {
++                // 5-terminal form: tokens[5] is substrate node
++                m->nsub = ctx.node(tokens[5]);
++                m->nsub_given = true;
++                m->model_name = tokens[6];
++                param_start = 7;
++            }
+         } else {
+-            // 5-terminal form: tokens[5] is substrate node
+-            m->nsub = ctx.node(tokens[5]);
+-            m->nsub_given = true;
+-            m->model_name = tokens[6];
+-            param_start = 7;
+-        }
+-    } else {
+-        m->model_name = tokens[5];
+-    }
++            m->model_name = tokens[5];
++        }
++    }
++
++    if (const auto model = find_model(ctx.models, m->model_name); model != ctx.models.end())
++        m->model_name = model->first;
+ 
+     for (size_t i = param_start; i < tokens.size(); ++i) {
+         // Reconstruct a "key", "valstr" pair from the token stream, tolerating
+@@ -225,6 +256,10 @@
+         // ".MODEL name VDMOS(...)" card carries type "vdmos"/"vdmosn"/"vdmosp".
+         const std::string& mtype = it->second.type;
+         if (mtype == "vdmos" || mtype == "vdmosn" || mtype == "vdmosp") {
++            if (m.nbulk_given) {
++                throw ParseError("Line " + std::to_string(m.line_number) +
++                                 ": VDMOS accepts at most five terminals");
++            }
+             auto card_it = vdmos_cards.find(m.model_name);
+             if (card_it == vdmos_cards.end()) {
+                 try {
+@@ -238,11 +273,9 @@
+             VDMOSDevice::Geom vdmos_geom;
+             vdmos_geom.M = m.geom.M;
+             // ngspice VDMOS M-card node order: drain, gate, source, [Tj], [Tcase].
+-            // neospice's M-card parser always captures a 4th positional (nb) and
+-            // an optional 5th (nsub).  Map the 4th positional to the junction-
+-            // temperature node and the optional 5th to the case node.  When the
+-            // thermal model is off (default) VDMOSsetup force-grounds these, so
+-            // the bound nodes are harmless — matching ngspice exactly.
++            // Optional thermal terminals occupy nb/nsub in ParsedMosfet.
++            // With the isothermal adapter, omitted terminals are ground and
++            // VDMOSsetup also grounds any supplied thermal terminals.
+             int32_t n_tj = m.nb;
+             int32_t n_tc = m.nsub_given ? m.nsub : GROUND_INTERNAL;
+             auto dev = VDMOSDevice::make(m.name, m.nd, m.ng, m.ns, n_tj, n_tc,
+--- /dev/null
++++ b/tests/circuits/vdmos_terminal_forms.cir
+@@ -0,0 +1,29 @@
++VDMOS three-terminal syntax with optional parameters and four/five-terminal controls
++Vdn1 dn1 0 2
++Vgn1 gn1 0 3
++Mn1 dn1 gn1 0 DMOSN
++Vdn3 dn3 0 2
++Vgn3 gn3 0 3
++Mn3 dn3 gn3 0 dMoSn M=2
++Vdn4 dn4 0 2
++Vgn4 gn4 0 3
++Mn4 dn4 gn4 0 0 DMOSN M = 2
++Vdn5 dn5 0 2
++Vgn5 gn5 0 3
++Mn5 dn5 gn5 0 0 0 dMoSn M=2
++Vdp1 dp1 0 -2
++Vgp1 gp1 0 -3
++Mp1 dp1 gp1 0 DMOSP
++Vdp3 dp3 0 -2
++Vgp3 gp3 0 -3
++Mp3 dp3 gp3 0 dMoSp M=2
++Vdp4 dp4 0 -2
++Vgp4 gp4 0 -3
++Mp4 dp4 gp4 0 0 DMOSP M = 2
++Vdp5 dp5 0 -2
++Vgp5 gp5 0 -3
++Mp5 dp5 gp5 0 0 0 dMoSp M=2
++.model DMOSN VDMOS(Vto=1 Kp=20m)
++.model DMOSP VDMOSP(Vto=-1 Kp=20m)
++.op
++.end
+--- a/tests/devices/vdmos/test_vdmos_compare.cpp
++++ b/tests/devices/vdmos/test_vdmos_compare.cpp
+@@ -8,6 +8,8 @@
+ #include "api/neospice.hpp"
+ #include "framework/ngspice_runner.hpp"
+ #include "framework/comparator.hpp"
++#include "devices/vdmos/vdmos_device.hpp"
++#include "parser/netlist_parser.hpp"
+ 
+ #include <cmath>
+ #include <string>
+@@ -22,6 +24,50 @@
+     std::unique_ptr<NgspiceRunner> ngspice_;
+     Simulator sim_;
+ };
++
++TEST_F(VDMOSValidation, TerminalFormsBindAndMatchNgspice47) {
++    const auto path = std::string(TEST_CIRCUITS_DIR) + "/vdmos_terminal_forms.cir";
++    auto ckt = sim_.load(path);
++    for (const std::string name : {"Mn1", "Mn3", "Mn4", "Mn5",
++                                   "Mp1", "Mp3", "Mp4", "Mp5"}) {
++        SCOPED_TRACE(name);
++        ASSERT_NE(dynamic_cast<const VDMOSDevice*>(ckt.find_device_ptr(name)), nullptr);
++    }
++    auto expected = ngspice_->run_dc(path);
++    std::erase_if(expected.node_voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto actual = sim_.run_dc(ckt);
++    const auto comparison = compare_dc(expected, actual);
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++    for (const std::string polarity : {"n", "p"}) {
++        const double single = actual.current("vd" + polarity + "1");
++        ASSERT_GT(std::abs(single), 1e-3);
++        for (const std::string form : {"3", "4", "5"}) {
++            SCOPED_TRACE(polarity + form);
++            // The optional M=2 must survive each model-name position.
++            EXPECT_NEAR(actual.current("vd" + polarity + form), 2 * single,
++                        std::abs(single) * 1e-9);
++        }
++    }
++}
++
++TEST(VDMOSParser, ThreeTerminalsRequireVdmosModel) {
++    NetlistParser parser;
++    for (const std::string model : {"NMOS(LEVEL=1)", "PMOS(LEVEL=1)", "D"}) {
++        for (const std::string parameters : {"", " M=2", " W=1u L=1u"}) {
++            SCOPED_TRACE(model + parameters);
++            EXPECT_THROW(parser.parse("Three-terminal non-VDMOS\nM1 d g s QM" +
++                parameters + "\n.model QM " + model + "\n.end\n"), ParseError);
++        }
++    }
++}
++
++TEST(VDMOSParser, RejectsSixTerminals) {
++    NetlistParser parser;
++    EXPECT_THROW(parser.parse("Too many VDMOS terminals\n"
++        "M1 d g s tj tc extra QM\n.model QM VDMOS\n.end\n"), ParseError);
++}
+ 
+ // ---------------------------------------------------------------------------
+ // 1. N-channel VDMOS DC operating point.
+--- a/docs/capabilities.md
++++ b/docs/capabilities.md
+@@ -79,7 +79,7 @@
+ Unsupported AC/noise fixtures must remain in experiment accounting and must not
+ be counted as accuracy matches or accepted performance samples.
+ 
+-Candidate 34's Release suite passes 1,248 of 1,249 tests against ngspice
++Candidate 35's Release suite passes 1,251 of 1,252 tests against ngspice
+ 47, including the JFET2, MOS3 and VBIC transient fixtures. ngspice47 is the sole
+ reference. The remaining supported-scope corpus discrepancies and RFF70N06
+ regression remain release blockers. See
+--- a/docs/joss-progress.md
++++ b/docs/joss-progress.md
+@@ -13,14 +13,53 @@
+ | Milestone | Status and remaining work |
+ |---|---|
+ | 1. Scope, eligibility and environment | Pinned ngspice47 CLI/shared build verified locally. CI and migration tests use the same47 source. Full support matrix, actual public timeline and eligibility remain. |
+-| 2. Trustworthy validation | Candidate 34: 1,248/1,249 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. The VBIC switching test uses the standard, stricter comparator tolerance. |
+-| 3. Numerical correctness | Mixed model-card syntax now binds VBIC/JFET devices correctly; semiconductor parse errors propagate. Candidate 34 passes 51 parser/BJT and ten VBIC sanitizer tests with leak detection. Three-terminal VDMOS parsing, PA84, remaining CoolMOS/IRF/RFF/TLV discrepancies, broader option coverage and the earlier reference T-line leak remain. |
+-| 4. Compatibility experiment | Checkpoint 34 executes and audits all 67,359 fixtures against 47. Four mismatches become matches; 456 previously successful native runs now fail explicitly on previously skipped cards, including three earlier false matches. Reference results are unchanged. Broader binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
++| 2. Trustworthy validation | Candidate 35: 1,251/1,252 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. The VBIC switching test uses the standard, stricter comparator tolerance. |
++| 3. Numerical correctness | Three-terminal VDMOS parsing and mixed-case MOSFET model lookup corrected; candidate 35 passes 51 parser/BJT and eight VDMOS sanitizer tests with leak detection. VDMOS global-model scope, model expressions/temperature behavior, PA84, remaining CoolMOS/IRF/RFF/TLV discrepancies, broader option coverage and the earlier reference T-line leak remain. |
++| 4. Compatibility experiment | Checkpoint 35 executes and audits all 67,359 fixtures against 47. Four reference-only successes become matches; seven formerly failing native runs succeed while the reference still fails. No outcome regressions or reference-result changes. Broader binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
+ | 5. Benchmarks | All34 comprehensive workloads qualify47; THS4131 qualifies5/5. TLV passes its original edge/DC-port contract but retains a strict pointwise discrepancy. Final candidate measurements and interpretation remain. |
+ | 6. Documentation and attribution | Current documentation uses47 exclusively. Component copyright/license/distribution audit remains incomplete. |
+ | 7. Manuscript and release | Draft paper exists. Actual research use, author confirmations, final release metadata, independent installation and final evidence reconciliation remain. |
+ 
+-## Latest verified checkpoint: 34
++## Latest verified checkpoint: 35
++
++The eight-cell terminal-layout regression verifies actual N/P VDMOS devices,
++three/four/five-terminal forms, mixed-case model references, optional instance
++multipliers, and reference operating-point agreement. Three-terminal non-VDMOS
++cards and six-terminal VDMOS cards fail explicitly. All four affected
++SGN20N40L/VT6K1 corpus fixtures now bind their VDMOS devices and match their
++minimal reference operating points. See [VDMOS compatibility](vdmos-compatibility.md).
++
++Candidate 35 passes 1,251/1,252 C++ tests, all 393 Python/tooling tests, 51
++parser/BJT and eight VDMOS sanitizer cases with leak detection, and all
++34 + 5 + 1 benchmark accuracy gates. The required RFF failure remains.
++The full 67,359-fixture rerun and independent outcome audit complete with no
++outcome regressions or changed reference results. Four NG_ONLY outcomes become
++MATCH: both SGN20N40L and VT6K1 variants. Seven BOTH_FAIL outcomes become six
++NEO_ONLY and one NEO_TRIVIAL; reference failure is not a compatibility success.
++All 11 outcome changes are [triaged](evidence/joss/2026-09-11-checkpoint35-transition-triage.json).
++
++Primary results contain 20,229 MATCH and 1,273 MISMATCH; driven results contain
++22,889 MATCH and 1,273 MISMATCH. The [summary](evidence/joss/2026-09-11-checkpoint35-corpus-run47-summary.json),
++[ledger](evidence/joss/2026-09-11-checkpoint35-corpus-run47-records.json.gz)
++and [transitions](evidence/joss/2026-09-11-checkpoint35-candidate47-transitions.json)
++retain every failure category and all fixtures. The
++[complete raw archive](evidence/joss/2026-09-11-checkpoint35-full-corpus.tar.gz)
++contains all 649,345 regular files; [verification](evidence/joss/2026-09-11-checkpoint35-full-corpus-archive.json)
++checks every archived file, including 649,313 audited result artifacts.
++
++Stronger diagnostics preserve the remaining defects: six VT6K1 bias/temperature
++cases disagree with ngspice 47; global model-card expressions can be omitted;
++and a three-terminal VDMOS inside a subcircuit fails when using a global model.
++Literal model-parameter and local-model controls distinguish those failures.
++These are open correctness blockers, not exclusions from the supported scope.
++The [checkpoint record](evidence/joss/2026-09-11-validation-35.json) preserves
++those diagnostics, the regression/build logs, benchmark accuracy checks and
++the reconstructable candidate patch. Next work should correct model scope
++and expression evaluation, then recheck the stronger VT6K1 probes; the
++remaining numerical, evaluation, licensing, manuscript and human eligibility
++requirements of the full goal remain in force.
++
++## Previous verified checkpoint: 34
+ 
+ ngspice 47 remains the sole target; there is no older-version build, benchmark
+ or migration-test obligation. The current configuration and documentation have
+--- a/docs/model-card-compatibility.md
++++ b/docs/model-card-compatibility.md
+@@ -51,7 +51,9 @@
+ fails 452 of those fixtures; the other four cover SGN20N40L and VT6K1, whose
+ three-terminal VDMOS cards remain unsupported by the native parser. Three
+ earlier MATCH results omitted those transistors. All fixtures and failures
+-remain in the accounting; the parser limitation remains a blocker. See the
++remain in the accounting. Candidate 35 repairs those four fixtures, while
++global-model scoping and temperature-expression defects remain; see the
++[VDMOS audit](vdmos-compatibility.md) and the checkpoint 34
+ [complete transition triage](evidence/joss/2026-09-11-checkpoint34-transition-triage.json).
+ 
+ Candidate 34 passes 1,248/1,249 Release C++ tests, all 393 Python/tooling tests,
+--- a/docs/ngspice47-reference.md
++++ b/docs/ngspice47-reference.md
+@@ -62,11 +62,13 @@
+ 
+ ## Remaining compatibility work
+ 
+-Candidate 34 passes 1,248 of 1,249 C++ tests against 47; the required RFF70N06
++Candidate 35 passes 1,251 of 1,252 C++ tests against 47; the required RFF70N06
+ operating-point regression remains failing. It is retained even though the
+ reference also fails this fixture. The full frozen corpus contains67,359 cases
+ across two distinct fixture variants; remaining mismatches, model binding,
+ option coverage and evaluation grouping require investigation.
++The [VDMOS audit](vdmos-compatibility.md) distinguishes repaired terminal syntax
++from remaining model-scope and temperature-expression defects.
+ 
+ All34 comprehensive benchmark workloads pass their accuracy gates. TLV3201
+ passes its original edge/DC-port contract but retains a strict pointwise
+--- /dev/null
++++ b/docs/vdmos-compatibility.md
+@@ -0,0 +1,60 @@
++# VDMOS compatibility and known defects
++
++Candidate 35 repairs recognition of three-terminal VDMOS cards such as
++`M1 drain gate source POWER M=2`. It follows ngspice 47's `INP2M` rule that
++model-name lookup begins after three terminals; only VDMOS may omit the fourth
++terminal. Four/five-terminal forms remain accepted, and six-terminal VDMOS
++cards now raise a parse error. MOSFET model references also resolve without
++regard to case and use the declaration's shared model card.
++
++The eight-cell `vdmos_terminal_forms.cir` regression checks N/P polarity,
++three-terminal default and `M=2` instances, four/five-terminal controls,
++mixed-case model references and whitespace around instance assignments.
++It checks actual VDMOS device classes, all public operating-point observables
++against ngspice 47, nonzero drain currents and the expected multiplier scaling.
++The standard comparison tolerance is unchanged. The thermal terminals in these
++controls are grounded; they do not establish self-heating support.
++
++All four primary/driven fixtures enclosing SGN20N40L and VT6K1 now match the
++reference. A separate device inspection confirms one VDMOS instance for
++SGN20N40L and two for VT6K1 in both variants. These results repair the missing
++instances identified in checkpoint 34. They do not certify the models under
++arbitrary bias, temperature or analysis settings.
++
++## Stronger diagnostics and remaining blockers
++
++VT6K1 still emits warnings that `TEMP` defaults to zero. A diagnostic with
++drain voltage 2 V, gate voltages 0.7/1.5 V and temperatures 0/27/60 °C fails
++all six reference comparisons. At 27 °C and gate voltage 0.7 V, native drain
++supply current is approximately -0.972669 mA, versus -2.274588 mA in ngspice 47.
++This is a real unresolved correctness defect despite the minimal corpus matches;
++the temperature warning alone does not isolate every cause of the discrepancy.
++
++A separate global-model control compares a `Vto` expression containing `TEMP`
++with its literal value. The reference expression and literal results agree at
++all three temperatures. Native global model parsing omits the expression's
++`Vto` parameter and uses the default threshold; at 27 °C its expression cell
++conducts about 2 pA instead of 2.174185 mA. The literal controls agree with the
++reference. A four-terminal control gives identical native values in candidates
++34 and 35, proving this expression defect predates the terminal-parser fix.
++
++Subcircuit model scope also remains a blocker. A three-terminal VDMOS referencing
++a local model works, but one referencing a global model fails: subcircuit
++expansion still treats the model token as a fourth node. The four-terminal
++global-model control and both local-model controls match the reference.
++
++| Area | Current status |
++|---|---|
++| DC and IV sweep | Existing N/P operating-point and N-channel sweep tests pass, together with the new terminal-layout regression. |
++| AC and noise | Explicitly rejected with `SimulationError`; existing tests verify the rejection, including `no_throw`. |
++| Model expressions and temperature-dependent parameters | Known correctness defects described above; not validated by the four passing corpus fixtures. |
++| Model scope in subcircuits | Three-terminal references to global models remain a known parser defect. |
++| Thermal and instance options | The adapter is isothermal. `TEMP`, `DTEMP`, `IC`, `OFF`, thermal behavior and operating-point queries need further coverage and correction where ignored. |
++| General transient behavior | Not certified by these DC/parser checks. |
++
++Candidate 35 passes 1,251/1,252 Release C++ tests, all 393 Python/tooling tests,
++51 parser/BJT sanitizer tests and all eight VDMOS sanitizer tests. Leak detection
++is enabled in those focused sanitizer groups. RFF70N06 remains the C++ failure.
++All 34 comprehensive, five THS4131 and one TLV benchmark accuracy gates pass;
++no new performance timings were collected. The [progress tracker](joss-progress.md)
++links the full corpus audit and preserved diagnostic outputs.

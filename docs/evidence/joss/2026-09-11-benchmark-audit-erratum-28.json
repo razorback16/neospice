@@ -1,0 +1,10 @@
+{
+  "date": "2026-09-11",
+  "checkpoint": 28,
+  "affected": "Historical benchmark-harness-audit.md, bench_neo_solver row through checkpoint27",
+  "incorrect_implication": "Retain its matrix validation and limits suggested numeric matrix validation existed.",
+  "correction": "bench_neo_solver runs factor/solve operations but has no residual or known-solution checks. Its timings are unqualified diagnostics.",
+  "source": "tests/bench/bench_neo_solver.cpp",
+  "source_before_sha256": "759d9fab2cba337ca93e28847d671abc706a466254426e61c7db265a478e5a39",
+  "effect": "No numeric result or historical experiment was altered; documentation/output limits corrected."
+}

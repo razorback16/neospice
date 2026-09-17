@@ -1,0 +1,54 @@
+{
+  "full_run": "/tmp/neospice-joss-checkpoint31/irf-family47",
+  "complete": true,
+  "fixture_records": 790,
+  "artifact_files_verified": 7900,
+  "counts_by_variant": {
+    "primary": {
+      "MISMATCH": 1,
+      "MATCH": 410
+    },
+    "isolated_driven": {
+      "MATCH": 372,
+      "MISMATCH": 7
+    }
+  },
+  "failure_classes": {},
+  "by_declaration_kind": {
+    "primary:subckt": {
+      "MISMATCH": 1,
+      "MATCH": 378
+    },
+    "isolated_driven:subckt": {
+      "MATCH": 372,
+      "MISMATCH": 7
+    },
+    "primary:model": {
+      "MATCH": 32
+    }
+  },
+  "metrics": {
+    "primary": {
+      "total": 411,
+      "both_successful": 411,
+      "matched_fraction_all": 0.9975669099756691,
+      "conditional_match_fraction": 0.9975669099756691,
+      "both_trivial_matches": 378
+    },
+    "isolated_driven": {
+      "total": 379,
+      "both_successful": 379,
+      "matched_fraction_all": 0.9815303430079155,
+      "conditional_match_fraction": 0.9815303430079155,
+      "both_trivial_matches": 0
+    }
+  },
+  "ng_only": [],
+  "limitations": [
+    "Minimal generated OP fixtures; lexical declaration origins do not prove independently exercised model definitions",
+    "Primary and rescue populations differ; never combine them into a single matched-model percentage",
+    "Both-trivial count uses the retained historical all-node voltage threshold, not proof of meaningful excitation",
+    "Status labels need root-cause triage; no failed reference run is a correctness win",
+    "No speedup or benchmark claim"
+  ]
+}

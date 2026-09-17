@@ -1,0 +1,6 @@
+id,accepted,file,command,compared_pairs,max_normalized_error,failure
+dc_ths4131,True,ths4131_diff_amp.cir,op,1,3.539654207184711e-10,
+ac_ths4131_10,True,ths4131_diff_amp.cir,ac dec 10 1 100e6,1,1.2995195394251999e-08,
+op_ac_ths4131_10,True,ths4131_diff_amp.cir,op; ac dec 10 1 100e6,1,1.2995195394251999e-08,
+op_ac_ths4131_100,True,ths4131_diff_amp.cir,op; ac dec 100 1 100e6,1,1.353687226605773e-08,
+op_ac_ths4131_1000,True,ths4131_diff_amp.cir,op; ac dec 1000 1 100e6,1,1.3728405454566993e-08,

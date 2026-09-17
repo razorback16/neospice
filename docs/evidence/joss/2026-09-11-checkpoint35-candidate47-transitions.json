@@ -1,0 +1,409 @@
+{
+  "reference_version": "47",
+  "roots": [
+    "/tmp/neospice-joss-corpus-run-34-ng47-full",
+    "/tmp/neospice-joss-corpus-run-35-ng47-full"
+  ],
+  "fixtures_reconciled": 67359,
+  "input_manifest_sha256": "b888f92eca7d5ea3934815f1cd3461cb36b968d40808dae81057947ae25f7b79",
+  "fixture_bytes_identical": true,
+  "neospice_binaries": [
+    {
+      "path": "/tmp/neospice-joss-checkpoint34/neospice",
+      "sha256": "374790c8c340036ecc703578970a388af7ca7e826f25720468f0974a360b2afa",
+      "bytes": 5136304
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint35/neospice",
+      "sha256": "796c3fa651348e06d6181cd7a11c99c9ae5b850c4b70d376d7be49d683aa4af4",
+      "bytes": 5136512
+    }
+  ],
+  "transitions_by_variant": {
+    "primary": {
+      "MISMATCH -> MISMATCH": 1273,
+      "NEO_TRIVIAL -> NEO_TRIVIAL": 5351,
+      "NEO_ONLY -> NEO_ONLY": 4285,
+      "MATCH -> MATCH": 20227,
+      "BOTH_FAIL -> BOTH_FAIL": 3744,
+      "NG_ONLY -> NG_ONLY": 22,
+      "NG_ONLY -> MATCH": 2,
+      "BOTH_FAIL -> NEO_ONLY": 3,
+      "BOTH_FAIL -> NEO_TRIVIAL": 1
+    },
+    "isolated_driven": {
+      "MISMATCH -> MISMATCH": 1273,
+      "NEO_ONLY -> NEO_ONLY": 6931,
+      "MATCH -> MATCH": 22887,
+      "BOTH_FAIL -> BOTH_FAIL": 1305,
+      "NG_ONLY -> NG_ONLY": 50,
+      "NG_ONLY -> MATCH": 2,
+      "BOTH_FAIL -> NEO_ONLY": 3
+    }
+  },
+  "changed_outcomes": [
+    {
+      "case_id": "case-v1-a5d52bb37fcc7ea8405d1ccd9615becf4010ddda0370f70b866104fc216fa53c",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Igbt.sub",
+        "kind": "subckt",
+        "scope": [],
+        "name": "sgn20n40l",
+        "occurrence": 1
+      },
+      "before": "NG_ONLY",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-a5d52bb37fcc7ea8405d1ccd9615becf4010ddda0370f70b866104fc216fa53c",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Igbt.sub",
+        "kind": "subckt",
+        "scope": [],
+        "name": "sgn20n40l",
+        "occurrence": 1
+      },
+      "before": "NG_ONLY",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-3edb6fbbf92c8ecf4290d8ee865466906c3b781074f459987a73946f322b06f7",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "mic1557",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY"
+    },
+    {
+      "case_id": "case-v1-3edb6fbbf92c8ecf4290d8ee865466906c3b781074f459987a73946f322b06f7",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "mic1557",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY"
+    },
+    {
+      "case_id": "case-v1-f8d0a5ccd2d5871b009376b3a59ad6c21cc5a3eb795996e2ab7c0289321a16b6",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "mic1557_",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY"
+    },
+    {
+      "case_id": "case-v1-f8d0a5ccd2d5871b009376b3a59ad6c21cc5a3eb795996e2ab7c0289321a16b6",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "mic1557_",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY"
+    },
+    {
+      "case_id": "case-v1-d385c777382d60c2e74c68188ec96ff5eb90487e3d281b6489215dbef74891b8",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "vp2450",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_TRIVIAL"
+    },
+    {
+      "case_id": "case-v1-d385c777382d60c2e74c68188ec96ff5eb90487e3d281b6489215dbef74891b8",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "vp2450",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY"
+    },
+    {
+      "case_id": "case-v1-c935d13c52b3b2c8a911f46be17ac90e642a238e66d9c24a09574daa2167478e",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/VT6K1.sub",
+        "kind": "subckt",
+        "scope": [],
+        "name": "vt6k1",
+        "occurrence": 1
+      },
+      "before": "NG_ONLY",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-c935d13c52b3b2c8a911f46be17ac90e642a238e66d9c24a09574daa2167478e",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/Bordodynovs Electronics Lib/sub/VT6K1.sub",
+        "kind": "subckt",
+        "scope": [],
+        "name": "vt6k1",
+        "occurrence": 1
+      },
+      "before": "NG_ONLY",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-f4bb3ae47839f605b92658921c3e0d56706d2469804d5ca5e255304de98695d7",
+      "variant": "primary",
+      "identity": {
+        "file": "uncategorized/bsim3test1.cir",
+        "kind": "model",
+        "scope": [],
+        "name": "n1",
+        "occurrence": 1
+      },
+      "before": "BOTH_FAIL",
+      "after": "NEO_ONLY"
+    }
+  ],
+  "engine_result_changes": {
+    "neospice": [
+      {
+        "case_id": "case-v1-a5d52bb37fcc7ea8405d1ccd9615becf4010ddda0370f70b866104fc216fa53c",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/Igbt.sub",
+          "kind": "subckt",
+          "scope": [],
+          "name": "sgn20n40l",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a5d52bb37fcc7ea8405d1ccd9615becf4010ddda0370f70b866104fc216fa53c",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/Igbt.sub",
+          "kind": "subckt",
+          "scope": [],
+          "name": "sgn20n40l",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-3edb6fbbf92c8ecf4290d8ee865466906c3b781074f459987a73946f322b06f7",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "mic1557",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-3edb6fbbf92c8ecf4290d8ee865466906c3b781074f459987a73946f322b06f7",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "mic1557",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-f8d0a5ccd2d5871b009376b3a59ad6c21cc5a3eb795996e2ab7c0289321a16b6",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "mic1557_",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-f8d0a5ccd2d5871b009376b3a59ad6c21cc5a3eb795996e2ab7c0289321a16b6",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "mic1557_",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-d385c777382d60c2e74c68188ec96ff5eb90487e3d281b6489215dbef74891b8",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "vp2450",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-d385c777382d60c2e74c68188ec96ff5eb90487e3d281b6489215dbef74891b8",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/Sborka.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "vp2450",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c935d13c52b3b2c8a911f46be17ac90e642a238e66d9c24a09574daa2167478e",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/VT6K1.sub",
+          "kind": "subckt",
+          "scope": [],
+          "name": "vt6k1",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c935d13c52b3b2c8a911f46be17ac90e642a238e66d9c24a09574daa2167478e",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/Bordodynovs Electronics Lib/sub/VT6K1.sub",
+          "kind": "subckt",
+          "scope": [],
+          "name": "vt6k1",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-f4bb3ae47839f605b92658921c3e0d56706d2469804d5ca5e255304de98695d7",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/bsim3test1.cir",
+          "kind": "model",
+          "scope": [],
+          "name": "n1",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "ok",
+          "failure_class",
+          "returncode",
+          "values"
+        ],
+        "before_failure": "parse_error",
+        "after_failure": null
+      }
+    ],
+    "reference": []
+  },
+  "limitations": [
+    "Different neospice candidates and separate executions; unchanged reference can still have timeout or floating-point runtime differences",
+    "No outcome transition is attributed to a source correction without case-level analysis",
+    "Frozen lexical identities do not prove independently bound model definitions; no full-model certification"
+  ],
+  "generation_script": "from pathlib import Path\nfrom collections import Counter, defaultdict\nimport json, hashlib\n\nroots = [Path('/tmp/neospice-joss-corpus-run-34-ng47-full'), Path('/tmp/neospice-joss-corpus-run-35-ng47-full')]\nplans = [json.loads((p/'run.json').read_text()) for p in roots]\nassert all(p['complete'] and p['completed_fixtures']==67359 for p in plans)\nassert plans[0]['fixtures']==plans[1]['fixtures']\npre = [json.loads((p/'preflight.json').read_text()) for p in roots]\nassert pre[0]['inventory']['reference']['sha256']==pre[1]['inventory']['reference']['sha256']\nassert pre[0]['inventory']['startup_and_codemodels']==pre[1]['inventory']['startup_and_codemodels']\ncounts = defaultdict(Counter)\nchanged = []\nengine_changes = {'neospice':[], 'reference':[]}\nfor item in plans[0]['fixtures']:\n    rel = Path('cases')/item['case_id']/item['variant']/'comparison.json'\n    a,b = [json.loads((root/rel).read_text()) for root in roots]\n    assert a['identity']==b['identity'] and a['materialized_fixture']['sha256']==b['materialized_fixture']['sha256']\n    counts[item['variant']][a['status']+' -> '+b['status']] += 1\n    identity = dict(case_id=item['case_id'],variant=item['variant'],identity=a['identity'])\n    if a['status']!=b['status']:\n        changed.append(dict(identity, before=a['status'], after=b['status']))\n    for engine in engine_changes:\n        fields = [k for k in ['ok','failure_class','returncode','values'] if a[engine][k]!=b[engine][k]]\n        if fields:\n            engine_changes[engine].append(dict(identity, differing_fields=fields,\n                before_failure=a[engine]['failure_class'],after_failure=b[engine]['failure_class']))\nreport = dict(reference_version='47',roots=list(map(str,roots)),fixtures_reconciled=67359,\n    input_manifest_sha256=plans[0]['input_manifest']['sha256'],fixture_bytes_identical=True,\n    neospice_binaries=[p['inventory']['neospice'] for p in pre],\n    transitions_by_variant={k:dict(v) for k,v in counts.items()},changed_outcomes=changed,\n    engine_result_changes=engine_changes,\n    limitations=['Different neospice candidates and separate executions; unchanged reference can still have timeout or floating-point runtime differences',\n        'No outcome transition is attributed to a source correction without case-level analysis',\n        'Frozen lexical identities do not prove independently bound model definitions; no full-model certification'],\n    generation_script=Path(__file__).read_text())\nout=Path('docs/evidence/joss/2026-09-11-checkpoint35-candidate47-transitions.json')\nout.write_text(json.dumps(report,indent=2,allow_nan=False)+'\\n')\nprint(json.dumps({'outcome_changes':len(changed),'engine_result_changes':{k:len(v) for k,v in engine_changes.items()},\n    'transitions':report['transitions_by_variant'],'path':str(out),'sha256':hashlib.sha256(out.read_bytes()).hexdigest()},indent=2))\n"
+}

@@ -1,0 +1,179 @@
+{
+  "scope": "Authored single-frequency diagnostic, not a full VBIC option or AC certification",
+  "native_delay_invariant": true,
+  "comparisons": [
+    {
+      "probe": "delay-zero",
+      "frequency_hz": 1000000.0,
+      "relative_tolerance": 0.001,
+      "denominator_floor": 1e-09,
+      "passed": true,
+      "signals": [
+        {
+          "name": "i(vb)",
+          "neospice": [
+            -3.152012821930339e-06,
+            0.0
+          ],
+          "reference": [
+            -3.152012822942767e-06,
+            0.0
+          ],
+          "absolute_error": 1.012427988666964e-15,
+          "normalized_error": 3.2120046634891097e-10
+        },
+        {
+          "name": "i(vc)",
+          "neospice": [
+            -0.03152008824659435,
+            0.0
+          ],
+          "reference": [
+            -0.03152008824568608,
+            0.0
+          ],
+          "absolute_error": 9.082734564458406e-13,
+          "normalized_error": 2.881570157311185e-11
+        },
+        {
+          "name": "v(b)",
+          "neospice": [
+            0.9968479871780697,
+            0.0
+          ],
+          "reference": [
+            0.9968479871770572,
+            0.0
+          ],
+          "absolute_error": 1.0124123761556802e-12,
+          "normalized_error": 1.0156136032562993e-12
+        },
+        {
+          "name": "v(c)",
+          "neospice": [
+            0.0,
+            0.0
+          ],
+          "reference": [
+            0.0,
+            0.0
+          ],
+          "absolute_error": 0.0,
+          "normalized_error": 0.0
+        },
+        {
+          "name": "v(drive)",
+          "neospice": [
+            1.0,
+            0.0
+          ],
+          "reference": [
+            1.0,
+            0.0
+          ],
+          "absolute_error": 0.0,
+          "normalized_error": 0.0
+        }
+      ]
+    },
+    {
+      "probe": "delay-positive",
+      "frequency_hz": 1000000.0,
+      "relative_tolerance": 0.001,
+      "denominator_floor": 1e-09,
+      "passed": false,
+      "signals": [
+        {
+          "name": "i(vb)",
+          "neospice": [
+            -3.152012821930339e-06,
+            0.0
+          ],
+          "reference": [
+            -3.152012818584274e-06,
+            1.05386747254828e-16
+          ],
+          "absolute_error": 3.3477239495494476e-15,
+          "normalized_error": 1.0620908423377152e-09
+        },
+        {
+          "name": "i(vc)",
+          "neospice": [
+            -0.03152008824659435,
+            0.0
+          ],
+          "reference": [
+            0.002045936119199499,
+            0.0010572001140907491
+          ],
+          "absolute_error": 0.0335826690989013,
+          "normalized_error": 14.582528404556522
+        },
+        {
+          "name": "v(b)",
+          "neospice": [
+            0.9968479871780697,
+            0.0
+          ],
+          "reference": [
+            0.9968479871814157,
+            1.05386747254828e-13
+          ],
+          "absolute_error": 3.347649393410772e-12,
+          "normalized_error": 3.35823459189223e-12
+        },
+        {
+          "name": "v(c)",
+          "neospice": [
+            0.0,
+            0.0
+          ],
+          "reference": [
+            0.0,
+            0.0
+          ],
+          "absolute_error": 0.0,
+          "normalized_error": 0.0
+        },
+        {
+          "name": "v(drive)",
+          "neospice": [
+            1.0,
+            0.0
+          ],
+          "reference": [
+            1.0,
+            0.0
+          ],
+          "absolute_error": 0.0,
+          "normalized_error": 0.0
+        }
+      ]
+    }
+  ],
+  "files": {
+    "audit.py": "bcdb537fe1a2148cbb2b139ecb6f19324c0dbd7540cd0130a43e36db0c91bab5",
+    "default.cir": "945723ecadb769fbdea5b2c0b5baa24cc746d7eb00a36dbd8cb1a9cd28542a61",
+    "delay-positive-neospice.raw": "a91bea78c97aebc5025d965adb54af6bb35595ebf311c434f718d4855ea72a3f",
+    "delay-positive-neospice.stderr": "5ae8356401a8d603811428ba6187ca68759d75c873a41a12bf7432d0026ed37b",
+    "delay-positive-neospice.stdout": "667cfec00afd59edc045f606149ad59a7bc547ca6da783bf9a295649a45b7529",
+    "delay-positive-reference.raw": "51481fe29bc0987cb03bf80d8dfa5425c3799ca0d943df1ce57f70c7ed2164b2",
+    "delay-positive-reference.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "delay-positive-reference.stdout": "5a0194bbb7beb9b78c5ed1a1de4c90c03266c12a481c3b9d767c946f99a5c9f0",
+    "delay-positive.cir": "a5c8ef260da835c7561d949065d96f16203e8a1e241103a0d697ddd023c53e27",
+    "delay-runs.json": "9573c55de9cd9b7fb7b4e509ec9a89a5c41e4ca8123aae6d9ea24940404da035",
+    "delay-zero-neospice.raw": "a91bea78c97aebc5025d965adb54af6bb35595ebf311c434f718d4855ea72a3f",
+    "delay-zero-neospice.stderr": "ed34cc5c3eb19ecb2939e2629c521ca064fa21792c9ee58b4074b3ea5fb9dd53",
+    "delay-zero-neospice.stdout": "acb7e3f8b3c6b8715e800067a1204ea2286383f555c39972b6b7f8d02e30cff6",
+    "delay-zero-reference.raw": "8c686104324e04eb5f0811cfd69cb9c2c1c2c48e68ba8a5bc552a8f856fcf0b7",
+    "delay-zero-reference.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "delay-zero-reference.stdout": "df0996f1a50257646bba576a2f37c5f344b8a6cd2f1da5cedb38a9fad541253e",
+    "delay-zero.cir": "1ab08f0ce76e28d8dc3853ccfafdfec5f4e58e9ed96a0e98666e26051f6cda91",
+    "results.json": "3e1612cef0a0ad4e7b3226264ec01c0b69714fcac9957ca218f90f9bd5d65f53",
+    "thermal-disabled.cir": "7463f74cd3d63a005ab9b2b3153ac6b438c9e2e395fd835e5f46ea2ff50e7acc",
+    "thermal-five-terminal-results.json": "5ee14894955b60639550bfc7c86c0050ee7481ef7a85bc8f1fd0005a44026bc4",
+    "thermal-five-terminal.cir": "afbf44426f809b213a7f08e653d803c463add5ccaed8e65f022b4cd6985d7b73",
+    "thermal.cir": "2a4c8c032bb04f781d2845403e304df7a7d56dd0faca33bf5afb3dd3a4b64e55"
+  },
+  "audit_script": "from pathlib import Path\nimport struct,re,json,math,hashlib\nroot=Path(__file__).resolve().parent\n\ndef read_raw(p):\n header,body=p.read_bytes().split(b'Binary:\\n',1)\n text=header.decode();n=int(re.search(r'No. Variables:\\s*(\\d+)',text)[1]);points=int(re.search(r'No. Points:\\s*(\\d+)',text)[1])\n assert 'Flags: complex' in text and points==1 and len(body)==16*n\n names=[line.split()[1].lower() for line in text.split('Variables:\\n')[1].splitlines() if line.strip()]\n values=struct.unpack('<'+'d'*(2*n),body)\n assert len(names)==n and names[0]=='frequency' and values[0]==1e6\n # The reference's imaginary frequency entry is not an analysis observable.\n result={name:complex(values[2*i],values[2*i+1]) for i,name in enumerate(names) if i and '#' not in name}\n assert result and all(math.isfinite(z.real) and math.isfinite(z.imag) for z in result.values())\n return result\n\nruns=json.loads((root/'delay-runs.json').read_text());assert all(r['returncode']==0 for r in runs)\nreports=[];native=[]\nfor name in ('delay-zero','delay-positive'):\n a=read_raw(root/(name+'-neospice.raw'));b=read_raw(root/(name+'-reference.raw'))\n assert set(a)==set(b)=={'v(c)','v(drive)','v(b)','i(vc)','i(vb)'}\n native.append(a)\n signals=[dict(name=k,neospice=[a[k].real,a[k].imag],reference=[b[k].real,b[k].imag],absolute_error=abs(a[k]-b[k]),normalized_error=abs(a[k]-b[k])/max(abs(b[k]),1e-9)) for k in sorted(a)]\n reports.append(dict(probe=name,frequency_hz=1e6,relative_tolerance=1e-3,denominator_floor=1e-9,passed=all(s['normalized_error']<=1e-3 for s in signals),signals=signals))\nassert native[0]==native[1]\nassert reports[0]['passed'] and not reports[1]['passed']\nresult=dict(scope='Authored single-frequency diagnostic, not a full VBIC option or AC certification',native_delay_invariant=True,comparisons=reports,files={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.iterdir()) if p.is_file() and p.name!='audit.json'},audit_script=Path(__file__).read_text())\n(root/'audit.json').write_text(json.dumps(result,indent=2,allow_nan=False)+'\\n')\nprint(json.dumps([dict(probe=r['probe'],passed=r['passed'],collector=next(s for s in r['signals'] if s['name']=='i(vc)')) for r in reports],indent=2))\n"
+}

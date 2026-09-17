@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "source_manifest": {
+    "path": "/tmp/neospice-joss-checkpoint26-ths413147-final/manifest.json",
+    "bytes": 593518,
+    "sha256": "f39fa2c4ca9c797634d428747ff0a27ebb79fe09a44e68b4aa5fc65db70c50d0"
+  },
+  "source_pairs": {
+    "path": "/tmp/neospice-joss-checkpoint26-ths413147-final/pairs.jsonl",
+    "bytes": 98179,
+    "sha256": "fe65e2b721a2733c2d283898c82bc97be8d4a82acb42df248f3697d4bf0ba221"
+  },
+  "generator": {
+    "path": "/home/subhagato/Codes/neospice/tools/report_paired_benchmark.py",
+    "bytes": 12219,
+    "sha256": "d504ed32bb589f104016bf7beda38ea4b354e646ca6a67cd5948fbeead1900b6"
+  },
+  "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+  "matplotlib": "3.11.1",
+  "reference_version": 47,
+  "verify_only": true,
+  "population": [
+    "dc_ths4131",
+    "ac_ths4131_10",
+    "op_ac_ths4131_10",
+    "op_ac_ths4131_100",
+    "op_ac_ths4131_1000"
+  ],
+  "artifacts": {
+    "qualification.csv": {
+      "path": "/tmp/neospice-joss-checkpoint26-ths413147-final-report/qualification.csv",
+      "bytes": 502,
+      "sha256": "d9faa71dabb218b37232a8d8d0b7aafa6c9f513fc2349c1aedbf478da475dab9"
+    },
+    "qualification.pdf": {
+      "path": "/tmp/neospice-joss-checkpoint26-ths413147-final-report/qualification.pdf",
+      "bytes": 18406,
+      "sha256": "06d8694fb29b6f96ba423339d1ebd9fb03a77d9b861b97393adb1d98a1f0c232"
+    },
+    "qualification.svg": {
+      "path": "/tmp/neospice-joss-checkpoint26-ths413147-final-report/qualification.svg",
+      "bytes": 27001,
+      "sha256": "c502ed6fa8f787dded0c090975b54ee05288c5336cec0cf600f05df084046ed7"
+    },
+    "report.md": {
+      "path": "/tmp/neospice-joss-checkpoint26-ths413147-final-report/report.md",
+      "bytes": 826,
+      "sha256": "137bd9a52de21c33fcd38ae1005c6ff4a6959ca2cdca1588fe393a0da88abc46"
+    }
+  },
+  "limits": [
+    "Pre/post hashes detect persistent changes, not every transient mutation.",
+    "Build/source association requires the recorded build verification; inventory alone does not prove a clean rebuild.",
+    "System observations do not prove absence of competing host jobs.",
+    "Literal include/startup reader supports the declared benchmark inputs, not arbitrary SPICE control scripts."
+  ]
+}

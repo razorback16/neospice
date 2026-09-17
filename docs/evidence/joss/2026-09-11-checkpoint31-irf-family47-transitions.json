@@ -1,0 +1,2128 @@
+{
+  "reference_version": "47",
+  "roots": [
+    "/tmp/neospice-joss-corpus-run-29-stage2-ng47-full",
+    "/tmp/neospice-joss-checkpoint31/irf-family47"
+  ],
+  "fixtures_reconciled": 790,
+  "input_manifest_sha256": "b888f92eca7d5ea3934815f1cd3461cb36b968d40808dae81057947ae25f7b79",
+  "fixture_bytes_identical": true,
+  "neospice_binaries": [
+    {
+      "path": "/tmp/neospice-joss-checkpoint29-stage2-neospice",
+      "sha256": "f364375eca348e77062f86788636ecd50f1491d51b1d00d0725223813096fee0",
+      "bytes": 5128016
+    },
+    {
+      "path": "/tmp/neospice-joss-checkpoint31/neospice",
+      "sha256": "b3fb08a8d5313bc252d160faaa376de374f9fa4a0f8da597ba6a5f761b28ae17",
+      "bytes": 5128016
+    }
+  ],
+  "transitions_by_variant": {
+    "primary": {
+      "MISMATCH -> MISMATCH": 1,
+      "MATCH -> MATCH": 410
+    },
+    "isolated_driven": {
+      "MATCH -> MATCH": 346,
+      "MISMATCH -> MATCH": 26,
+      "MISMATCH -> MISMATCH": 7
+    }
+  },
+  "changed_outcomes": [
+    {
+      "case_id": "case-v1-aa1bfb98efc84fc3a84653ab6eaca22790b134b62e929567e3377b05c19e8b71",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgbc20u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-55cd150b345f188a8e09f4a88c920e42655cef8ccd5ae3815ad293d0e45356c2",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4bc20u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-4b88d2a4ea975b95c72de3acf9c12c2c361edac3d0f8265c019d44b0b483a173",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgbc20f_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-237fbb4e61d9bc86be57983dd8e6c40c5574028ff4c58f54aaff381f41698932",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgbc20s_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-88a526415498fcab454db81310e1a951d40faa1250e350d0af6fe755bc8cccc2",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgbc30f_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-6ace9abb11268b8328b3b36abcc5504037577961e2e1a6f1c695e2381cb779fb",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgbc30k_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-23ec07855f1b07631b68d6fefee8cc753323456b6103b5bcb16aa1d75ab7ad19",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgpc20f_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-580cdc5ecc3813d2c391603b8d22295d80ef6d2e77f42aa46cc693468aa5e21a",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgpc20u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-8ac84bb5ea2e827d2d6f5ebd389a7e17845269561ce017e2a6b914614da6b185",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgpc50m_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-bba93f2cc02fb37e2c85ca2776ea2031d06b45c4ab65c4cb797b090060036c55",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgph50m_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-b38d42f7d38e769037fa482f46f738dc00f6bf270e3344d7daa4bc9660d5be22",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgpc40ud2_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-b4ccaf49c3756f133f105fe034ffcc2726b6a03dbba4d9a208b17b3a4b835b23",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "cpv364m4k_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-5ba96df8cb16fefe80bd6e597d3a6596a3f5eb37947ccf762fc7db1b4f6a9a9e",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4bc10u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-8557f64b320f1fdf5d83cd0cbaa678458f845568f5c3efedaa3716b89e104837",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4bc30u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-7307bd4540b83e70c6b926023d4523e36e1cc7b4bcdc1f19f3023386b2dc29c1",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4bc30ud_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-8676e698aa1ee8782c2e7fe5738978808e46963db2daabf3099bc566cad75925",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgbc40s_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-193c71612c630823b1c1f3667668a57cf5db6a71f49a83c1e219cd65fea4e4a6",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4bc40u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-44a4686974b75f2ee8bcc14930c1ee61caf357e8bbedb5bb8aed21888e23b6ac",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4pc30ud_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-c2660d1d137e870453e2d879ffc8d616f8b01cdc6a88c480404f797c09869959",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4pc40u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-34d729fe301b63b99236592fa779b049034417b60a0820935a18c82e3621aeb6",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4pc50u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-cf391c86081f9c7be4f664526e88822d7418dd49d9a24ed8fc0b6651eacdc5a9",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4rc10u_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-79c7222622aead9b4445c48d77aa781cb3ce7c7868667eeb72c77bb1ecb4832b",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4zh70ud_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-2d7cacf5e1bb74e3c4ad4efc37d30ef2add09fce92f77c441a978c12e6d43ebe",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgpc20u-150_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-69ce36fc52fad5e9a3f6ca9d491885fbdda2026e9a820d2a97e514f3da67d429",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irgph50f_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-43d9b4356a949652fc6e2eecc7e40375c327db28cc7e792f3979082287c2ce0f",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4pf50w_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    },
+    {
+      "case_id": "case-v1-08e8c2b0f532ecce5e37eac4c16753b1f47e0ce7c011207be195da10c2c2945b",
+      "variant": "isolated_driven",
+      "identity": {
+        "file": "uncategorized/spice_complete/irf.lib",
+        "kind": "subckt",
+        "scope": [],
+        "name": "irg4psc71k_ir",
+        "occurrence": 1
+      },
+      "before": "MISMATCH",
+      "after": "MATCH"
+    }
+  ],
+  "engine_result_changes": {
+    "neospice": [
+      {
+        "case_id": "case-v1-aa1bfb98efc84fc3a84653ab6eaca22790b134b62e929567e3377b05c19e8b71",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc20u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-aa1bfb98efc84fc3a84653ab6eaca22790b134b62e929567e3377b05c19e8b71",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc20u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-de94a6a462b38279f5587972e60a299872d3ebcaf664f71ee67123a2f4191433",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc30ud2_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-55cd150b345f188a8e09f4a88c920e42655cef8ccd5ae3815ad293d0e45356c2",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc20u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-55cd150b345f188a8e09f4a88c920e42655cef8ccd5ae3815ad293d0e45356c2",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc20u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-ef3184b3271f6486b1c7f883e762344d74f7171252aa9a1d59228eb371b1bf4b",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc30u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-ef3184b3271f6486b1c7f883e762344d74f7171252aa9a1d59228eb371b1bf4b",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc30u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-4b88d2a4ea975b95c72de3acf9c12c2c361edac3d0f8265c019d44b0b483a173",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc20f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-4b88d2a4ea975b95c72de3acf9c12c2c361edac3d0f8265c019d44b0b483a173",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc20f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-14f2114929b3ffacb3a5bb0700ccffc6b1c3b6a3f36c73b63ee8e6a82bcf42e7",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc20k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-14f2114929b3ffacb3a5bb0700ccffc6b1c3b6a3f36c73b63ee8e6a82bcf42e7",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc20k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-237fbb4e61d9bc86be57983dd8e6c40c5574028ff4c58f54aaff381f41698932",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc20s_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-237fbb4e61d9bc86be57983dd8e6c40c5574028ff4c58f54aaff381f41698932",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc20s_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-88a526415498fcab454db81310e1a951d40faa1250e350d0af6fe755bc8cccc2",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc30f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-88a526415498fcab454db81310e1a951d40faa1250e350d0af6fe755bc8cccc2",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc30f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-6ace9abb11268b8328b3b36abcc5504037577961e2e1a6f1c695e2381cb779fb",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc30k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-6ace9abb11268b8328b3b36abcc5504037577961e2e1a6f1c695e2381cb779fb",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc30k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a52e0a4c9fecc716c99775936d2f7f94a4dca45fc5d49390acc228806f4de139",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irglc60kd1_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a52e0a4c9fecc716c99775936d2f7f94a4dca45fc5d49390acc228806f4de139",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irglc60kd1_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-23ec07855f1b07631b68d6fefee8cc753323456b6103b5bcb16aa1d75ab7ad19",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc20f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-23ec07855f1b07631b68d6fefee8cc753323456b6103b5bcb16aa1d75ab7ad19",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc20f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-580cdc5ecc3813d2c391603b8d22295d80ef6d2e77f42aa46cc693468aa5e21a",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc20u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-580cdc5ecc3813d2c391603b8d22295d80ef6d2e77f42aa46cc693468aa5e21a",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc20u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-fbf3398d1dc6f20341e50211654d43c736680d5482ffe767a0499229fbe4b31d",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc40k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-4fa6969771741eaaa1d5f3713d4b9dd6ca4e3e40379d84686522196ecc1fc2cd",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc50k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-8ac84bb5ea2e827d2d6f5ebd389a7e17845269561ce017e2a6b914614da6b185",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc50m_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-8ac84bb5ea2e827d2d6f5ebd389a7e17845269561ce017e2a6b914614da6b185",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc50m_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-cdfa5fbf4dfceafb07f98def70f128851274765690df1ae43463e538064c5561",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgph40k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-23f81b529e21a48a89aecfcac4b0a88b1efd3644b31b602cd849b3501ceb6302",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgph50k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-23f81b529e21a48a89aecfcac4b0a88b1efd3644b31b602cd849b3501ceb6302",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgph50k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-bba93f2cc02fb37e2c85ca2776ea2031d06b45c4ab65c4cb797b090060036c55",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgph50m_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-bba93f2cc02fb37e2c85ca2776ea2031d06b45c4ab65c4cb797b090060036c55",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgph50m_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b38d42f7d38e769037fa482f46f738dc00f6bf270e3344d7daa4bc9660d5be22",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc40ud2_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b38d42f7d38e769037fa482f46f738dc00f6bf270e3344d7daa4bc9660d5be22",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc40ud2_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b4ccaf49c3756f133f105fe034ffcc2726b6a03dbba4d9a208b17b3a4b835b23",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "cpv364m4k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b4ccaf49c3756f133f105fe034ffcc2726b6a03dbba4d9a208b17b3a4b835b23",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "cpv364m4k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b5ef34e8b8f22a6cb54e18a8bc294a7b7adb315d84118468020dda0a963b98b6",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "ga100ts60u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-5ba96df8cb16fefe80bd6e597d3a6596a3f5eb37947ccf762fc7db1b4f6a9a9e",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc10u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-5ba96df8cb16fefe80bd6e597d3a6596a3f5eb37947ccf762fc7db1b4f6a9a9e",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc10u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-24a7d70336ca0d8e247be7be00186bc5875b928d927393d518d9dc3c05031888",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc10ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-24a7d70336ca0d8e247be7be00186bc5875b928d927393d518d9dc3c05031888",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc10ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-520ec4011c1670f78d962094ebe8b54875e1e037f866117d48cd044016e927b2",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc20ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-520ec4011c1670f78d962094ebe8b54875e1e037f866117d48cd044016e927b2",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc20ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-8557f64b320f1fdf5d83cd0cbaa678458f845568f5c3efedaa3716b89e104837",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-8557f64b320f1fdf5d83cd0cbaa678458f845568f5c3efedaa3716b89e104837",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-7307bd4540b83e70c6b926023d4523e36e1cc7b4bcdc1f19f3023386b2dc29c1",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-7307bd4540b83e70c6b926023d4523e36e1cc7b4bcdc1f19f3023386b2dc29c1",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-8676e698aa1ee8782c2e7fe5738978808e46963db2daabf3099bc566cad75925",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc40s_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-8676e698aa1ee8782c2e7fe5738978808e46963db2daabf3099bc566cad75925",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc40s_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-193c71612c630823b1c1f3667668a57cf5db6a71f49a83c1e219cd65fea4e4a6",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc40u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-193c71612c630823b1c1f3667668a57cf5db6a71f49a83c1e219cd65fea4e4a6",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc40u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-0cd996438e8bb27a0ceb664acb43394e6224af8d78cf45da596b85a186d12fae",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc40w_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-0cd996438e8bb27a0ceb664acb43394e6224af8d78cf45da596b85a186d12fae",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc40w_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-44a4686974b75f2ee8bcc14930c1ee61caf357e8bbedb5bb8aed21888e23b6ac",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc30ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-44a4686974b75f2ee8bcc14930c1ee61caf357e8bbedb5bb8aed21888e23b6ac",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc30ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c2660d1d137e870453e2d879ffc8d616f8b01cdc6a88c480404f797c09869959",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc40u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c2660d1d137e870453e2d879ffc8d616f8b01cdc6a88c480404f797c09869959",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc40u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-49c45e443850d8c38014caa087ee8faba7f0b42a7a17373c406cb43b568fa3c7",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc40ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-49c45e443850d8c38014caa087ee8faba7f0b42a7a17373c406cb43b568fa3c7",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc40ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-34d729fe301b63b99236592fa779b049034417b60a0820935a18c82e3621aeb6",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-34d729fe301b63b99236592fa779b049034417b60a0820935a18c82e3621aeb6",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-0f6c497ac3befb03f110ee2bbd949fb502391c510d97164bcf908380c5c36be9",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-be3b0da47f293b5003ec9cc121bfcbb63b73f9777986a810ac1252acbdb25f52",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4ph50s_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-be3b0da47f293b5003ec9cc121bfcbb63b73f9777986a810ac1252acbdb25f52",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4ph50s_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-0c27918016969569807ed16191378e083e363ba80997abe9ce9befb07d76360b",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4ph50u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-0c27918016969569807ed16191378e083e363ba80997abe9ce9befb07d76360b",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4ph50u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-6de25ac65769cf860645cad36631badadc7febdfbede5597071c312179473c87",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4ph50ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-6de25ac65769cf860645cad36631badadc7febdfbede5597071c312179473c87",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4ph50ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-cf391c86081f9c7be4f664526e88822d7418dd49d9a24ed8fc0b6651eacdc5a9",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4rc10u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-cf391c86081f9c7be4f664526e88822d7418dd49d9a24ed8fc0b6651eacdc5a9",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4rc10u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a90486ea07441652a8ef2eea85c6872466f0837b40f9b9a555acb64da419d49c",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4rc10ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-a90486ea07441652a8ef2eea85c6872466f0837b40f9b9a555acb64da419d49c",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4rc10ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-79c7222622aead9b4445c48d77aa781cb3ce7c7868667eeb72c77bb1ecb4832b",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4zh70ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-79c7222622aead9b4445c48d77aa781cb3ce7c7868667eeb72c77bb1ecb4832b",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4zh70ud_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-be8a5eed8429c9f5de258b7317006e9284b131c67e4273adacf273e665f3575c",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgbc30u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-2d7cacf5e1bb74e3c4ad4efc37d30ef2add09fce92f77c441a978c12e6d43ebe",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc20u-150_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-2d7cacf5e1bb74e3c4ad4efc37d30ef2add09fce92f77c441a978c12e6d43ebe",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc20u-150_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c47680ded04a5bff64f37d20685f2e0e910b41155f9db8a44e5f7e9ee51b505c",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc30u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-2cc8d91a0b5a90dd5a842446563413fc09732f438663dba3c13df25fafdef6a2",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc40u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-2cc8d91a0b5a90dd5a842446563413fc09732f438663dba3c13df25fafdef6a2",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc40u_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-69ce36fc52fad5e9a3f6ca9d491885fbdda2026e9a820d2a97e514f3da67d429",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgph50f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-69ce36fc52fad5e9a3f6ca9d491885fbdda2026e9a820d2a97e514f3da67d429",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgph50f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-510ce712217a84e951fb772c6ddbcc27c336eff2bf099f92bf72ef8f174e11a5",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4rc10k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-510ce712217a84e951fb772c6ddbcc27c336eff2bf099f92bf72ef8f174e11a5",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4rc10k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-dc22852c7f6954e36f7ee872feb9ca8c1e6f915cc8b5b047b238ed9addccc9cd",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4rc10kd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-dc22852c7f6954e36f7ee872feb9ca8c1e6f915cc8b5b047b238ed9addccc9cd",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4rc10kd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-59325da324102fc185f8019da2adaf5c376bad29670803b853d225db59a5d1c3",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-59325da324102fc185f8019da2adaf5c376bad29670803b853d225db59a5d1c3",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-d14ee4cdd6c20f57f68f55c7e6ce60db4c0f2754f36098362c406ed2a9bef6ff",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-d14ee4cdd6c20f57f68f55c7e6ce60db4c0f2754f36098362c406ed2a9bef6ff",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b9f06b5c42642f501f2d17e1e3fdbcfddac67f5817acfcef573765b4906731fb",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4bc30kd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-1691cbad43381768dcfdd434fcb36b22229a587c5033551ba133ec7110e212b9",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc30k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-1691cbad43381768dcfdd434fcb36b22229a587c5033551ba133ec7110e212b9",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc30k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-bcf79107012954291b1164c9ec5298bbc6c0bf0066e748e6a685b2914cef56a3",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc30kd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-fd4950be9794193c410a79b8c4858552ac8f43f187905163b8d34b322d10d8a4",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50fd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-fd4950be9794193c410a79b8c4858552ac8f43f187905163b8d34b322d10d8a4",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50fd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c205192717af7943c0d3118747888ce1668b7ac4fa2557505658f8663cfb7745",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-c205192717af7943c0d3118747888ce1668b7ac4fa2557505658f8663cfb7745",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-d5452aba6ff0f98d9ca0b9210d007fca41bbedcc7346231b2b032dac9806ec10",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50kd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-d5452aba6ff0f98d9ca0b9210d007fca41bbedcc7346231b2b032dac9806ec10",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50kd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b205db69ae92d978d1ad62fc524117a7fc6a7e8d67dc27827de7f07acce9c1ae",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50w_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-b205db69ae92d978d1ad62fc524117a7fc6a7e8d67dc27827de7f07acce9c1ae",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pc50w_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-43d9b4356a949652fc6e2eecc7e40375c327db28cc7e792f3979082287c2ce0f",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pf50w_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-43d9b4356a949652fc6e2eecc7e40375c327db28cc7e792f3979082287c2ce0f",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4pf50w_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-08e8c2b0f532ecce5e37eac4c16753b1f47e0ce7c011207be195da10c2c2945b",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4psc71k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-08e8c2b0f532ecce5e37eac4c16753b1f47e0ce7c011207be195da10c2c2945b",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4psc71k_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-6299d4b7353cf3ee9a1a6254d1749126b274c0d441002dfad627aa687c7a856f",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4psc71kd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-6299d4b7353cf3ee9a1a6254d1749126b274c0d441002dfad627aa687c7a856f",
+        "variant": "isolated_driven",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irg4psc71kd_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      },
+      {
+        "case_id": "case-v1-e86e62948b442230c23e04988e06a1f17cbb19a069e0e5d4a4d7260936905b77",
+        "variant": "primary",
+        "identity": {
+          "file": "uncategorized/spice_complete/irf.lib",
+          "kind": "subckt",
+          "scope": [],
+          "name": "irgpc40f_ir",
+          "occurrence": 1
+        },
+        "differing_fields": [
+          "values"
+        ],
+        "before_failure": null,
+        "after_failure": null
+      }
+    ],
+    "reference": []
+  },
+  "limitations": [
+    "Different neospice candidates and separate executions; unchanged reference can still have timeout or floating-point runtime differences",
+    "No outcome transition is attributed to a source correction without case-level analysis",
+    "Frozen lexical identities do not prove independently bound model definitions; no full-model certification"
+  ],
+  "generation_script": "from pathlib import Path\nfrom collections import Counter, defaultdict\nimport json, hashlib\n\nroots = [Path('/tmp/neospice-joss-corpus-run-29-stage2-ng47-full'), Path('/tmp/neospice-joss-checkpoint31/irf-family47')]\nplans = [json.loads((p/'run.json').read_text()) for p in roots]\nassert plans[0]['complete'] and plans[0]['completed_fixtures']==67359\nassert plans[1]['complete'] and plans[1]['completed_fixtures']==790\nassert all(item in plans[0]['fixtures'] for item in plans[1]['fixtures'])\npre = [json.loads((p/'preflight.json').read_text()) for p in roots]\nassert pre[0]['inventory']['reference']['sha256']==pre[1]['inventory']['reference']['sha256']\nassert pre[0]['inventory']['startup_and_codemodels']==pre[1]['inventory']['startup_and_codemodels']\ncounts = defaultdict(Counter)\nchanged = []\nengine_changes = {'neospice':[], 'reference':[]}\nfor item in plans[1]['fixtures']:\n    rel = Path('cases')/item['case_id']/item['variant']/'comparison.json'\n    a,b = [json.loads((root/rel).read_text()) for root in roots]\n    assert a['identity']==b['identity'] and a['materialized_fixture']['sha256']==b['materialized_fixture']['sha256']\n    counts[item['variant']][a['status']+' -> '+b['status']] += 1\n    identity = dict(case_id=item['case_id'],variant=item['variant'],identity=a['identity'])\n    if a['status']!=b['status']:\n        changed.append(dict(identity, before=a['status'], after=b['status']))\n    for engine in engine_changes:\n        fields = [k for k in ['ok','failure_class','returncode','values'] if a[engine][k]!=b[engine][k]]\n        if fields:\n            engine_changes[engine].append(dict(identity, differing_fields=fields,\n                before_failure=a[engine]['failure_class'],after_failure=b[engine]['failure_class']))\nreport = dict(reference_version='47',roots=list(map(str,roots)),fixtures_reconciled=790,\n    input_manifest_sha256=plans[0]['input_manifest']['sha256'],fixture_bytes_identical=True,\n    neospice_binaries=[p['inventory']['neospice'] for p in pre],\n    transitions_by_variant={k:dict(v) for k,v in counts.items()},changed_outcomes=changed,\n    engine_result_changes=engine_changes,\n    limitations=['Different neospice candidates and separate executions; unchanged reference can still have timeout or floating-point runtime differences',\n        'No outcome transition is attributed to a source correction without case-level analysis',\n        'Frozen lexical identities do not prove independently bound model definitions; no full-model certification'],\n    generation_script=Path(__file__).read_text())\nout=Path('docs/evidence/joss/2026-09-11-checkpoint31-irf-family47-transitions.json')\nout.write_text(json.dumps(report,indent=2,allow_nan=False)+'\\n')\nprint(json.dumps({'outcome_changes':len(changed),'engine_result_changes':{k:len(v) for k,v in engine_changes.items()},\n    'transitions':report['transitions_by_variant'],'path':str(out),'sha256':hashlib.sha256(out.read_bytes()).hexdigest()},indent=2))\n"
+}

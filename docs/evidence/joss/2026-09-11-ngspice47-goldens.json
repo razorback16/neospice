@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-11",
+  "purpose": "Remove remaining active older-reference golden provenance; ngspice 47 is the only compatibility target.",
+  "scope": "Focused golden refresh, comments and documentation cleanup. Not a full candidate validation or completion of the JOSS goal.",
+  "reference": {
+    "simulator": "ngspice-47",
+    "model": "BSIM4 VERSION=4.7.0",
+    "archive_sha256": "894e649651f1838a14095e5a5439e7d3aa63e87ede14d283173fda4fcdef675f",
+    "binary": "/tmp/neospice-joss-checkpoint29-ci-reference/cli/bin/ngspice",
+    "binary_sha256": "e4f2a8dd8304fd42b05b9bced25b07f2ed5566131d45e20e9ef9eda790b82684",
+    "source_modified": false,
+    "capture_mutates_simulator_data": false
+  },
+  "capture_command": "SPICE_SCRIPTS=/tmp/neospice-joss-checkpoint29-ci-reference/cli/share/ngspice/scripts OMP_NUM_THREADS=1 gdb -q -batch -x tests/goldens/capture_bsim4v7.gdb --args /tmp/neospice-joss-checkpoint29-ci-reference/cli/bin/ngspice -b tests/goldens/probe.cir",
+  "preprocessing_fields_verified": 13,
+  "preprocessing_values_changed": false,
+  "drain_current_A": 5.754970110095464e-05,
+  "tolerances_changed": false,
+  "validation": {
+    "cpp": {
+      "passed": 10,
+      "failures": 0,
+      "skips": 0,
+      "xml": "2026-09-11-ngspice47-goldens-cpp.xml",
+      "log": "2026-09-11-ngspice47-goldens-cpp.log"
+    },
+    "python": {
+      "passed": 53,
+      "failures": 0,
+      "skips": 0,
+      "xml": "2026-09-11-ngspice47-goldens-python.xml",
+      "log": "2026-09-11-ngspice47-goldens-python.log"
+    }
+  },
+  "cpp_command": "LD_LIBRARY_PATH=/tmp/neospice-joss-checkpoint29-ci-reference/shared/lib SPICE_SCRIPTS=/tmp/neospice-joss-checkpoint29-ci-reference/shared/share/ngspice/scripts OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 /tmp/neospice-joss-reference47-build/tests/neospice_tests --gtest_filter='BSIM4v7UCB*:NgspiceLibrary.*:Convergence.RejectsDeviceFailureWithSettledTerminalVoltages:FrequencyGrid.*' --gtest_output=xml:/tmp/neospice-ng47-golden-cleanup/cpp.xml",
+  "python_command": "/tmp/neospice-joss-venv/bin/python -m pytest tools/tests/test_run_paired_benchmark.py tools/tests/test_run_kicad_experiment.py --junitxml=/tmp/neospice-ng47-golden-cleanup/python.xml -q",
+  "artifacts": [
+    {
+      "path": "tests/goldens/probe.cir",
+      "bytes": 203,
+      "sha256": "060a29a661e1231ee9c34333008cde0b3d090ad2d1e72988aa173a7fc3e29a24"
+    },
+    {
+      "path": "tests/goldens/bsim4v7_nmos_setup.json",
+      "bytes": 1409,
+      "sha256": "8efc501457336bbb06369f0c66a48bbadef176cadfcbcd79d49c3eade1415574"
+    },
+    {
+      "path": "tests/goldens/capture_bsim4v7.gdb",
+      "bytes": 1323,
+      "sha256": "53ba8202298a612fa550a4cd7034af179f152ca38a49fde8b3121cf671f1f413"
+    },
+    {
+      "path": "tests/goldens/README.md",
+      "bytes": 1244,
+      "sha256": "1f3d5536c6192df84449d5e15099e036501d17a6839cd1ae70f23c484a67f95f"
+    },
+    {
+      "path": "tests/unit/test_bsim4v7_ucb_setup.cpp",
+      "bytes": 6108,
+      "sha256": "34643184055d47020d4647be4fbef1c1cec01dd74d72018ca9caf6bdd6b934cf"
+    },
+    {
+      "path": "tests/unit/test_bsim4v7_ucb_load.cpp",
+      "bytes": 6382,
+      "sha256": "82c70d4f483c60fde99c99b716bab9ac84ec79fd3cca10ad83654a4a9afe8b11"
+    },
+    {
+      "path": "tests/unit/test_convergence.cpp",
+      "bytes": 19355,
+      "sha256": "237ee41f7c1299c08e65ea7755327132642eadf7bb0afa768f91e43a8d849945"
+    },
+    {
+      "path": "tests/unit/test_ac.cpp",
+      "bytes": 4646,
+      "sha256": "fd6d06a894a7a7d6cfd8ec416a8614d474ce9b2e8fb9a2b23aca74ef12c0abdb"
+    },
+    {
+      "path": "tests/framework/ngspice_lib.hpp",
+      "bytes": 6836,
+      "sha256": "9d242b1396f3a1006545e383498efe3ebaa1f2da5696adcf20572df1488d807c"
+    },
+    {
+      "path": "docs/evidence/joss/2026-09-11-ngspice47-goldens.log",
+      "bytes": 40837,
+      "sha256": "25bbcc111ed21b3511bf56515fbd5495d7743d98933fa1e3c28ec8e0ba87e91c"
+    },
+    {
+      "path": "docs/evidence/joss/2026-09-11-ngspice47-goldens-cpp.xml",
+      "bytes": 3418,
+      "sha256": "a6e34d09f2cc80f7b177717e1b1dcfe11b493c1406f7ea15546ca33f044346d1"
+    },
+    {
+      "path": "docs/evidence/joss/2026-09-11-ngspice47-goldens-cpp.log",
+      "bytes": 2302,
+      "sha256": "3b082e30561224f49454b0177b3efb1c30be407331ce7e7fe316c06007954e88"
+    },
+    {
+      "path": "docs/evidence/joss/2026-09-11-ngspice47-goldens-python.xml",
+      "bytes": 8119,
+      "sha256": "ae2ced76c77ed27cd692b91b56efabcbe0b0a7371ff55e43fdda538b6219b019"
+    },
+    {
+      "path": "docs/evidence/joss/2026-09-11-ngspice47-goldens-python.log",
+      "bytes": 99,
+      "sha256": "fc14ac483852ed8ef571eabbba2bf2f1ec793be67cc6b2e8d664250b84175393"
+    }
+  ]
+}

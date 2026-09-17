@@ -1,0 +1,1946 @@
+--- a/src/core/circuit.cpp
++++ b/src/core/circuit.cpp
+@@ -210,6 +210,9 @@
+     assert(!finalized_ && "Circuit::finalize() called twice");
+ 
+     rebuild_device_load_order();
++    // Expressions must be applied before setup decides which internal nodes
++    // and parameter defaults the model needs.
++    prepare_temperature(options.temp, options.tnom);
+ 
+     // ngspice cktdojob.c lowers trtol to 1 whenever the circuit contains an
+     // XSPICE A device.  Under PSpice compatibility this includes POLY
+@@ -348,14 +351,33 @@
+ 
+ void Circuit::set_operating_point(const std::vector<double>& solution) {
+     operating_point_ = solution;
++    operating_point_temperature_ = std::pair{options.temp, options.tnom};
+ }
+ 
+ const std::vector<double>* Circuit::operating_point() const {
+-    return operating_point_.empty() ? nullptr : &operating_point_;
++    return operating_point_.empty() || operating_point_temperature_ != std::pair{options.temp, options.tnom}
++        ? nullptr : &operating_point_;
+ }
+ 
+ void Circuit::clear_operating_point() {
+     operating_point_.clear();
++    operating_point_temperature_.reset();
++}
++
++void Circuit::prepare_temperature(double temperature, double nominal) {
++    const auto requested = std::pair{temperature, nominal};
++    if (prepared_temperature_ == requested) return;
++    // A failed expression may leave earlier models updated. Never advertise
++    // the old preparation or operating point as reusable after that failure.
++    prepared_temperature_.reset();
++    clear_operating_point();
++    for (auto& model : model_cards_)
++        model->prepare_model_temperature(temperature);
++    for (auto& device : devices_) {
++        device->reset_temp();
++        device->process_temperature(temperature, nominal);
++    }
++    prepared_temperature_ = requested;
+ }
+ 
+ void Circuit::rotate_state() {
+--- a/src/core/circuit.hpp
++++ b/src/core/circuit.hpp
+@@ -299,6 +299,10 @@
+     /// Reset all state buffers and device state for a fresh simulation pass.
+     void reset_state();
+ 
++    /// Apply model expressions and invalidate device temperature caches when
++    /// the simulation temperature or nominal temperature changes.
++    void prepare_temperature(double temperature_kelvin, double nominal_kelvin);
++
+     /// Cache the latest full DC operating-point vector for same-circuit reuse.
+     void set_operating_point(const std::vector<double>& solution);
+     const std::vector<double>* operating_point() const;
+@@ -369,6 +373,7 @@
+         std::string name;
+         std::string model_type;
+         virtual ~ModelCardHolder() = default;
++        virtual void prepare_model_temperature(double) {}
+     };
+ 
+     template <typename T>
+@@ -381,6 +386,10 @@
+             this->name = std::move(n);
+             this->model_type = std::move(type);
+         }
++        void prepare_model_temperature(double temperature) override {
++            if constexpr (requires(T& value) { value.prepare_model_temperature(temperature); })
++                card->prepare_model_temperature(temperature);
++        }
+     };
+ 
+     /// Look up a model card holder by name (type-erased).
+@@ -391,6 +400,8 @@
+                                std::string name, std::string model_type);
+ 
+ private:
++    std::optional<std::pair<double, double>> prepared_temperature_;
++    std::optional<std::pair<double, double>> operating_point_temperature_;
+     void rebind_device_states();  // re-invoke set_state_ptrs on every device
+     void rebuild_device_load_order();
+     static std::string model_key(std::string_view name);
+--- a/src/core/dc.cpp
++++ b/src/core/dc.cpp
+@@ -65,6 +65,9 @@
+     auto t_start = std::chrono::steady_clock::now();
+     DiagonalGminCleanup diagonal_cleanup{ckt.options};
+     ckt.clear_operating_point();
++    // Invalid model expressions are input errors, not Newton nonconvergence.
++    // Evaluate them outside the numerical fallback exception handlers.
++    ckt.prepare_temperature(ckt.options.temp, ckt.options.tnom);
+     const int32_t n = ckt.num_vars();
+     const int32_t num_nodes = ckt.num_nodes();
+ 
+--- a/src/core/newton.cpp
++++ b/src/core/newton.cpp
+@@ -93,6 +93,7 @@
+                           const SimOptions& opts,
+                           NewtonWorkspace& workspace,
+                           bool preserve_previous_on_convergence) {
++    ckt.prepare_temperature(opts.temp, opts.tnom);
+     const int32_t n = ckt.num_vars();
+     const int32_t num_nodes = ckt.num_nodes();
+     const auto& pattern = ckt.pattern();
+--- a/src/devices/bjt/bjt_device.hpp
++++ b/src/devices/bjt/bjt_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB BJT code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct BJTModelCard {
++struct BJTModelCard : ModelCardRuntime {
+     bjt::BJTModel ucb{};   // aggregate UCB model fields
+ 
+     BJTModelCard() = default;
+--- a/src/devices/bjt/bjt_model_card.cpp
++++ b/src/devices/bjt/bjt_model_card.cpp
+@@ -18,7 +18,7 @@
+     namespace S = bjt::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, bjt::BJTmPTable, bjt::BJTmPTSize,
+-        bjt::BJTmParam, "BJT");
++        bjt::BJTmParam, "BJT", out.get());
+ 
+     // PSpice per-device temperature (see to_dio_card): T_ABS forces operating
+     // temperature for all instances; T_MEASURED is the measurement temp (TNOM).
+--- a/src/devices/bjt/bjt_temp.cpp
++++ b/src/devices/bjt/bjt_temp.cpp
+@@ -44,6 +44,14 @@
+ 
+         if(!model->BJTtnomGiven) model->BJTtnom = ckt->CKTnomTemp;
+         fact1 = model->BJTtnom/REFTEMP;
++        // ngspice 47 separates the nominal junction-potential correction
++        // from the correction at the actual instance temperature.
++        const double vtnom = CONSTKoverQ * model->BJTtnom;
++        const double egfet1 = 1.16-(7.02e-4*model->BJTtnom*model->BJTtnom)/
++                (model->BJTtnom+1108);
++        const double arg1 = -egfet1/(2*CONSTboltz*model->BJTtnom)+
++                1.1150877/(CONSTboltz*(REFTEMP+REFTEMP));
++        const double pbfact1 = -2*vtnom*(1.5*log(fact1)+CHARGE*arg1);
+ 
+         if(!model->BJTleakBEcurrentGiven) {
+             if(model->BJTc2Given) {
+@@ -226,7 +234,7 @@
+             }
+ 
+             if (model->BJTtlevc == 0) {
+-                pbo = (model->BJTpotentialBE-pbfact)/fact1;
++                pbo = (model->BJTpotentialBE-pbfact1)/fact1;
+                 gmaold = (model->BJTpotentialBE-pbo)/pbo;
+                 here->BJTtBEcap = model->BJTdepletionCapBE/
+                     (1+here->BJTtjunctionExpBE*
+@@ -241,7 +249,7 @@
+                 here->BJTtBEpot = model->BJTpotentialBE - model->BJTtvje*dt;
+             }
+             if (model->BJTtlevc == 0) {
+-                pbo = (model->BJTpotentialBC-pbfact)/fact1;
++                pbo = (model->BJTpotentialBC-pbfact1)/fact1;
+                 gmaold = (model->BJTpotentialBC-pbo)/pbo;
+                 here->BJTtBCcap = model->BJTdepletionCapBC/
+                     (1+here->BJTtjunctionExpBC*
+@@ -256,7 +264,7 @@
+                 here->BJTtBCpot = model->BJTpotentialBC - model->BJTtvjc*dt;
+             }
+             if (model->BJTtlevc == 0) {
+-                pbo = (model->BJTpotentialSubstrate-pbfact)/fact1;
++                pbo = (model->BJTpotentialSubstrate-pbfact1)/fact1;
+                 gmaold = (model->BJTpotentialSubstrate-pbo)/pbo;
+                 here->BJTtSubcap = model->BJTcapSub/
+                         (1+here->BJTtjunctionExpSub*
+--- a/src/devices/bsim3/bsim3_device.hpp
++++ b/src/devices/bsim3/bsim3_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB BSIM3 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct BSIM3ModelCard {
++struct BSIM3ModelCard : ModelCardRuntime {
+     bsim3::BSIM3Model ucb{};   // aggregate UCB model fields
+ 
+     BSIM3ModelCard() = default;
+--- a/src/devices/bsim3/bsim3_model_card.cpp
++++ b/src/devices/bsim3/bsim3_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = bsim3::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, bsim3::BSIM3mPTable, bsim3::BSIM3mPTSize,
+-        bsim3::BSIM3mParam, "BSIM3");
++        bsim3::BSIM3mParam, "BSIM3", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/bsim3v32/bsim3v32_device.hpp
++++ b/src/devices/bsim3v32/bsim3v32_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB BSIM3v32 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct BSIM3v32ModelCard {
++struct BSIM3v32ModelCard : ModelCardRuntime {
+     bsim3v32::BSIM3v32Model ucb{};   // aggregate UCB model fields
+ 
+     BSIM3v32ModelCard() = default;
+--- a/src/devices/bsim3v32/bsim3v32_model_card.cpp
++++ b/src/devices/bsim3v32/bsim3v32_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = bsim3v32::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, bsim3v32::BSIM3v32mPTable, bsim3v32::BSIM3v32mPTSize,
+-        bsim3v32::BSIM3v32mParam, "BSIM3v32");
++        bsim3v32::BSIM3v32mParam, "BSIM3v32", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/bsim4v7/bsim4v7_device.hpp
++++ b/src/devices/bsim4v7/bsim4v7_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB BSIM4v7 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct BSIM4v7ModelCard {
++struct BSIM4v7ModelCard : ModelCardRuntime {
+     bsim4v7::BSIM4v7Model ucb{};   // aggregate UCB model fields
+ 
+     BSIM4v7ModelCard() = default;
+--- a/src/devices/bsim4v7/bsim4v7_model_card.cpp
++++ b/src/devices/bsim4v7/bsim4v7_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = bsim4v7::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, bsim4v7::BSIM4v7mPTable, bsim4v7::BSIM4v7mPTSize,
+-        bsim4v7::BSIM4v7mParam, "BSIM4v7");
++        bsim4v7::BSIM4v7mParam, "BSIM4v7", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/bsimsoi/bsimsoi_device.hpp
++++ b/src/devices/bsimsoi/bsimsoi_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB B4SOI code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct B4SOIModelCard {
++struct B4SOIModelCard : ModelCardRuntime {
+     bsimsoi::B4SOIModel ucb{};   // aggregate UCB model fields
+ 
+     B4SOIModelCard() = default;
+--- a/src/devices/bsimsoi/bsimsoi_model_card.cpp
++++ b/src/devices/bsimsoi/bsimsoi_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = bsimsoi::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, bsimsoi::B4SOImPTable, bsimsoi::B4SOImPTSize,
+-        bsimsoi::B4SOImParam, "B4SOI");
++        bsimsoi::B4SOImParam, "B4SOI", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/dio/dio_device.hpp
++++ b/src/devices/dio/dio_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB DIO code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct DIOModelCard {
++struct DIOModelCard : ModelCardRuntime {
+     dio::DIOModel ucb{};   // aggregate UCB model fields
+ 
+     DIOModelCard() = default;
+--- a/src/devices/dio/dio_model_card.cpp
++++ b/src/devices/dio/dio_model_card.cpp
+@@ -12,7 +12,7 @@
+     namespace S = dio::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, dio::DIOmPTable, dio::DIOmPTSize,
+-        dio::DIOmParam, "DIO");
++        dio::DIOmParam, "DIO", out.get());
+ 
+     // PSpice per-device temperature (ngspice rewrites these to temp/tnom on the
+     // model card, inpcompat.c:1014): T_ABS forces the operating temperature of
+--- a/src/devices/hfet1/hfet1_device.hpp
++++ b/src/devices/hfet1/hfet1_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB HFETA (HFET1) code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct HFETAModelCard {
++struct HFETAModelCard : ModelCardRuntime {
+     hfet1::HFETAModel ucb{};   // aggregate UCB model fields
+ 
+     HFETAModelCard() = default;
+--- a/src/devices/hfet1/hfet1_model_card.cpp
++++ b/src/devices/hfet1/hfet1_model_card.cpp
+@@ -15,7 +15,7 @@
+     namespace S = hfet1::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, hfet1::HFETAmPTable, hfet1::HFETAmPTSize,
+-        hfet1::HFETAmParam, "HFETA");
++        hfet1::HFETAmParam, "HFETA", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/hfet2/hfet2_device.hpp
++++ b/src/devices/hfet2/hfet2_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB HFET2 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct HFET2ModelCard {
++struct HFET2ModelCard : ModelCardRuntime {
+     hfet2::HFET2Model ucb{};   // aggregate UCB model fields
+ 
+     HFET2ModelCard() = default;
+--- a/src/devices/hfet2/hfet2_model_card.cpp
++++ b/src/devices/hfet2/hfet2_model_card.cpp
+@@ -15,7 +15,7 @@
+     namespace S = hfet2::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, hfet2::HFET2mPTable, hfet2::HFET2mPTSize,
+-        hfet2::HFET2mParam, "HFET2");
++        hfet2::HFET2mParam, "HFET2", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/hisim2/hisim2_device.hpp
++++ b/src/devices/hisim2/hisim2_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB HSM2 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct HSM2ModelCard {
++struct HSM2ModelCard : ModelCardRuntime {
+     hisim2::HSM2Model ucb{};   // aggregate UCB model fields
+ 
+     HSM2ModelCard() = default;
+--- a/src/devices/hisim2/hisim2_model_card.cpp
++++ b/src/devices/hisim2/hisim2_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = hisim2::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, hisim2::HSM2mPTable, hisim2::HSM2mPTSize,
+-        hisim2::HSM2mParam, "HSM2");
++        hisim2::HSM2mParam, "HSM2", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/hisimhv/hisimhv_device.hpp
++++ b/src/devices/hisimhv/hisimhv_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB HSMHV code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct HSMHVModelCard {
++struct HSMHVModelCard : ModelCardRuntime {
+     hisimhv::HSMHVModel ucb{};   // aggregate UCB model fields
+ 
+     HSMHVModelCard() = default;
+--- a/src/devices/hisimhv/hisimhv_model_card.cpp
++++ b/src/devices/hisimhv/hisimhv_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = hisimhv::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, hisimhv::HSMHVmPTable, hisimhv::HSMHVmPTSize,
+-        hisimhv::HSMHVmParam, "HSMHV");
++        hisimhv::HSMHVmParam, "HSMHV", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/jfet/jfet_device.hpp
++++ b/src/devices/jfet/jfet_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB JFET code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct JFETModelCard {
++struct JFETModelCard : ModelCardRuntime {
+     jfet::JFETModel ucb{};   // aggregate UCB model fields
+ 
+     JFETModelCard() = default;
+--- a/src/devices/jfet/jfet_model_card.cpp
++++ b/src/devices/jfet/jfet_model_card.cpp
+@@ -15,7 +15,7 @@
+     namespace S = jfet::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, jfet::JFETmPTable, jfet::JFETmPTSize,
+-        jfet::JFETmParam, "JFET");
++        jfet::JFETmParam, "JFET", out.get());
+ 
+     // PSpice per-device temperature (see to_dio_card): T_ABS forces operating
+     // temperature for all instances; T_MEASURED is the measurement temp (TNOM).
+--- a/src/devices/jfet2/jfet2_device.hpp
++++ b/src/devices/jfet2/jfet2_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB JFET2 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct JFET2ModelCard {
++struct JFET2ModelCard : ModelCardRuntime {
+     jfet2::JFET2Model ucb{};   // aggregate UCB model fields
+ 
+     JFET2ModelCard() = default;
+--- a/src/devices/jfet2/jfet2_model_card.cpp
++++ b/src/devices/jfet2/jfet2_model_card.cpp
+@@ -15,7 +15,7 @@
+     namespace S = jfet2::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, jfet2::JFET2mPTable, jfet2::JFET2mPTSize,
+-        jfet2::JFET2mParam, "JFET2");
++        jfet2::JFET2mParam, "JFET2", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/mes/mes_device.hpp
++++ b/src/devices/mes/mes_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB MES code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct MESModelCard {
++struct MESModelCard : ModelCardRuntime {
+     mes::MESModel ucb{};   // aggregate UCB model fields
+ 
+     MESModelCard() = default;
+--- a/src/devices/mes/mes_model_card.cpp
++++ b/src/devices/mes/mes_model_card.cpp
+@@ -15,7 +15,7 @@
+     namespace S = mes::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, mes::MESmPTable, mes::MESmPTSize,
+-        mes::MESmParam, "MES");
++        mes::MESmParam, "MES", out.get());
+ 
+     return out;
+ }
+--- /dev/null
++++ b/src/devices/model_card_runtime.hpp
+@@ -0,0 +1,16 @@
++#pragma once
++#include <functional>
++
++namespace neospice {
++
++// The owning typed model card keeps updates alive for exactly as long as the
++// UCB model they modify. No global registry or dangling model-address cache.
++struct ModelCardRuntime {
++    std::function<void(double)> update_model_temperature;
++    void prepare_model_temperature(double temperature_kelvin) {
++        if (update_model_temperature)
++            update_model_temperature(temperature_kelvin - 273.15);
++    }
++};
++
++} // namespace neospice
+--- a/src/devices/model_card_utils.hpp
++++ b/src/devices/model_card_utils.hpp
+@@ -4,10 +4,15 @@
+ 
+ #include "core/types.hpp"        // ParseError
+ #include "parser/model_cards.hpp" // ModelCard
++#include "parser/expression.hpp"
++#include "devices/model_card_runtime.hpp"
++#include <cmath>
++#include <limits>
+ #include <cctype>
+ #include <cstdio>
+ #include <cstring>
+ #include <string>
++#include <string_view>
+ 
+ namespace neospice {
+ 
+@@ -29,6 +34,19 @@
+     const char* spice_name;  // e.g. "nmos", "pmos", "njf", "nhfet"
+     int         value;       // e.g. 1 for N-type, -1 for P-type
+ };
++
++// Runtime updates must reach a device's temperature preprocessing without
++// changing its allocated nodes or leaving setup-derived coefficients stale.
++// Keep this scope explicit until additional model parameters have that path.
++inline bool supports_model_temperature_expression(std::string_view device,
++                                                  std::string_view parameter) {
++    if (device == "VDMOS")
++        return parameter == "vto" || parameter == "kp" || parameter == "bv";
++    if (device == "MOS1") return parameter == "vto" || parameter == "kp";
++    if (device == "BJT") return parameter == "bf";
++    if (device == "DIO") return parameter == "is";
++    return false;
++}
+ 
+ // Validate the card.type string against an array of accepted type entries.
+ // Returns the matching entry's value on success; throws ParseError on failure.
+@@ -67,7 +85,8 @@
+     const IfParm* ptable,
+     int ptable_size,
+     MParamFn mparam_fn,
+-    const char* device_label)
++    const char* device_label,
++    ModelCardRuntime* runtime = nullptr)
+ {
+     for (const auto& [lkey, val] : card.params) {
+         if (lkey == "level") continue;
+@@ -110,6 +129,54 @@
+                              "mParam failed for '" + lkey + "'");
+         }
+     }
++
++    if (!card.temperature_expressions.empty()) {
++        if (!runtime)
++            throw ParseError("Model '" + card.name + "': temperature expressions require a model runtime");
++        struct Update {
++            const IfParm* entry;
++            std::string key;
++            std::string expression;
++        };
++        std::vector<Update> updates;
++        for (const auto& [key, expression] : card.temperature_expressions) {
++            const IfParm* entry = nullptr;
++            for (int i = 0; i < ptable_size; ++i)
++                if (key == ptable[i].keyword) { entry = &ptable[i]; break; }
++            if (!entry) {
++                std::fprintf(stderr, "Warning: model '%s': unknown %s parameter '%s' (ignored)\n",
++                             card.name.c_str(), device_label, key.c_str());
++                continue;
++            }
++            if (!supports_model_temperature_expression(device_label, key))
++                throw ParseError("Model '" + card.name + "': temperature-dependent " +
++                                 device_label + " parameter '" + key + "' is not implemented");
++            const int dtype = entry->dataType & 0x1F;
++            if (!(dtype & (ucb_if::REAL | ucb_if::INTEGER | ucb_if::FLAG)))
++                throw ParseError("Model '" + card.name + "': non-numeric temperature expression for '" + key + "'");
++            updates.push_back({entry, key, expression});
++        }
++        runtime->update_model_temperature =
++            [model = &ucb, mparam_fn, updates = std::move(updates), name = card.name](double temperature) {
++                const std::unordered_map<std::string, double> parameters{{"temper", temperature}};
++                for (const auto& update : updates) {
++                    const double val = eval_expression(update.expression, parameters, true);
++                    if (!std::isfinite(val))
++                        throw ParseError("Model '" + name + "': non-finite temperature expression for '" + update.key + "'");
++                    IfValue value{};
++                    const int dtype = update.entry->dataType & 0x1F;
++                    if (dtype & ucb_if::REAL) value.rValue = val;
++                    else if (dtype & ucb_if::INTEGER) {
++                        if (val < std::numeric_limits<int>::min() || val > std::numeric_limits<int>::max())
++                            throw ParseError("Model '" + name + "': integer temperature expression out of range for '" + update.key + "'");
++                        value.iValue = static_cast<int>(val);
++                    }
++                    else value.iValue = val != 0.0;
++                    if (mparam_fn(update.entry->id, &value, model) != ucb_if::OK)
++                        throw ParseError("Model '" + name + "': temperature update failed for '" + update.key + "'");
++                }
++            };
++    }
+ }
+ 
+ } // namespace neospice
+--- a/src/devices/mos1/mos1_device.hpp
++++ b/src/devices/mos1/mos1_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB MOS1 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct MOS1ModelCard {
++struct MOS1ModelCard : ModelCardRuntime {
+     mos1::MOS1Model ucb{};   // aggregate UCB model fields
+ 
+     // Instance-parameter defaults stored via .MODEL card (W=Xu L=Xu).
+--- a/src/devices/mos1/mos1_model_card.cpp
++++ b/src/devices/mos1/mos1_model_card.cpp
+@@ -34,7 +34,7 @@
+     namespace S = mos1::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         filtered, ucb, mos1::MOS1mPTable, mos1::MOS1mPTSize,
+-        mos1::MOS1mParam, "MOS1");
++        mos1::MOS1mParam, "MOS1", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/mos2/mos2_device.hpp
++++ b/src/devices/mos2/mos2_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB MOS2 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct MOS2ModelCard {
++struct MOS2ModelCard : ModelCardRuntime {
+     mos2::MOS2Model ucb{};   // aggregate UCB model fields
+ 
+     MOS2ModelCard() = default;
+--- a/src/devices/mos2/mos2_model_card.cpp
++++ b/src/devices/mos2/mos2_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = mos2::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, mos2::MOS2mPTable, mos2::MOS2mPTSize,
+-        mos2::MOS2mParam, "MOS2");
++        mos2::MOS2mParam, "MOS2", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/mos3/mos3_device.hpp
++++ b/src/devices/mos3/mos3_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB MOS3 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct MOS3ModelCard {
++struct MOS3ModelCard : ModelCardRuntime {
+     mos3::MOS3Model ucb{};   // aggregate UCB model fields
+ 
+     MOS3ModelCard() = default;
+--- a/src/devices/mos3/mos3_model_card.cpp
++++ b/src/devices/mos3/mos3_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = mos3::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, mos3::MOS3mPTable, mos3::MOS3mPTSize,
+-        mos3::MOS3mParam, "MOS3");
++        mos3::MOS3mParam, "MOS3", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/mos9/mos9_device.hpp
++++ b/src/devices/mos9/mos9_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB MOS9 code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct MOS9ModelCard {
++struct MOS9ModelCard : ModelCardRuntime {
+     mos9::MOS9Model ucb{};   // aggregate UCB model fields
+ 
+     MOS9ModelCard() = default;
+--- a/src/devices/mos9/mos9_model_card.cpp
++++ b/src/devices/mos9/mos9_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = mos9::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, mos9::MOS9mPTable, mos9::MOS9mPTSize,
+-        mos9::MOS9mParam, "MOS9");
++        mos9::MOS9mParam, "MOS9", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/vbic/vbic_device.hpp
++++ b/src/devices/vbic/vbic_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB VBIC code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct VBICModelCard {
++struct VBICModelCard : ModelCardRuntime {
+     vbic::VBICModel ucb{};   // aggregate UCB model fields
+ 
+     VBICModelCard() = default;
+--- a/src/devices/vbic/vbic_model_card.cpp
++++ b/src/devices/vbic/vbic_model_card.cpp
+@@ -15,7 +15,7 @@
+     namespace S = vbic::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, vbic::VBICmPTable, vbic::VBICmPTSize,
+-        vbic::VBICmParam, "VBIC");
++        vbic::VBICmParam, "VBIC", out.get());
+ 
+     return out;
+ }
+--- a/src/devices/vdmos/vdmos_device.hpp
++++ b/src/devices/vdmos/vdmos_device.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "devices/model_card_runtime.hpp"
+ // Adapter bridging the neospice Device interface to the UCB VDMOS code.
+ 
+ #include "devices/device.hpp"
+@@ -12,7 +13,7 @@
+ 
+ namespace neospice {
+ 
+-struct VDMOSModelCard {
++struct VDMOSModelCard : ModelCardRuntime {
+     vdmos::VDMOSModel ucb{};   // aggregate UCB model fields
+ 
+     VDMOSModelCard() = default;
+--- a/src/devices/vdmos/vdmos_load.cpp
++++ b/src/devices/vdmos/vdmos_load.cpp
+@@ -370,7 +370,7 @@
+                 /* scale vds with mtr (except with lambda) */
+                 double vdss = vds*mtr*here->VDMOSmode;
+                 double t0 = 1 + lambda*vds;
+-                double t1 = 1 + theta*vgs;
++                double t1 = 1 + theta*vdsat;
+                 double betap = Beta*t0/t1;
+                 double dbetapdvgs = -Beta*theta*t0/(t1*t1);
+                 double dbetapdvds = Beta*lambda/t1;
+--- a/src/devices/vdmos/vdmos_model_card.cpp
++++ b/src/devices/vdmos/vdmos_model_card.cpp
+@@ -16,7 +16,7 @@
+     namespace S = vdmos::Shim;
+     convert_model_card_params<S::IfParm, S::IfValue>(
+         card, ucb, vdmos::VDMOSmPTable, vdmos::VDMOSmPTSize,
+-        vdmos::VDMOSmParam, "VDMOS");
++        vdmos::VDMOSmParam, "VDMOS", out.get());
+ 
+     return out;
+ }
+--- a/src/parser/expression.cpp
++++ b/src/parser/expression.cpp
+@@ -42,8 +42,9 @@
+ class ExprParser {
+ public:
+     ExprParser(const std::string& expr,
+-               const std::unordered_map<std::string, double>& params)
+-        : expr_(expr), params_(params), pos_(0) {}
++               const std::unordered_map<std::string, double>& params,
++               bool strict_unknown = false)
++        : expr_(expr), params_(params), pos_(0), strict_unknown_(strict_unknown) {}
+ 
+     double parse() {
+         skip_ws();
+@@ -60,6 +61,7 @@
+     const std::string& expr_;
+     const std::unordered_map<std::string, double>& params_;
+     size_t pos_;
++    bool strict_unknown_;
+ 
+     void skip_ws() {
+         while (pos_ < expr_.size() && std::isspace(static_cast<unsigned char>(expr_[pos_])))
+@@ -390,6 +392,8 @@
+                 // the same name takes precedence (handled by the lookup above).
+                 if (lname == "pi") return M_PI;
+                 if (lname == "e")  return M_E;
++                if (strict_unknown_)
++                    throw ParseError("Unknown parameter '" + name + "' in expression");
+                 fprintf(stderr, "Warning: Unknown parameter '%s' — defaulting to 0\n", name.c_str());
+                 return 0.0;
+             }
+@@ -615,10 +619,55 @@
+ }
+ 
+ double eval_expression(const std::string& expr,
+-                       const std::unordered_map<std::string, double>& params) {
++                       const std::unordered_map<std::string, double>& params,
++                       bool strict_unknown) {
+     std::string e = strip_braces(expr);
+-    ExprParser parser(e, params);
++    ExprParser parser(e, params, strict_unknown);
+     return parser.parse();
++}
++
++bool has_temperature_identifier(const std::string& expression) {
++    for (size_t i = 0; i < expression.size();) {
++        const auto c = static_cast<unsigned char>(expression[i]);
++        if (std::isalnum(c) || c == '_' || c == '.') {
++            const size_t start = i++;
++            while (i < expression.size()) {
++                const auto next = static_cast<unsigned char>(expression[i]);
++                if (!std::isalnum(next) && next != '_' && next != '.') break;
++                ++i;
++            }
++            std::string name = expression.substr(start, i - start);
++            std::transform(name.begin(), name.end(), name.begin(),
++                           [](unsigned char value) { return std::tolower(value); });
++            if (name == "temp" || name == "temper") return true;
++        } else {
++            ++i;
++        }
++    }
++    return false;
++}
++
++std::string canonical_temperature_expression(const std::string& expression) {
++    std::string result;
++    for (size_t i = 0; i < expression.size();) {
++        const auto c = static_cast<unsigned char>(expression[i]);
++        if (std::isalnum(c) || c == '_' || c == '.') {
++            const size_t start = i++;
++            while (i < expression.size()) {
++                const auto next = static_cast<unsigned char>(expression[i]);
++                if (!std::isalnum(next) && next != '_' && next != '.') break;
++                ++i;
++            }
++            const auto token = expression.substr(start, i - start);
++            std::string lower = token;
++            std::transform(lower.begin(), lower.end(), lower.begin(),
++                           [](unsigned char value) { return std::tolower(value); });
++            result += lower == "temp" ? "temper" : token;
++        } else {
++            result += expression[i++];
++        }
++    }
++    return result;
+ }
+ 
+ std::unordered_map<std::string, double> resolve_params(
+--- a/src/parser/expression.hpp
++++ b/src/parser/expression.hpp
+@@ -28,7 +28,12 @@
+ /// Evaluate a single arithmetic expression string.
+ /// The expression may be surrounded by braces: {expr} — braces are stripped.
+ double eval_expression(const std::string& expr,
+-                       const std::unordered_map<std::string, double>& params);
++                       const std::unordered_map<std::string, double>& params,
++                       bool strict_unknown = false);
++
++/// True for a complete TEMP/TEMPER identifier, not a substring of another name.
++bool has_temperature_identifier(const std::string& expression);
++std::string canonical_temperature_expression(const std::string& expression);
+ 
+ /// Substitute bare parameter identifiers in an expression string with their
+ /// numeric values, preserving expression structure. Identifiers followed by
+--- a/src/parser/model_cards.cpp
++++ b/src/parser/model_cards.cpp
+@@ -1,4 +1,6 @@
+ #include "parser/model_cards.hpp"
++#include "parser/expression.hpp"
++#include <cmath>
+ #include "core/types.hpp"
+ #include "devices/switch.hpp"
+ #include <algorithm>
+@@ -15,7 +17,9 @@
+     return result;
+ }
+ 
+-ModelCard parse_model_card(const std::vector<std::string>& tokens) {
++ModelCard parse_model_card(const std::vector<std::string>& tokens,
++                          const std::unordered_map<std::string, double>& params,
++                          bool pspice_temperature_alias) {
+     // tokens[0] = ".model", tokens[1] = name, tokens[2..] = TYPE(key=val ...)
+     if (tokens.size() < 3) {
+         throw ParseError(".model: insufficient tokens");
+@@ -78,26 +82,38 @@
+     // Parse parameters across optional parenthesized groups and bare fields.
+     if (!params_str.empty()) {
+ 
+-        // Replace '=' with ' = ' for easier parsing, then split. Commas are
+-        // valid parameter separators in PSpice model cards (e.g.
+-        // "d(kf=2e-12,af=1, T_abs=-4)"), so treat them as whitespace.
+-        std::string normalized;
++        // Split only outside balanced expressions. Parentheses and commas
++        // inside braces or quotes belong to the expression, not the card.
++        std::vector<std::string> ptokens;
++        std::string token;
++        int braces = 0;
++        char quote = 0;
++        auto flush = [&] {
++            if (!token.empty()) { ptokens.push_back(std::move(token)); token.clear(); }
++        };
+         for (char c : params_str) {
+-            if (c == '=') {
+-                normalized += " = ";
+-            } else if (c == ',' || c == '(' || c == ')') {
+-                normalized += ' ';
++            if (quote) {
++                token += c;
++                if (c == quote) quote = 0;
++            } else if (c == '\'' || c == '"') {
++                quote = c; token += c;
++            } else if (c == '{') {
++                ++braces; token += c;
++            } else if (c == '}') {
++                if (braces == 0) throw ParseError("Model '" + card.name + "': unmatched '}'");
++                --braces; token += c;
++            } else if (braces) {
++                token += c;
++            } else if (c == '=') {
++                flush(); ptokens.emplace_back("=");
++            } else if (std::isspace(static_cast<unsigned char>(c)) || c == ',' || c == '(' || c == ')') {
++                flush();
+             } else {
+-                normalized += c;
++                token += c;
+             }
+         }
+-
+-        std::istringstream iss(normalized);
+-        std::string tok;
+-        std::vector<std::string> ptokens;
+-        while (iss >> tok) {
+-            ptokens.push_back(tok);
+-        }
++        if (braces || quote) throw ParseError("Model '" + card.name + "': unterminated expression");
++        flush();
+ 
+         // Parse key=value pairs: expect key, =, value.
+         // Bare tokens without '=' are treated as flag parameters (value = 1.0).
+@@ -106,15 +122,41 @@
+         for (size_t i = 0; i < ptokens.size(); ) {
+             std::string key = to_lower(ptokens[i]);
+             if (i + 2 < ptokens.size() && ptokens[i + 1] == "=") {
+-                // key = value triplet
++                const auto& value_token = ptokens[i + 2];
++                std::string expression = value_token;
++                const bool quoted = expression.size() >= 2 &&
++                    ((expression.front() == '\'' && expression.back() == '\'') ||
++                     (expression.front() == '"' && expression.back() == '"'));
++                if (quoted) expression = expression.substr(1, expression.size() - 2);
++                const bool is_expression = quoted || expression.find('{') != std::string::npos ||
++                    params.contains(to_lower(expression));
+                 double val;
+-                try {
+-                    val = parse_spice_number(ptokens[i + 2]);
+-                } catch (const ParseError&) {
+-                    // Non-numeric value (e.g., mfg=USSR) — skip this parameter
+-                    i += 3;
+-                    continue;
++                if (is_expression) {
++                    if (pspice_temperature_alias)
++                        expression = canonical_temperature_expression(expression);
++                    expression = subst_param_names(expression, params);
++                    if (has_temperature_identifier(expression)) {
++                        if (key == "level" || key == "t_measured" || key == "t_abs" ||
++                            key == "t_rel_global" || key == "t_rel_local")
++                            throw ParseError("Model '" + card.name + "': temperature-dependent '" + key + "' is not supported");
++                        card.temperature_expressions[key] = std::move(expression);
++                        card.params.erase(key);
++                        i += 3;
++                        continue;
++                    }
++                    val = eval_expression(expression, {}, true);
++                } else {
++                    try {
++                        val = parse_spice_number(value_token);
++                    } catch (const ParseError&) {
++                        // Non-numeric metadata such as mfg=USSR is not an expression.
++                        i += 3;
++                        continue;
++                    }
+                 }
++                if (!std::isfinite(val))
++                    throw ParseError("Model '" + card.name + "': non-finite parameter '" + key + "'");
++                card.temperature_expressions.erase(key);
+                 // PSpice temperature metadata goes to dedicated fields only,
+                 // not the generic param map — the per-device parameter tables
+                 // don't know t_abs/t_measured/etc. and would warn "unknown".
+@@ -199,6 +241,8 @@
+ // to_switch_model — parse a .model SW or CSW card into a SwitchModel.
+ // ---------------------------------------------------------------------------
+ SwitchModel to_switch_model(const ModelCard& card) {
++    if (!card.temperature_expressions.empty())
++        throw ParseError("Model '" + card.name + "': temperature expressions for this model type are not implemented");
+     SwitchModel model;
+     model.name = card.name;
+ 
+@@ -257,6 +301,8 @@
+ // to_resistor_model — parse a .model R card into a ResistorModel.
+ // ---------------------------------------------------------------------------
+ ResistorModel to_resistor_model(const ModelCard& card) {
++    if (!card.temperature_expressions.empty())
++        throw ParseError("Model '" + card.name + "': temperature expressions for this model type are not implemented");
+     ResistorModel m;
+     for (const auto& [key, val] : card.params) {
+         if (key == "tc1") m.tc1 = val;
+@@ -273,6 +319,8 @@
+ // to_capacitor_model — parse a .model C card into a CapacitorModel.
+ // ---------------------------------------------------------------------------
+ CapacitorModel to_capacitor_model(const ModelCard& card) {
++    if (!card.temperature_expressions.empty())
++        throw ParseError("Model '" + card.name + "': temperature expressions for this model type are not implemented");
+     CapacitorModel m;
+     for (const auto& [key, val] : card.params) {
+         if (key == "tc1") m.tc1 = val;
+@@ -288,6 +336,8 @@
+ // to_inductor_model — parse a .model L card into an InductorModel.
+ // ---------------------------------------------------------------------------
+ InductorModel to_inductor_model(const ModelCard& card) {
++    if (!card.temperature_expressions.empty())
++        throw ParseError("Model '" + card.name + "': temperature expressions for this model type are not implemented");
+     InductorModel m;
+     for (const auto& [key, val] : card.params) {
+         if (key == "tc1") m.tc1 = val;
+--- a/src/parser/model_cards.hpp
++++ b/src/parser/model_cards.hpp
+@@ -34,6 +34,9 @@
+     // Stored lowercase for case-insensitive lookup.  Values are parsed as
+     // doubles; integer/flag BSIM4 parameters cast from double at dispatch.
+     std::unordered_map<std::string, double> params;
++    // Constants are substituted before storing these expressions. They are
++    // evaluated at model setup and again when the simulation temperature changes.
++    std::unordered_map<std::string, std::string> temperature_expressions;
+ 
+     // PSpice tolerance annotations (DEV/LOT on parameters)
+     std::vector<ToleranceAnnotation> tolerances;
+@@ -45,7 +48,9 @@
+     std::optional<double> t_rel_local;
+ };
+ 
+-ModelCard parse_model_card(const std::vector<std::string>& tokens);
++ModelCard parse_model_card(const std::vector<std::string>& tokens,
++                          const std::unordered_map<std::string, double>& params = {},
++                          bool pspice_temperature_alias = false);
+ 
+ /// Detect the MOSFET level from a parsed .model card.
+ /// Returns 1 for MOS1, 14 (default) for BSIM4v7.
+--- a/src/parser/netlist_parser.cpp
++++ b/src/parser/netlist_parser.cpp
+@@ -1057,7 +1057,7 @@
+     }
+     raw.resolving = true;
+ 
+-    ModelCard card = parse_model_card(raw.tokens);
++    ModelCard card = parse_model_card(raw.tokens, state.params, state.ckt.options.pspice_compat);
+     card.source_order = raw.source_order;
+ 
+     // Resolve AKO inheritance on demand.
+@@ -1099,10 +1099,17 @@
+                 }
+                 // Merge params: start with base, overlay derived.
+                 auto merged = base->params;
++                auto expressions = base->temperature_expressions;
+                 for (const auto& [pk, pv] : card.params) {
+                     merged[pk] = pv;
++                    expressions.erase(pk);
++                }
++                for (const auto& [pk, expression] : card.temperature_expressions) {
++                    expressions[pk] = expression;
++                    merged.erase(pk);
+                 }
+                 card.params = std::move(merged);
++                card.temperature_expressions = std::move(expressions);
+                 card.ako_base.clear();
+             }
+         }
+--- a/src/parser/subcircuit_expand.cpp
++++ b/src/parser/subcircuit_expand.cpp
+@@ -179,10 +179,16 @@
+             }
+             std::string expr = token.substr(i, close - i + 1); // includes braces
+             try {
+-                double val = eval_expression(expr, params);
+-                char buf[64];
+-                std::snprintf(buf, sizeof(buf), "%.15g", val);
+-                result += buf;
++                if (has_temperature_identifier(expr)) {
++                    // Model temperature expressions are evaluated by the model
++                    // runtime. Substitute local constants without freezing TEMP.
++                    result += subst_param_names(expr, params);
++                } else {
++                    double val = eval_expression(expr, params, true);
++                    char buf[64];
++                    std::snprintf(buf, sizeof(buf), "%.15g", val);
++                    result += buf;
++                }
+             } catch (...) {
+                 result += expr;
+             }
+@@ -1102,16 +1108,18 @@
+             // Regular element line — substitute nodes and evaluate param expressions
+             int ncount = node_count_for_element(elem_type);
+ 
+-            // Q cards can have 3 or 4 nodes: Q name NC NB NE [NS] model [area]
+-            // Use the local model names to disambiguate token[4].
+-            if (elem_type == 'q' && line.tokens.size() > 4) {
++            // Both Q and VDMOS M cards may name their model after three
++            // terminals. Preserve global model references as model names,
++            // not instance-prefixed fourth nodes. Device parsers validate
++            // the model type and required terminal count afterward.
++            if ((elem_type == 'q' || elem_type == 'm') && line.tokens.size() > 4) {
+                 std::string tok4_lower = to_lower(line.tokens[4]);
+                 // token[4] is the model (3-node Q) if it names a model defined
+                 // either in the subckt body OR at top level (ngspice resolves
+                 // the model against the global table regardless of scope).
+                 if (local_model_names.count(tok4_lower) ||
+                     global_model_names.count(tok4_lower)) {
+-                    ncount = 3;  // token[4] is model, not substrate
++                    ncount = 3;  // token[4] is model, not a fourth node
+                 }
+             }
+ 
+--- /dev/null
++++ b/tests/circuits/model_temperature_0.cir
+@@ -0,0 +1,19 @@
++BJT diode and MOS1 expressions with repeatable temperature-dependent AC and DC
++.temp 0
++.param offset=.6
++Vcc supply 0 3
++Rc supply collector 1k
++Ib 0 base DC 10u AC 1u
++Q1 collector base 0 QM
++.model QM NPN(IS=1e-14 BF={100+TEMPER} VAF=100 CJE=10p CJC=5p)
++Vdd drain 0 2
++Vgg gate 0 1.5 AC 1
++M1 drain gate 0 0 MM W=20u L=1u
++.model MM NMOS(LEVEL=1 VTO={offset-1m*(TEMPER-27)} KP={100u*(1+TEMPER/1000)} LAMBDA=.02)
++Vdiode input 0 1 AC 1
++Rd input diode 100
++D1 diode 0 DM
++.model DM D(IS={1e-14*(1+TEMPER/100)} N=1 CJO=10p)
++.ac dec 5 10 100k
++.op
++.end
+--- /dev/null
++++ b/tests/circuits/model_temperature_27.cir
+@@ -0,0 +1,19 @@
++BJT diode and MOS1 expressions with repeatable temperature-dependent AC and DC
++.temp 27
++.param offset=.6
++Vcc supply 0 3
++Rc supply collector 1k
++Ib 0 base DC 10u AC 1u
++Q1 collector base 0 QM
++.model QM NPN(IS=1e-14 BF={100+TEMPER} VAF=100 CJE=10p CJC=5p)
++Vdd drain 0 2
++Vgg gate 0 1.5 AC 1
++M1 drain gate 0 0 MM W=20u L=1u
++.model MM NMOS(LEVEL=1 VTO={offset-1m*(TEMPER-27)} KP={100u*(1+TEMPER/1000)} LAMBDA=.02)
++Vdiode input 0 1 AC 1
++Rd input diode 100
++D1 diode 0 DM
++.model DM D(IS={1e-14*(1+TEMPER/100)} N=1 CJO=10p)
++.ac dec 5 10 100k
++.op
++.end
+--- /dev/null
++++ b/tests/circuits/model_temperature_60.cir
+@@ -0,0 +1,19 @@
++BJT diode and MOS1 expressions with repeatable temperature-dependent AC and DC
++.temp 60
++.param offset=.6
++Vcc supply 0 3
++Rc supply collector 1k
++Ib 0 base DC 10u AC 1u
++Q1 collector base 0 QM
++.model QM NPN(IS=1e-14 BF={100+TEMPER} VAF=100 CJE=10p CJC=5p)
++Vdd drain 0 2
++Vgg gate 0 1.5 AC 1
++M1 drain gate 0 0 MM W=20u L=1u
++.model MM NMOS(LEVEL=1 VTO={offset-1m*(TEMPER-27)} KP={100u*(1+TEMPER/1000)} LAMBDA=.02)
++Vdiode input 0 1 AC 1
++Rd input diode 100
++D1 diode 0 DM
++.model DM D(IS={1e-14*(1+TEMPER/100)} N=1 CJO=10p)
++.ac dec 5 10 100k
++.op
++.end
+--- /dev/null
++++ b/tests/circuits/vdmos_model_scope.cir
+@@ -0,0 +1,43 @@
++VDMOS local global nested and shadowed model binding
++Vdn dn 0 2
++Vgn gn 0 3
++Xn dn gn 0 NCELL
++Vdp dp 0 -2
++Vgp gp 0 -3
++Xp dp gp 0 PCELL
++Vdnested dnested 0 2
++Vgnested gnested 0 3
++Xnested dnested gnested 0 WRAPPER
++Vdlocal dlocal 0 2
++Vglocal glocal 0 3
++Xlocal dlocal glocal 0 LOCALCELL
++Vdshadow dshadow 0 2
++Vgshadow gshadow 0 3
++Xshadow dshadow gshadow 0 SHADOWCELL
++Vdn4 dn4 0 2
++Vgn4 gn4 0 3
++Xn4 dn4 gn4 0 NCELL4
++.subckt NCELL d g s
++M1 d g s Gn M=2
++.ends NCELL
++.subckt PCELL d g s
++M1 d g s Gp M=2
++.ends PCELL
++.subckt WRAPPER d g s
++Xinner d g s NCELL
++.ends WRAPPER
++.subckt LOCALCELL d g s
++M1 d g s Local M=2
++.model Local VDMOS(Vto=1 Kp=20m)
++.ends LOCALCELL
++.subckt SHADOWCELL d g s
++M1 d g s Gn M=2
++.model Gn VDMOS(Vto=0.5 Kp=20m)
++.ends SHADOWCELL
++.subckt NCELL4 d g s
++M1 d g s 0 Gn M=2
++.ends NCELL4
++.model Gn VDMOS(Vto=1 Kp=20m)
++.model Gp VDMOSP(Vto=-1 Kp=20m)
++.op
++.end
+--- /dev/null
++++ b/tests/circuits/vdmos_model_temperature_0.cir
+@@ -0,0 +1,32 @@
++VDMOS global and local model expressions, repeated temperature analyses
++.temp 0
++.param base=0.65 slope=1.6m
++.func gain(x) {2*x}
++Vdglobal dglobal 0 2
++Vgglobal gglobal 0 0.7
++Mglobal dglobal gglobal 0 GLOBAL
++Vdshared dshared 0 2
++Vgshared gshared 0 0.8
++Mshared dshared gshared 0 GLOBAL M=2
++Vdlocal dlocal 0 2
++Vglocal glocal 0 0.7
++Xlocal dlocal glocal 0 LOCALCELL
++Vdp dp 0 -2
++Vgp gp 0 -0.7
++Mp dp gp 0 PMODEL
++Vdliteral dliteral 0 2
++Vgliteral gliteral 0 0.7
++Mliteral dliteral gliteral 0 LITERAL
++.model GLOBAL VDMOS(Vto={base - slope * (TEMPER - 25)} Kp={gain(0.22)*(1+TEMPER/1000)})
++.model PMODEL VDMOSP(Vto={-base + slope*(TEMPER-25)} Kp={gain(0.22)*(1+TEMPER/1000)})
++.model LITERAL VDMOS(Vto={0.65+0.04} Kp='0.22*2')
++.subckt LOCALCELL d g s
++M1 d g s LOCAL
++.model LOCAL VDMOS(Vto={base-slope*(TEMPER-25)} Kp={0.44*(1+TEMPER/1000)})
++.ends LOCALCELL
++Vbreak supplybreak 0 23
++Rbreak supplybreak dbreak 1k
++Mbreak dbreak 0 0 BREAKDOWN
++.model BREAKDOWN VDMOS(Vto=3 Kp=.44 BV={20+25m*(TEMPER-25)} IBV=250u)
++.op
++.end
+--- /dev/null
++++ b/tests/circuits/vdmos_model_temperature_27.cir
+@@ -0,0 +1,32 @@
++VDMOS global and local model expressions, repeated temperature analyses
++.temp 27
++.param base=0.65 slope=1.6m
++.func gain(x) {2*x}
++Vdglobal dglobal 0 2
++Vgglobal gglobal 0 0.7
++Mglobal dglobal gglobal 0 GLOBAL
++Vdshared dshared 0 2
++Vgshared gshared 0 0.8
++Mshared dshared gshared 0 GLOBAL M=2
++Vdlocal dlocal 0 2
++Vglocal glocal 0 0.7
++Xlocal dlocal glocal 0 LOCALCELL
++Vdp dp 0 -2
++Vgp gp 0 -0.7
++Mp dp gp 0 PMODEL
++Vdliteral dliteral 0 2
++Vgliteral gliteral 0 0.7
++Mliteral dliteral gliteral 0 LITERAL
++.model GLOBAL VDMOS(Vto={base - slope * (TEMPER - 25)} Kp={gain(0.22)*(1+TEMPER/1000)})
++.model PMODEL VDMOSP(Vto={-base + slope*(TEMPER-25)} Kp={gain(0.22)*(1+TEMPER/1000)})
++.model LITERAL VDMOS(Vto={0.65+0.04} Kp='0.22*2')
++.subckt LOCALCELL d g s
++M1 d g s LOCAL
++.model LOCAL VDMOS(Vto={base-slope*(TEMPER-25)} Kp={0.44*(1+TEMPER/1000)})
++.ends LOCALCELL
++Vbreak supplybreak 0 23
++Rbreak supplybreak dbreak 1k
++Mbreak dbreak 0 0 BREAKDOWN
++.model BREAKDOWN VDMOS(Vto=3 Kp=.44 BV={20+25m*(TEMPER-25)} IBV=250u)
++.op
++.end
+--- /dev/null
++++ b/tests/circuits/vdmos_model_temperature_60.cir
+@@ -0,0 +1,32 @@
++VDMOS global and local model expressions, repeated temperature analyses
++.temp 60
++.param base=0.65 slope=1.6m
++.func gain(x) {2*x}
++Vdglobal dglobal 0 2
++Vgglobal gglobal 0 0.7
++Mglobal dglobal gglobal 0 GLOBAL
++Vdshared dshared 0 2
++Vgshared gshared 0 0.8
++Mshared dshared gshared 0 GLOBAL M=2
++Vdlocal dlocal 0 2
++Vglocal glocal 0 0.7
++Xlocal dlocal glocal 0 LOCALCELL
++Vdp dp 0 -2
++Vgp gp 0 -0.7
++Mp dp gp 0 PMODEL
++Vdliteral dliteral 0 2
++Vgliteral gliteral 0 0.7
++Mliteral dliteral gliteral 0 LITERAL
++.model GLOBAL VDMOS(Vto={base - slope * (TEMPER - 25)} Kp={gain(0.22)*(1+TEMPER/1000)})
++.model PMODEL VDMOSP(Vto={-base + slope*(TEMPER-25)} Kp={gain(0.22)*(1+TEMPER/1000)})
++.model LITERAL VDMOS(Vto={0.65+0.04} Kp='0.22*2')
++.subckt LOCALCELL d g s
++M1 d g s LOCAL
++.model LOCAL VDMOS(Vto={base-slope*(TEMPER-25)} Kp={0.44*(1+TEMPER/1000)})
++.ends LOCALCELL
++Vbreak supplybreak 0 23
++Rbreak supplybreak dbreak 1k
++Mbreak dbreak 0 0 BREAKDOWN
++.model BREAKDOWN VDMOS(Vto=3 Kp=.44 BV={20+25m*(TEMPER-25)} IBV=250u)
++.op
++.end
+--- /dev/null
++++ b/tests/circuits/vdmos_theta.cir
+@@ -0,0 +1,21 @@
++VDMOS mobility reduction in saturation, triode, and reverse operation
++Vdn dn 0 2
++Vgn gn 0 1.5
++Mn dn gn 0 POWER
++Vdp dp 0 -2
++Vgp gp 0 -1.5
++Mp dp gp 0 PPOWER
++Vdtri dtri 0 .1
++Vgtri gtri 0 1.5
++Mtri dtri gtri 0 POWER
++Vdrev drev 0 -.1
++Vgrev grev 0 1.5
++Mrev drev grev 0 POWER
++Vdcontrol dcontrol 0 2
++Vgcontrol gcontrol 0 1.5
++Mcontrol dcontrol gcontrol 0 CONTROL
++.model POWER VDMOS(Vto=.6468 Kp=.44 Theta=.5 Lambda=.04)
++.model PPOWER VDMOSP(Vto=-.6468 Kp=.44 Theta=.5 Lambda=.04)
++.model CONTROL VDMOS(Vto=.6468 Kp=.44 Theta=0 Lambda=.04)
++.op
++.end
+--- a/tests/devices/vdmos/test_vdmos_compare.cpp
++++ b/tests/devices/vdmos/test_vdmos_compare.cpp
+@@ -63,10 +63,70 @@
+     }
+ }
+ 
++TEST_F(VDMOSValidation, SubcircuitModelScopeMatchesNgspice47) {
++    const auto path = std::string(TEST_CIRCUITS_DIR) + "/vdmos_model_scope.cir";
++    auto ckt = sim_.load(path);
++    for (const std::string name : {"xn.m1", "xp.m1", "xnested.xinner.m1",
++                                   "xlocal.m1", "xshadow.m1", "xn4.m1"}) {
++        SCOPED_TRACE(name);
++        ASSERT_NE(dynamic_cast<const VDMOSDevice*>(ckt.find_device_ptr(name)), nullptr);
++    }
++    auto expected = ngspice_->run_dc(path);
++    std::erase_if(expected.node_voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto actual = sim_.run_dc(ckt);
++    const auto comparison = compare_dc(expected, actual);
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++    const double ordinary = actual.current("vdn");
++    ASSERT_GT(std::abs(ordinary), 1e-3);
++    EXPECT_NEAR(actual.current("vdnested"), ordinary, 1e-10);
++    EXPECT_NEAR(actual.current("vdn4"), ordinary, 1e-10);
++    EXPECT_GT(std::abs(actual.current("vdshadow") - ordinary), 1e-3);
++}
++
++TEST_F(VDMOSValidation, ModelTemperatureExpressionsFollowRepeatedAnalyses) {
++    const auto base = std::string(TEST_CIRCUITS_DIR) + "/vdmos_model_temperature_";
++    auto ckt = sim_.load(base + "27.cir");
++    double first_current = 0.0;
++    for (const int temperature : {27, 0, 60, 27}) {
++        SCOPED_TRACE(temperature);
++        auto expected = ngspice_->run_dc(base + std::to_string(temperature) + ".cir");
++        std::erase_if(expected.node_voltages, [](const auto& item) {
++            return item.first.find('#') != std::string::npos;
++        });
++        ckt.options.temp = temperature + 273.15;
++        const auto actual = sim_.run_dc(ckt);
++        const auto comparison = compare_dc(expected, actual);
++        EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++        EXPECT_GT(std::abs(actual.current("vdglobal")), 1e-4);
++        EXPECT_NEAR(actual.current("vdglobal"), actual.current("vdlocal"), 1e-10);
++        if (temperature == 27) {
++            if (first_current == 0.0) first_current = actual.current("vdglobal");
++            else EXPECT_NEAR(actual.current("vdglobal"), first_current, 1e-12);
++        }
++    }
++}
++
+ TEST(VDMOSParser, RejectsSixTerminals) {
+     NetlistParser parser;
+     EXPECT_THROW(parser.parse("Too many VDMOS terminals\n"
+         "M1 d g s tj tc extra QM\n.model QM VDMOS\n.end\n"), ParseError);
++}
++
++TEST_F(VDMOSValidation, MobilityReductionUsesOverdriveNgspice47) {
++    const auto path = std::string(TEST_CIRCUITS_DIR) + "/vdmos_theta.cir";
++    auto ckt = sim_.load(path);
++    auto expected = ngspice_->run_dc(path);
++    std::erase_if(expected.node_voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto actual = sim_.run_dc(ckt);
++    const auto comparison = compare_dc(expected, actual);
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++    EXPECT_GT(std::abs(actual.current("vdn")), 1e-3);
++    EXPECT_NEAR(actual.current("vdp"), -actual.current("vdn"), 1e-10);
++    EXPECT_LT(std::abs(actual.current("vdn")), std::abs(actual.current("vdcontrol")));
+ }
+ 
+ // ---------------------------------------------------------------------------
+--- a/tests/unit/test_ngspice_compare.cpp
++++ b/tests/unit/test_ngspice_compare.cpp
+@@ -21,6 +21,37 @@
+ // ---------------------------------------------------------------------------
+ // DC operating-point tests — these should match ngspice very tightly.
+ // ---------------------------------------------------------------------------
++
++TEST_F(NgspiceCompareTest, ModelExpressionsRefreshDcAndCachedAcAcrossTemperatures) {
++    const auto base = std::string(TEST_CIRCUITS_DIR) + "/model_temperature_";
++    auto ckt = sim_.load(base + "27.cir");
++    double original_current = 0;
++    for (const int temperature : {27, 0, 60, 27}) {
++        SCOPED_TRACE(temperature);
++        const auto path = base + std::to_string(temperature) + ".cir";
++        ckt.options.temp = temperature + 273.15;
++        // Run AC first: a temperature change must invalidate the previous OP,
++        // even when the user does not explicitly request another DC analysis.
++        const auto expected_ac = ngspice_->run_ac(path);
++        const auto actual_ac = sim_.run_ac(ckt, ACMode::DEC, 5, 10, 1e5);
++        const auto ac = compare_ac(expected_ac, actual_ac);
++        EXPECT_TRUE(ac.passed) << ac.worst_signal << " " << ac.worst_error;
++        auto expected_dc = ngspice_->run_dc(path);
++        std::erase_if(expected_dc.node_voltages, [](const auto& item) {
++            return item.first.find('#') != std::string::npos;
++        });
++        const auto actual_dc = sim_.run_dc(ckt);
++        const auto dc = compare_dc(expected_dc, actual_dc);
++        EXPECT_TRUE(dc.passed) << dc.worst_signal << " " << dc.worst_error;
++        EXPECT_GT(std::abs(actual_dc.current("vcc")), 1e-5);
++        EXPECT_GT(std::abs(actual_dc.current("vdd")), 1e-5);
++        EXPECT_GT(std::abs(actual_dc.current("vdiode")), 1e-5);
++        if (temperature == 27) {
++            if (original_current == 0) original_current = actual_dc.current("vcc");
++            else EXPECT_NEAR(actual_dc.current("vcc"), original_current, 1e-12);
++        }
++    }
++}
+ 
+ TEST_F(NgspiceCompareTest, ResistorDividerDC) {
+     std::string path = std::string(TEST_CIRCUITS_DIR) + "/resistor_divider.cir";
+--- a/tests/unit/test_parser.cpp
++++ b/tests/unit/test_parser.cpp
+@@ -10,6 +10,75 @@
+ #include "devices/switch.hpp"
+ 
+ using namespace neospice;
++
++TEST(Parser, ModelExpressionsPreserveGroupingAndParameters) {
++    const auto card = parse_model_card({".model", "QM",
++        "NPN (BF={2 * (50 + 10)}, IS='10 * 1e-15') VAF={voltage}"},
++        {{"voltage", 80.0}});
++    EXPECT_DOUBLE_EQ(card.params.at("bf"), 120.0);
++    EXPECT_DOUBLE_EQ(card.params.at("is"), 1e-14);
++    EXPECT_DOUBLE_EQ(card.params.at("vaf"), 80.0);
++    EXPECT_EQ(card.params.size(), 3u);
++    EXPECT_TRUE(card.temperature_expressions.empty());
++}
++
++TEST(Parser, InvalidModelExpressionsCannotUseDefaults) {
++    for (const std::string value : {"{missing}", "{1 / 0}", "{2*(3+4)", "'2*(3+4)"}) {
++        SCOPED_TRACE(value);
++        EXPECT_THROW(parse_model_card({".model", "QM", "NPN BF=" + value}), ParseError);
++    }
++}
++
++TEST(Parser, ModelTemperatureExpressionRemainsDeferred) {
++    const auto card = parse_model_card({".model", "POWER",
++        "VDMOS(Vto={base - slope * (TEMPER - 25)} Kp={2*10m})"},
++        {{"base", 0.65}, {"slope", 0.0016}});
++    EXPECT_FALSE(card.params.contains("vto"));
++    EXPECT_TRUE(card.temperature_expressions.contains("vto"));
++    EXPECT_DOUBLE_EQ(card.params.at("kp"), 0.02);
++    const auto numeric_override = parse_model_card({".model", "POWER",
++        "VDMOS(Vto={TEMPER/100} Vto=0.7)"});
++    EXPECT_TRUE(numeric_override.temperature_expressions.empty());
++    EXPECT_DOUBLE_EQ(numeric_override.params.at("vto"), 0.7);
++}
++
++TEST(Parser, ModelTempAliasRequiresPspiceCompatibility) {
++    const std::string deck = "Temperature alias\nVd d 0 2\nVg g 0 1\n"
++        "M1 d g 0 POWER\n.model POWER VDMOS(Vto={TEMP/100})\n.end\n";
++    NetlistParser parser;
++    parser.set_force_pspice_compat(false);
++    EXPECT_THROW(parser.parse(deck), ParseError);
++    parser.set_force_pspice_compat(true);
++    EXPECT_NO_THROW(parser.parse(deck));
++}
++
++TEST(Parser, UnsupportedModelTemperatureUpdatesFailExplicitly) {
++    NetlistParser parser;
++    for (const std::string deck : {
++        "Diode topology update\nD1 d 0 DM\n.model DM D(RS={TEMPER})\n.end\n",
++        "MOS topology update\nM1 d g 0 POWER\n.model POWER VDMOS(RD={TEMPER})\n.end\n",
++        "Passive model update\nR1 d 0 RM 1k\n.model RM R(TC1={TEMPER})\n.end\n"}) {
++        SCOPED_TRACE(deck);
++        EXPECT_THROW(parser.parse(deck), ParseError);
++    }
++}
++
++TEST(Parser, ModelTemperatureErrorIsReportedAndCircuitCanRecover) {
++    Simulator sim;
++    auto ckt = sim.parse("Temperature error recovery\n"
++        "Vd d 0 2\nVg g 0 1\nM1 d g 0 FIRST\n"
++        ".model FIRST VDMOS(Vto={TEMPER/100} Kp=.44)\n"
++        "Vd2 d2 0 2\nVg2 g2 0 1\nM2 d2 g2 0 SECOND\n"
++        ".model SECOND VDMOS(Vto=.5 Kp={1/(60-TEMPER)})\n.op\n.end\n");
++    const auto original = sim.run_dc(ckt);
++    ckt.options.temp = 333.15;
++    EXPECT_THROW(sim.run_dc(ckt), ParseError);
++    EXPECT_EQ(ckt.operating_point(), nullptr);
++    ckt.options.temp = 300.15;
++    const auto recovered = sim.run_dc(ckt);
++    EXPECT_NEAR(recovered.current("vd"), original.current("vd"), 1e-12);
++    EXPECT_NEAR(recovered.current("vd2"), original.current("vd2"), 1e-12);
++}
+ 
+ TEST(Parser, ModelParametersBeforeInsideAndAfterParentheses) {
+     for (const std::string body : {
+--- a/tools/ngspice_migrate/gen_adapter.py
++++ b/tools/ngspice_migrate/gen_adapter.py
+@@ -468,6 +468,7 @@
+     parts.append(f'// Adapter bridging the neospice Device interface to the UCB {prefix} code.\n')
+     parts.append("\n")
+     parts.append('#include "devices/device.hpp"\n')
++    parts.append('#include "devices/model_card_runtime.hpp"\n')
+     parts.append(f'#include "devices/{ns}/{ns}_def.hpp"\n')
+     parts.append(f'#include "devices/{ns}/{ns}_shim.hpp"\n')
+     parts.append("#include <memory>\n")
+@@ -481,7 +482,7 @@
+     parts.append("\n")
+ 
+     # --- ModelCard struct ---------------------------------------------------
+-    parts.append(f"struct {prefix}ModelCard {{\n")
++    parts.append(f"struct {prefix}ModelCard : ModelCardRuntime {{\n")
+     parts.append(f"    {ns}::{desc.cpp_model} ucb{{}};   // aggregate UCB model fields\n")
+     parts.append("\n")
+     parts.append(f"    {prefix}ModelCard() = default;\n")
+--- a/tools/ngspice_migrate/gen_model_card.py
++++ b/tools/ngspice_migrate/gen_model_card.py
+@@ -84,7 +84,7 @@
+     lines.append(f'    namespace S = {ns}::Shim;')
+     lines.append(f'    convert_model_card_params<S::IfParm, S::IfValue>(')
+     lines.append(f'        card, ucb, {ns}::{prefix}mPTable, {ns}::{prefix}mPTSize,')
+-    lines.append(f'        {ns}::{prefix}mParam, "{prefix}");')
++    lines.append(f'        {ns}::{prefix}mParam, "{prefix}", out.get());')
+ 
+     lines.append('')
+     lines.append('    return out;')
+--- a/README.md
++++ b/README.md
+@@ -25,7 +25,7 @@
+ - **High performance** -- NeoSolver (self-contained Sparse 1.3-compatible LU), G/C matrix caching for AC, adjoint-method noise
+ - **ngspice-compatible** -- reads standard SPICE netlists, writes `.raw` files in ngspice format
+ - **C++ and Python validation** -- analytical checks and ngspice comparisons, with current failures and test results in the [progress tracker](docs/joss-progress.md)
+-- **Corpus harness** -- a historical cohort of **34,908 KiCad operating-point fixtures**; [input freezing](docs/kicad-experiment.md) now records declaration identities and separate planned rescues. Completed reference-version-specific audits are linked from the progress tracker; declaration binding and full-model scope still need interpretation. Minimal operating-point fixtures do not certify transient, AC, or noise behavior.
++- **Corpus harness** -- a historical cohort of **34,908 KiCad operating-point fixtures**; [input freezing](docs/kicad-experiment.md) now records declaration identities and separate planned rescues. Completed ngspice 47 audits are linked from the progress tracker; declaration binding and full-model scope still need interpretation. Minimal operating-point fixtures do not certify transient, AC, or noise behavior.
+ 
+ ## Quick Start (C++)
+ 
+--- a/docs/capabilities.md
++++ b/docs/capabilities.md
+@@ -79,7 +79,7 @@
+ Unsupported AC/noise fixtures must remain in experiment accounting and must not
+ be counted as accuracy matches or accepted performance samples.
+ 
+-Candidate 35's Release suite passes 1,251 of 1,252 tests against ngspice
++Candidate 36's Release suite passes 1,261 of 1,262 tests against ngspice
+ 47, including the JFET2, MOS3 and VBIC transient fixtures. ngspice47 is the sole
+ reference. The remaining supported-scope corpus discrepancies and RFF70N06
+ regression remain release blockers. See
+@@ -120,3 +120,7 @@
+ numerical-failure option as C++. Sensitivity entries after a failed perturbation
+ are partial results: always inspect `result.status.converged` before using them
+ as a complete gradient.
++
++Model-language support has additional boundaries: see the
++[temperature-expression parameter table](model-card-compatibility.md#candidate-36-expression-scope).
++A supported device family does not imply every model expression or option is supported.
+--- a/docs/joss-progress.md
++++ b/docs/joss-progress.md
+@@ -13,14 +13,73 @@
+ | Milestone | Status and remaining work |
+ |---|---|
+ | 1. Scope, eligibility and environment | Pinned ngspice47 CLI/shared build verified locally. CI and migration tests use the same47 source. Full support matrix, actual public timeline and eligibility remain. |
+-| 2. Trustworthy validation | Candidate 35: 1,251/1,252 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. The VBIC switching test uses the standard, stricter comparator tolerance. |
+-| 3. Numerical correctness | Three-terminal VDMOS parsing and mixed-case MOSFET model lookup corrected; candidate 35 passes 51 parser/BJT and eight VDMOS sanitizer tests with leak detection. VDMOS global-model scope, model expressions/temperature behavior, PA84, remaining CoolMOS/IRF/RFF/TLV discrepancies, broader option coverage and the earlier reference T-line leak remain. |
+-| 4. Compatibility experiment | Checkpoint 35 executes and audits all 67,359 fixtures against 47. Four reference-only successes become matches; seven formerly failing native runs succeed while the reference still fails. No outcome regressions or reference-result changes. Broader binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
++| 2. Trustworthy validation | Candidate 36: 1,261/1,262 C++ tests and all 393 fresh-wheel Python/tooling tests pass against 47. RFF remains failing. Additional direct/AKO precedence and model/node collision counterexamples remain despite those passing test totals. |
++| 3. Numerical correctness | Model expressions, selected runtime temperature updates, ordinary global VDMOS scope, VDMOS mobility reduction and BJT nominal capacitance correction implemented. All 58 parser/BJT/temperature and 11 VDMOS sanitizer tests pass with leak detection. Newly reproduced scope collision and assignment-precedence defects, broader model/option support, PA84/CoolMOS/IRF/RFF/TLV and the earlier reference T-line leak remain. |
++| 4. Compatibility experiment | Checkpoint 36 executes and independently audits all 67,359 fixtures. All 1,037 outcome changes are retained: 644 MATCH-to-NG_ONLY, one MISMATCH-to-NG_ONLY and 392 native-success-to-BOTH_FAIL transitions. Reference results are unchanged. Forward/local expression parameters, runtime MOS3 KP/VTO and diode BV, scope collisions and internal-observable classification need correction; grouping/held-out multi-analysis evaluation remains. |
+ | 5. Benchmarks | All34 comprehensive workloads qualify47; THS4131 qualifies5/5. TLV passes its original edge/DC-port contract but retains a strict pointwise discrepancy. Final candidate measurements and interpretation remain. |
+ | 6. Documentation and attribution | Current documentation uses47 exclusively. Component copyright/license/distribution audit remains incomplete. |
+ | 7. Manuscript and release | Draft paper exists. Actual research use, author confirmations, final release metadata, independent installation and final evidence reconciliation remain. |
+ 
+-## Latest verified checkpoint: 35
++## Latest complete checkpoint: 36
++
++The frozen candidate corrects ordinary global three-terminal VDMOS model
++scope, grouped/quoted model expressions, selected runtime temperature updates,
++operating-point invalidation, ngspice 47 VDMOS mobility reduction and BJT nominal
++junction-potential correction. All six previously failing VT6K1 bias/temperature
++probes now match. See [VDMOS](vdmos-compatibility.md) and
++[model expressions](model-card-compatibility.md) for the tested boundaries.
++
++Release C++ validation passes 1,261/1,262 cases; the required RFF70N06 failure
++remains. All 393 fresh-wheel Python/tooling tests, 58 focused parser/BJT/
++temperature sanitizer tests and 11 VDMOS sanitizer tests pass. Leak detection
++is enabled. All 34 comprehensive, five THS4131 and one TLV benchmark accuracy
++gates pass. No new timing or publication-readiness claim is made.
++
++The entire 67,359-fixture corpus completes and its outcomes are independently
++recomputed. Primary has 20,027 MATCH, 1,273 MISMATCH, 224 NG_ONLY, 4,179
++NEO_ONLY, 5,101 NEO_TRIVIAL and 4,104 BOTH_FAIL. Driven has 22,447 MATCH,
++1,272 MISMATCH, 493 NG_ONLY, 6,902 NEO_ONLY and 1,337 BOTH_FAIL. Keep these
++populations separate; they are not a combined matched-model percentage.
++
++All 1,037 changed outcomes become explicit native parse failures: 892 unsupported
++runtime parameter cases, 138 unresolved expression-parameter cases, five model/
++node scope collisions and two GAUSS-arity cases. This includes 644 former
++matches. An explicit error is not an accuracy win. Native values/status change
++in 1,071 fixtures, while every reference value/status is unchanged. The
++[summary](evidence/joss/2026-09-11-checkpoint36-corpus-run47-summary.json),
++[ledger](evidence/joss/2026-09-11-checkpoint36-corpus-run47-records.json.gz),
++[transitions](evidence/joss/2026-09-11-checkpoint36-candidate47-transitions.json)
++and [triage](evidence/joss/2026-09-11-checkpoint36-transition-triage.json)
++retain all fixtures and failures. The
++[complete raw archive](evidence/joss/2026-09-11-checkpoint36-full-corpus.tar.gz)
++contains 648,308 regular files; its
++[verification](evidence/joss/2026-09-11-checkpoint36-full-corpus-archive.json)
++checks all 648,276 audited artifacts plus the remaining run metadata.
++
++The stronger diagnostics establish the immediate next work:
++
++- Direct and AKO temperature expressions override later literals in ngspice 47;
++  this candidate keeps the literal. Both probes fail at 0/27/60 °C. The parser's
++  numeric-override unit assertion describes native behavior and must change
++  with the implementation.
++- A global model named `S` collides with the formal source terminal `s` of a
++  four-terminal MOS card. The reduced fixture passes candidate 35 and fails
++  candidate 36 while the reference passes. This is a new scoping regression.
++- MOS3 `KP` accounts for 870 newly explicit errors, MOS3 `VTO` for 18 and
++  diode `BV` for four. Forward/local parameters and GAUSS compatibility also
++  remain; do not hide their failures or classify earlier matches as proof of
++  correct expression evaluation.
++- The corpus filter does not recognize generated VDMOS `#gate` and
++  `#body_diode` nodes as internal. Reduced RG/RB probes fail on those missing
++  observables while public currents agree. Correct the classification with
++  explicit regression tests and retain every fixture in the accounting.
++
++[Checkpoint 36](evidence/joss/2026-09-11-validation-36.json) records the 914-file
++source inventory, candidate hash, reconstructable patch, build/test logs,
++positive diagnostics and counterexamples, benchmark accuracy checks and corpus
++archives. This is a verified development checkpoint, not a release candidate.
++
++## Previous complete checkpoint: 35
+ 
+ The eight-cell terminal-layout regression verifies actual N/P VDMOS devices,
+ three/four/five-terminal forms, mixed-case model references, optional instance
+--- a/docs/model-card-compatibility.md
++++ b/docs/model-card-compatibility.md
+@@ -51,8 +51,8 @@
+ fails 452 of those fixtures; the other four cover SGN20N40L and VT6K1, whose
+ three-terminal VDMOS cards remain unsupported by the native parser. Three
+ earlier MATCH results omitted those transistors. All fixtures and failures
+-remain in the accounting. Candidate 35 repairs those four fixtures, while
+-global-model scoping and temperature-expression defects remain; see the
++remain in the accounting. Candidate 35 repairs those four minimal fixtures. Candidate 36 also corrects
++the demonstrated global-model scope and selected temperature-expression paths; see the
+ [VDMOS audit](vdmos-compatibility.md) and the checkpoint 34
+ [complete transition triage](evidence/joss/2026-09-11-checkpoint34-transition-triage.json).
+ 
+@@ -62,3 +62,67 @@
+ All 34 comprehensive, five THS4131 and one TLV benchmark accuracy gates pass;
+ no new performance measurement is implied. The [progress tracker](joss-progress.md)
+ records the complete corpus results and remaining publication blockers.
++
++## Candidate 36 expression scope
++
++Balanced brace and quoted model values preserve parentheses, whitespace and
++commas within expressions. Known constant parameters and expanded functions
++are evaluated before model conversion. Unknown expression identifiers,
++unbalanced delimiters and non-finite values produce `ParseError`.
++Non-numeric metadata and unknown model parameters retain their existing warning
++behavior; this is not complete malformed-input rejection.
++
++`TEMPER` represents circuit temperature in degrees Celsius. `TEMP` is normalized
++to it only in PSpice compatibility mode. Model expressions keep local constant
++substitutions while deferring temperature. AKO inheritance merges numeric and
++deferred parameters. Its numeric-versus-temperature-expression precedence still
++differs from ngspice 47, as described below.
++
++Runtime parameter updates currently support:
++
++| Model | Temperature-dependent parameters |
++|---|---|
++| VDMOS | `VTO`, `KP`, `BV` |
++| MOS1 | `VTO`, `KP` |
++| Classical BJT | `BF` |
++| Diode | `IS` |
++
++Other recognized runtime updates fail explicitly. In particular, a resistance
++expression may change internal-node allocation or setup-derived conductances;
++updating its number without rebuilding those dependencies would be incorrect.
++Static constant expressions still use ordinary model setup for all model types.
++This restriction does not claim that the corresponding ngspice feature is
++unsupported by ngspice itself.
++
++Circuit temperature changes invalidate cached operating points and device
++temperature preprocessing. Invalid model expressions surface before DC
++convergence fallbacks and leave the circuit able to recover at a valid
++temperature. A combined BJT/diode/MOS1 regression runs AC before DC through
++27 → 0 → 60 → 27 °C, checking that an old DC solution is not reused. Its BJT
++capacitance comparison also exposed and corrected use of the actual rather
++than nominal junction-potential correction in temperature preprocessing.
++
++Dependent `.param` expressions, forward/local parameter scope, ancestor-local
++model scope, other temperature-dependent model parameters, and further
++instance/nominal-temperature combinations remain compatibility work. The
++full-corpus accounting retains cases that now report previously hidden input
++errors. A previously matching minimal operating point is not evidence that its
++model expressions were evaluated correctly.
++
++A stronger assignment-precedence diagnostic remains failing. With
++`VTO={.65-.001*(TEMP-27)} VTO=.6` under PSpice compatibility, ngspice 47 applies
++the deferred temperature expression; this candidate keeps the later literal.
++An AKO-derived literal override of the base's temperature expression has the
++same discrepancy. At 27 °C, the diagnostic drain currents are -35.520163 mA
++(native) versus -27.410104 mA (reference). Both variants fail at 0/27/60 °C;
++expression inheritance without the literal override and derived expressions
++over a literal base agree. The new parser unit test's numeric-override assertion
++currently describes native behavior and must be corrected together with this
++implementation defect. Passing suite totals do not resolve this counterexample.
++
++The completed corpus also reproduces a new model/node scope collision. A global
++model named `S` must not prevent a four-terminal MOS card's formal source node
++`s` from being expanded to its connected node. The reduced reference fixture
++passes candidate 35 and ngspice 47 but fails candidate 36. This and the literal/
++temperature precedence counterexamples are blockers in the new implementation,
++not merely additional untested features.
+--- a/docs/ngspice47-reference.md
++++ b/docs/ngspice47-reference.md
+@@ -62,13 +62,14 @@
+ 
+ ## Remaining compatibility work
+ 
+-Candidate 35 passes 1,251 of 1,252 C++ tests against 47; the required RFF70N06
++Candidate 36 passes 1,261 of 1,262 C++ tests against 47; the required RFF70N06
+ operating-point regression remains failing. It is retained even though the
+ reference also fails this fixture. The full frozen corpus contains67,359 cases
+ across two distinct fixture variants; remaining mismatches, model binding,
+ option coverage and evaluation grouping require investigation.
+ The [VDMOS audit](vdmos-compatibility.md) distinguishes repaired terminal syntax
+-from remaining model-scope and temperature-expression defects.
++from the tested repairs, a new model/node scope collision, temperature-expression
++assignment-precedence defects and remaining option coverage.
+ 
+ All34 comprehensive benchmark workloads pass their accuracy gates. TLV3201
+ passes its original edge/DC-port contract but retains a strict pointwise
+--- a/docs/vdmos-compatibility.md
++++ b/docs/vdmos-compatibility.md
+@@ -21,40 +21,61 @@
+ instances identified in checkpoint 34. They do not certify the models under
+ arbitrary bias, temperature or analysis settings.
+ 
+-## Stronger diagnostics and remaining blockers
++## Model expressions, scope and ngspice 47 mobility reduction
+ 
+-VT6K1 still emits warnings that `TEMP` defaults to zero. A diagnostic with
+-drain voltage 2 V, gate voltages 0.7/1.5 V and temperatures 0/27/60 °C fails
+-all six reference comparisons. At 27 °C and gate voltage 0.7 V, native drain
+-supply current is approximately -0.972669 mA, versus -2.274588 mA in ngspice 47.
+-This is a real unresolved correctness defect despite the minimal corpus matches;
+-the temperature warning alone does not isolate every cause of the discrepancy.
++Candidate 36 repairs three-terminal references to global models during
++subcircuit expansion. The six-cell regression covers global/local models,
++nested use of a global model, local shadowing and a four-terminal control.
++A reduced four-terminal MOS circuit also exposes a new collision: a global
++model named `S` is mistaken for the formal source terminal `s`. It passes
++candidate 35 and fails candidate 36 while ngspice 47 succeeds. This is a
++compatibility regression requiring correction, not successful validation of
++all global-model scope. Enclosing-scope lookup needs broader coverage.
+ 
+-A separate global-model control compares a `Vto` expression containing `TEMP`
+-with its literal value. The reference expression and literal results agree at
+-all three temperatures. Native global model parsing omits the expression's
+-`Vto` parameter and uses the default threshold; at 27 °C its expression cell
+-conducts about 2 pA instead of 2.174185 mA. The literal controls agree with the
+-reference. A four-terminal control gives identical native values in candidates
+-34 and 35, proving this expression defect predates the terminal-parser fix.
++Model-card parsing now preserves braces, quotes, grouping and constant
++parameters. Supported temperature expressions are evaluated before model setup
++and again when circuit temperature changes; cached device temperatures and
++operating points are invalidated. Canonical `TEMPER` works in the default
++dialect. `TEMP` is an alias only in PSpice compatibility mode. Unsupported
++runtime updates raise an error rather than silently using a model default.
++See [model-card compatibility](model-card-compatibility.md) for the exact scope.
+ 
+-Subcircuit model scope also remains a blocker. A three-terminal VDMOS referencing
+-a local model works, but one referencing a global model fails: subcircuit
+-expansion still treats the model token as a fourth node. The four-terminal
+-global-model control and both local-model controls match the reference.
++VDMOS mobility reduction now uses `1 + THETA * vdsat`, following the pinned
++ngspice 47 `vdmosload.c`, instead of `1 + THETA * vgs`. A separate N/P regression
++checks saturation, triode and reverse operation with a zero-THETA control.
++The original regression failed with a normalized current error of 0.1848;
++it passes after the implementation correction without changing tolerance.
++
++All six stronger VT6K1 diagnostics now match: drain voltage 2 V, gate voltages
++0.7/1.5 V and circuit temperatures 0/27/60 °C. At 27 °C and gate voltage 0.7 V,
++both simulators give approximately -2.274588 mA for the drain supply current.
++The separate global-expression/literal controls and local/global scope probes
++also match. These deliberately chosen diagnostics are not held out.
++
++The repeated-temperature regression runs one loaded native circuit through
++27 → 0 → 60 → 27 °C against fresh ngspice 47 references. It checks global/local
++expressions, shared instances, N/P polarity, literal controls, changing `KP`
++and a body-diode breakdown expression. These checks do not establish general
++thermal or model-language compatibility.
+ 
+ | Area | Current status |
+ |---|---|
+-| DC and IV sweep | Existing N/P operating-point and N-channel sweep tests pass, together with the new terminal-layout regression. |
+-| AC and noise | Explicitly rejected with `SimulationError`; existing tests verify the rejection, including `no_throw`. |
+-| Model expressions and temperature-dependent parameters | Known correctness defects described above; not validated by the four passing corpus fixtures. |
+-| Model scope in subcircuits | Three-terminal references to global models remain a known parser defect. |
++| DC and IV sweep | N/P operating points, N-channel sweep, terminal forms, scope, mobility reduction and the specified temperature-expression regressions pass. |
++| AC and noise | Explicitly rejected with `SimulationError`; tests include `no_throw`. |
++| Temperature expressions | VDMOS `VTO`, `KP` and `BV` supported. Other runtime model-parameter updates fail explicitly. |
++| Model scope | Ordinary global three-terminal binding is repaired, but a model/formal-node name collision introduces a demonstrated regression. Ancestor-local scope remains unverified. |
+ | Thermal and instance options | The adapter is isothermal. `TEMP`, `DTEMP`, `IC`, `OFF`, thermal behavior and operating-point queries need further coverage and correction where ignored. |
+ | General transient behavior | Not certified by these DC/parser checks. |
+ 
+-Candidate 35 passes 1,251/1,252 Release C++ tests, all 393 Python/tooling tests,
+-51 parser/BJT sanitizer tests and all eight VDMOS sanitizer tests. Leak detection
+-is enabled in those focused sanitizer groups. RFF70N06 remains the C++ failure.
+-All 34 comprehensive, five THS4131 and one TLV benchmark accuracy gates pass;
+-no new performance timings were collected. The [progress tracker](joss-progress.md)
+-links the full corpus audit and preserved diagnostic outputs.
++Candidate 36 passes 1,261/1,262 Release C++ tests and all 393 Python/tooling
++tests. RFF70N06 remains failing. All 58 focused parser/BJT/temperature sanitizer
++tests and 11 VDMOS sanitizer tests pass with leak detection enabled. The
++[progress tracker](joss-progress.md) records corpus and benchmark validation;
++these focused checks are not a claim of complete model or leak-free coverage.
++
++The global `RG`/`RB` reduced diagnostics also identify a comparison-harness
++boundary: generated reference nodes `m1#gate` and `m1#body_diode` are currently
++required as public outputs by the corpus filter. Those probes fail on missing
++internal observables even though public currents agree. The pinned reference's
++`vdmosset.c` creates these nodes internally; the filter and its tests need
++correction without removing fixtures or weakening numerical tolerances.

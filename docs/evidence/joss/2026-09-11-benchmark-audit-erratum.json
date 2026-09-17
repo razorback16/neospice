@@ -1,0 +1,8 @@
+{
+  "date": "2026-09-11",
+  "affected": "docs/benchmark-harness-audit.md as archived in checkpoints25/26",
+  "incorrect_text": "checks a separate CLI reference result",
+  "corrected_text": "checks a separate shared-library reference result rather than each sampled result",
+  "evidence": "tests/framework/ngspice_runner.cpp: NgspiceRunner::run_transient uses ng_.reset/load_circuit/command then read_transient, with NgspiceLib as its member",
+  "effect": "Documentation-only correction of the old launch-path description. Benchmark data, solver configuration and outcomes are unchanged."
+}

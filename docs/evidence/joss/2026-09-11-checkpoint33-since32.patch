@@ -1,0 +1,1418 @@
+--- a/src/core/newton.cpp
++++ b/src/core/newton.cpp
+@@ -203,6 +203,12 @@
+         for (Device* dev : load_order)
+             dev->evaluate(solution, mat,
+                           std::span<double>(one_based_rhs.data() + 1, n));
++
++        // NIiter's UIC preamble loads initial device states once, without
++        // solving an operating point. Keep the prescribed initial voltages;
++        // the first transient step will solve the circuit equations.
++        if ((saved_mode & MODETRANOP_BIT) && (saved_mode & MODEUIC_BIT))
++            return NewtonResult{true, 0, 0.0, -1};
+ 
+         // Hand the accumulated loads back to the zero-based vector the solver
+         // takes.  One unconditional copy, versus the two-or-more the old
+--- a/src/core/noise.cpp
++++ b/src/core/noise.cpp
+@@ -11,8 +11,7 @@
+ 
+ #include "core/noise.hpp"
+ #include "core/freq_utils.hpp"
+-#include "core/newton.hpp"
+-#include "core/convergence.hpp"
++#include "core/dc.hpp"
+ #include "core/neo_solver.hpp"
+ #include "devices/vsource.hpp"
+ #include "devices/inductor.hpp"
+@@ -75,72 +74,19 @@
+     // ---------------------------------------------------------------
+     // 3. DC operating point (same as AC analysis)
+     // ---------------------------------------------------------------
+-    std::vector<double> dc_solution(n, 0.0);
+-    std::vector<char> pinned(n, 0);
+-    for (auto& [node_id, value] : ckt.nodeset) {
+-        int32_t node_idx = static_cast<int32_t>(node_id);
+-        if (node_idx >= 0 && node_idx < n) {
+-            dc_solution[node_idx] = value;
+-            pinned[node_idx] = 1;
+-        }
+-    }
+-    for (auto& [node_id, value] : ckt.ic) {
+-        int32_t node_idx = static_cast<int32_t>(node_id);
+-        if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
+-            dc_solution[node_idx] = value;
+-        }
+-    }
+-
+-    auto dc_solver = std::make_unique<NeoSolver>();
+-    dc_solver->symbolic(ckt.pattern());
+-
+-    // Publish SimOptions for BSIM4v7Device (and any future state-storing
+-    // device) via the same integrator_ctx channel used for CKTmode/ag.
+-    ckt.integrator_ctx.options = &ckt.options;
+-
+-    // Noise analysis runs a plain DC operating point first — use MODEDCOP
+-    // (0x10), same as solve_dc().  newton_solve() reads integrator_ctx.mode.
+-
+-    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+-    auto result = newton_solve(ckt, *dc_solver, dc_solution, ckt.options);
+-    if (result.converged) {
+-        // dc_solution modified in-place by newton_solve
+-    } else {
+-        result = gmin_stepping(ckt, *dc_solver, dc_solution, ckt.options,
+-                               MODEDCOP_BIT | MODEINITJCT_BIT,
+-                               MODEDCOP_BIT | MODEINITFLOAT_BIT);
+-        if (result.converged) {
+-            // dc_solution modified in-place
+-        } else {
+-            ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+-            result = source_stepping(ckt, *dc_solver, dc_solution, ckt.options);
+-            if (result.converged) {
+-                // dc_solution modified in-place
+-            } else {
+-                ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+-                result = pseudo_transient(ckt, *dc_solver, dc_solution, ckt.options);
+-                if (result.converged) {
+-                    // dc_solution modified in-place
+-                } else {
+-                    SimStatus fail_status;
+-                    fail_status.converged = false;
+-                    fail_status.residual = result.residual;
+-                    fail_status.worst_node_idx = result.worst_node_idx;
+-                    if (!ckt.options.no_throw) {
+-                        throw SimulationError(
+-                            "Noise analysis: DC operating point failed to converge",
+-                            fail_status);
+-                    }
+-                    auto t_end = std::chrono::steady_clock::now();
+-                    fail_status.elapsed_seconds =
+-                        std::chrono::duration<double>(t_end - t_start).count();
+-                    NoiseResult fail_result;
+-                    fail_result.status = fail_status;
+-                    return fail_result;
+-                }
+-            }
+-        }
+-    }
++    // Use the same operating-point implementation as .op and AC, including
++    // reference-order true-gmin and transient continuation. A separate reduced
++    // fallback chain can reject a bias point that .op successfully finds.
++    const auto dc = solve_dc(ckt);
++    if (!dc.status.converged) {
++        NoiseResult fail_result;
++        fail_result.status = dc.status;
++        return fail_result;
++    }
++    const auto* operating_point = ckt.operating_point();
++    if (!operating_point || static_cast<int32_t>(operating_point->size()) != n)
++        throw std::logic_error("Noise analysis: DC operating point cache missing");
++    const std::vector<double> dc_solution = *operating_point;
+     // Persist diag_gmin baseline after DC convergence
+     ckt.options.diag_gmin = ckt.options.gshunt;
+ 
+--- a/src/core/transient.cpp
++++ b/src/core/transient.cpp
+@@ -135,7 +135,7 @@
+ // Returns the converged solution; throws SimulationError on failure.
+ static void compute_dc_operating_point(Circuit& ckt, ISolver& solver,
+                                        std::vector<double>& solution,
+-                                       int& total_newton_iters) {
++                                       int& total_newton_iters, bool uic) {
+     // Initial guess: zeros + .nodeset hints; .ic as fallback for unpinned nodes.
+     const int32_t n = ckt.num_vars();
+     std::vector<char> pinned(n, 0);
+@@ -148,14 +148,15 @@
+     }
+     for (auto& [node_id, value] : ckt.ic) {
+         int32_t node_idx = static_cast<int32_t>(node_id);
+-        if (node_idx >= 0 && node_idx < n && !pinned[node_idx]) {
++        if (node_idx >= 0 && node_idx < n && (uic || !pinned[node_idx])) {
+             solution[node_idx] = value;
+         }
+     }
+ 
+     // DC preamble — the transient initial operating point uses MODETRANOP
+     // (0x20), NOT the full MODEDC mask (0x70) or MODEDCOP (0x10).
+-    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT;
++    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITJCT_BIT |
++                              (uic ? MODEUIC_BIT : 0);
+     auto result = newton_solve(ckt, solver, solution, ckt.options);
+     if (result.converged) {
+         total_newton_iters += result.iterations;
+@@ -310,35 +311,6 @@
+ }
+ 
+ // ===================================================================
+-// Helper: Resolve TL initial conditions into the solution vector
+-// ===================================================================
+-// After DC OP (TL is short circuit) and TL IC initialization (history
+-// filled with IC values), the node voltages don't reflect the TL ICs.
+-// This solve uses the TL companion model with IC-initialized history
+-// to make node voltages consistent before storing the t=0 output.
+-// ngspice achieves this implicitly: its first output point is after
+-// the first MODEINITTRAN Newton step, so ICs are already resolved.
+-static void resolve_tl_initial_conditions(Circuit& ckt, ISolver& solver,
+-                                          std::vector<double>& solution,
+-                                          double tstep) {
+-    bool tl_has_ic = false;
+-    for (auto& dev : ckt.devices()) {
+-        if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get())) {
+-            if (tl->has_ic()) { tl_has_ic = true; break; }
+-        }
+-    }
+-    if (!tl_has_ic) return;
+-
+-    ckt.integrator_ctx.current_time = 0.0;
+-    ckt.integrator_ctx.delta = tstep;
+-    ckt.integrator_ctx.mode = MODETRANOP_BIT | MODEINITFIX_BIT;
+-    auto result = newton_solve(ckt, solver, solution, ckt.options);
+-    if (!result.converged && ckt.options.verbose)
+-        std::fprintf(stderr, "[tran] TL IC resolve did not converge (%d iters)\n",
+-                     result.iterations);
+-}
+-
+-// ===================================================================
+ // Helper: Resolve source defaults and set up timestep controller
+ // ===================================================================
+ static void resolve_source_defaults(Circuit& ckt, double tstep, double tstop) {
+@@ -397,7 +369,8 @@
+     ckt.integrator_ctx.delta_old[0] = dt;
+     ckt.integrator_ctx.delta_old[1] = ctrl.prev_dt();
+     ckt.integrator_ctx.delta_old[2] = prev_prev_dt;
+-    ckt.integrator_ctx.mode = MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
++    ckt.integrator_ctx.mode = (ckt.integrator_ctx.mode & MODEUIC_BIT) |
++        MODETRAN_BIT | (first_step ? MODEINITTRAN_BIT : MODEINITPRED_BIT);
+ 
+     // Honor the requested integration method throughout the analysis.
+     bool eff_gear = (ckt.integrator_ctx.integrate_method == 1);
+@@ -626,21 +599,21 @@
+ 
+     // Publish SimOptions so BSIM4v7Device can read user-configured values.
+     ckt.integrator_ctx.options = &ckt.options;
++    ckt.integrator_ctx.current_time = 0.0;
++    ckt.integrator_ctx.delta = 0.0;
+     const bool use_gear = (ckt.options.method == "gear");
+ 
+     // ---------------------------------------------------------------
+     // 1. DC operating point
+     // ---------------------------------------------------------------
+-    // ngspice always computes a DC OP, even with UIC — the MODEUIC flag
+-    // modifies device loading but doesn't skip the solve.  We do the same:
+-    // the DC OP establishes baseline node voltages, then apply_ic_overrides
+-    // and initialize_device_dc_state override with user-specified IC values.
++    // Under UIC, ngspice NIiter performs one initial device load and skips
++    // the DC solve. Otherwise establish the transient operating point.
+     update_source_time(ckt, 0.0);
+     std::vector<double> solution(n, 0.0);
+     auto dc_solver = make_solver(ckt.num_vars(), ckt.is_linear());
+     dc_solver->symbolic(ckt.pattern());
+     try {
+-        compute_dc_operating_point(ckt, *dc_solver, solution, total_newton_iters);
++        compute_dc_operating_point(ckt, *dc_solver, solution, total_newton_iters, uic);
+     } catch (const SimulationError& e) {
+         if (!ckt.options.no_throw) throw;
+         TransientResult fail_result;
+@@ -711,7 +684,6 @@
+     // ---------------------------------------------------------------
+     enable_transient_on_devices(ckt, tstep, use_gear);
+     initialize_device_dc_state(ckt, solution, uic);
+-    if (uic) resolve_tl_initial_conditions(ckt, *solver, solution, tstep);
+ 
+     // Seed state history from DC operating point.
+     // ngspice bcopy's state0→state1 (dctran.c:343), then at the start of
+@@ -728,8 +700,9 @@
+         }
+     }
+ 
+-    // Store t=0 output point
+-    store_point(0.0, solution);
++    // UIC has no solved t=0 operating point. Like ngspice, start its output
++    // with the first accepted transient step.
++    if (!uic) store_point(0.0, solution);
+ 
+     // Resolve PULSE/SIN default parameters before breakpoint collection
+     resolve_source_defaults(ckt, tstep, tstop);
+--- a/src/devices/capacitor.cpp
++++ b/src/devices/capacitor.cpp
+@@ -43,7 +43,12 @@
+ 
+         double vcap;
+         if (cond1) {
+-            vcap = has_ic() ? ic_ : 0.0;
++            // CAPgetic derives an omitted instance IC from the initial node
++            // voltages. Preserve that value for MODEINITTRAN, rather than
++            // replacing a .ic node voltage with zero.
++            const double initial_voltage = (ic->mode & MODEINITTRAN_BIT) ? v_prev_ :
++                (np_ >= 0 ? voltages[np_] : 0.0) - (nn_ >= 0 ? voltages[nn_] : 0.0);
++            vcap = has_ic() ? ic_ : ((ic->mode & MODEUIC_BIT) ? initial_voltage : 0.0);
+         } else {
+             double vp = (np_ >= 0 ? voltages[np_] : 0.0);
+             double vn = (nn_ >= 0 ? voltages[nn_] : 0.0);
+--- a/src/devices/vbic/vbic_def.hpp
++++ b/src/devices/vbic/vbic_def.hpp
+@@ -41,6 +41,18 @@
+     int VBICemitEINode; /* number of internal emitter node of vbic */
+     int VBICbaseBPNode; /* number of internal base node of vbic */
+     int VBICsubsSINode; /* number of internal substrate node */
++    int VBICxf1Node = 0;
++    int VBICxf2Node = 0;
++    bool VBICexcessPhase = false;
++    neospice::MatrixOffset VBICcollCIXf2Ptr{-1};
++    neospice::MatrixOffset VBICemitEIXf2Ptr{-1};
++    neospice::MatrixOffset VBICxf1BaseBIPtr{-1};
++    neospice::MatrixOffset VBICxf1EmitEIPtr{-1};
++    neospice::MatrixOffset VBICxf1CollCIPtr{-1};
++    neospice::MatrixOffset VBICxf1Xf1Ptr{-1};
++    neospice::MatrixOffset VBICxf1Xf2Ptr{-1};
++    neospice::MatrixOffset VBICxf2Xf1Ptr{-1};
++    neospice::MatrixOffset VBICxf2Xf2Ptr{-1};
+ 
+     double VBICarea;     /* area factor for the vbic */
+     double VBICicVBE;    /* initial condition voltage B-E*/
+@@ -341,6 +353,15 @@
+ #define VBICire_Vre VBICstate+65
+ 
+ #define VBICnumStates 66
++// Optional excess-phase state follows the original isothermal state block.
++#define VBICvxf1 VBICstate+66
++#define VBICvxf2 VBICstate+67
++#define VBICqxf1 VBICstate+68
++#define VBICcqxf1 VBICstate+69
++#define VBICqxf2 VBICstate+70
++#define VBICcqxf2 VBICstate+71
++#define VBICgxf1 VBICstate+72
++#define VBICgxf2 VBICstate+73
+ 
+ #define VBICsensxpbe VBICstate+66 /* charge sensitivities and their
+                               derivatives. +67 for the derivatives -
+--- a/src/devices/vbic/vbic_device.cpp
++++ b/src/devices/vbic/vbic_device.cpp
+@@ -155,6 +155,17 @@
+     RESOLVE(VBICsubsSICollCIPtr);
+     RESOLVE(VBICsubsSIBaseBIPtr);
+     RESOLVE(VBICsubsSIBaseBPPtr);
++    if (inst_.VBICexcessPhase) {
++        RESOLVE(VBICcollCIXf2Ptr);
++        RESOLVE(VBICemitEIXf2Ptr);
++        RESOLVE(VBICxf1BaseBIPtr);
++        RESOLVE(VBICxf1EmitEIPtr);
++        RESOLVE(VBICxf1CollCIPtr);
++        RESOLVE(VBICxf1Xf1Ptr);
++        RESOLVE(VBICxf1Xf2Ptr);
++        RESOLVE(VBICxf2Xf1Ptr);
++        RESOLVE(VBICxf2Xf2Ptr);
++    }
+ 
+ #undef RESOLVE
+ }
+@@ -364,6 +375,21 @@
+     G.add(inst.VBICemitEIBaseBXPtr, -Ibex_Vbex);
+     G.add(inst.VBICemitEIEmitEIPtr,  Ibex_Vbex);
+     // Itzf stamp
++    if (inst.VBICexcessPhase) {
++        G.add(inst.VBICcollCIXf2Ptr, 1.0);
++        G.add(inst.VBICemitEIXf2Ptr, -1.0);
++        G.add(inst.VBICxf1BaseBIPtr, -Itzf_Vbei - Itzf_Vbci);
++        G.add(inst.VBICxf1EmitEIPtr, Itzf_Vbei);
++        G.add(inst.VBICxf1CollCIPtr, Itzf_Vbci);
++        // ngspice preserves the last load's auxiliary conductances across
++        // small-signal initialization, including after transient OP fallback.
++        G.add(inst.VBICxf1Xf1Ptr, state0_[state_base_ + 72]);
++        G.add(inst.VBICxf1Xf2Ptr, 1.0);
++        G.add(inst.VBICxf2Xf1Ptr, -1.0);
++        G.add(inst.VBICxf2Xf2Ptr, state0_[state_base_ + 73]);
++        C.add(inst.VBICxf1Xf1Ptr, model_->VBICdelayTimeF);
++        C.add(inst.VBICxf2Xf2Ptr, model_->VBICdelayTimeF / 3.0);
++    } else {
+     G.add(inst.VBICcollCIBaseBIPtr,  Itzf_Vbei);
+     G.add(inst.VBICcollCIEmitEIPtr, -Itzf_Vbei);
+     G.add(inst.VBICcollCIBaseBIPtr,  Itzf_Vbci);
+@@ -372,6 +398,7 @@
+     G.add(inst.VBICemitEIEmitEIPtr,  Itzf_Vbei);
+     G.add(inst.VBICemitEIBaseBIPtr, -Itzf_Vbci);
+     G.add(inst.VBICemitEICollCIPtr,  Itzf_Vbci);
++    }
+     // Itzr stamp
+     G.add(inst.VBICemitEIBaseBIPtr,  Itzr_Vbci);
+     G.add(inst.VBICemitEICollCIPtr, -Itzr_Vbci);
+@@ -661,7 +688,10 @@
+     const double Irs_Vrs   = state0_[state_base_ + 64];
+ 
+     // DC currents
+-    const double Itzf = std::abs(state0_[state_base_ + 13]);
++    // ngspice 47 uses net delayed transport current for collector shot noise.
++    const double forward = inst_.VBICexcessPhase ?
++        state0_[state_base_ + 67] : state0_[state_base_ + 13];
++    const double Iciei = std::abs(forward - state0_[state_base_ + 16]);
+     const double Ibe  = std::abs(state0_[state_base_ + 9]);
+     const double Ibep = std::abs(state0_[state_base_ + 22]);
+     const double Iccp = std::abs(state0_[state_base_ + 56]);
+@@ -691,7 +721,7 @@
+ 
+     // 2. Shot noise on collector and base currents
+     sources.push_back({collCI_node, emitEI_node,
+-                       m * 2.0 * CHARGE_Q * Itzf});
++                       m * 2.0 * CHARGE_Q * Iciei});
+     sources.push_back({baseBI_node, emitEI_node,
+                        m * 2.0 * CHARGE_Q * Ibe});
+     if (Ibep > 0.0)
+--- a/src/devices/vbic/vbic_device.hpp
++++ b/src/devices/vbic/vbic_device.hpp
+@@ -48,7 +48,7 @@
+     void ac_stamp(const std::vector<double>& voltages,
+                   NumericMatrix& G, NumericMatrix& C) override;
+ 
+-    int32_t state_vars() const override { return 66; }
++    int32_t state_vars() const override { return inst_.VBICexcessPhase ? 74 : 66; }
+     void set_state_ptrs(double* s0, double* s1, double* s2, double* s3, int32_t base) override;
+     double compute_trunc(const IntegratorCtx& ctx,
+                          const SimOptions& opts) const override;
+--- a/src/devices/vbic/vbic_load.cpp
++++ b/src/devices/vbic/vbic_load.cpp
+@@ -939,6 +939,75 @@
+ /*
+ c           Stamp element: Itzf
+ */
++            if (here->VBICexcessPhase) {
++                // ngspice47 vbicload.c: TD*d(xf1)/dt + xf2 = Itzf,
++                // (TD/3)*d(xf2)/dt + xf2 - xf1 = 0. The collector
++                // receives xf2; the intrinsic junction charges still use
++                // the undelayed transport current from the model kernel.
++                const bool initialize = (ckt->CKTmode & MODEINITJCT) ||
++                    ((ckt->CKTmode & MODEINITFIX) && here->VBICoff);
++                const double xf1 = initialize ? 0.0 : ckt->CKTrhsOld[here->VBICxf1Node];
++                const double xf2 = initialize ? 0.0 : ckt->CKTrhsOld[here->VBICxf2Node];
++                ckt->CKTstate0[here->VBICvxf1] = xf1;
++                ckt->CKTstate0[here->VBICvxf2] = xf2;
++                double geq1 = 0.0, geq2 = 0.0, current1 = 0.0, current2 = 0.0;
++                if ((ckt->CKTmode & (MODETRAN | MODEAC)) ||
++                    ((ckt->CKTmode & MODETRANOP) && (ckt->CKTmode & MODEUIC))) {
++                    ckt->CKTstate0[here->VBICqxf1] = model->VBICdelayTimeF * xf1;
++                    ckt->CKTstate0[here->VBICqxf2] = model->VBICdelayTimeF * xf2 / 3.0;
++                    if (!(ckt->CKTmode & MODETRANOP) || !(ckt->CKTmode & MODEUIC)) {
++                        if (ckt->CKTmode & MODEINITTRAN) {
++                            ckt->CKTstate1[here->VBICqxf1] = ckt->CKTstate0[here->VBICqxf1];
++                            ckt->CKTstate1[here->VBICqxf2] = ckt->CKTstate0[here->VBICqxf2];
++                        }
++                        double companion = 0.0;
++                        error = NIintegrate(ckt, &geq1, &companion, model->VBICdelayTimeF, here->VBICqxf1);
++                        if (error) return error;
++                        error = NIintegrate(ckt, &geq2, &companion, model->VBICdelayTimeF / 3.0, here->VBICqxf2);
++                        if (error) return error;
++                        current1 = ckt->CKTstate0[here->VBICcqxf1];
++                        current2 = ckt->CKTstate0[here->VBICcqxf2];
++                        if (ckt->CKTmode & MODEINITTRAN) {
++                            ckt->CKTstate1[here->VBICcqxf1] = current1;
++                            ckt->CKTstate1[here->VBICcqxf2] = current2;
++                        }
++                    }
++                }
++                ckt->CKTstate0[here->VBICgxf1] = geq1;
++                ckt->CKTstate0[here->VBICgxf2] = 1.0 + geq2;
++                // Keep ngspice's combined delayed-forward/reverse stamp,
++                // including its arithmetic order near cancellation.
++                const double iciei = xf2 - Itzr;
++                const double iciei_vbei = -Itzr_Vbei;
++                const double iciei_vbci = -Itzr_Vbci;
++                rhs_current = model->VBICtype *
++                    (iciei - iciei_vbei * Vbei - iciei_vbci * Vbci);
++                ckt->CKTrhs[here->VBICcollCINode] -= rhs_current;
++                ckt->mat->add(here->VBICcollCIBaseBIPtr, iciei_vbei);
++                ckt->mat->add(here->VBICcollCIEmitEIPtr, -iciei_vbei);
++                ckt->mat->add(here->VBICcollCIBaseBIPtr, iciei_vbci);
++                ckt->mat->add(here->VBICcollCICollCIPtr, -iciei_vbci);
++                ckt->CKTrhs[here->VBICemitEINode] += rhs_current;
++                ckt->mat->add(here->VBICemitEIBaseBIPtr, -iciei_vbei);
++                ckt->mat->add(here->VBICemitEIEmitEIPtr, iciei_vbei);
++                ckt->mat->add(here->VBICemitEIBaseBIPtr, -iciei_vbci);
++                ckt->mat->add(here->VBICemitEICollCIPtr, iciei_vbci);
++                rhs_current = model->VBICtype * (-xf2);
++                ckt->CKTrhs[here->VBICcollCINode] -= rhs_current;
++                ckt->CKTrhs[here->VBICemitEINode] += rhs_current;
++                ckt->mat->add(here->VBICcollCIXf2Ptr, 1.0);
++                ckt->mat->add(here->VBICemitEIXf2Ptr, -1.0);
++                ckt->mat->add(here->VBICxf1BaseBIPtr, -Itzf_Vbei - Itzf_Vbci);
++                ckt->mat->add(here->VBICxf1EmitEIPtr, Itzf_Vbei);
++                ckt->mat->add(here->VBICxf1CollCIPtr, Itzf_Vbci);
++                ckt->mat->add(here->VBICxf1Xf1Ptr, geq1);
++                ckt->mat->add(here->VBICxf1Xf2Ptr, 1.0);
++                ckt->mat->add(here->VBICxf2Xf1Ptr, -1.0);
++                ckt->mat->add(here->VBICxf2Xf2Ptr, 1.0 + geq2);
++                ckt->CKTrhs[here->VBICxf1Node] +=
++                    Itzf - Itzf_Vbei * Vbei - Itzf_Vbci * Vbci - current1 + geq1 * xf1;
++                ckt->CKTrhs[here->VBICxf2Node] += -current2 + geq2 * xf2;
++            } else {
+             rhs_current = model->VBICtype * (Itzf - Itzf_Vbei*Vbei - Itzf_Vbci*Vbci);
+             *(ckt->CKTrhs + here->VBICcollCINode) += -rhs_current;
+             ckt->mat->add(here->VBICcollCIBaseBIPtr, Itzf_Vbei);
+@@ -950,9 +1019,11 @@
+             ckt->mat->add(here->VBICemitEIEmitEIPtr, Itzf_Vbei);
+             ckt->mat->add(here->VBICemitEIBaseBIPtr, -Itzf_Vbci);
+             ckt->mat->add(here->VBICemitEICollCIPtr, Itzf_Vbci);
++            }
+ /*
+ c           Stamp element: Itzr
+ */
++            if (!here->VBICexcessPhase) {
+             rhs_current = model->VBICtype * (Itzr - Itzr_Vbei*Vbei - Itzr_Vbci*Vbci);
+             *(ckt->CKTrhs + here->VBICemitEINode) += -rhs_current;
+             ckt->mat->add(here->VBICemitEIBaseBIPtr, Itzr_Vbei);
+@@ -964,6 +1035,7 @@
+             ckt->mat->add(here->VBICcollCIEmitEIPtr, Itzr_Vbei);
+             ckt->mat->add(here->VBICcollCIBaseBIPtr, -Itzr_Vbci);
+             ckt->mat->add(here->VBICcollCICollCIPtr, Itzr_Vbci);
++            }
+ /*
+ c           Stamp element: Ibc
+ */
+--- a/src/devices/vbic/vbic_setup.cpp
++++ b/src/devices/vbic/vbic_setup.cpp
+@@ -400,7 +400,8 @@
+             }
+ 
+             here->VBICstate = *states;
+-            *states += VBICnumStates;
++            here->VBICexcessPhase = model->VBICdelayTimeF > 0.0;
++            *states += VBICnumStates + (here->VBICexcessPhase ? 8 : 0);
+ 
+             if(model->VBICextCollResist == 0) {
+                 here->VBICcollCXNode = here->VBICcollNode;
+@@ -484,7 +485,27 @@
+ /* macro to make elements with built in test for out of memory */
+ #define TSTALLOC(ptr,first,second) \
+ { here->ptr = matrix->make_elt(here->first, here->second); }
+-            /* TODO(translator): TSTALLOC macro kept as-is; needs manual rewrite. */
++            if (here->VBICexcessPhase) {
++                if (here->VBICxf1Node == 0) {
++                    error = CKTmkVolt(ckt, &tmp, here->VBICname, "xf1");
++                    if (error) return error;
++                    here->VBICxf1Node = tmp->number;
++                }
++                if (here->VBICxf2Node == 0) {
++                    error = CKTmkVolt(ckt, &tmp, here->VBICname, "xf2");
++                    if (error) return error;
++                    here->VBICxf2Node = tmp->number;
++                }
++                TSTALLOC(VBICcollCIXf2Ptr,VBICcollCINode,VBICxf2Node);
++                TSTALLOC(VBICemitEIXf2Ptr,VBICemitEINode,VBICxf2Node);
++                TSTALLOC(VBICxf1BaseBIPtr,VBICxf1Node,VBICbaseBINode);
++                TSTALLOC(VBICxf1EmitEIPtr,VBICxf1Node,VBICemitEINode);
++                TSTALLOC(VBICxf1CollCIPtr,VBICxf1Node,VBICcollCINode);
++                TSTALLOC(VBICxf1Xf1Ptr,VBICxf1Node,VBICxf1Node);
++                TSTALLOC(VBICxf1Xf2Ptr,VBICxf1Node,VBICxf2Node);
++                TSTALLOC(VBICxf2Xf1Ptr,VBICxf2Node,VBICxf1Node);
++                TSTALLOC(VBICxf2Xf2Ptr,VBICxf2Node,VBICxf2Node);
++            }
+ 
+             TSTALLOC(VBICcollCollPtr,VBICcollNode,VBICcollNode);
+             TSTALLOC(VBICbaseBasePtr,VBICbaseNode,VBICbaseNode);
+--- /dev/null
++++ b/tests/circuits/uic_current_integrator.cir
+@@ -0,0 +1,9 @@
++UIC current-driven capacitors have no DC operating point
++I1 0 initialized DC 1m
++C1 initialized 0 1u
++I2 0 zero DC 2m
++C2 zero 0 1u
++.nodeset V(initialized)=7
++.ic V(initialized)=0.25
++.tran 1u 20u UIC
++.end
+--- /dev/null
++++ b/tests/circuits/vbic_delay_ac.cir
+@@ -0,0 +1,42 @@
++VBIC excess-phase delay comparison
++VC_zero c_zero 0 5
++VB_zero drive_zero 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_zero drive_zero b_zero 1k
++Q_zero c_zero b_zero 0 ZERO 
++VC_fast c_fast 0 5
++VB_fast drive_fast 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_fast drive_fast b_fast 1k
++Q_fast c_fast b_fast 0 FAST 
++VC_slow c_slow 0 5
++VB_slow drive_slow 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_slow drive_slow b_slow 1k
++Q_slow c_slow b_slow 0 SLOW 
++VC_shared c_shared 0 5
++VB_shared drive_shared 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_shared drive_shared b_shared 1k
++Q_shared c_shared b_shared 0 SLOW area=2 m=3
++VC_loaded c_loaded 0 5
++VB_loaded drive_loaded 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_loaded drive_loaded b_loaded 1k
++Q_loaded c_loaded b_loaded 0 DYNAMIC
++VC_pzero c_pzero 0 -5
++VB_pzero drive_pzero 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_pzero drive_pzero b_pzero 1k
++Q_pzero c_pzero b_pzero 0 PZERO
++VC_pslow c_pslow 0 -5
++VB_pslow drive_pslow 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_pslow drive_pslow b_pslow 1k
++Q_pslow c_pslow b_pslow 0 PSLOW
++VC_ploaded c_ploaded 0 -5
++VB_ploaded drive_ploaded 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_ploaded drive_ploaded b_ploaded 1k
++Q_ploaded c_ploaded b_ploaded 0 PDYNAMIC
++.model PZERO PNP(LEVEL=9 IS=1e-14 TD=0)
++.model PSLOW PNP(LEVEL=9 IS=1e-14 TD=1u)
++.model PDYNAMIC PNP(LEVEL=9 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
++.model DYNAMIC NPN(LEVEL=4 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
++.model ZERO NPN(LEVEL=4 IS=1e-14 TD=0)
++.model FAST NPN(LEVEL=4 IS=1e-14 TD=20n)
++.model SLOW NPN(LEVEL=4 IS=1e-14 TD=1u)
++.ac dec 20 1k 10Meg
++.end
+--- /dev/null
++++ b/tests/circuits/vbic_delay_gear.cir
+@@ -0,0 +1,43 @@
++VBIC excess-phase delay comparison
++VC_zero c_zero 0 5
++VB_zero drive_zero 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_zero drive_zero b_zero 1k
++Q_zero c_zero b_zero 0 ZERO 
++VC_fast c_fast 0 5
++VB_fast drive_fast 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_fast drive_fast b_fast 1k
++Q_fast c_fast b_fast 0 FAST 
++VC_slow c_slow 0 5
++VB_slow drive_slow 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_slow drive_slow b_slow 1k
++Q_slow c_slow b_slow 0 SLOW 
++VC_shared c_shared 0 5
++VB_shared drive_shared 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_shared drive_shared b_shared 1k
++Q_shared c_shared b_shared 0 SLOW area=2 m=3
++VC_loaded c_loaded 0 5
++VB_loaded drive_loaded 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_loaded drive_loaded b_loaded 1k
++Q_loaded c_loaded b_loaded 0 DYNAMIC
++VC_pzero c_pzero 0 -5
++VB_pzero drive_pzero 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_pzero drive_pzero b_pzero 1k
++Q_pzero c_pzero b_pzero 0 PZERO
++VC_pslow c_pslow 0 -5
++VB_pslow drive_pslow 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_pslow drive_pslow b_pslow 1k
++Q_pslow c_pslow b_pslow 0 PSLOW
++VC_ploaded c_ploaded 0 -5
++VB_ploaded drive_ploaded 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_ploaded drive_ploaded b_ploaded 1k
++Q_ploaded c_ploaded b_ploaded 0 PDYNAMIC
++.model PZERO PNP(LEVEL=9 IS=1e-14 TD=0)
++.model PSLOW PNP(LEVEL=9 IS=1e-14 TD=1u)
++.model PDYNAMIC PNP(LEVEL=9 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
++.model DYNAMIC NPN(LEVEL=4 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
++.model ZERO NPN(LEVEL=4 IS=1e-14 TD=0)
++.model FAST NPN(LEVEL=4 IS=1e-14 TD=20n)
++.model SLOW NPN(LEVEL=4 IS=1e-14 TD=1u)
++.options method=gear maxord=2
++.tran 10n 6u
++.end
+--- /dev/null
++++ b/tests/circuits/vbic_delay_noise.cir
+@@ -0,0 +1,9 @@
++VBIC excess-phase noise
++VC vcc 0 5
++RC vcc out 2k
++VB drive 0 DC 0.65 AC 1
++RB drive b 1k
++Q1 out b 0 QM
++.model QM NPN(LEVEL=4 IS=1e-14 TD=1u RBX=10 RBI=20 RCI=1)
++.noise v(out) VB dec 20 1k 10Meg
++.end
+--- /dev/null
++++ b/tests/circuits/vbic_delay_noise_pnp.cir
+@@ -0,0 +1,9 @@
++PNP VBIC excess-phase noise
++VC vcc 0 -5
++RC vcc out 2k
++VB drive 0 DC -0.65 AC 1
++RB drive b 1k
++Q1 out b 0 QM
++.model QM PNP(LEVEL=9 IS=1e-14 TD=1u RBX=10 RBI=20 RCI=1)
++.noise v(out) VB dec 20 1k 10Meg
++.end
+--- /dev/null
++++ b/tests/circuits/vbic_delay_transient.cir
+@@ -0,0 +1,42 @@
++VBIC excess-phase delay comparison
++VC_zero c_zero 0 5
++VB_zero drive_zero 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_zero drive_zero b_zero 1k
++Q_zero c_zero b_zero 0 ZERO 
++VC_fast c_fast 0 5
++VB_fast drive_fast 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_fast drive_fast b_fast 1k
++Q_fast c_fast b_fast 0 FAST 
++VC_slow c_slow 0 5
++VB_slow drive_slow 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_slow drive_slow b_slow 1k
++Q_slow c_slow b_slow 0 SLOW 
++VC_shared c_shared 0 5
++VB_shared drive_shared 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_shared drive_shared b_shared 1k
++Q_shared c_shared b_shared 0 SLOW area=2 m=3
++VC_loaded c_loaded 0 5
++VB_loaded drive_loaded 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_loaded drive_loaded b_loaded 1k
++Q_loaded c_loaded b_loaded 0 DYNAMIC
++VC_pzero c_pzero 0 -5
++VB_pzero drive_pzero 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_pzero drive_pzero b_pzero 1k
++Q_pzero c_pzero b_pzero 0 PZERO
++VC_pslow c_pslow 0 -5
++VB_pslow drive_pslow 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_pslow drive_pslow b_pslow 1k
++Q_pslow c_pslow b_pslow 0 PSLOW
++VC_ploaded c_ploaded 0 -5
++VB_ploaded drive_ploaded 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_ploaded drive_ploaded b_ploaded 1k
++Q_ploaded c_ploaded b_ploaded 0 PDYNAMIC
++.model PZERO PNP(LEVEL=9 IS=1e-14 TD=0)
++.model PSLOW PNP(LEVEL=9 IS=1e-14 TD=1u)
++.model PDYNAMIC PNP(LEVEL=9 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
++.model DYNAMIC NPN(LEVEL=4 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
++.model ZERO NPN(LEVEL=4 IS=1e-14 TD=0)
++.model FAST NPN(LEVEL=4 IS=1e-14 TD=20n)
++.model SLOW NPN(LEVEL=4 IS=1e-14 TD=1u)
++.tran 10n 6u
++.end
+--- /dev/null
++++ b/tests/circuits/vbic_delay_uic.cir
+@@ -0,0 +1,42 @@
++VBIC excess-phase delay comparison
++VC_zero c_zero 0 5
++VB_zero drive_zero 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_zero drive_zero b_zero 1k
++Q_zero c_zero b_zero 0 ZERO 
++VC_fast c_fast 0 5
++VB_fast drive_fast 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_fast drive_fast b_fast 1k
++Q_fast c_fast b_fast 0 FAST 
++VC_slow c_slow 0 5
++VB_slow drive_slow 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_slow drive_slow b_slow 1k
++Q_slow c_slow b_slow 0 SLOW 
++VC_shared c_shared 0 5
++VB_shared drive_shared 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_shared drive_shared b_shared 1k
++Q_shared c_shared b_shared 0 SLOW area=2 m=3
++VC_loaded c_loaded 0 5
++VB_loaded drive_loaded 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
++RB_loaded drive_loaded b_loaded 1k
++Q_loaded c_loaded b_loaded 0 DYNAMIC
++VC_pzero c_pzero 0 -5
++VB_pzero drive_pzero 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_pzero drive_pzero b_pzero 1k
++Q_pzero c_pzero b_pzero 0 PZERO
++VC_pslow c_pslow 0 -5
++VB_pslow drive_pslow 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_pslow drive_pslow b_pslow 1k
++Q_pslow c_pslow b_pslow 0 PSLOW
++VC_ploaded c_ploaded 0 -5
++VB_ploaded drive_ploaded 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
++RB_ploaded drive_ploaded b_ploaded 1k
++Q_ploaded c_ploaded b_ploaded 0 PDYNAMIC
++.model PZERO PNP(LEVEL=9 IS=1e-14 TD=0)
++.model PSLOW PNP(LEVEL=9 IS=1e-14 TD=1u)
++.model PDYNAMIC PNP(LEVEL=9 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
++.model DYNAMIC NPN(LEVEL=4 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
++.model ZERO NPN(LEVEL=4 IS=1e-14 TD=0)
++.model FAST NPN(LEVEL=4 IS=1e-14 TD=20n)
++.model SLOW NPN(LEVEL=4 IS=1e-14 TD=1u)
++.tran 10n 6u uic
++.end
+--- a/tests/devices/vbic/test_vbic_compare.cpp
++++ b/tests/devices/vbic/test_vbic_compare.cpp
+@@ -10,6 +10,9 @@
+ #include "api/neospice.hpp"
+ #include "framework/ngspice_runner.hpp"
+ #include "framework/comparator.hpp"
++#include <algorithm>
++#include <cmath>
++#include <complex>
+ 
+ using namespace neospice;
+ 
+@@ -211,3 +214,82 @@
+     EXPECT_TRUE(cmp.passed)
+         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+ }
++
++TEST_F(VBICValidation, ExcessPhaseAC) {
++    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_delay_ac.cir";
++    auto expected = ngspice_->run_ac(path);
++    auto circuit = sim_.load(path);
++    const auto result = sim_.run(circuit);
++    ASSERT_TRUE(std::holds_alternative<ACResult>(result.analysis));
++    std::erase_if(expected.voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto& actual = std::get<ACResult>(result.analysis);
++    const auto comparison = compare_ac(expected, actual);
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++    // For this zero-charge, zero-Early-effect transistor, the independent
++    // small-signal delay transfer is H(s)=1/(1+s*TD+s*s*TD*TD/3).
++    const auto& zero = actual.current("vc_zero");
++    const auto& slow = actual.current("vc_slow");
++    ASSERT_EQ(zero.size(), actual.frequency.size());
++    ASSERT_EQ(slow.size(), actual.frequency.size());
++    ASSERT_FALSE(actual.frequency.empty());
++    for (size_t i = 0; i < actual.frequency.size(); ++i) {
++        const std::complex<double> s(0.0, 2.0 * std::acos(-1.0) * actual.frequency[i]);
++        const auto expected_ratio = 1.0 / (1.0 + s * 1e-6 + s * s * (1e-12 / 3.0));
++        ASSERT_GT(std::abs(zero[i]), 1e-3);
++        EXPECT_LT(std::abs(slow[i] / zero[i] - expected_ratio), 1e-7);
++    }
++}
++
++TEST_F(VBICValidation, ExcessPhaseTransient) {
++    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_delay_transient.cir";
++    auto expected = ngspice_->run_transient(path);
++    auto circuit = sim_.load(path);
++    const auto result = sim_.run(circuit);
++    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
++    std::erase_if(expected.voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto comparison = compare_transient(expected, std::get<TransientResult>(result.analysis));
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++}
++
++TEST_F(VBICValidation, ExcessPhaseGear) {
++    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_delay_gear.cir";
++    auto expected = ngspice_->run_transient(path);
++    auto circuit = sim_.load(path);
++    const auto result = sim_.run(circuit);
++    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
++    std::erase_if(expected.voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto comparison = compare_transient(expected, std::get<TransientResult>(result.analysis));
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++}
++
++TEST_F(VBICValidation, ExcessPhaseUIC) {
++    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_delay_uic.cir";
++    auto expected = ngspice_->run_transient(path);
++    auto circuit = sim_.load(path);
++    const auto result = sim_.run(circuit);
++    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
++    std::erase_if(expected.voltages, [](const auto& item) {
++        return item.first.find('#') != std::string::npos;
++    });
++    const auto comparison = compare_transient(expected, std::get<TransientResult>(result.analysis));
++    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++}
++
++TEST_F(VBICValidation, ExcessPhaseNoise) {
++    for (const std::string name : {"vbic_delay_noise.cir", "vbic_delay_noise_pnp.cir"}) {
++        SCOPED_TRACE(name);
++        const std::string path = std::string(TEST_CIRCUITS_DIR) + "/" + name;
++        const auto expected = ngspice_->run_noise(path);
++        auto circuit = sim_.load(path);
++        const auto result = sim_.run(circuit);
++        ASSERT_TRUE(std::holds_alternative<NoiseResult>(result.analysis));
++        const auto comparison = compare_noise(expected, std::get<NoiseResult>(result.analysis));
++        EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++    }
++}
+--- a/tests/framework/ngspice_lib.hpp
++++ b/tests/framework/ngspice_lib.hpp
+@@ -57,8 +57,7 @@
+ 
+     void load_circuit(const std::string& filepath) {
+         reset();
+-        // ngspice 42 leaks frontend allocations when source cannot open a file.
+-        // Reject unreadable inputs before calling into it; the old circuit has
++        // Reject unreadable inputs before calling the source handler; the old circuit has
+         // already been discarded, so a later run cannot reuse stale results.
+         std::ifstream input(filepath);
+         if (!input.good()) {
+@@ -155,7 +154,7 @@
+         // ngSpice_Command often returns zero after frontend/analysis errors.
+         // Preserve warnings about recoverable gmin/source-stepping attempts;
+         // reject explicit errors and terminal analysis failures.
+-        // ngspice 42 ltraset.c labels its default-C=0 notice "Fatal error"
++        // ngspice 47 ltraset.c labels its default-C=0 notice "Fatal error"
+         // but deliberately continues (the E_BADPARM return is commented out).
+         // RG lines legitimately use C=0. A nonzero API status or later abort
+         // still fails; retain this exact notice in diagnostics.
+--- /dev/null
++++ b/tests/goldens/README.md
+@@ -0,0 +1,25 @@
++# BSIM4 goldens from ngspice 47
++
++`probe.cir` explicitly selects `VERSION=4.7.0`, the BSIM4 kernel implemented
++by neospice's BSIM4v7 device. The ngspice release version and the BSIM model
++version are separate: the reference simulator is ngspice 47.
++
++Build the checksum-pinned reference using
++[`build-ngspice47-reference.sh`](../../scripts/build-ngspice47-reference.sh).
++Its default compiler flags retain debug symbols. From the repository root,
++with `NGSPICE47_ROOT` pointing to that build's output directory, run:
++
++```sh
++SPICE_SCRIPTS="$NGSPICE47_ROOT/cli/share/ngspice/scripts" \
++  gdb -q -batch -x tests/goldens/capture_bsim4v7.gdb --args \
++  "$NGSPICE47_ROOT/cli/bin/ngspice" -b tests/goldens/probe.cir
++```
++
++The script reads 13 preprocessing fields at the first `BSIM4v7load` call,
++after setup and temperature processing, then lets the simulation complete.
++It does not patch the simulator or modify its circuit data. `probe.cir` also
++prints the drain current at full precision. The JSON fixture records these
++values; the setup and load unit tests retain their existing tolerances.
++
++The [capture record](../../docs/evidence/joss/2026-09-11-ngspice47-goldens.json)
++contains hashes and commands, with the complete debugger output alongside it.
+--- a/tests/goldens/bsim4v7_nmos_setup.json
++++ b/tests/goldens/bsim4v7_nmos_setup.json
+@@ -1,30 +1,29 @@
+ {
+-  "model_card": "NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9",
+-  "W": 1e-6,
+-  "L": 1e-7,
++  "model_card": "NMOD NMOS LEVEL=14 VERSION=4.7.0 VTH0=0.4 U0=0.04 TOXE=2e-9",
++  "W": 1e-06,
++  "L": 1e-07,
+   "temp_K": 300.15,
+-  "source": "ngspice 45-dev-ish (BSIM4.8.0 tree) patched in src/spicelib/devices/bsim4/b4temp.c to fprintf(stderr, ...) pParam->BSIM4* and here->BSIM4* after BSIM4temp returns. Patch is NOT committed anywhere. ngspice-42 uses the same BSIM4 4.8.0 kernel internals, so values carry over. Our C++ port is 4.7.0 but these preprocessing fields (leff/weff, vth0, u0temp, vfb, vsattemp, k1ox, cdep0, phi) have identical formulas in 4.7.0 and 4.8.0 for the parameters exercised here (default mobMod=0, default stress/NUD/NF=1).",
++  "source": "Unmodified checksum-pinned ngspice 47 release, BSIM4 VERSION=4.7.0. Preprocessing fields captured at BSIM4v7load entry with capture_bsim4v7.gdb; drain current printed by probe.cir. See README.md and docs/evidence/joss/2026-09-11-ngspice47-goldens.json.",
+   "tolerance_rel": 1e-10,
+   "notes": [
+-    "In BSIM4 4.7.0/4.8.0 the size-dependent per-instance precomputed values live on bsim4SizeDependParam (accessed via here->pParam), NOT on the instance directly. leff/weff/cdep0/k1ox/phi are pParam-only.",
+-    "vth0/u0temp/vfb/vsattemp exist on BOTH pParam (base temperature-adjusted value) and the instance (stress-effect delta applied). With no LOD/stress inputs (default), instance values equal pParam values.",
+-    "Goldens were captured with patched b4temp.c. Patch text for reference:",
+-    "  fprintf(stderr, \"T12_GOLDEN pParam_BSIM4leff=%.17e\\n\", pParam->BSIM4leff); // ... etc",
+-    "To re-derive: build ngspice with the patch, run on tests/goldens/probe.cir, grep T12_GOLDEN."
++    "The reference model version explicitly matches the BSIM4 4.7.0 native port.",
++    "GDB reads size-dependent and instance fields after setup/temperature processing without patching reference source or changing simulator options.",
++    "All 13 preprocessing values are unchanged from the previous fixture. The drain-current golden now retains the full precision printed by ngspice 47."
+   ],
+   "expected": {
+-    "pParam_BSIM4leff":     1.00000000000000009e-07,
+-    "pParam_BSIM4weff":     9.99999999999999955e-07,
+-    "pParam_BSIM4vth0":     4.00000000000000022e-01,
+-    "pParam_BSIM4u0temp":   4.00000000000000008e-02,
+-    "pParam_BSIM4vfb":     -6.51465384484832377e-01,
+-    "pParam_BSIM4vsattemp": 8.00000000000000000e+04,
+-    "pParam_BSIM4k1ox":     2.54357049852350026e-01,
+-    "pParam_BSIM4cdep0":    1.31088134194791168e-03,
+-    "pParam_BSIM4phi":      8.20995507725037266e-01,
+-    "here_BSIM4vth0":       4.00000000000000022e-01,
+-    "here_BSIM4u0temp":     4.00000000000000008e-02,
+-    "here_BSIM4vfb":       -6.51465384484832377e-01,
+-    "here_BSIM4vsattemp":   8.00000000000000000e+04
+-  }
++    "pParam_BSIM4v7leff": 1.0000000000000001e-07,
++    "pParam_BSIM4v7weff": 1e-06,
++    "pParam_BSIM4v7vth0": 0.4,
++    "pParam_BSIM4v7u0temp": 0.04,
++    "pParam_BSIM4v7vfb": -0.6514653844848324,
++    "pParam_BSIM4v7vsattemp": 80000.0,
++    "pParam_BSIM4v7k1ox": 0.25435704985235,
++    "pParam_BSIM4v7cdep0": 0.0013108813419479117,
++    "pParam_BSIM4v7phi": 0.8209955077250373,
++    "here_BSIM4v7vth0": 0.4,
++    "here_BSIM4v7u0temp": 0.04,
++    "here_BSIM4v7vfb": -0.6514653844848324,
++    "here_BSIM4v7vsattemp": 80000.0
++  },
++  "drain_current_A": 5.754970110095464e-05
+ }
+--- /dev/null
++++ b/tests/goldens/capture_bsim4v7.gdb
+@@ -0,0 +1,26 @@
++# Read-only capture from unmodified ngspice 47 with debug symbols.
++# Usage is documented in README.md in this directory.
++set debuginfod enabled off
++set pagination off
++set confirm off
++break BSIM4v7load
++run
++set $golden_inst = ((BSIM4v7model*)inModel)->gen.GENinstances
++set $golden_bsim = (BSIM4v7instance*)$golden_inst
++set $golden_param = $golden_bsim->pParam
++printf "GOLDEN pParam_BSIM4v7leff=%.17e\n", $golden_param->BSIM4v7leff
++printf "GOLDEN pParam_BSIM4v7weff=%.17e\n", $golden_param->BSIM4v7weff
++printf "GOLDEN pParam_BSIM4v7vth0=%.17e\n", $golden_param->BSIM4v7vth0
++printf "GOLDEN pParam_BSIM4v7u0temp=%.17e\n", $golden_param->BSIM4v7u0temp
++printf "GOLDEN pParam_BSIM4v7vfb=%.17e\n", $golden_param->BSIM4v7vfb
++printf "GOLDEN pParam_BSIM4v7vsattemp=%.17e\n", $golden_param->BSIM4v7vsattemp
++printf "GOLDEN pParam_BSIM4v7k1ox=%.17e\n", $golden_param->BSIM4v7k1ox
++printf "GOLDEN pParam_BSIM4v7cdep0=%.17e\n", $golden_param->BSIM4v7cdep0
++printf "GOLDEN pParam_BSIM4v7phi=%.17e\n", $golden_param->BSIM4v7phi
++printf "GOLDEN here_BSIM4v7vth0=%.17e\n", $golden_bsim->BSIM4v7vth0
++printf "GOLDEN here_BSIM4v7u0temp=%.17e\n", $golden_bsim->BSIM4v7u0temp
++printf "GOLDEN here_BSIM4v7vfb=%.17e\n", $golden_bsim->BSIM4v7vfb
++printf "GOLDEN here_BSIM4v7vsattemp=%.17e\n", $golden_bsim->BSIM4v7vsattemp
++disable breakpoints
++continue
++quit
+--- a/tests/goldens/probe.cir
++++ b/tests/goldens/probe.cir
+@@ -3,10 +3,12 @@
+ VGS g 0 0.8
+ VBS b 0 0
+ M1 d g 0 b NMOD W=1u L=100n
+-.model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
++.model NMOD NMOS LEVEL=14 VERSION=4.7.0 VTH0=0.4 U0=0.04 TOXE=2e-9
+ .op
+ .control
++set numdgt=17
+ op
+ show M1
++print @m1[id]
+ .endc
+ .end
+--- a/tests/unit/test_ac.cpp
++++ b/tests/unit/test_ac.cpp
+@@ -108,8 +108,8 @@
+ }
+ 
+ TEST(FrequencyGrid, SingleAndNarrowDecadeSweepsRemainDefined) {
+-    // ngspice 47 explicitly defines these ranges; 42's zero interval count
+-    // made them undefined. Neither should disappear from an AC result.
++    // ngspice 47 explicitly defines single-point and narrow sweep ranges.
++    // Neither should disappear from an AC result.
+     EXPECT_EQ(generate_frequencies(ACMode::DEC, 10, 1, 1), std::vector<double>{1.0});
+     EXPECT_EQ(generate_frequencies(ACMode::DEC, 1, 1, 1.01), std::vector<double>{1.0});
+     const auto narrow = generate_frequencies(ACMode::DEC, 10, 1, 3);
+--- a/tests/unit/test_bjt.cpp
++++ b/tests/unit/test_bjt.cpp
+@@ -112,7 +112,14 @@
+                     circuit.integrator_ctx.mode = MODEINITJCT_BIT |
+                         (uic ? MODETRANOP_BIT | MODEUIC_BIT : MODEDCOP_BIT);
+                     std::vector<double> solution(circuit.num_vars(), 0.0);
+-                    EXPECT_FALSE(newton_solve(circuit, solver, solution, options).converged);
++                    const auto initialization = newton_solve(circuit, solver, solution, options);
++                    EXPECT_EQ(initialization.converged, uic);
++                    if (uic) {
++                        // NIiter reports a successful initial load, without
++                        // iterating or solving these prescribed voltages.
++                        EXPECT_EQ(initialization.iterations, 0);
++                        for (double value : solution) EXPECT_DOUBLE_EQ(value, 0.0);
++                    }
+                     const auto* transistor = circuit.find_device_ptr("Q1");
+                     ASSERT_NE(transistor, nullptr);
+                     const auto vbe = transistor->query_param("vbei");
+--- a/tests/unit/test_bsim4v7_ucb_load.cpp
++++ b/tests/unit/test_bsim4v7_ucb_load.cpp
+@@ -1,7 +1,7 @@
+ // Task 7: first exercise of the translated UCB BSIM4v7 load path end-to-end.
+ //
+ // Builds a trivial NMOS op-point circuit mirroring tests/goldens/probe.cir,
+-// constructs a BSIM4v7Device directly (parser support lands in T8), runs
++// constructs a BSIM4v7Device directly, runs
+ // newton_solve, and compares the drain current against an ngspice OP
+ // golden.
+ //
+@@ -10,7 +10,7 @@
+ //   VGS g 0 0.8
+ //   VBS b 0 0
+ //   M1 d g 0 b NMOD W=1u L=100n
+-//   .model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
++//   .model NMOD NMOS LEVEL=14 VERSION=4.7.0 VTH0=0.4 U0=0.04 TOXE=2e-9
+ 
+ #include <gtest/gtest.h>
+ 
+@@ -109,10 +109,10 @@
+     // tests/unit/test_dc.cpp:48 for the existing |.| convention.
+     const double id_sim = -solution[vdd->branch_index()];
+ 
+-    // Golden from ngspice op() on tests/goldens/probe.cir, date 2026-04-16.
+-    // Captured with: ngspice -b tests/goldens/probe.cir → @m1[id] = 5.754970e-05.
+-    // ngspice version: ngspice-42.
+-    constexpr double id_golden = 5.754970e-05;
++    // Captured from unmodified ngspice 47 on tests/goldens/probe.cir,
++    // explicitly selecting BSIM4 VERSION=4.7.0 to match this device.
++    // See tests/goldens/README.md for reproduction and recorded provenance.
++    constexpr double id_golden = 5.75497011009546433e-05;
+     constexpr double rel_tol   = 1e-3;
+     constexpr double abs_floor = 1e-15;
+     const double tol = std::max(std::abs(id_golden) * rel_tol, abs_floor);
+--- a/tests/unit/test_bsim4v7_ucb_setup.cpp
++++ b/tests/unit/test_bsim4v7_ucb_setup.cpp
+@@ -76,18 +76,17 @@
+     }
+ };
+ 
+-// Goldens extracted from a patched ngspice (BSIM4.8.0 kernel, b4temp.c patched to
+-// emit pParam->BSIM4* and here->BSIM4* fields as T12_GOLDEN stderr lines
+-// after BSIM4v7temp completes). See tests/goldens/bsim4v7_nmos_setup.json.
++// Goldens captured from unmodified ngspice 47, explicitly selecting its
++// BSIM4 4.7.0 kernel to match this port. The checked-in GDB script reads
++// preprocessed fields at entry to BSIM4v7load, after setup and temperature
++// processing. See tests/goldens/bsim4v7_nmos_setup.json and README.md.
+ //
+ // NOTE: leff/weff/cdep0/k1ox/phi live on pParam (bsim4SizeDependParam).
+ //       vth0/u0temp/vfb/vsattemp on the instance are copies of pParam
+ //       values with stress-effect deltas applied — they are equal to
+ //       pParam values here because no stress parameters are set.
+ //
+-// These are the preprocessing fields whose formulas are identical in
+-// BSIM4 4.7.0 (our port) and 4.8.0 (ngspice 42 / local tree) for this
+-// minimal model card, so the cross-version comparison is meaningful.
++// Both engines use BSIM4 4.7.0; this does not compare different model versions.
+ 
+ namespace golden {
+     constexpr double leff     =  1.00000000000000009e-07;
+--- a/tests/unit/test_convergence.cpp
++++ b/tests/unit/test_convergence.cpp
+@@ -11,8 +11,8 @@
+ using namespace neospice;
+ 
+ TEST(Convergence, RejectsDeviceFailureWithSettledTerminalVoltages) {
+-    // ngspice 42 loses the DEVconvTest failure flag on the NIconvTest return
+-    // path; 47 fixes that path. Stable node voltages alone must not override
++    // ngspice 47 preserves the DEVconvTest failure flag on the NIconvTest
++    // return path. Stable node voltages alone must not override
+     // a device reporting that its internal state has not converged.
+     class ConvergenceProbe : public Device {
+     public:
+--- a/tests/unit/test_ngspice_compare.cpp
++++ b/tests/unit/test_ngspice_compare.cpp
+@@ -284,6 +284,29 @@
+     EXPECT_TRUE(contains_startup(actual.time));
+     const auto cmp = compare_transient(reference, actual, {1e-12, 1e-12});
+     EXPECT_TRUE(cmp.passed) << cmp.worst_signal << " " << cmp.worst_error;
++}
++
++TEST_F(NgspiceCompareTest, UicCurrentIntegratorSkipsDcOperatingPoint) {
++    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/uic_current_integrator.cir";
++    const auto reference = ngspice_->run_transient(path);
++    auto circuit = sim_.load(path);
++    // Repeated analyses must reinitialize the charge and UIC startup state.
++    for (int run = 0; run < 2; ++run) {
++        SCOPED_TRACE(run);
++        const auto actual = std::get<TransientResult>(sim_.run(circuit).analysis);
++        ASSERT_TRUE(actual.status.converged);
++        ASSERT_FALSE(actual.time.empty());
++        EXPECT_GT(actual.time.front(), 0.0);
++        const auto comparison = compare_transient(reference, actual);
++        EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
++        ASSERT_EQ(actual.voltage("initialized").size(), actual.time.size());
++        ASSERT_EQ(actual.voltage("zero").size(), actual.time.size());
++        for (size_t i = 0; i < actual.time.size(); ++i) {
++            // V=Vinitial+(I/C)*t, including the .ic override of .nodeset.
++            EXPECT_NEAR(actual.voltage("initialized")[i], 0.25 + 1000.0 * actual.time[i], 1e-9);
++            EXPECT_NEAR(actual.voltage("zero")[i], 2000.0 * actual.time[i], 1e-9);
++        }
++    }
+ }
+ 
+ TEST_F(NgspiceCompareTest, ConstantTlineTimeGridMatchesNgspice) {
+--- a/docs/capabilities.md
++++ b/docs/capabilities.md
+@@ -39,7 +39,7 @@
+ coverage.
+ 
+ ### Convergence & Numerical Features
+-- **Automatic fallback sequence**: Newton → GMIN stepping → source stepping → pseudo-transient continuation
++- **Operating-point recovery**: DC, AC and noise share the operating-point solver, including dynamic/true gmin, source stepping and transient continuation. A successful fallback is not independent proof of a physical equilibrium.
+ - **Explicit integration method selection**: the transient driver retains the requested trapezoidal or Gear method, using backward Euler during startup and after breakpoints. It does not automatically switch to Gear when ringing appears.
+ - **Breakpoint classification** (HARD vs SOFT) with adaptive step recovery
+ - **Configurable LTE reference modes** (per-node, max-all, max-per-signal)
+@@ -79,7 +79,7 @@
+ Unsupported AC/noise fixtures must remain in experiment accounting and must not
+ be counted as accuracy matches or accepted performance samples.
+ 
+-Checkpoint 32's current Release suite passes 1,238 of 1,239 tests against ngspice
++Candidate 33's Release suite passes 1,244 of 1,245 tests against ngspice
+ 47, including the JFET2, MOS3 and VBIC transient fixtures. ngspice47 is the sole
+ reference. The remaining supported-scope corpus discrepancies and RFF70N06
+ regression remain release blockers. See
+--- a/docs/joss-progress.md
++++ b/docs/joss-progress.md
+@@ -13,14 +13,60 @@
+ | Milestone | Status and remaining work |
+ |---|---|
+ | 1. Scope, eligibility and environment | Pinned ngspice47 CLI/shared build verified locally. CI and migration tests use the same47 source. Full support matrix, actual public timeline and eligibility remain. |
+-| 2. Trustworthy validation | Checkpoint 32: 1,238/1,239 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. The VBIC switching test now passes the standard, stricter comparator tolerance. |
+-| 3. Numerical correctness | VBIC ordinary junction initialization corrected; nine focused sanitizer tests pass. Earlier OFF correction resolved 35 corpus mismatches. Positive VBIC TD is a reproduced unresolved AC defect. PA84, remaining CoolMOS/IRF/RFF/TLV discrepancies, broader option coverage and the reference T-line leak remain. |
+-| 4. Compatibility experiment | Checkpoint 32 executes and audits all 67,359 frozen fixtures against 47. No outcome or engine-result changes from checkpoint 31. Binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
++| 2. Trustworthy validation | Checkpoint 33: 1,244/1,245 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. The VBIC switching test now passes the standard, stricter comparator tolerance. |
++| 3. Numerical correctness | VBIC delay, UIC startup and noise operating-point recovery corrected. Ten VBIC and 52 isolated core sanitizer cases pass; a broader run retains the reference T-line leak. Earlier OFF correction resolved 35 corpus mismatches. PA84, remaining CoolMOS/IRF/RFF/TLV discrepancies, broader option coverage and the reference T-line leak remain. |
++| 4. Compatibility experiment | Checkpoint 33 executes and audits all 67,359 fixtures against 47, with no outcome or engine-result changes from 32. All raw run files are archived and verified. The binding audit proves six VBIC wrapper fixtures skip their transistor. Binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
+ | 5. Benchmarks | All34 comprehensive workloads qualify47; THS4131 qualifies5/5. TLV passes its original edge/DC-port contract but retains a strict pointwise discrepancy. Final candidate measurements and interpretation remain. |
+ | 6. Documentation and attribution | Current documentation uses47 exclusively. Component copyright/license/distribution audit remains incomplete. |
+ | 7. Manuscript and release | Draft paper exists. Actual research use, author confirmations, final release metadata, independent installation and final evidence reconciliation remain. |
+ 
+-## Latest numerical evidence
++## Latest verified checkpoint: 33
++
++The remaining active BSIM4 golden-value provenance now uses unmodified ngspice
++47 and its explicitly selected BSIM4 4.7.0 kernel. All 13 preprocessing values
++match the earlier constants; the drain-current constant now retains the full
++printed precision. No tolerance changed. The [capture record](evidence/joss/2026-09-11-ngspice47-goldens.json)
++and [reproduction instructions](../tests/goldens/README.md) replace the previous
++unrecorded source-patch procedure. Current test comments describe 47 behavior;
++other versions remain only as rejected inputs or archived provenance.
++The focused verification passes all 10 C++ and 53 Python tests, with no skips.
++
++Positive-TD VBIC comparisons now pass for AC, ordinary transient, Gear, UIC
++and noise, with NPN/PNP, zero-delay controls, shared cards and geometry/charge
++variation. UIC now performs one initial load without a DC solve and preserves
++node initial conditions on capacitors. Noise uses the common operating-point
++solver. The PNP noise case reproduces ngspice's retained auxiliary delay
++conductances after transient OP recovery. See the [VBIC option audit](vbic-compatibility.md).
++
++The frozen candidate passes 1,244/1,245 C++ tests (RFF remains failing), all
++393 Python/tooling tests and all 34 + 5 + 1 benchmark accuracy gates. Ten VBIC
++and 52 isolated core sanitizer cases pass leak detection. The broader core
++run fails on the existing 120-byte reference TRAsetup leak; that result and
++its isolated allocation stack are retained.
++
++[Checkpoint 33](evidence/joss/2026-09-11-validation-33.json) freezes binary
++SHA-256 `db85f6cdb74c4883f2e749fb921149fc923233f56f7f7469eebbc47ca398dc6f`.
++All 67,359 fixtures complete with no outcome or saved engine-result changes
++from checkpoint 32. The audit verifies 649,758 artifact hashes and recomputes
++all outcome decisions. Evidence:
++[summary](evidence/joss/2026-09-11-checkpoint33-corpus-run47-summary.json),
++[ledger](evidence/joss/2026-09-11-checkpoint33-corpus-run47-records.json.gz),
++[transitions](evidence/joss/2026-09-11-checkpoint33-candidate47-transitions.json).
++The [complete raw-run archive](evidence/joss/2026-09-11-checkpoint33-full-corpus.tar.gz)
++retains all 649,790 regular files, including successful and unsuccessful raw
++outputs; its [verification record](evidence/joss/2026-09-11-checkpoint33-full-corpus-archive.json)
++checks every archived file. These are operating-point results, not performance
++measurements or full-option certification.
++
++The [model-binding diagnostic](evidence/joss/2026-09-11-checkpoint33-model-binding-audit.json)
++proves a parser defect: `NPN LEVEL=4(...)` becomes an incorrect model type and
++its Q device is skipped. All six corpus fixtures enclosing the three lexical
++VBIC declarations report that skip. A two-format minimal control gives the
++same reference current in ngspice 47, but neospice omits Q1 and returns zero
++supply current for the mixed syntax. A MATCH on a minimally excited wrapper
++cannot establish that its transistor was instantiated.
++
++## Previous complete numerical evidence
+ 
+ [Checkpoint 32](evidence/joss/2026-09-11-validation-32.json) corrects ordinary
+ VBIC intrinsic base–collector initialization to match ngspice 47. A regression
+@@ -32,17 +78,17 @@
+ The new full-corpus run has no outcome or saved engine-result changes from
+ checkpoint 31. This does not establish which VBIC options are exercised by the
+ generated fixtures; the new initialization regression supplies direct evidence.
+-Current full-corpus evidence:
++Checkpoint 32 full-corpus evidence:
+ [summary](evidence/joss/2026-09-11-checkpoint32-corpus-run47-summary.json),
+ [ledger](evidence/joss/2026-09-11-checkpoint32-corpus-run47-records.json.gz),
+ [transitions](evidence/joss/2026-09-11-checkpoint32-candidate47-transitions.json).
+ 
+-Next: address the positive-TD defect reproduced by the VBIC option audit,
+-diagnose PA84 and remaining supported mismatches, and complete the support,
+-option and model-binding audits. The TD diagnostic currently succeeds as a
+-simulation but fails the complex AC comparison; it must not be advertised as
+-compatible behavior. A fifth thermal terminal is also outside the present
+-parser interface. These gaps remain explicit blockers to final scope claims.
++Next: fix mixed model-card syntax and prove transistor binding in the affected
++wrapper family. Then address VBIC query, noise scaling/temperature and
++semiconductor node-IC audit leads. Continue
++PA84 and remaining supported mismatch investigations and complete the support,
++option and model-binding audits. The fifth thermal terminal remains outside
++the parser interface. These are still publication blockers.
+ 
+ [Checkpoint 31](evidence/joss/2026-09-11-validation-31.json) fixes the ignored
+ BJT/VBIC `OFF` initialization parameter. In the entire IRF-library population
+--- a/docs/ngspice47-reference.md
++++ b/docs/ngspice47-reference.md
+@@ -29,6 +29,12 @@
+ required tests. The local reference-build script and library have been tested;
+ remote Actions and macOS execution remain unverified.
+ 
++The BSIM4 preprocessing and drain-current goldens are captured from this same
++release, selecting BSIM4 `VERSION=4.7.0` to match the native model implementation.
++The [capture instructions](../tests/goldens/README.md) and checked-in debugger
++script reproduce the values without patching ngspice. Older simulator versions
++appear in negative tests only to verify rejection, and in archived evidence.
++
+ ## Current verified behavior
+ 
+ - AM-source parameter order, defaults and phases follow47.
+@@ -42,7 +48,10 @@
+   biased operating point; see the [OFF investigation](bjt-off-investigation.md).
+ - Ordinary VBIC initialization reverse-biases the intrinsic base–collector
+   junction as in 47; [the VBIC audit](vbic-compatibility.md) also records the
+-  unresolved positive-TD AC defect and thermal-interface limits.
++  delay implementation and thermal-interface limits.
++- UIC startup skips the DC solve and preserves capacitor node initial conditions.
++- Noise uses the common operating-point fallback sequence; VBIC delay noise
++  follows the tested NPN/PNP behavior described in the option audit.
+ 
+ See [source compatibility](source-compatibility.md),
+ [capabilities](capabilities.md), and [diode investigation](diode-coolmos-investigation.md).
+@@ -50,7 +59,7 @@
+ 
+ ## Remaining compatibility work
+ 
+-Checkpoint32 passes 1,238 of 1,239 C++ tests against47; the required RFF70N06
++Candidate 33 passes 1,244 of 1,245 C++ tests against 47; the required RFF70N06
+ operating-point regression remains failing. It is retained even though the
+ reference also fails this fixture. The full frozen corpus contains67,359 cases
+ across two distinct fixture variants; remaining mismatches, model binding,
+--- a/docs/performance-comparison-with-ngspice.md
++++ b/docs/performance-comparison-with-ngspice.md
+@@ -16,8 +16,7 @@
+ runs are labeled separately.
+ 
+ Checkpoint25 measured all34 workloads against ngspice47: every pair qualifies,
+-with three warmups and30 measured pairs per workload. Historical42 verification
+-qualifies30/34, retaining four transient mismatches. The
++with three warmups and30 measured pairs per workload. The
+ [complete timing CSV](evidence/joss/2026-09-11-paired-measure47-report/timings.csv)
+ and [figure](evidence/joss/2026-09-11-paired-measure47-report/timing-total.pdf)
+ retain both engines' medians and observed ranges. This experiment has22 lower
+--- a/docs/transient-readiness.md
++++ b/docs/transient-readiness.md
+@@ -9,6 +9,12 @@
+ convergence, and transient operating-point history/state transfer. Output
+ interpolation affects sampling, not the integration trajectory. Reference and
+ native adaptive grids are both checked by the [comparator](validation-methods.md).
++
++UIC now loads prescribed initial state without solving a DC operating point,
++retains the UIC flag during time stepping and starts output at the first
++accepted step. Capacitor node `.ic` values supply omitted instance ICs. The
++current-integrator regression checks analytical ramps and repeated runs; VBIC
++delay comparisons cover UIC and ordinary startup for both polarities.
+ 
+ These passing fixtures do not establish complete transient compatibility.
+ TLV3201 still has a strict pointwise discrepancy despite passing its original
+--- a/docs/vbic-compatibility.md
++++ b/docs/vbic-compatibility.md
+@@ -14,7 +14,8 @@
+ `src/spicelib/devices/vbic/vbicload.c` in the checksum-pinned release.
+ 
+ `BJTParser.VbicCollectorJunctionInitializationNgspice47` examines device state
+-after exactly one Newton load/solve. Its 16 combinations cover NPN/PNP,
++after exactly one device load. The UIC branch returns successfully without
++a matrix solve; ordinary initialization still attempts a Newton step. Its 16 combinations cover NPN/PNP,
+ levels 4/9, OFF on/off and explicit transient initial conditions on/off.
+ The four ordinary initialization cases fail before the correction and pass
+ afterward. OFF and explicit IC branches keep their reference behavior;
+@@ -24,8 +25,8 @@
+ 
+ The five existing `VBICValidation` comparisons cover NPN and PNP operating
+ points, a Gummel sweep, a small-signal amplifier and switching transient.
+-Their input circuits are in `tests/circuits/vbic_*.cir`. This collection is not
+-a test of all model parameters, thermal behavior, delay behavior or noise.
++Their input circuits are in `tests/circuits/vbic_*.cir`. These original cases do not establish complete option coverage. The additional
++delay cases below cover AC, transient and noise.
+ 
+ The switching test now uses the standard C++ comparator tolerance:
+ relative limit 1e-3 and denominator floor 1e-9. This replaces its old relative
+@@ -36,32 +37,69 @@
+ 2.496429896137187e-8 V. These are measured errors for this fixture, not a
+ general accuracy guarantee or an interpolation-error bound.
+ 
+-The final Release suite passes 1,238 of 1,239 tests; RFF70N06 remains failing.
+-All 393 Python/tooling tests pass after rebuilding the wheel. Nine focused
+-initialization/VBIC tests pass AddressSanitizer and UndefinedBehaviorSanitizer
+-with leak detection, including the tightened switching comparison.
+-Benchmark accuracy verification passes all 34 comprehensive workloads, five
+-THS4131 workflows and the original TLV edge/DC-port contract. There are no new
+-performance measurements, and the stricter TLV waveform discrepancy remains.
++## Excess-phase delay and UIC (candidate 33)
++
++Positive `TD` now creates the two auxiliary unknowns and eight optional state
++entries needed for the isothermal ngspice 47 delay equations:
++
++```
++TD * d(xf1)/dt + xf2 = Itzf
++(TD/3) * d(xf2)/dt + xf2 - xf1 = 0
++```
++
++The delayed current drives the collector; intrinsic junction charges retain
++undelayed transport. AC includes the auxiliary capacitances, and collector
++shot noise uses delayed forward minus reverse transport. The last auxiliary
++conductances are retained for small-signal loading, matching ngspice even
++when transient continuation established the operating point. A debugger probe
++of the PNP noise fixture records these nonzero reference conductances.
++
++`vbic_delay_ac.cir`, `vbic_delay_transient.cir`, `vbic_delay_gear.cir` and
++`vbic_delay_uic.cir` each include eight cells: NPN and PNP, levels 4/9, zero and
++positive delay, shared model cards, NPN area/multiplicity variation and models
++with intrinsic charge and series resistance. AC compares 81 frequencies from
++1 kHz to 10 MHz and independently checks the simple-cell transfer function
++`1 / (1 + s*TD + s*s*TD*TD/3)` at every frequency. Transient comparisons cover
++6 microseconds, including source edges. Two further noise fixtures cover both
++polarities; the PNP case exercises transient-assisted operating-point recovery.
++All required public signals use the standard comparator tolerance and floor.
++
++The UIC comparison exposed a core startup error. UIC now performs one initial
++device load without a DC solve, retains its mode flag through time stepping,
++and emits its first output after the first accepted step. An omitted capacitor
++instance IC derives from the initial node voltages. The current-driven
++capacitor regression has no DC equilibrium; it checks ngspice agreement, the
++analytic voltage ramp, `.ic` precedence over `.nodeset` and repeated analyses.
++Noise now calls the same operating-point implementation as `.op` and AC instead
++of maintaining an incomplete fallback sequence.
++
++Checkpoint 33 passes 1,244 of 1,245 Release C++ tests; the existing RFF70N06
++failure remains. All 393 Python/tooling tests pass with a freshly rebuilt wheel.
++The complete VBIC sanitizer suite passes 10 tests. The broader 53-test startup
++and noise sanitizer run passes its numerical assertions but reports the known
++120-byte ngspice TRAsetup leak; it is retained as a failed sanitizer process,
++not reported as a clean run. All 34 comprehensive, five THS and one TLV benchmark accuracy gates pass.
++The full corpus has no outcome or saved engine-result changes from checkpoint
++32; see [JOSS progress](joss-progress.md) for the complete archived run.
+ 
+ ## Option audit: known gaps
+ 
+ | Option or interface | Observed behavior and remaining work |
+ |---|---|
+ | `OFF`, `IC` during initialization | Tested as described above and in the [OFF investigation](bjt-off-investigation.md). |
+-| `TD=0` | The authored 1 MHz small-signal diagnostic agrees with ngspice 47. This alone is not broad frequency coverage. |
+-| Positive `TD` | **Unresolved defect:** the parameter is accepted, but the native AC result is unchanged. ngspice 47 introduces two excess-phase unknowns and changes the response. Implement the missing behavior or establish and enforce an explicit unsupported boundary; do not count the current result as compatible. |
++| `TD=0` | Retained as controls in the frequency and transient delay regressions. |
++| Positive `TD` | Implemented and exercised by the tests above. Coverage remains limited to the stated circuits and options. |
+ | Fifth thermal terminal | Not supported by the current Q-card parser. The authored five-terminal self-heating example fails parsing in neospice and runs in ngspice 47. No thermal compatibility claim is made. |
+ | Levels 4 and 9 | Both dispatch to VBIC in ngspice 47 and are covered by the initialization regression. |
+ | Levels 12 and 13 | neospice additionally routes these numbers to VBIC. They are not VBIC levels accepted by the reference parser; their extra acceptance does not establish ngspice compatibility. Classification and parser diagnostics still need review. |
+ 
+-The delay diagnostic fixes collector voltage at 5 V and drives the base through
++The pre-fix checkpoint 32 delay diagnostic fixes collector voltage at 5 V and drives the base through
+ 1 kΩ from a source biased at 0.65 V with AC amplitude 1. At 1 MHz, with `TD=1u`,
+-neospice returns collector supply current `-0.03152008824659435 + 0j` A;
++the then-current neospice returned collector supply current `-0.03152008824659435 + 0j` A;
+ ngspice returns `0.002045936119199499 + 0.0010572001140907491j` A. The
+ reference-normalized complex error is 14.582528404556522. With `TD=0`, the
+-collector-current error is 2.881570157311185e-11. Both processes report success;
+-successful status therefore does not establish correctness for positive TD.
++collector-current error is 2.881570157311185e-11. Both processes reported success despite the mismatch. Candidate 33 adds the
++missing delay behavior and broader regressions described above.
+ 
+ An initial four-terminal `RTH` probe produced matching results because the
+ reference grounds an omitted thermal terminal. It did not exercise free
+@@ -78,5 +116,27 @@
+ retains all five public AC observables for the TD controls. The complete
+ 67,359-fixture corpus has no outcome or saved engine-result changes from
+ checkpoint 31; its model-binding and option coverage still need auditing.
+-This correction does not resolve the positive-TD defect,
+-PA84, RFF70N06 or the other open publication blockers.
++Candidate 33's [validation record](evidence/joss/2026-09-11-validation-33.json)
++records the subsequent delay and startup work. PA84, RFF70N06 and other
++publication blockers remain.
++
++A [lexical corpus scan](evidence/joss/2026-09-11-checkpoint33-vbic-corpus-scope.json)
++verifies all 2,073 pinned source-file hashes and finds three numeric level-4/9
++NPN/PNP cards: BFP780 and two BFQ790 declarations, with TD values of 500 fs
++and 1 fs. They are nested in three subcircuits. The frozen experiment has no
++direct model fixture for those declarations; each enclosing subcircuit has a
++primary and driven fixture. The subsequent [binding diagnostic](evidence/joss/2026-09-11-checkpoint33-model-binding-audit.json)
++proves that all six native wrapper fixtures skip their Q device: mixed
++`NPN LEVEL=4(...)` syntax is incorrectly treated as the model type. ngspice 47
++accepts it. A minimal two-format control reproduces the missing transistor and
++zero native supply current, versus approximately -0.820434 mA in the reference.
++This parser defect remains unresolved in checkpoint 33. These wrappers cannot
++validate VBIC behavior until binding is repaired. The lexical scan itself does
++not resolve expressions or aliases.
++
++Further source-audit leads require dedicated regressions: VBIC current query
++aliases still expose undelayed forward current, some query/noise expressions
++apply an additional instance multiplier to already scaled state, and thermal
++noise uses nominal temperature. General node-IC-to-semiconductor-junction
++initialization also needs coverage. These are pending correctness work, not
++validated options or reasons to exclude failing circuits.

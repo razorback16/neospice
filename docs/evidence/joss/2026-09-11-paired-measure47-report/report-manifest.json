@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "source_manifest": {
+    "path": "/tmp/neospice-joss-checkpoint25-measure47/manifest.json",
+    "bytes": 608703,
+    "sha256": "6c44791aae8415e5d2ca32128f8d43eb96a1083039d9b40c89656eae9603debd"
+  },
+  "source_pairs": {
+    "path": "/tmp/neospice-joss-checkpoint25-measure47/pairs.jsonl",
+    "bytes": 518362481,
+    "sha256": "80c7c115fc209854d4537f41d8f1de101950e35f0bbad67518c738e9434bbfa1"
+  },
+  "generator": {
+    "path": "/home/subhagato/Codes/neospice/tools/report_paired_benchmark.py",
+    "bytes": 12219,
+    "sha256": "d504ed32bb589f104016bf7beda38ea4b354e646ca6a67cd5948fbeead1900b6"
+  },
+  "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+  "matplotlib": "3.11.1",
+  "reference_version": 47,
+  "verify_only": false,
+  "population": [
+    "dc_ths4131",
+    "dc_divider",
+    "ac_ths4131_10",
+    "ac_ths4131_1000",
+    "ac_rc",
+    "tran_rc",
+    "tran_rlc",
+    "tran_pulse",
+    "noise_divider",
+    "sweep_divider",
+    "op_ac_ths4131",
+    "op_ac_opa1632",
+    "dc_mesh_10",
+    "dc_mesh_32",
+    "dc_mesh_71",
+    "dc_mesh_141",
+    "dc_diode_ladder_100",
+    "dc_diode_ladder_1000",
+    "dc_diode_ladder_5000",
+    "dc_diode_ladder_20000",
+    "ac_rc_grid_8",
+    "tran_rc_grid_8",
+    "ac_rc_grid_24",
+    "tran_rc_grid_24",
+    "ac_rc_grid_48",
+    "tran_rc_grid_48",
+    "noise_rc_grid_24",
+    "ac_diode_rc_grid_8",
+    "tran_diode_rc_grid_8",
+    "ac_diode_rc_grid_24",
+    "tran_diode_rc_grid_24",
+    "ac_diode_rc_grid_48",
+    "tran_diode_rc_grid_48",
+    "noise_diode_rc_grid_24"
+  ],
+  "artifacts": {
+    "qualification.csv": {
+      "path": "/tmp/neospice-joss-checkpoint25-measure47-report/qualification.csv",
+      "bytes": 2498,
+      "sha256": "0a6d3ef1d3b4dbe6535e1677e68bde98a4675457092c89e01320bbadcde20a2f"
+    },
+    "qualification.pdf": {
+      "path": "/tmp/neospice-joss-checkpoint25-measure47-report/qualification.pdf",
+      "bytes": 21814,
+      "sha256": "eef679cc80cf877be47d6effe774bcf2d9cf186ddc6a8405ca4283801d62e786"
+    },
+    "qualification.svg": {
+      "path": "/tmp/neospice-joss-checkpoint25-measure47-report/qualification.svg",
+      "bytes": 47482,
+      "sha256": "bbd1f10fb20d0eadb23cb59afbca908f16ca40f8340665fbc292d1d8f69e9f46"
+    },
+    "report.md": {
+      "path": "/tmp/neospice-joss-checkpoint25-measure47-report/report.md",
+      "bytes": 2125,
+      "sha256": "0a7163e26526b414e1740ee9192d10df904688a81206ea4bfe407d574431c265"
+    },
+    "timing-total.pdf": {
+      "path": "/tmp/neospice-joss-checkpoint25-measure47-report/timing-total.pdf",
+      "bytes": 34450,
+      "sha256": "ea0209c9240e2b43709edc5c6ae4db5f78b1a179caff23f263ba541f48e73d7f"
+    },
+    "timing-total.svg": {
+      "path": "/tmp/neospice-joss-checkpoint25-measure47-report/timing-total.svg",
+      "bytes": 82056,
+      "sha256": "03d1fa6e77a974c3a7fd8a464da0e34c7ed8967ed023f4a305bfae00cac26fa0"
+    },
+    "timings.csv": {
+      "path": "/tmp/neospice-joss-checkpoint25-measure47-report/timings.csv",
+      "bytes": 14361,
+      "sha256": "269a9c35af2397b97f20a50d3d3e2231c4ec0b6d479edddc47c3e0cfc5577e97"
+    }
+  },
+  "limits": [
+    "Pre/post hashes detect persistent changes, not every transient mutation.",
+    "Build/source association requires the recorded build verification; inventory alone does not prove a clean rebuild.",
+    "System observations do not prove absence of competing host jobs.",
+    "Literal include/startup reader supports the declared benchmark inputs, not arbitrary SPICE control scripts."
+  ]
+}

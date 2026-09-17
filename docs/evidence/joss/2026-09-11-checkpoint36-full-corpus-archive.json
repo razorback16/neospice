@@ -1,0 +1,142 @@
+{
+  "complete": true,
+  "archive": "docs/evidence/joss/2026-09-11-checkpoint36-full-corpus.tar.gz",
+  "bytes": 175596917,
+  "sha256": "4b9442145b09994bd91a858c238c09794d51433ae1453f57ac921b0f7f0fa143",
+  "regular_files_verified": 648308,
+  "audited_artifacts_verified": 648276,
+  "additional_files": {
+    "preflight/poly/fixture.cir": {
+      "bytes": 81,
+      "sha256": "f0baa5e0f86eb51a4e4b6aa29fe84cf2f7724477760a9c1e5046904afb7edf28"
+    },
+    "preflight/poly/reference.raw": {
+      "bytes": 322,
+      "sha256": "9f1741f41f503c954ac6832f979e9e2df48b581fa3bf0f0c3654b4b21d25a4e8"
+    },
+    "preflight/poly/reference.stdout": {
+      "bytes": 780,
+      "sha256": "c39cf5d03503fea9bc97ab2fb4c899e17a808b2fb924a5f9c905981fcd712d14"
+    },
+    "preflight/poly/neospice.raw": {
+      "bytes": 251,
+      "sha256": "67de59923e04539bc6808c5121c5321fd59816ef86a70fc90a9924a6f2fc6944"
+    },
+    "preflight/poly/neospice.stderr": {
+      "bytes": 84,
+      "sha256": "113006ed698b733f11432f7b1deda0c280309c87a57fd8d7c56d22e19a7958d1"
+    },
+    "preflight/poly/reference.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "preflight/poly/neospice.stdout": {
+      "bytes": 90,
+      "sha256": "97eb048373461f3f1396a06bd8d830ccc1f2475994542530ef63f955f71aade2"
+    },
+    "preflight/poly/reference.json": {
+      "bytes": 1272,
+      "sha256": "fc4536f96f2e58914694538a4d84496342d8065a5478f6327580b9a554eda956"
+    },
+    "preflight/poly/neospice.json": {
+      "bytes": 1226,
+      "sha256": "d89ef78bb30b80aeb37c2a19fcb3e339259f20a1352045f840a0d570dfc9c486"
+    },
+    "preflight/divider/fixture.cir": {
+      "bytes": 62,
+      "sha256": "0e59ba1524f5216720d42ee3924db4a08c35e673eeab24a18aab12eb97ce39ea"
+    },
+    "preflight/divider/reference.raw": {
+      "bytes": 284,
+      "sha256": "1125a8c4fd3c05a0b84e43e5c03b117e017e033b8b4fb424a105b838e4b80ac8"
+    },
+    "preflight/divider/reference.stdout": {
+      "bytes": 734,
+      "sha256": "f7793e1afcc3d7f5e244d24e7fd1451a0e46de820ad851fa2de63385e02988be"
+    },
+    "preflight/divider/neospice.raw": {
+      "bytes": 220,
+      "sha256": "51015bec40b7648ede4370d4025e67575fb89207efc28f317c173f2d034a0902"
+    },
+    "preflight/divider/neospice.stderr": {
+      "bytes": 84,
+      "sha256": "6f0dfc89e18dff3ede1ad9ff0591214ad442d7b13499bebfb00c35d6b30e493c"
+    },
+    "preflight/divider/reference.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "preflight/divider/neospice.stdout": {
+      "bytes": 93,
+      "sha256": "c0856ff6062a26ed66fa7fb60ef353b95101463f3f09431d7b8042fd7d5ad018"
+    },
+    "preflight/divider/reference.json": {
+      "bytes": 1245,
+      "sha256": "c6a8587e6e8f7dec9d527b070efa66c290de665077f61b882f820ceac9183036"
+    },
+    "preflight/divider/neospice.json": {
+      "bytes": 1213,
+      "sha256": "4a0dc6fa910d575e6b2864828417d50acd4fc87d795bbd81ed70276300d2e853"
+    },
+    "cases/case-v1-d0b35afb4f25d309e71aa31229ff1b7b157b0a8dcf0953cc5500971dd357f5a6/primary/b3v32check.log": {
+      "bytes": 108,
+      "sha256": "6afe9d23e754687c571f6022658b33955812f0414cd4a8ca163f7de18f55c996"
+    },
+    "cases/case-v1-e5764f44698b9fae7993017c1096c384e009a4906daaf737551a176160bfe308/isolated_driven/bsim4v5.out": {
+      "bytes": 224,
+      "sha256": "b14d95fc41d9ae7e61d88120eb4db24f3bea9d2a689a426ea469bebf9d7c5c8a"
+    },
+    "cases/case-v1-3883094bae2f09536150fa70bd11e53c444ec877e463b97cda798daa0c6686a0/primary/b3v32check.log": {
+      "bytes": 108,
+      "sha256": "9286b1a8e24d4e9c3781c516cff058192bd5432075f63940264df29a19ad0f96"
+    },
+    "cases/case-v1-13da21a640af2d67a1b52914568b0a46e2ffda603f0778c0b3158e629f4c9cde/primary/b3v32check.log": {
+      "bytes": 107,
+      "sha256": "c1a8d859ec93d525d3d1f0e287467832ea4a40766394418f9e6fcf018bae1f72"
+    },
+    "cases/case-v1-5111f343f13318999d9ecf4228ce8ae2411e8a67fd6c79c75db71923cc898178/isolated_driven/b3v32check.log": {
+      "bytes": 269,
+      "sha256": "f15469bb2d389b325f216d8c3b312cf5c17c398863fe141e078a1bb01672135f"
+    },
+    "cases/case-v1-5111f343f13318999d9ecf4228ce8ae2411e8a67fd6c79c75db71923cc898178/primary/b3v32check.log": {
+      "bytes": 269,
+      "sha256": "f15469bb2d389b325f216d8c3b312cf5c17c398863fe141e078a1bb01672135f"
+    },
+    "cases/case-v1-3eb02309db1ae8cc7d15a5ec207030db3c7eed66d6209c53c489445a4f55a84b/primary/b3v32check.log": {
+      "bytes": 108,
+      "sha256": "9286b1a8e24d4e9c3781c516cff058192bd5432075f63940264df29a19ad0f96"
+    },
+    "cases/case-v1-44f931cfaec77300025de93b75f65b6d3b23eba54bfe39053de0046ca2151fac/primary/b3v32check.log": {
+      "bytes": 108,
+      "sha256": "6afe9d23e754687c571f6022658b33955812f0414cd4a8ca163f7de18f55c996"
+    },
+    "cases/case-v1-7e6d11471e268983ff605281cd58ee8388005fd6ef93d84c71c61ded2dea7af9/primary/b3v32check.log": {
+      "bytes": 108,
+      "sha256": "9286b1a8e24d4e9c3781c516cff058192bd5432075f63940264df29a19ad0f96"
+    },
+    "cases/case-v1-6ce6b48da1c73d2faf7181464c086bab1845c986ddb8ac5aba3f8a9ddbc19a99/isolated_driven/b3v32check.log": {
+      "bytes": 111,
+      "sha256": "22b4bf9d009554b47501c88fe2c31569dff4f4350fdf061e03c2975c28c81f8a"
+    },
+    "cases/case-v1-5bf2b9330fbdda1a3851082f8ac5b977d0d9bc4847720e81261ca403f3f3362c/primary/b3v32check.log": {
+      "bytes": 107,
+      "sha256": "e57b55229b5fc86f56d2fdb0eba4c795fe334a93e12ddc82b26b909abd43e346"
+    },
+    "progress.json": {
+      "bytes": 428,
+      "sha256": "02e763e137d888e78fc62287a16a3e699d3add712e6bb7ef2b37de4abc4692fc"
+    },
+    "preflight.json": {
+      "bytes": 19790,
+      "sha256": "3d037329fa73babfeb3b34b5d7e299c9333b1da822724332ab152d174965e59a"
+    },
+    "run.json": {
+      "bytes": 18680606,
+      "sha256": "aae0ec3b04ef92d04d5ac18fac5c5fbba9663829d0208b2ff9514f4dd48c3977"
+    }
+  },
+  "ledger": "docs/evidence/joss/2026-09-11-checkpoint36-corpus-run47-records.json.gz",
+  "ledger_sha256": "8572c8f05e40acbd8a15a8dd8018627b2b04bbd58b5a15c8bbff82501a3d00bf",
+  "scope": "Complete run directory including successful and unsuccessful raw outputs. All previously audited artifacts verified directly from the archive; other run metadata matched the completed source directory. No dependency on temporary-directory survival for retained run bytes.",
+  "generation_script": "from pathlib import Path\nimport json,gzip,hashlib,tarfile\nout=Path('docs/evidence/joss')\narchive=out/'2026-09-11-checkpoint36-full-corpus.tar.gz'\nledger=out/'2026-09-11-checkpoint36-corpus-run47-records.json.gz'\nroot=Path('/tmp/neospice-joss-corpus-run-36-ng47-full')\nexpected=json.loads(gzip.decompress(ledger.read_bytes()))['artifact_sha256']\nseen=set();extra={};count=0\nwith tarfile.open(archive,mode='r|gz') as tar:\n    for member in tar:\n        if member.isdir():continue\n        assert member.isfile(),member.name\n        name=member.name.removeprefix('./')\n        assert name not in seen and name not in extra,name\n        data=tar.extractfile(member).read()\n        assert len(data)==member.size\n        digest=hashlib.sha256(data).hexdigest()\n        if name in expected:\n            assert digest==expected[name],name\n            seen.add(name)\n        else:\n            p=root/name\n            assert p.is_file() and digest==hashlib.sha256(p.read_bytes()).hexdigest(),name\n            extra[name]=dict(bytes=len(data),sha256=digest)\n        count+=1\nassert seen==set(expected),(len(seen),len(expected))\nreport=dict(complete=True,archive=str(archive),bytes=archive.stat().st_size,sha256=hashlib.sha256(archive.read_bytes()).hexdigest(),regular_files_verified=count,audited_artifacts_verified=len(seen),additional_files=extra,ledger=str(ledger),ledger_sha256=hashlib.sha256(ledger.read_bytes()).hexdigest(),scope='Complete run directory including successful and unsuccessful raw outputs. All previously audited artifacts verified directly from the archive; other run metadata matched the completed source directory. No dependency on temporary-directory survival for retained run bytes.',generation_script=Path(__file__).read_text())\np=out/'2026-09-11-checkpoint36-full-corpus-archive.json';p.write_text(json.dumps(report,indent=2)+'\\n');print(json.dumps({k:v for k,v in report.items() if k not in ['generation_script','additional_files']},indent=2))\n"
+}

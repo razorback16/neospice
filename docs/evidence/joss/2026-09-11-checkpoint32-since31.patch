@@ -1,0 +1,277 @@
+--- a/src/devices/vbic/vbic_load.cpp
++++ b/src/devices/vbic/vbic_load.cpp
+@@ -297,7 +297,8 @@
+                 Vrcx=Vrbx=Vre=Vrs=0.0;
+             } else if((ckt->CKTmode & MODEINITJCT) && (here->VBICoff==0)) {
+                 Vbe=Vbei=Vbex=model->VBICtype*here->VBICtVcrit;
+-                Vbc=Vbci=Vbcx=Vbep=0.0;
++                Vbc=Vbcx=Vbep=0.0;
++                Vbci=-model->VBICtype*here->VBICtVcrit;
+                 Vbcp=Vbc-Vbe;
+                 Vrci=Vrbi=Vrbp=0.0;
+                 Vrcx=Vrbx=Vre=Vrs=0.0;
+--- a/tests/devices/vbic/test_vbic_compare.cpp
++++ b/tests/devices/vbic/test_vbic_compare.cpp
+@@ -181,7 +181,8 @@
+ 
+ TEST_F(VBICValidation, SwitchingTransient) {
+     // VBIC NPN switching transient: pulse input drives base through Rb,
+-    // collector loaded with Rc.  Compare waveform at key timepoints.
++    // collector loaded with Rc. Compare every required waveform on the
++    // combined adaptive grids using the standard comparator tolerance.
+     std::string path = std::string(TEST_CIRCUITS_DIR) + "/vbic_transient.cir";
+ 
+     auto ng_result = ngspice_->run_transient(path);
+@@ -206,7 +207,7 @@
+             ++it;
+     }
+ 
+-    auto cmp = compare_transient(ng_result, std::get<TransientResult>(cs_result.analysis), {2.7e-1, 5e-2});
+-    EXPECT_TRUE(cmp.passed)
+-        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
+-}
++    auto cmp = compare_transient(ng_result, std::get<TransientResult>(cs_result.analysis));
++    EXPECT_TRUE(cmp.passed)
++        << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
++}
+--- a/tests/unit/test_bjt.cpp
++++ b/tests/unit/test_bjt.cpp
+@@ -92,6 +92,56 @@
+     }
+ }
+ 
++TEST(BJTParser, VbicCollectorJunctionInitializationNgspice47) {
++    for (int level : {4, 9}) {
++        for (const std::string polarity : {"NPN", "PNP"}) {
++            for (bool off : {false, true}) {
++                for (bool uic : {false, true}) {
++                    SCOPED_TRACE(std::to_string(level) + " " + polarity +
++                                 " off=" + std::to_string(off) + " uic=" + std::to_string(uic));
++                    NetlistParser parser;
++                    auto circuit = parser.parse(
++                        "VBIC junction initialization\nRc c 0 1k\nRb b 0 10k\n"
++                        "Q1 c b 0 QM ic=0.2,0.6" + std::string(off ? " OFF" : "") +
++                        "\n.model QM " + polarity + "(LEVEL=" + std::to_string(level) +
++                        " IS=1e-14)\n.op\n.end\n");
++                    NeoSolver solver;
++                    solver.symbolic(circuit.pattern());
++                    auto options = circuit.options;
++                    options.max_iter = 0;
++                    circuit.integrator_ctx.mode = MODEINITJCT_BIT |
++                        (uic ? MODETRANOP_BIT | MODEUIC_BIT : MODEDCOP_BIT);
++                    std::vector<double> solution(circuit.num_vars(), 0.0);
++                    EXPECT_FALSE(newton_solve(circuit, solver, solution, options).converged);
++                    const auto* transistor = circuit.find_device_ptr("Q1");
++                    ASSERT_NE(transistor, nullptr);
++                    const auto vbe = transistor->query_param("vbei");
++                    const auto vbc = transistor->query_param("vbci");
++                    const auto vbcx = transistor->query_param("vbcx");
++                    ASSERT_TRUE(vbe && vbc && vbcx);
++                    const double sign = polarity == "NPN" ? 1.0 : -1.0;
++                    if (uic) {
++                        // Explicit junction ICs take precedence even for OFF.
++                        EXPECT_DOUBLE_EQ(*vbe, sign * 0.2);
++                        EXPECT_DOUBLE_EQ(*vbc, sign * (0.2 - 0.6));
++                        EXPECT_DOUBLE_EQ(*vbcx, *vbc);
++                    } else if (off) {
++                        EXPECT_DOUBLE_EQ(*vbe, 0.0);
++                        EXPECT_DOUBLE_EQ(*vbc, 0.0);
++                        EXPECT_DOUBLE_EQ(*vbcx, 0.0);
++                    } else {
++                        // ngspice47 vbicload.c initializes the intrinsic BC
++                        // junction in reverse bias, opposite to the BE bias.
++                        EXPECT_GT(sign * *vbe, 0.5);
++                        EXPECT_DOUBLE_EQ(*vbc, -*vbe);
++                        EXPECT_DOUBLE_EQ(*vbcx, 0.0);
++                    }
++                }
++            }
++        }
++    }
++}
++
+ TEST(BJTParser, OffDoesNotDisableBiasedTransistorsNgspice47) {
+     const std::string path = std::string(TEST_CIRCUITS_DIR) + "/bjt_off_bias.cir";
+     NetlistParser parser;
+--- a/docs/capabilities.md
++++ b/docs/capabilities.md
+@@ -25,7 +25,7 @@
+ | Behavioral        | B (ASRC) — expression-based with auto-differentiation for exact Jacobians, DDT, IDT, PWL, TABLE                                     |
+ | Switches          | S (voltage), W (current) — hysteresis                                                                                               |
+ | Transmission Line | T (lossless Branin model), O (LTRA lossy -- RC/RG/LC/RLC)                                                                          |
+-| Diode/BJT         | Diode, BJT (Gummel-Poon), **VBIC** (level 4/9/12/13)                                                                               |
++| Diode/BJT         | Diode, BJT (Gummel-Poon), **VBIC** (ngspice levels 4/9; see [option scope and known gaps](vbic-compatibility.md)) |
+ | JFET/MESFET/HFET  | JFET, **JFET2** (Parker-Skellern), **MES** (GaAs MESFET -- NMF/PMF), **HFET1** (Curtice cubic), **HFET2** (Chalmers)               |
+ | MOSFET            | MOS1 (level 1), **MOS3** (level 3), **MOS9** (level 9), **BSIM3v32** (level 49/v3.24), BSIM3 (level 49/v3.3), **BSIM4v7** (level 14, full UCB port: AC NQS, full noise with correlated gate noise), **BSIMSOI** (level 10/58, 6-terminal SOI), **HiSIM2** (level 61/68), **HiSIM_HV** (level 73, 5-terminal with self-heating) |
+ 
+@@ -79,7 +79,7 @@
+ Unsupported AC/noise fixtures must remain in experiment accounting and must not
+ be counted as accuracy matches or accepted performance samples.
+ 
+-Checkpoint 31's current Release suite passes 1,237 of 1,238 tests against ngspice
++Checkpoint 32's current Release suite passes 1,238 of 1,239 tests against ngspice
+ 47, including the JFET2, MOS3 and VBIC transient fixtures. ngspice47 is the sole
+ reference. The remaining supported-scope corpus discrepancies and RFF70N06
+ regression remain release blockers. See
+--- a/docs/joss-progress.md
++++ b/docs/joss-progress.md
+@@ -13,14 +13,36 @@
+ | Milestone | Status and remaining work |
+ |---|---|
+ | 1. Scope, eligibility and environment | Pinned ngspice47 CLI/shared build verified locally. CI and migration tests use the same47 source. Full support matrix, actual public timeline and eligibility remain. |
+-| 2. Trustworthy validation | Checkpoint 31: 1,237/1,238 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. Invalid data, missing signals and skipped required checks are rejected. |
+-| 3. Numerical correctness | BJT/VBIC OFF initialization fixed; 35 full-corpus mismatches resolved, including six IGBT regressions. All 14 focused BJT/VBIC sanitizer tests pass. PA84, remaining CoolMOS/IRF/RFF discrepancies, wider option coverage and the separate reference T-line leak remain. |
+-| 4. Compatibility experiment | Checkpoint 31 executes and audits all 67,359 frozen fixtures against 47. No outcome regressions; 1,628 native results change and reference results remain unchanged. Binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
++| 2. Trustworthy validation | Checkpoint 32: 1,238/1,239 C++ tests pass against 47; RFF remains failing. All 393 Python/tooling tests pass with 47 source and the rebuilt wheel. The VBIC switching test now passes the standard, stricter comparator tolerance. |
++| 3. Numerical correctness | VBIC ordinary junction initialization corrected; nine focused sanitizer tests pass. Earlier OFF correction resolved 35 corpus mismatches. Positive VBIC TD is a reproduced unresolved AC defect. PA84, remaining CoolMOS/IRF/RFF/TLV discrepancies, broader option coverage and the reference T-line leak remain. |
++| 4. Compatibility experiment | Checkpoint 32 executes and audits all 67,359 frozen fixtures against 47. No outcome or engine-result changes from checkpoint 31. Binding, grouping, held-out multi-analysis evaluation and remaining mismatches are unresolved. |
+ | 5. Benchmarks | All34 comprehensive workloads qualify47; THS4131 qualifies5/5. TLV passes its original edge/DC-port contract but retains a strict pointwise discrepancy. Final candidate measurements and interpretation remain. |
+ | 6. Documentation and attribution | Current documentation uses47 exclusively. Component copyright/license/distribution audit remains incomplete. |
+ | 7. Manuscript and release | Draft paper exists. Actual research use, author confirmations, final release metadata, independent installation and final evidence reconciliation remain. |
+ 
+ ## Latest numerical evidence
++
++[Checkpoint 32](evidence/joss/2026-09-11-validation-32.json) corrects ordinary
++VBIC intrinsic base–collector initialization to match ngspice 47. A regression
++covers both polarities, levels 4/9 and OFF/UIC controls. The existing switching
++comparison now passes the standard relative tolerance 1e-3 and denominator
++floor 1e-9, replacing 0.27 and 0.05. Its worst normalized error is about
++8.65e-8. See the [VBIC scope and option audit](vbic-compatibility.md).
++
++The new full-corpus run has no outcome or saved engine-result changes from
++checkpoint 31. This does not establish which VBIC options are exercised by the
++generated fixtures; the new initialization regression supplies direct evidence.
++Current full-corpus evidence:
++[summary](evidence/joss/2026-09-11-checkpoint32-corpus-run47-summary.json),
++[ledger](evidence/joss/2026-09-11-checkpoint32-corpus-run47-records.json.gz),
++[transitions](evidence/joss/2026-09-11-checkpoint32-candidate47-transitions.json).
++
++Next: address the positive-TD defect reproduced by the VBIC option audit,
++diagnose PA84 and remaining supported mismatches, and complete the support,
++option and model-binding audits. The TD diagnostic currently succeeds as a
++simulation but fails the complex AC comparison; it must not be advertised as
++compatible behavior. A fifth thermal terminal is also outside the present
++parser interface. These gaps remain explicit blockers to final scope claims.
+ 
+ [Checkpoint 31](evidence/joss/2026-09-11-validation-31.json) fixes the ignored
+ BJT/VBIC `OFF` initialization parameter. In the entire IRF-library population
+@@ -38,12 +60,10 @@
+ accuracy verification passes all 34 comprehensive workloads, five THS4131
+ workflows and the original TLV contract; no new timing claims are made.
+ 
+-Current full-corpus evidence:
++Checkpoint 31 full-corpus evidence:
+ [summary](evidence/joss/2026-09-11-checkpoint31-corpus-run47-summary.json),
+ [ledger](evidence/joss/2026-09-11-checkpoint31-corpus-run47-records.json.gz),
+ [transitions](evidence/joss/2026-09-11-checkpoint31-candidate47-transitions.json).
+-Next: diagnose PA84 and remaining supported mismatches, including initialization
+-differences beyond OFF, and complete the support/option and model-binding audits.
+ 
+ [Checkpoint29](evidence/joss/2026-09-11-validation-29.json) contains the source
+ inventories, reconstructable patch, build/test logs, full-corpus ledgers and
+--- a/docs/ngspice47-reference.md
++++ b/docs/ngspice47-reference.md
+@@ -40,6 +40,9 @@
+ - True-gmin slow-step reduction retains47's factor floor3; dynamic gmin uses1.00005.
+ - BJT/VBIC `OFF` reaches junction initialization without disabling the final
+   biased operating point; see the [OFF investigation](bjt-off-investigation.md).
++- Ordinary VBIC initialization reverse-biases the intrinsic base–collector
++  junction as in 47; [the VBIC audit](vbic-compatibility.md) also records the
++  unresolved positive-TD AC defect and thermal-interface limits.
+ 
+ See [source compatibility](source-compatibility.md),
+ [capabilities](capabilities.md), and [diode investigation](diode-coolmos-investigation.md).
+@@ -47,7 +50,7 @@
+ 
+ ## Remaining compatibility work
+ 
+-Checkpoint31 passes 1,237 of 1,238 C++ tests against47; the required RFF70N06
++Checkpoint32 passes 1,238 of 1,239 C++ tests against47; the required RFF70N06
+ operating-point regression remains failing. It is retained even though the
+ reference also fails this fixture. The full frozen corpus contains67,359 cases
+ across two distinct fixture variants; remaining mismatches, model binding,
+--- /dev/null
++++ b/docs/vbic-compatibility.md
+@@ -0,0 +1,82 @@
++# VBIC compatibility scope and remaining work
++
++The VBIC adapter is a translated four-terminal, isothermal implementation.
++The following evidence describes particular tested behaviors, not complete
++coverage of ngspice 47's VBIC options. The overall device/analysis/option matrix
++for the paper remains unfinished.
++
++## Junction initialization
++
++Checkpoint 32 corrects the ordinary INITJCT branch in `vbic_load.cpp`:
++ngspice 47 initializes the intrinsic base–collector voltage to the negative of
++the intrinsic base–emitter voltage, rather than zero. The external
++base–collector junction remains at zero. Reference source:
++`src/spicelib/devices/vbic/vbicload.c` in the checksum-pinned release.
++
++`BJTParser.VbicCollectorJunctionInitializationNgspice47` examines device state
++after exactly one Newton load/solve. Its 16 combinations cover NPN/PNP,
++levels 4/9, OFF on/off and explicit transient initial conditions on/off.
++The four ordinary initialization cases fail before the correction and pass
++afterward. OFF and explicit IC branches keep their reference behavior;
++explicit ICs take precedence over OFF during UIC initialization.
++
++## Analysis evidence
++
++The five existing `VBICValidation` comparisons cover NPN and PNP operating
++points, a Gummel sweep, a small-signal amplifier and switching transient.
++Their input circuits are in `tests/circuits/vbic_*.cir`. This collection is not
++a test of all model parameters, thermal behavior, delay behavior or noise.
++
++The switching test now uses the standard C++ comparator tolerance:
++relative limit 1e-3 and denominator floor 1e-9. This replaces its old relative
++limit 0.27 and floor 0.05. The fixture, requested analysis, reference options,
++required public waveforms and comparison algorithm are unchanged. All 877
++combined-grid points per signal pass. The worst normalized error is
++8.651342538338568e-8 at the collector; its maximum absolute error is
++2.496429896137187e-8 V. These are measured errors for this fixture, not a
++general accuracy guarantee or an interpolation-error bound.
++
++The final Release suite passes 1,238 of 1,239 tests; RFF70N06 remains failing.
++All 393 Python/tooling tests pass after rebuilding the wheel. Nine focused
++initialization/VBIC tests pass AddressSanitizer and UndefinedBehaviorSanitizer
++with leak detection, including the tightened switching comparison.
++Benchmark accuracy verification passes all 34 comprehensive workloads, five
++THS4131 workflows and the original TLV edge/DC-port contract. There are no new
++performance measurements, and the stricter TLV waveform discrepancy remains.
++
++## Option audit: known gaps
++
++| Option or interface | Observed behavior and remaining work |
++|---|---|
++| `OFF`, `IC` during initialization | Tested as described above and in the [OFF investigation](bjt-off-investigation.md). |
++| `TD=0` | The authored 1 MHz small-signal diagnostic agrees with ngspice 47. This alone is not broad frequency coverage. |
++| Positive `TD` | **Unresolved defect:** the parameter is accepted, but the native AC result is unchanged. ngspice 47 introduces two excess-phase unknowns and changes the response. Implement the missing behavior or establish and enforce an explicit unsupported boundary; do not count the current result as compatible. |
++| Fifth thermal terminal | Not supported by the current Q-card parser. The authored five-terminal self-heating example fails parsing in neospice and runs in ngspice 47. No thermal compatibility claim is made. |
++| Levels 4 and 9 | Both dispatch to VBIC in ngspice 47 and are covered by the initialization regression. |
++| Levels 12 and 13 | neospice additionally routes these numbers to VBIC. They are not VBIC levels accepted by the reference parser; their extra acceptance does not establish ngspice compatibility. Classification and parser diagnostics still need review. |
++
++The delay diagnostic fixes collector voltage at 5 V and drives the base through
++1 kΩ from a source biased at 0.65 V with AC amplitude 1. At 1 MHz, with `TD=1u`,
++neospice returns collector supply current `-0.03152008824659435 + 0j` A;
++ngspice returns `0.002045936119199499 + 0.0010572001140907491j` A. The
++reference-normalized complex error is 14.582528404556522. With `TD=0`, the
++collector-current error is 2.881570157311185e-11. Both processes report success;
++successful status therefore does not establish correctness for positive TD.
++
++An initial four-terminal `RTH` probe produced matching results because the
++reference grounds an omitted thermal terminal. It did not exercise free
++self-heating. Supplying the fifth terminal produces a reference temperature
++rise of about 6.38348 K and collector supply current about -1.275865 mA;
++neospice rejects that five-terminal card. The initial matching probe must not
++be used as thermal-validation evidence.
++
++## Evidence
++
++[Checkpoint 32](evidence/joss/2026-09-11-validation-32.json) records the source
++patch, regression results, raw option probes, their audit script and the full
++corpus evaluation. The [option diagnostic](evidence/joss/2026-09-11-checkpoint32-vbic-option-audit.json)
++retains all five public AC observables for the TD controls. The complete
++67,359-fixture corpus has no outcome or saved engine-result changes from
++checkpoint 31; its model-binding and option coverage still need auditing.
++This correction does not resolve the positive-TD defect,
++PA84, RFF70N06 or the other open publication blockers.
