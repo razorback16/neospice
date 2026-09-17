@@ -1,0 +1,11 @@
+VDMOS generated internal nodes
+* M1 has gate and body-diode ohmic resistance, so ngspice 47 creates
+* v(m1#gate) and v(m1#body_diode). M2 has neither and creates none.
+Vd1 d1 0 2
+Vg1 g1 0 1.5
+M1 d1 g1 0 RGRB
+M2 d1 g1 0 PLAIN
+.model RGRB VDMOS(Vto=.6468 Kp=.44 Rg=20 Rb=.04)
+.model PLAIN VDMOS(Vto=.6468 Kp=.44)
+.op
+.end

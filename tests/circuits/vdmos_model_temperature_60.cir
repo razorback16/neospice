@@ -1,0 +1,32 @@
+VDMOS global and local model expressions, repeated temperature analyses
+.temp 60
+.param base=0.65 slope=1.6m
+.func gain(x) {2*x}
+Vdglobal dglobal 0 2
+Vgglobal gglobal 0 0.7
+Mglobal dglobal gglobal 0 GLOBAL
+Vdshared dshared 0 2
+Vgshared gshared 0 0.8
+Mshared dshared gshared 0 GLOBAL M=2
+Vdlocal dlocal 0 2
+Vglocal glocal 0 0.7
+Xlocal dlocal glocal 0 LOCALCELL
+Vdp dp 0 -2
+Vgp gp 0 -0.7
+Mp dp gp 0 PMODEL
+Vdliteral dliteral 0 2
+Vgliteral gliteral 0 0.7
+Mliteral dliteral gliteral 0 LITERAL
+.model GLOBAL VDMOS(Vto={base - slope * (TEMPER - 25)} Kp={gain(0.22)*(1+TEMPER/1000)})
+.model PMODEL VDMOSP(Vto={-base + slope*(TEMPER-25)} Kp={gain(0.22)*(1+TEMPER/1000)})
+.model LITERAL VDMOS(Vto={0.65+0.04} Kp='0.22*2')
+.subckt LOCALCELL d g s
+M1 d g s LOCAL
+.model LOCAL VDMOS(Vto={base-slope*(TEMPER-25)} Kp={0.44*(1+TEMPER/1000)})
+.ends LOCALCELL
+Vbreak supplybreak 0 23
+Rbreak supplybreak dbreak 1k
+Mbreak dbreak 0 0 BREAKDOWN
+.model BREAKDOWN VDMOS(Vto=3 Kp=.44 BV={20+25m*(TEMPER-25)} IBV=250u)
+.op
+.end

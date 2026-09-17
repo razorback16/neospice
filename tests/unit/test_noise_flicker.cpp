@@ -360,11 +360,11 @@ TEST(FlickerNoise, NgspiceCompareDiodeFlicker) {
     try {
         ng_result = ngspice.run_noise(cir_path);
     } catch (const std::exception& e) {
-        GTEST_SKIP() << "ngspice not available or failed: " << e.what();
+        FAIL() << "required ngspice not available or failed: " << e.what();
     }
 
     if (ng_result.frequency.empty()) {
-        GTEST_SKIP() << "ngspice returned empty noise result";
+        FAIL() << "required ngspice returned empty noise result";
     }
 
     // Run our solver on the same circuit

@@ -1,0 +1,13 @@
+Unused models must not capture source keywords nodes instance names or parameter keys
+.model DC D(IS={missing_dc})
+.model M D(IS={missing_multiplier})
+.model VR D(IS={missing_instance})
+.model in D(IS={missing_node})
+V1 in 0 DC 2
+R1 in 0 1k
+VR bias 0 1
+Vd drain 0 2
+M1 drain bias 0 0 NM W=20u L=1u M=2
+.model NM NMOS(LEVEL=1 VTO=.5 KP=.001)
+.op
+.end

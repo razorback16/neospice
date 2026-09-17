@@ -1,0 +1,7 @@
+Matched lossless tline external resistor noise
+V1 drive 0 DC 0 AC 1
+Rs drive in 50
+T1 in 0 out 0 Z0=50 TD=5n
+Rl out 0 50
+.noise V(out) V1 DEC 4 1k 10g
+.end

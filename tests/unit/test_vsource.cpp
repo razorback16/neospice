@@ -3,8 +3,64 @@
 #include "core/neo_solver.hpp"
 #include "core/circuit.hpp"   // tls_integrator_ctx, IntegratorCtx
 #include "core/types.hpp"
+#include "devices/isource.hpp"
+#include "parser/netlist_parser.hpp"
+#include "parser/tokenizer.hpp"
 
 using namespace neospice;
+
+TEST(AMSource, ParsedOffsetsPhasesZeroFrequenciesAndDelay) {
+    NetlistParser parser;
+    auto circuit = parser.parse("AM parameter semantics\n"
+        "V1 v 0 AM(2 3 4 0 0 5u 90 -90)\n"
+        "I1 i 0 AM(2 3 4 0 0 5u 90 -90)\n"
+        "R1 i 0 1\n.end\n");
+    int checked = 0;
+    const auto check = [&](auto& source) {
+        source.resolve_defaults(1e-9, 1e-3);
+        EXPECT_DOUBLE_EQ(source.value_at(0), 0.0);
+        // Use the parsed boundary: the token "5u" and C++ literal 5e-6
+        // can differ by one ULP after engineering-suffix multiplication.
+        const double delay = parse_spice_number("5u");
+        EXPECT_DOUBLE_EQ(source.value_at(delay), 0.0);
+        EXPECT_NEAR(source.value_at(std::nextafter(delay, 1.0)), -5.0, 1e-14);
+        EXPECT_NEAR(source.value_at(6e-6), -5.0, 1e-14);
+        EXPECT_NEAR(source.value_at(1e-3), -5.0, 1e-14);
+        ++checked;
+    };
+    for (auto& device : circuit.devices()) {
+        if (auto* v = dynamic_cast<VSource*>(device.get())) check(*v);
+        if (auto* i = dynamic_cast<ISource*>(device.get())) check(*i);
+    }
+    EXPECT_EQ(checked, 2);
+}
+
+TEST(AMSource, OmittedFrequenciesFollowEachTransientDuration) {
+    NetlistParser parser;
+    auto circuit = parser.parse("AM defaults\nV1 v 0 AM(0 0)\n"
+        "I1 i 0 AM(0 0)\nR1 i 0 1\n.end\n");
+    int checked = 0;
+    const auto check = [&](auto& source) {
+        for (double stop : {1.0, 2.0}) {
+            source.resolve_defaults(1e-3, stop);
+            // At stop/400 the default carrier is at its positive peak;
+            // the default modulator phase is pi/40 and its amplitude is one.
+            EXPECT_NEAR(source.value_at(stop / 400), std::sin(M_PI / 40), 1e-14);
+        }
+        ++checked;
+    };
+    for (auto& device : circuit.devices()) {
+        if (auto* v = dynamic_cast<VSource*>(device.get())) check(*v);
+        if (auto* i = dynamic_cast<ISource*>(device.get())) check(*i);
+    }
+    EXPECT_EQ(checked, 2);
+}
+
+TEST(AMSource, RequiresTwoParameters) {
+    NetlistParser parser;
+    EXPECT_THROW(parser.parse("Invalid AM\nV1 v 0 AM(1)\n.end\n"), ParseError);
+    EXPECT_THROW(parser.parse("Invalid AM\nI1 i 0 AM(1)\nR1 i 0 1\n.end\n"), ParseError);
+}
 
 // Helper RAII guard for setting up integrator context in unit tests.
 namespace {
@@ -206,4 +262,64 @@ TEST(VSource, ExtraVars) {
     auto oc = vs.output_currents();
     ASSERT_EQ(oc.size(), 1u);
     EXPECT_EQ(oc[0], "I(V1)");
+}
+
+TEST(PulseSource, PeriodBoundaryReturnsReferenceBaseline) {
+    NetlistParser parser;
+    auto circuit = parser.parse("Pulse roundoff\n"
+        "V1 v 0 PULSE(0 5 0 1n 1n 10u 20u)\n"
+        "I1 i 0 PULSE(0 5 0 1n 1n 10u 20u)\nR1 i 0 1\n.end\n");
+    int checked = 0;
+    auto check = [&](auto& source) {
+        source.resolve_defaults(1e-6, 5e-4);
+        // The paired ngspice RC benchmark returns exactly zero at this stop.
+        // fmod leaves a small positive remainder and invents a rising value.
+        EXPECT_DOUBLE_EQ(source.value_at(5e-4), 0.0);
+        ++checked;
+    };
+    for (auto& device : circuit.devices()) {
+        if (auto* v = dynamic_cast<VSource*>(device.get())) check(*v);
+        if (auto* i = dynamic_cast<ISource*>(device.get())) check(*i);
+    }
+    EXPECT_EQ(checked, 2);
+}
+
+TEST(PulseSource, FirstPeriodEndpointDoesNotWrapAnOverlappingPulse) {
+    // ngspice wraps only after PER. At exactly PER the first pulse is still
+    // high when its width exceeds the period; the next representable time
+    // starts the next rise. This distinction is not a tolerance adjustment.
+    PulseParams p{2, 7, 0, 1e-9, 1e-9, 20e-9, 10e-9};
+    VSource voltage("V1", 0, GROUND_INTERNAL, 0);
+    ISource current("I1", 0, GROUND_INTERNAL, 0);
+    auto check = [&](auto& source) {
+        source.set_pulse(p);
+        source.resolve_defaults(1e-10, 1e-6);
+        EXPECT_DOUBLE_EQ(source.value_at(p.per), 7.0);
+        EXPECT_NEAR(source.value_at(std::nextafter(p.per, 1.0)), 2.0, 1e-12);
+    };
+    check(voltage);
+    check(current);
+}
+
+TEST(PulseSource, AcceptedCornerScheduleRespectsSpacingAndResetsForReuse) {
+    PulseParams p{0, 1, 2, 1, 1, 3, 10};
+    VSource voltage("V1", 0, GROUND_INTERNAL, 0);
+    ISource current("I1", 0, GROUND_INTERNAL, 0);
+    auto check = [&](auto& source) {
+        source.set_pulse(p);
+        source.resolve_defaults(0.1, 30);
+        EXPECT_EQ(source.accept_pulse_breakpoint(0, 0.01), 2);
+        EXPECT_FALSE(source.accept_pulse_breakpoint(1, 0.01));
+        EXPECT_EQ(source.accept_pulse_breakpoint(2, 0.01), 3);
+        // An accepted point just before the old corner requests the next
+        // corner, rather than getting stuck on an ignored nearby request.
+        EXPECT_EQ(source.accept_pulse_breakpoint(2.995, 0.01), 6);
+        EXPECT_EQ(source.accept_pulse_breakpoint(6, 0.01), 7);
+        EXPECT_EQ(source.accept_pulse_breakpoint(7, 0.01), 12);
+        EXPECT_EQ(source.accept_pulse_breakpoint(12, 0.01), 13);
+        source.resolve_defaults(0.1, 30);
+        EXPECT_EQ(source.accept_pulse_breakpoint(0, 0.01), 2);
+    };
+    check(voltage);
+    check(current);
 }

@@ -1,12 +1,57 @@
 #include <gtest/gtest.h>
 #include "core/dc.hpp"
 #include "core/convergence.hpp"
+#include "core/ckt_mode.hpp"
 #include "core/circuit.hpp"
 #include "core/neo_solver.hpp"
 #include "api/neospice.hpp"
 #include "parser/netlist_parser.hpp"
+#include <array>
 
 using namespace neospice;
+
+TEST(Convergence, RejectsDeviceFailureWithSettledTerminalVoltages) {
+    // ngspice 47 preserves the DEVconvTest failure flag on the NIconvTest
+    // return path. Stable node voltages alone must not override
+    // a device reporting that its internal state has not converged.
+    class ConvergenceProbe : public Device {
+    public:
+        ConvergenceProbe(int32_t node, bool settled)
+            : Device("convergence_probe"), node_(node), settled_(settled) {}
+        void stamp_pattern(SparsityBuilder& builder) const override { builder.add(node_, node_); }
+        void assign_offsets(const SparsityPattern& pattern) override { off_ = pattern.offset(node_, node_); }
+        void evaluate(const std::vector<double>&, NumericMatrix& mat, std::span<double> rhs) override {
+            mat.add(off_, 1.0);
+            rhs[node_] += 1.0;
+        }
+        bool device_converged(const std::vector<double>&) const override {
+            ++checks;
+            return settled_;
+        }
+        mutable int checks = 0;
+    private:
+        int32_t node_;
+        bool settled_;
+        MatrixOffset off_ = -1;
+    };
+    for (bool settled : {false, true}) {
+        SCOPED_TRACE(settled);
+        Circuit circuit;
+        const auto node = static_cast<int32_t>(circuit.node("probe"));
+        auto device = std::make_unique<ConvergenceProbe>(node, settled);
+        auto* probe = device.get();
+        circuit.add_device(std::move(device));
+        circuit.finalize();
+        circuit.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+        NeoSolver solver;
+        solver.symbolic(circuit.pattern());
+        std::vector<double> solution(circuit.num_vars(), 0.0);
+        const auto result = newton_solve(circuit, solver, solution, circuit.options);
+        EXPECT_EQ(result.converged, settled);
+        EXPECT_GT(probe->checks, 0);
+        EXPECT_NEAR(solution[node], 1.0, 1e-12);
+    }
+}
 
 TEST(Convergence, DiodeDC) {
     std::string netlist = R"(
@@ -282,4 +327,177 @@ D1 out 0 DMOD
     EXPECT_GT(result.voltage("out"), 0.5);
     EXPECT_LT(result.voltage("out"), 0.8);
     EXPECT_EQ(result.status.convergence_method, ConvergenceMethod::DIRECT);
+}
+
+TEST(Convergence, OpTransientSeedsReferenceStartupHistory) {
+    // optran.c initializes every CKTdeltaOld slot to CKTmaxStep before
+    // shifting in each attempted interval. The initial history is not the
+    // reduced startup step: it remains visible to second-order truncation.
+    class HistoryProbe : public Device {
+    public:
+        explicit HistoryProbe(int32_t node) : Device("history_probe"), node_(node) {}
+        int32_t state_vars() const override { return 1; }
+        void set_state_ptrs(double*, double* state1, double* state2, double*, int32_t base) override {
+            state1_ = state1 + base;
+            state2_ = state2 + base;
+        }
+        void stamp_pattern(SparsityBuilder& builder) const override { builder.add(node_, node_); }
+        void assign_offsets(const SparsityPattern& pattern) override { off_ = pattern.offset(node_, node_); }
+        void evaluate(const std::vector<double>&, NumericMatrix& mat, std::span<double> rhs) override {
+            const auto& ctx = *tls_integrator_ctx;
+            if (times.empty()) initial_states = {*state1_, *state2_};
+            if (times.empty() || times.back() != ctx.current_time) {
+                times.push_back(ctx.current_time);
+                intervals.push_back({ctx.delta_old[0], ctx.delta_old[1], ctx.delta_old[2]});
+            }
+            mat.add(off_, 1.0);
+            rhs[node_] += 1.0;
+        }
+        double compute_trunc(const IntegratorCtx& ctx, const SimOptions&) const override {
+            return 2.0 * ctx.delta;
+        }
+        std::vector<double> times;
+        std::vector<std::array<double, 3>> intervals;
+        std::array<double, 2> initial_states{};
+    private:
+        int32_t node_;
+        MatrixOffset off_ = -1;
+        double* state1_ = nullptr;
+        double* state2_ = nullptr;
+    };
+    Circuit circuit;
+    const auto node = static_cast<int32_t>(circuit.node("probe"));
+    auto device = std::make_unique<HistoryProbe>(node);
+    auto* probe = device.get();
+    circuit.add_device(std::move(device));
+    circuit.finalize();
+    circuit.state0()[0] = 3.5;
+    circuit.state1()[0] = -2.0;
+    circuit.state2()[0] = 19.0;
+    NeoSolver solver;
+    solver.symbolic(circuit.pattern());
+    std::vector<double> solution(circuit.num_vars(), 0.0);
+    const auto result = transient_operating_point(circuit, solver, solution, circuit.options);
+    ASSERT_TRUE(result.converged);
+    ASSERT_GE(probe->intervals.size(), 3u);
+    // Initial MODEINITTRAN predictors need the entry state in both older
+    // slots. ngspice copies state0 to state1 and rotates before the first load.
+    EXPECT_DOUBLE_EQ(probe->initial_states[0], 3.5);
+    EXPECT_DOUBLE_EQ(probe->initial_states[1], 3.5);
+    const std::array<std::array<double, 3>, 3> expected{{
+        {1e-9, 100e-9, 100e-9}, {1e-9, 1e-9, 100e-9}, {2e-9, 1e-9, 1e-9}}};
+    for (size_t step = 0; step < expected.size(); ++step)
+        for (size_t history = 0; history < 3; ++history)
+            EXPECT_NEAR(probe->intervals[step][history], expected[step][history], 1e-22)
+                << "step=" << step << " history=" << history;
+    EXPECT_NEAR(solution[node], 1.0, 1e-12);
+}
+
+TEST(Convergence, OpTransientUsesSecondOrderStepProposal) {
+    // A controlled device LTE constraint distinguishes keeping first order
+    // (0.95*h) from promoting to second order (1.5*h). In both cases ngspice's
+    // OPtran uses the second-order probe's proposed interval for the next step.
+    class StepProbe : public Device {
+    public:
+        StepProbe(int32_t node, double ratio) : Device("step_probe"), node_(node), ratio_(ratio) {}
+        void stamp_pattern(SparsityBuilder& builder) const override { builder.add(node_, node_); }
+        void assign_offsets(const SparsityPattern& pattern) override { off_ = pattern.offset(node_, node_); }
+        void evaluate(const std::vector<double>&, NumericMatrix& mat, std::span<double> rhs) override {
+            const auto& ctx = *tls_integrator_ctx;
+            if (times.empty() || times.back() != ctx.current_time) {
+                times.push_back(ctx.current_time);
+                orders.push_back(ctx.order);
+            }
+            mat.add(off_, 1.0);
+            rhs[node_] += 1.0;
+        }
+        double compute_trunc(const IntegratorCtx& ctx, const SimOptions&) const override {
+            if (ctx.current_time > 1.5e-9 && ctx.current_time < 2.5e-9 && ctx.order == 2)
+                return ratio_ * ctx.delta;
+            return 2.0 * ctx.delta;
+        }
+        std::vector<double> times;
+        std::vector<int> orders;
+    private:
+        int32_t node_;
+        double ratio_;
+        MatrixOffset off_ = -1;
+    };
+
+    for (double ratio : {0.95, 1.5}) {
+        SCOPED_TRACE(ratio);
+        Circuit circuit;
+        const int32_t node = static_cast<int32_t>(circuit.node("probe"));
+        auto device = std::make_unique<StepProbe>(node, ratio);
+        auto* probe = device.get();
+        circuit.add_device(std::move(device));
+        circuit.finalize();
+        NeoSolver solver;
+        solver.symbolic(circuit.pattern());
+        std::vector<double> solution(circuit.num_vars(), 0.0);
+        const auto result = transient_operating_point(circuit, solver, solution, circuit.options);
+        ASSERT_TRUE(result.converged);
+        ASSERT_GE(probe->times.size(), 3u);
+        EXPECT_NEAR(probe->times[0], 1e-9, 1e-22);
+        EXPECT_NEAR(probe->times[1], 2e-9, 1e-22);
+        EXPECT_NEAR(probe->times[2] - probe->times[1], ratio * 1e-9, 1e-22);
+        EXPECT_EQ(probe->orders[2], ratio < 1.05 ? 1 : 2);
+        EXPECT_NEAR(solution[node], 1.0, 1e-12);
+    }
+}
+
+TEST(Convergence, TrueGminUsesNgspice47SlowStepFactorFloor) {
+    // Driver-contract probe: the first attempted conductance fails. The next
+    // succeeds just below/above 3*itl2/4 iterations, so the adaptive factor
+    // falls below three unless the ngspice47 new_gmin floor is preserved.
+    class SlowStep : public Device {
+    public:
+        SlowStep(int32_t node, int settle_loads)
+            : Device("slow_gmin_probe"), node_(node), settle_loads_(settle_loads) {}
+        void stamp_pattern(SparsityBuilder& builder) const override { builder.add(node_, node_); }
+        void assign_offsets(const SparsityPattern& pattern) override { offset_ = pattern.offset(node_, node_); }
+        void evaluate(const std::vector<double>&, NumericMatrix& matrix, std::span<double> rhs) override {
+            const double g = tls_integrator_ctx->options->gmin;
+            if (levels.empty() || levels.back() != g) {
+                levels.push_back(g);
+                loads_ = 0;
+            }
+            ++loads_;
+            matrix.add(offset_, 1);
+            rhs[node_] += 1;
+        }
+        bool device_converged(const std::vector<double>&) const override {
+            return levels.size() > 1 && (levels.size() != 2 || loads_ >= settle_loads_);
+        }
+        std::vector<double> levels;
+    private:
+        int32_t node_;
+        int settle_loads_;
+        int loads_ = 0;
+        MatrixOffset offset_ = -1;
+    };
+    for (int settle_loads : {37, 38}) {
+        SCOPED_TRACE(settle_loads);
+        Circuit circuit;
+        const auto node = static_cast<int32_t>(circuit.node("probe"));
+        auto device = std::make_unique<SlowStep>(node, settle_loads);
+        const auto* probe = device.get();
+        circuit.add_device(std::move(device));
+        circuit.finalize();
+        circuit.integrator_ctx.options = &circuit.options;
+        NeoSolver solver;
+        solver.symbolic(circuit.pattern());
+        std::vector<double> solution(circuit.num_vars(), 0);
+        const auto result = true_gmin_stepping(circuit, solver, solution, circuit.options,
+            MODEDCOP_BIT | MODEINITFLOAT_BIT, MODEDCOP_BIT | MODEINITFLOAT_BIT);
+        ASSERT_TRUE(result.converged);
+        ASSERT_GE(probe->levels.size(), 3u);
+        EXPECT_DOUBLE_EQ(probe->levels[0], 0.001);
+        const double retry_factor = std::sqrt(std::sqrt(10.0));
+        EXPECT_DOUBLE_EQ(probe->levels[1], 0.01 / retry_factor);
+        const double next_factor = settle_loads > 37 ? 3.0 : retry_factor;
+        EXPECT_DOUBLE_EQ(probe->levels[2], probe->levels[1] / next_factor);
+        EXPECT_DOUBLE_EQ(circuit.options.gmin, 1e-12);
+        EXPECT_DOUBLE_EQ(solution[node], 1.0);
+    }
 }

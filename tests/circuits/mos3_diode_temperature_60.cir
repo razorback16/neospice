@@ -1,0 +1,20 @@
+MOS3 and diode breakdown runtime model expressions
+.temp 60
+Vdn dn 0 2
+Vgn gn 0 3.3 AC 1
+Mn dn gn 0 0 NM W=1u L=1u
+Vdshared dshared 0 2
+Vgshared gshared 0 3.3 AC 1
+Mshared dshared gshared 0 0 NM W=1u L=1u M=2
+Vdp dp 0 -2
+Vgp gp 0 -3.3 AC 1
+Mp dp gp 0 0 PM W=1u L=1u
+.model NM NMOS(LEVEL=3 VTO={2.1*(1.04-.0016*TEMPER)} KP={.35*(1-.001*(TEMPER-27))} THETA=.086 VMAX=2.2e5)
+.model PM PMOS(LEVEL=3 VTO={-2.1*(1.04-.0016*TEMPER)} KP={.35*(1-.001*(TEMPER-27))} THETA=.086 VMAX=2.2e5)
+Vbreak supplybreak 0 10 AC 1
+Rbreak supplybreak dbreak 1k
+Dbreak 0 dbreak DM
+.model DM D(BV={6*(.982+.00072*TEMPER)} IS=1e-14 IBV=1m RS=.1 CJO=10p)
+.ac dec 5 10 100k
+.op
+.end

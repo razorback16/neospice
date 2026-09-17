@@ -1,7 +1,7 @@
 // Task 7: first exercise of the translated UCB BSIM4v7 load path end-to-end.
 //
 // Builds a trivial NMOS op-point circuit mirroring tests/goldens/probe.cir,
-// constructs a BSIM4v7Device directly (parser support lands in T8), runs
+// constructs a BSIM4v7Device directly, runs
 // newton_solve, and compares the drain current against an ngspice OP
 // golden.
 //
@@ -10,7 +10,7 @@
 //   VGS g 0 0.8
 //   VBS b 0 0
 //   M1 d g 0 b NMOD W=1u L=100n
-//   .model NMOD NMOS LEVEL=14 VTH0=0.4 U0=0.04 TOXE=2e-9
+//   .model NMOD NMOS LEVEL=14 VERSION=4.7.0 VTH0=0.4 U0=0.04 TOXE=2e-9
 
 #include <gtest/gtest.h>
 
@@ -109,10 +109,10 @@ TEST(BSIM4v7UCBLoad, NmosDcOpMatchesNgspice) {
     // tests/unit/test_dc.cpp:48 for the existing |.| convention.
     const double id_sim = -solution[vdd->branch_index()];
 
-    // Golden from ngspice op() on tests/goldens/probe.cir, date 2026-04-16.
-    // Captured with: ngspice -b tests/goldens/probe.cir → @m1[id] = 5.754970e-05.
-    // ngspice version: ngspice-42.
-    constexpr double id_golden = 5.754970e-05;
+    // Captured from unmodified ngspice 47 on tests/goldens/probe.cir,
+    // explicitly selecting BSIM4 VERSION=4.7.0 to match this device.
+    // See tests/goldens/README.md for reproduction and recorded provenance.
+    constexpr double id_golden = 5.75497011009546433e-05;
     constexpr double rel_tol   = 1e-3;
     constexpr double abs_floor = 1e-15;
     const double tol = std::max(std::abs(id_golden) * rel_tol, abs_floor);

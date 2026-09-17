@@ -11,6 +11,99 @@
 
 using namespace neospice;
 
+TEST(Parser, ModelExpressionsPreserveGroupingAndParameters) {
+    const auto card = parse_model_card({".model", "QM",
+        "NPN (BF={2 * (50 + 10)}, IS='10 * 1e-15') VAF={voltage}"},
+        {{"voltage", 80.0}});
+    EXPECT_DOUBLE_EQ(card.params.at("bf"), 120.0);
+    EXPECT_DOUBLE_EQ(card.params.at("is"), 1e-14);
+    EXPECT_DOUBLE_EQ(card.params.at("vaf"), 80.0);
+    EXPECT_EQ(card.params.size(), 3u);
+    EXPECT_TRUE(card.temperature_expressions.empty());
+}
+
+TEST(Parser, InvalidModelExpressionsCannotUseDefaults) {
+    for (const std::string value : {"{missing}", "{1 / 0}", "{2*(3+4)", "'2*(3+4)"}) {
+        SCOPED_TRACE(value);
+        EXPECT_THROW(parse_model_card({".model", "QM", "NPN BF=" + value}), ParseError);
+    }
+}
+
+TEST(Parser, ModelTemperatureExpressionRemainsDeferred) {
+    const auto card = parse_model_card({".model", "POWER",
+        "VDMOS(Vto={base - slope * (TEMPER - 25)} Kp={2*10m})"},
+        {{"base", 0.65}, {"slope", 0.0016}});
+    EXPECT_FALSE(card.params.contains("vto"));
+    ASSERT_EQ(card.temperature_expressions.size(), 1u);
+    EXPECT_EQ(card.temperature_expressions.front().first, "vto");
+    EXPECT_DOUBLE_EQ(card.params.at("kp"), 0.02);
+    const auto numeric_override = parse_model_card({".model", "POWER",
+        "VDMOS(Vto={TEMPER/100} Vto=0.7)"});
+    ASSERT_EQ(numeric_override.temperature_expressions.size(), 1u);
+    EXPECT_EQ(numeric_override.temperature_expressions.front().first, "vto");
+    EXPECT_DOUBLE_EQ(numeric_override.params.at("vto"), 0.7);
+}
+
+TEST(Parser, ModelTempAliasRequiresPspiceCompatibility) {
+    const std::string deck = "Temperature alias\nVd d 0 2\nVg g 0 1\n"
+        "M1 d g 0 POWER\n.model POWER VDMOS(Vto={TEMP/100})\n.end\n";
+    NetlistParser parser;
+    parser.set_force_pspice_compat(false);
+    EXPECT_THROW(parser.parse(deck), ParseError);
+    parser.set_force_pspice_compat(true);
+    EXPECT_NO_THROW(parser.parse(deck));
+}
+
+TEST(Parser, UnsupportedModelTemperatureUpdatesFailExplicitly) {
+    NetlistParser parser;
+    for (const std::string deck : {
+        "Diode topology update\nD1 d 0 DM\n.model DM D(RS={TEMPER})\n.end\n",
+        "MOS topology update\nM1 d g 0 POWER\n.model POWER VDMOS(RD={TEMPER})\n.end\n",
+        "Passive model update\nR1 d 0 RM 1k\n.model RM R(TC1={TEMPER})\n.end\n"}) {
+        SCOPED_TRACE(deck);
+        EXPECT_THROW(parser.parse(deck), ParseError);
+    }
+}
+
+TEST(Parser, ModelTemperatureErrorIsReportedAndCircuitCanRecover) {
+    Simulator sim;
+    auto ckt = sim.parse("Temperature error recovery\n"
+        "Vd d 0 2\nVg g 0 1\nM1 d g 0 FIRST\n"
+        ".model FIRST VDMOS(Vto={TEMPER/100} Kp=.44)\n"
+        "Vd2 d2 0 2\nVg2 g2 0 1\nM2 d2 g2 0 SECOND\n"
+        ".model SECOND VDMOS(Vto=.5 Kp={1/(60-TEMPER)})\n.op\n.end\n");
+    const auto original = sim.run_dc(ckt);
+    ckt.options.temp = 333.15;
+    EXPECT_THROW(sim.run_dc(ckt), ParseError);
+    EXPECT_EQ(ckt.operating_point(), nullptr);
+    ckt.options.temp = 300.15;
+    const auto recovered = sim.run_dc(ckt);
+    EXPECT_NEAR(recovered.current("vd"), original.current("vd"), 1e-12);
+    EXPECT_NEAR(recovered.current("vd2"), original.current("vd2"), 1e-12);
+}
+
+TEST(Parser, ModelParametersBeforeInsideAndAfterParentheses) {
+    for (const std::string body : {
+             "NPN(LEVEL=4 IS=1e-14 TD=2n BF=120)",
+             "NPN LEVEL=4 IS=1e-14 TD=2n BF=120",
+             "NPN LEVEL=4(IS=1e-14 TD=2n) BF=120",
+             "NPN LEVEL=4 (IS=1e-14 TD=2n) BF=120",
+             "NPN (LEVEL=4) IS=1e-14 (TD=2n BF=120)",
+             "NPN (LEVEL=4, IS=1e-14) TD=2n BF=120"}) {
+        SCOPED_TRACE(body);
+        const auto card = parse_model_card({".model", "QM", body});
+        EXPECT_EQ(card.type, "npn");
+        ASSERT_TRUE(card.params.contains("level"));
+        ASSERT_TRUE(card.params.contains("is"));
+        ASSERT_TRUE(card.params.contains("td"));
+        ASSERT_TRUE(card.params.contains("bf"));
+        EXPECT_DOUBLE_EQ(card.params.at("level"), 4.0);
+        EXPECT_DOUBLE_EQ(card.params.at("is"), 1e-14);
+        EXPECT_DOUBLE_EQ(card.params.at("td"), 2e-9);
+        EXPECT_DOUBLE_EQ(card.params.at("bf"), 120.0);
+    }
+}
+
 TEST(Parser, ResistorDivider) {
     std::string netlist = R"(
 Resistor Divider

@@ -1,0 +1,43 @@
+VDMOS local global nested and shadowed model binding
+Vdn dn 0 2
+Vgn gn 0 3
+Xn dn gn 0 NCELL
+Vdp dp 0 -2
+Vgp gp 0 -3
+Xp dp gp 0 PCELL
+Vdnested dnested 0 2
+Vgnested gnested 0 3
+Xnested dnested gnested 0 WRAPPER
+Vdlocal dlocal 0 2
+Vglocal glocal 0 3
+Xlocal dlocal glocal 0 LOCALCELL
+Vdshadow dshadow 0 2
+Vgshadow gshadow 0 3
+Xshadow dshadow gshadow 0 SHADOWCELL
+Vdn4 dn4 0 2
+Vgn4 gn4 0 3
+Xn4 dn4 gn4 0 NCELL4
+.subckt NCELL d g s
+M1 d g s Gn M=2
+.ends NCELL
+.subckt PCELL d g s
+M1 d g s Gp M=2
+.ends PCELL
+.subckt WRAPPER d g s
+Xinner d g s NCELL
+.ends WRAPPER
+.subckt LOCALCELL d g s
+M1 d g s Local M=2
+.model Local VDMOS(Vto=1 Kp=20m)
+.ends LOCALCELL
+.subckt SHADOWCELL d g s
+M1 d g s Gn M=2
+.model Gn VDMOS(Vto=0.5 Kp=20m)
+.ends SHADOWCELL
+.subckt NCELL4 d g s
+M1 d g s 0 Gn M=2
+.ends NCELL4
+.model Gn VDMOS(Vto=1 Kp=20m)
+.model Gp VDMOSP(Vto=-1 Kp=20m)
+.op
+.end

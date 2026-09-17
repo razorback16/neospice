@@ -1,0 +1,8 @@
+Reverse-biased diode depletion charge with grading coefficient 1.2
+.options tnom=27 temp=27
+V1 in 0 PULSE(-1 -.2 200n 100n 100n 1u 2u)
+R1 in out 1k
+D1 out 0 DHIGH
+.model DHIGH D(CJO=100p VJ=.5 M=1.2 TNOM=27)
+.tran 10n 4u
+.end

@@ -1,0 +1,39 @@
+Model syntax: all nine transistors must use their requested device family
+VC_nparen c_nparen 0 5
+VB_nparen b_nparen 0 0.65
+Q_nparen c_nparen b_nparen 0 M_nparen
+.model M_nparen NPN(LEVEL=4 IS=1e-14 TD=1u)
+VC_nbare c_nbare 0 5
+VB_nbare b_nbare 0 0.65
+Q_nbare c_nbare b_nbare 0 M_nbare
+.model M_nbare NPN LEVEL=4 IS=1e-14 TD=1u
+VC_nmixed c_nmixed 0 5
+VB_nmixed b_nmixed 0 0.65
+Q_nmixed c_nmixed b_nmixed 0 M_nmixed
+.model M_nmixed NPN LEVEL=4(IS=1e-14) TD=1u
+VC_pparen c_pparen 0 -5
+VB_pparen b_pparen 0 -0.65
+Q_pparen c_pparen b_pparen 0 M_pparen
+.model M_pparen PNP(LEVEL=9 IS=1e-14 TD=1u)
+VC_pbare c_pbare 0 -5
+VB_pbare b_pbare 0 -0.65
+Q_pbare c_pbare b_pbare 0 M_pbare
+.model M_pbare PNP LEVEL=9 IS=1e-14 TD=1u
+VC_pmixed c_pmixed 0 -5
+VB_pmixed b_pmixed 0 -0.65
+Q_pmixed c_pmixed b_pmixed 0 M_pmixed
+.model M_pmixed PNP LEVEL=9(IS=1e-14) TD=1u
+VC_gp0 c_gp0 0 5
+VB_gp0 b_gp0 0 0.65
+Q_gp0 c_gp0 b_gp0 0 M_gp0
+.model M_gp0 NPN LEVEL=0(IS=1e-14)
+VC_gp1 c_gp1 0 5
+VB_gp1 b_gp1 0 0.65
+Q_gp1 c_gp1 b_gp1 0 M_gp1
+.model M_gp1 NPN(LEVEL=1 IS=1e-14)
+VC_gp2 c_gp2 0 5
+VB_gp2 b_gp2 0 0.65
+Q_gp2 c_gp2 b_gp2 0 M_gp2
+.model M_gp2 NPN LEVEL=2 IS=1e-14
+.op
+.end

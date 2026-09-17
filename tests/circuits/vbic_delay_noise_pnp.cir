@@ -1,0 +1,9 @@
+PNP VBIC excess-phase noise
+VC vcc 0 -5
+RC vcc out 2k
+VB drive 0 DC -0.65 AC 1
+RB drive b 1k
+Q1 out b 0 QM
+.model QM PNP(LEVEL=9 IS=1e-14 TD=1u RBX=10 RBI=20 RCI=1)
+.noise v(out) VB dec 20 1k 10Meg
+.end

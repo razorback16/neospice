@@ -1,0 +1,7 @@
+AM voltage and current sources with independent phases
+V1 voltage_out 0 AM(1.2 0.5 0.2 10k 1meg 1u 45 -30)
+R1 voltage_out 0 1k
+I1 0 current_out AM(1.2m 0.5m 0.2m 10k 1meg 1u 45 -30)
+R2 current_out 0 1k
+.tran 20n 20u
+.end

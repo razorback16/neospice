@@ -1,0 +1,10 @@
+Floating lossless LTRA ports
+V1 drive ret1 DC 0 AC 1
+Vret1 ret1 0 2
+Vret2 ret2 0 -3
+Rs drive in 50
+O1 in ret1 out ret2 TMOD
+Rl out ret2 50
+.model TMOD LTRA L=250n C=100p LEN=1
+.ac DEC 4 1k 10g
+.end

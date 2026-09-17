@@ -1,0 +1,21 @@
+VDMOS mobility reduction in saturation, triode, and reverse operation
+Vdn dn 0 2
+Vgn gn 0 1.5
+Mn dn gn 0 POWER
+Vdp dp 0 -2
+Vgp gp 0 -1.5
+Mp dp gp 0 PPOWER
+Vdtri dtri 0 .1
+Vgtri gtri 0 1.5
+Mtri dtri gtri 0 POWER
+Vdrev drev 0 -.1
+Vgrev grev 0 1.5
+Mrev drev grev 0 POWER
+Vdcontrol dcontrol 0 2
+Vgcontrol gcontrol 0 1.5
+Mcontrol dcontrol gcontrol 0 CONTROL
+.model POWER VDMOS(Vto=.6468 Kp=.44 Theta=.5 Lambda=.04)
+.model PPOWER VDMOSP(Vto=-.6468 Kp=.44 Theta=.5 Lambda=.04)
+.model CONTROL VDMOS(Vto=.6468 Kp=.44 Theta=0 Lambda=.04)
+.op
+.end

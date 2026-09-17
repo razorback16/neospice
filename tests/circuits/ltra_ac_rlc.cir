@@ -1,0 +1,8 @@
+LTRA RLC frequency response
+V1 drive 0 DC 0 AC 1
+Rs drive in 20
+O1 in 0 out 0 TMOD
+Rl out 0 75
+.model TMOD LTRA R=20 L=250n C=100p LEN=2
+.ac DEC 4 1k 10g
+.end

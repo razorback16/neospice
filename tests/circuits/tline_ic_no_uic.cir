@@ -1,0 +1,7 @@
+Transmission line IC without UIC uses the DC operating point
+V1 in 0 1
+R1 in tl_in 50
+T1 tl_in 0 tl_out 0 Z0=50 TD=5.05n IC=0.3,0,0.3,0
+R2 tl_out 0 50
+.tran 0.1n 20n
+.end

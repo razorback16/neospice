@@ -1,0 +1,5 @@
+UIC startup breakpoint for a constant resistive circuit
+V1 in 0 1
+R1 in 0 1k
+.tran 0.1n 20n UIC
+.end

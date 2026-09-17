@@ -1,0 +1,19 @@
+BJT diode and MOS1 expressions with repeatable temperature-dependent AC and DC
+.temp 60
+.param offset=.6
+Vcc supply 0 3
+Rc supply collector 1k
+Ib 0 base DC 10u AC 1u
+Q1 collector base 0 QM
+.model QM NPN(IS=1e-14 BF={100+TEMPER} VAF=100 CJE=10p CJC=5p)
+Vdd drain 0 2
+Vgg gate 0 1.5 AC 1
+M1 drain gate 0 0 MM W=20u L=1u
+.model MM NMOS(LEVEL=1 VTO={offset-1m*(TEMPER-27)} KP={100u*(1+TEMPER/1000)} LAMBDA=.02)
+Vdiode input 0 1 AC 1
+Rd input diode 100
+D1 diode 0 DM
+.model DM D(IS={1e-14*(1+TEMPER/100)} N=1 CJO=10p)
+.ac dec 5 10 100k
+.op
+.end

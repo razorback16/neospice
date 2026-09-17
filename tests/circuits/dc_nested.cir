@@ -1,0 +1,8 @@
+Nested DC sweep order
+V1 in1 0 0
+V2 in2 0 0
+R1 in1 out 1k
+R2 in2 out 2k
+R3 out 0 1k
+.dc V1 -1 1 1 V2 0 2 2
+.end

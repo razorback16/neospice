@@ -10,6 +10,43 @@
 using namespace neospice;
 using namespace neospice::asrc;
 
+TEST(ASRCExpr, DdtUsesNgspiceTimeHistoryAndZeroJacobian) {
+    auto expr = CompiledExpression::compile("DDT(V(in))");
+    std::vector<double> derivs;
+    auto evaluate = [&](double time, double input, bool transient = true) {
+        expr.set_time(time, transient);
+        double result = expr.evaluate({input}, derivs);
+        EXPECT_EQ(derivs, std::vector<double>{0.0});
+        return result;
+    };
+    EXPECT_EQ(evaluate(0.0, 7.0), 0.0);
+    EXPECT_EQ(evaluate(0.1, 7.0), 0.0);
+    EXPECT_EQ(evaluate(0.2, 8.0), 0.0);
+    EXPECT_DOUBLE_EQ(evaluate(0.4, 9.0), 10.0);
+    // Same-time Newton iterations and rejected-step retries retain the value.
+    EXPECT_DOUBLE_EQ(evaluate(0.4, 100.0), 10.0);
+    EXPECT_DOUBLE_EQ(evaluate(0.3, -100.0), 10.0);
+    EXPECT_DOUBLE_EQ(evaluate(0.8, 13.0), 20.0);
+    EXPECT_EQ(evaluate(0.8, 13.0, false), 0.0);
+    // A fresh transient starts with fresh history.
+    EXPECT_EQ(evaluate(0.0, 7.0), 0.0);
+    EXPECT_EQ(evaluate(0.1, 7.0), 0.0);
+    EXPECT_EQ(evaluate(0.2, 8.0), 0.0);
+    EXPECT_DOUBLE_EQ(evaluate(0.4, 9.0), 10.0);
+}
+
+TEST(ASRCExpr, DdtNodesKeepSeparateHistories) {
+    auto expr = CompiledExpression::compile("DDT(V(a)) + 2*DDT(V(b))");
+    expr.set_time(0.0, true);
+    EXPECT_EQ(expr.evaluate({0.0, 0.0}), 0.0);
+    expr.set_time(0.1, true);
+    EXPECT_EQ(expr.evaluate({0.0, 0.0}), 0.0);
+    expr.set_time(0.2, true);
+    EXPECT_EQ(expr.evaluate({1.0, -2.0}), 0.0);
+    expr.set_time(0.4, true);
+    EXPECT_DOUBLE_EQ(expr.evaluate({2.0, -4.0}), -30.0);
+}
+
 // ===========================================================================
 // Expression AST unit tests
 // ===========================================================================

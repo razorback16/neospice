@@ -13,11 +13,26 @@ struct Tolerance {
     double absolute = 1e-9;
 };
 
+struct SignalComparison {
+    std::string name;
+    int points = 0;
+    double max_absolute_error = 0;
+    double max_normalized_error = 0;
+    double worst_coordinate = 0; // axis value; OP has no axis and uses zero
+    double reference_at_worst = 0;
+    double actual_at_worst = 0;
+    std::string coordinate_unit = "s";
+    double reference_imag_at_worst = 0; // AC only
+    double actual_imag_at_worst = 0;    // AC only
+};
+
 struct CompareResult {
     bool passed;
     std::string worst_signal;
     double worst_error;
     int num_points_compared;
+    // DC, sweep, transient, AC and noise records, including passing signals.
+    std::vector<SignalComparison> signals;
 };
 
 struct OscillatorTolerance {
@@ -29,6 +44,13 @@ struct OscillatorTolerance {
 };
 
 CompareResult compare_dc(const DCResult& expected, const DCResult& actual, Tolerance tol = {});
+// Data-integrity precondition for DC-sweep tests with their own value metrics.
+// Empty string means valid data, not numerical agreement or request completion.
+std::string validate_dc_sweep_data(const DCSweepResult& expected, const DCSweepResult& actual);
+CompareResult compare_dc_sweep(const DCSweepResult& expected, const DCSweepResult& actual, Tolerance tol = {});
+// Data-integrity/coverage precondition for benchmarks with specialized metrics.
+// Required signal selection and numerical agreement remain caller obligations.
+std::string validate_transient_data(const TransientResult& expected, const TransientResult& actual);
 CompareResult compare_transient(const TransientResult& expected, const TransientResult& actual, Tolerance tol = {});
 CompareResult compare_ac(const ACResult& expected, const ACResult& actual, Tolerance tol = {});
 

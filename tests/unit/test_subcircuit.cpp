@@ -415,7 +415,7 @@ TEST(Subcircuit, KElementInSubcircuitACTransformer) {
     //   R1 in pri 1
     //   Xtr pri sec xfmr      ; expands to xtr.l1, xtr.l2, coupling k
     //   R2 sec 0 1k
-    //   .ac dec 1 1k 1k
+    //   .ac lin 1 1k 1k
     //
     // Expected: V(sec) ~ 2 * V(pri) (sqrt(L2/L1) = 2) at 1 kHz with k~1.
     std::string netlist = wrap(R"(
@@ -429,13 +429,13 @@ V1 in 0 DC 0 AC 1
 R1 in pri 1
 Xtr pri sec xfmr
 R2 sec 0 1k
-.ac dec 1 1k 1k
+.ac lin 1 1k 1k
 )");
 
     NetlistParser parser;
     auto ckt = parser.parse(netlist);
 
-    auto result = solve_ac(ckt, AnalysisCommand::DEC, 1, 1e3, 1e3);
+    auto result = solve_ac(ckt, AnalysisCommand::LIN, 1, 1e3, 1e3);
     ASSERT_EQ(result.frequency.size(), 1u);
 
     auto it_sec = result.voltages.find("v(sec)");

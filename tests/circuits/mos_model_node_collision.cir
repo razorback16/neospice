@@ -1,0 +1,23 @@
+MOS formal and internal node names coinciding with global models
+.model S D
+.model internal SW
+Vdformal dformal 0 2
+Vgformal gformal 0 1
+Xformal dformal gformal 0 FORMALCELL
+Vdinternal dinternal 0 2
+Vginternal ginternal 0 1
+Xinternal dinternal ginternal 0 INTERNALCELL
+Vdcontrol dcontrol 0 2
+Vgcontrol gcontrol 0 1
+Mcontrol dcontrol gcontrol 0 0 GLOBAL W=20u L=1u
+.model GLOBAL NMOS(LEVEL=1 VTO=.5 KP=.001)
+.subckt FORMALCELL d g s
+M1 d g s s LOCAL W = 20u L = 1u
+.model LOCAL NMOS(LEVEL=1 VTO=.5 KP=.001)
+.ends FORMALCELL
+.subckt INTERNALCELL d g s
+M1 d g s internal GLOBAL W=20u L=1u
+Rtie internal s 1
+.ends INTERNALCELL
+.op
+.end

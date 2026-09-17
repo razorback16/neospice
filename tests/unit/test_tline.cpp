@@ -4,6 +4,7 @@
 #include "core/circuit.hpp"
 #include "parser/netlist_parser.hpp"
 #include "core/dc.hpp"
+#include "core/ac.hpp"
 #include "core/transient.hpp"
 #include "core/types.hpp"
 #include <cmath>
@@ -22,54 +23,48 @@ TEST(TLine, ConstructionBasic) {
 }
 
 TEST(TLine, StampPattern) {
-    // Port1: nodes 1 (pos) and 0 (neg=ground), Port2: nodes 2 (pos) and 0 (neg=ground)
-    // System size 3 (0,1,2).  Ground is not stamped.
-    // Port1 self: (1,1) only (since node 0 is ground)
-    // Port2 self: (2,2) only
-    // Cross-port: (1,2) and (2,1) for DC short-circuit coupling
-    TransmissionLine tl("T1", 1, GROUND_INTERNAL, 2, GROUND_INTERNAL, 50.0, 1e-9);
-    SparsityBuilder builder(3);
+    TransmissionLine tl("T1", 0, GROUND_INTERNAL, 1, GROUND_INTERNAL, 50.0, 1e-9);
+    int32_t next = 2;
+    tl.assign_branch_index(next);
+    EXPECT_EQ(next, 4);
+    SparsityBuilder builder(next);
     tl.stamp_pattern(builder);
     auto pattern = builder.build();
-    // 2 self-port diagonals + 2 cross-port entries = 4
-    EXPECT_EQ(pattern.nnz(), 4);
+    // Two port KCL entries and two rows with four branch-equation entries.
+    EXPECT_EQ(pattern.nnz(), 10);
 }
 
 TEST(TLine, StampPatternBothPortsFloating) {
-    // Port1: nodes 1,2; Port2: nodes 3,4
-    // Self-port: 4 entries per port = 8
-    // Cross-port: 8 entries (p1p↔p2p, p1p↔p2n, p1n↔p2p, p1n↔p2n, symmetric) = 8
-    // Total = 16
-    TransmissionLine tl("T1", 1, 2, 3, 4, 50.0, 1e-9);
-    SparsityBuilder builder(5);
+    TransmissionLine tl("T1", 0, 1, 2, 3, 50.0, 1e-9);
+    int32_t next = 4;
+    tl.assign_branch_index(next);
+    SparsityBuilder builder(next);
     tl.stamp_pattern(builder);
     auto pattern = builder.build();
     EXPECT_EQ(pattern.nnz(), 16);
 }
 
 TEST(TLine, DCStampShortCircuit) {
-    // At DC, the TL is a short circuit. Large conductance ties p1+↔p2+ and p1-↔p2-.
-    // With both neg nodes grounded: stamps g_dc on (0,0) and (1,1), -g_dc on (0,1) and (1,0).
-    TransmissionLine tl2("T1", 0, GROUND_INTERNAL, 1, GROUND_INTERNAL, 50.0, 1e-9);
-
-    SparsityBuilder builder(2);
-    tl2.stamp_pattern(builder);
+    TransmissionLine tl("T1", 0, GROUND_INTERNAL, 1, GROUND_INTERNAL, 50.0, 1e-9);
+    int32_t next = 2;
+    tl.assign_branch_index(next);
+    SparsityBuilder builder(next);
+    tl.stamp_pattern(builder);
     auto pattern = builder.build();
-    tl2.assign_offsets(pattern);
-
+    tl.assign_offsets(pattern);
     NumericMatrix mat(pattern);
-    std::vector<double> rhs(2, 0.0);
-    std::vector<double> voltages(2, 0.0);
-    tl2.evaluate(voltages, mat, rhs);
-
-    double g_dc = 1e9;
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 0)), g_dc);
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 1)), g_dc);
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(0, 1)), -g_dc);
-    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(1, 0)), -g_dc);
-    // RHS should be zero at DC (no history)
-    EXPECT_DOUBLE_EQ(rhs[0], 0.0);
-    EXPECT_DOUBLE_EQ(rhs[1], 0.0);
+    std::vector<double> rhs(next, 0.0), voltages(next, 0.0);
+    tl.evaluate(voltages, mat, rhs);
+    // V1 - V2 - Z0*(I1+I2) = 0 and its symmetric counterpart enforce
+    // an exact differential short and current continuity without huge stamps.
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(2, 0)), 1.0);
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(2, 1)), -1.0);
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(3, 0)), -1.0);
+    EXPECT_DOUBLE_EQ(mat.value(pattern.offset(3, 1)), 1.0);
+    for (int row : {2, 3})
+        for (int col : {2, 3})
+            EXPECT_DOUBLE_EQ(mat.value(pattern.offset(row, col)), -50.0);
+    for (double value : rhs) EXPECT_EQ(value, 0.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +241,48 @@ R2 b 0 100
     EXPECT_NEAR(result.node_voltages.at("v(b)"), 10.0 * 100.0 / 150.0, 1e-3);
 }
 
+TEST(TLineDC, PreservesIndependentPortCommonMode) {
+    NetlistParser parser;
+    auto ckt = parser.parse(
+        "Floating return\nV1 in 0 1\nV2 ret 0 3\n"
+        "T1 in 0 out ret Z0=50 TD=10n\nR1 out ret 50\n.op\n.end\n");
+    const auto result = solve_dc(ckt);
+    ASSERT_TRUE(result.status.converged);
+    EXPECT_NEAR(result.voltage("ret"), 3.0, 1e-13);
+    EXPECT_NEAR(result.voltage("out"), 4.0, 1e-13);
+    EXPECT_NEAR(result.current("v1"), -0.02, 1e-14);
+}
+
+TEST(TLineAC, MatchedPhaseAtAndAroundResonances) {
+    for (double frequency : {1e3, 25e6, 50e6, 50e6 * (1 - 1e-10),
+                             50e6 * (1 + 1e-10), 1e9, 1e10}) {
+        SCOPED_TRACE(frequency);
+        NetlistParser parser;
+        auto ckt = parser.parse(
+            "Matched line\nV1 in 0 AC 1\nR1 in a 50\n"
+            "T1 a 0 b 0 Z0=50 TD=10n\nR2 b 0 50\n.end\n");
+        const auto result = solve_ac(ckt, ACMode::LIN, 1, frequency, frequency);
+        ASSERT_TRUE(result.status.converged);
+        ASSERT_EQ(result.frequency.size(), 1u);
+        const double phase = -2 * M_PI * frequency * 10e-9;
+        const std::complex<double> expected = 0.5 * std::complex<double>(std::cos(phase), std::sin(phase));
+        EXPECT_NEAR(std::abs(result.voltages.at("v(b)")[0] - expected), 0.0, 1e-14);
+        EXPECT_NEAR(std::abs(result.voltages.at("v(a)")[0] - 0.5), 0.0, 1e-14);
+    }
+}
+
+TEST(TLineTransient, PreservesLoadedDCStateWithoutSpuriousWaves) {
+    NetlistParser parser;
+    auto ckt = parser.parse(
+        "Biased matched line\nV1 in 0 1\nR1 in a 50\n"
+        "T1 a 0 b 0 Z0=50 TD=10n\nR2 b 0 50\n.end\n");
+    const auto result = solve_transient(ckt, 1e-9, 100e-9);
+    ASSERT_TRUE(result.status.converged);
+    for (const auto& name : {"v(a)", "v(b)"})
+        for (double value : result.voltages.at(name))
+            EXPECT_NEAR(value, 0.5, 1e-12);
+}
+
 // ---------------------------------------------------------------------------
 // Transient analysis: pulse through matched transmission line
 // ---------------------------------------------------------------------------
@@ -396,4 +433,56 @@ Rload p2 0 50
         }
     }
     EXPECT_NEAR(v_late, 0.5, 0.1);
+}
+
+TEST(TLineTransient, DelayedWaveSlopeControlsBreakpointsAndTruncation) {
+    // Independently excite each voltage and current contribution to the two
+    // outgoing waves. A slope reversal must schedule the previous sample+TD;
+    // steady slopes must not schedule arbitrary periodic stops.
+    for (int coordinate = 0; coordinate < 4; ++coordinate) {
+        SCOPED_TRACE(coordinate);
+        TransmissionLine tl("T1", 0, GROUND_INTERNAL, 1, GROUND_INTERNAL, 50, 10e-9);
+        int32_t next = 2;
+        tl.assign_branch_index(next);
+        tl.set_transient(true);
+        std::vector<double> solution(4, 0.0);
+        tl.init_dc_state(solution);
+        IntegratorCtx ctx;
+        ctx.delta = ctx.delta_old[0] = ctx.delta_old[1] = ctx.delta_old[2] = 1e-9;
+        const double amplitude = coordinate < 2 ? 1.0 : 1.0 / 50.0;
+        solution[coordinate] = amplitude;
+        ctx.current_time = 1e-9;
+        EXPECT_FALSE(tl.accept_step(ctx.current_time, solution, ctx, 0.0));
+        solution[coordinate] = -amplitude;
+        ctx.current_time = 2e-9;
+        EXPECT_NEAR(tl.trunc_timestep(ctx, solution), 9e-9, 1e-23);
+        const auto bp = tl.accept_step(ctx.current_time, solution, ctx, 0.0);
+        ASSERT_TRUE(bp.has_value());
+        EXPECT_NEAR(*bp, 11e-9, 1e-23);
+        // Continue with exactly the same slope: no further corner.
+        solution[coordinate] = -3 * amplitude;
+        ctx.current_time = 3e-9;
+        EXPECT_EQ(tl.trunc_timestep(ctx, solution), 1e30);
+        EXPECT_FALSE(tl.accept_step(ctx.current_time, solution, ctx, 0.0));
+    }
+}
+
+TEST(TLineTransient, CloselySpacedAcceptDoesNotReplaceDelayedHistory) {
+    TransmissionLine tl("T1", 0, GROUND_INTERNAL, 1, GROUND_INTERNAL, 50, 10e-9);
+    int32_t next = 2;
+    tl.assign_branch_index(next);
+    tl.set_transient(true);
+    std::vector<double> solution(4, 0.0);
+    tl.init_dc_state(solution);
+    IntegratorCtx ctx;
+    ctx.delta_old[0] = ctx.delta_old[1] = 1e-9;
+    solution[0] = 1;
+    ASSERT_FALSE(tl.accept_step(1e-9, solution, ctx, 1e-15));
+    // A close duplicate would corrupt the next slope and corner location.
+    solution[0] = 20;
+    EXPECT_FALSE(tl.accept_step(1e-9 + 1e-16, solution, ctx, 1e-15));
+    solution[0] = -1;
+    const auto bp = tl.accept_step(2e-9, solution, ctx, 1e-15);
+    ASSERT_TRUE(bp.has_value());
+    EXPECT_NEAR(*bp, 11e-9, 1e-23);
 }

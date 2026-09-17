@@ -1,0 +1,9 @@
+UIC current-driven capacitors have no DC operating point
+I1 0 initialized DC 1m
+C1 initialized 0 1u
+I2 0 zero DC 2m
+C2 zero 0 1u
+.nodeset V(initialized)=7
+.ic V(initialized)=0.25
+.tran 1u 20u UIC
+.end

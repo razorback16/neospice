@@ -24,6 +24,18 @@ public:
     ACResult run_ac(const std::string& cir_path);
     NgspiceNoiseResult run_noise(const std::string& cir_path);
 
+    // Explicit phases for paired benchmarks. Results own their copied vectors;
+    // callers may reset the reference after extraction. The library is global.
+    void load(const std::string& path) { ng_.load_circuit(path); }
+    void command(const std::string& text) { ng_.command(text); }
+    void reset() { ng_.reset(); }
+    std::string diagnostics() const { return ng_.diagnostics(); }
+    DCResult read_dc();
+    DCSweepResult read_dc_sweep();
+    TransientResult read_transient();
+    ACResult read_ac();
+    NgspiceNoiseResult read_noise();
+
 private:
     NgspiceLib ng_;
     std::string find_plot(const std::string& prefix);

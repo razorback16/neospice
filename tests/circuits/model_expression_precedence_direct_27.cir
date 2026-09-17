@@ -1,0 +1,29 @@
+Direct model temperature assignment precedence
+.temp 27
+Vd0 d0 0 2
+Vg0 g0 0 1
+M0 d0 g0 0 BASE
+Vd1 d1 0 2
+Vg1 g1 0 1
+M1 d1 g1 0 NUMERIC
+Vd2 d2 0 2
+Vg2 g2 0 1
+M2 d2 g2 0 EXPR
+Vd3 d3 0 2
+Vg3 g3 0 1
+M3 d3 g3 0 INHERIT
+Vd4 d4 0 2
+Vg4 g4 0 1
+M4 d4 g4 0 DOUBLE
+Vd5 d5 0 2
+Vg5 g5 0 1
+M5 d5 g5 0 REVERSE
+.model BASE VDMOS(Vto={.65-.001*(TEMPER-27)} Kp=.44)
+.model NUMERIC VDMOS(Vto={.65-.001*(TEMPER-27)} Vto=.6 Kp=.44)
+.model CONTROL VDMOS(Vto=.7 Kp=.44)
+.model EXPR VDMOS(Vto=.7 Vto={.65-.001*(TEMPER-27)} Kp=.44)
+.model INHERIT VDMOS(Vto={.65-.001*(TEMPER-27)} Vto={.5-.002*(TEMPER-27)} Kp=.44)
+.model DOUBLE VDMOS(Vto={.65-.001*(TEMPER-27)} Vto={.5-.002*(TEMPER-27)} Kp=.44)
+.model REVERSE VDMOS(Vto={.5-.002*(TEMPER-27)} Vto={.65-.001*(TEMPER-27)} Kp=.44)
+.op
+.end

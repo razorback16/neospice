@@ -1,0 +1,5 @@
+Descending current-source sweep
+I1 in 0 0.25m
+R1 in 0 1k
+.dc I1 1m -1m -1m
+.end

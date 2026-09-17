@@ -1,0 +1,42 @@
+VBIC excess-phase delay comparison
+VC_zero c_zero 0 5
+VB_zero drive_zero 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
+RB_zero drive_zero b_zero 1k
+Q_zero c_zero b_zero 0 ZERO 
+VC_fast c_fast 0 5
+VB_fast drive_fast 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
+RB_fast drive_fast b_fast 1k
+Q_fast c_fast b_fast 0 FAST 
+VC_slow c_slow 0 5
+VB_slow drive_slow 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
+RB_slow drive_slow b_slow 1k
+Q_slow c_slow b_slow 0 SLOW 
+VC_shared c_shared 0 5
+VB_shared drive_shared 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
+RB_shared drive_shared b_shared 1k
+Q_shared c_shared b_shared 0 SLOW area=2 m=3
+VC_loaded c_loaded 0 5
+VB_loaded drive_loaded 0 DC 0.65 AC 1 PULSE(0.65 0.66 1u 10n 10n 2u 5u)
+RB_loaded drive_loaded b_loaded 1k
+Q_loaded c_loaded b_loaded 0 DYNAMIC
+VC_pzero c_pzero 0 -5
+VB_pzero drive_pzero 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
+RB_pzero drive_pzero b_pzero 1k
+Q_pzero c_pzero b_pzero 0 PZERO
+VC_pslow c_pslow 0 -5
+VB_pslow drive_pslow 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
+RB_pslow drive_pslow b_pslow 1k
+Q_pslow c_pslow b_pslow 0 PSLOW
+VC_ploaded c_ploaded 0 -5
+VB_ploaded drive_ploaded 0 DC -0.65 AC 1 PULSE(-0.65 -0.66 1u 10n 10n 2u 5u)
+RB_ploaded drive_ploaded b_ploaded 1k
+Q_ploaded c_ploaded b_ploaded 0 PDYNAMIC
+.model PZERO PNP(LEVEL=9 IS=1e-14 TD=0)
+.model PSLOW PNP(LEVEL=9 IS=1e-14 TD=1u)
+.model PDYNAMIC PNP(LEVEL=9 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
+.model DYNAMIC NPN(LEVEL=4 IS=1e-14 TD=200n TF=200p TR=20p CJE=2p CJC=1p VEF=100 VER=50 RCX=1 RCI=2 RBX=10 RBI=5 RE=0.5)
+.model ZERO NPN(LEVEL=4 IS=1e-14 TD=0)
+.model FAST NPN(LEVEL=4 IS=1e-14 TD=20n)
+.model SLOW NPN(LEVEL=4 IS=1e-14 TD=1u)
+.ac dec 20 1k 10Meg
+.end

@@ -1,0 +1,8 @@
+Diode series resistance noise at relative instance temperature
+.options temp=27 tnom=27
+V1 in 0 DC 1 AC 1
+R1 in out 1k
+D1 out 0 DMOD DTEMP=100
+.model DMOD D(IS=1e-14 N=1 RS=100 TNOM=27)
+.noise V(out) V1 dec 2 100 10k
+.end

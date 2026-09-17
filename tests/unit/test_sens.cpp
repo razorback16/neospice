@@ -6,6 +6,10 @@
 #include "devices/vsource.hpp"
 #include "devices/isource.hpp"
 #include "devices/resistor.hpp"
+#include "framework/ngspice_lib.hpp"
+#include <map>
+#include <iostream>
+#include <iomanip>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -216,22 +220,25 @@ TEST(Sens, ThreeResistorChain) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 TEST(Sens, NgspiceComparison) {
-    // Run ngspice on the test circuit
-    std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/sens_divider.cir";
-    std::string cmd = std::string("ngspice") + " -b " + cir_path + " 2>&1";
-    FILE* pipe = popen(cmd.c_str(), "r");
-    ASSERT_NE(pipe, nullptr) << "Failed to run ngspice";
-
-    char buffer[512];
-    std::string ng_output;
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        ng_output += buffer;
+    const std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/sens_divider.cir";
+    NgspiceLib ng;
+    ng.load_circuit(cir_path);
+    ng.run();
+    ASSERT_NE(ng.cur_plot(), nullptr);
+    const std::string plot = ng.cur_plot();
+    ASSERT_TRUE(plot.starts_with("sens"));
+    std::map<std::string, double> reference;
+    // This entry point supports primary resistance and source DC parameters.
+    // ngspice additionally emits model/geometry parameters outside that scope.
+    for (const char* name : {"r1", "r2", "v1"}) {
+        const auto* vector = ng.get_vec_info(plot + "." + name);
+        ASSERT_NE(vector, nullptr) << name;
+        ASSERT_EQ(vector->v_length, 1) << name;
+        ASSERT_NE(vector->v_realdata, nullptr) << name;
+        ASSERT_EQ(vector->v_compdata, nullptr) << name;
+        ASSERT_TRUE(std::isfinite(vector->v_realdata[0])) << name;
+        reference.emplace(name, vector->v_realdata[0]);
     }
-    pclose(pipe);
-
-    // We just verify that ngspice runs and our values are close to analytical.
-    // The ngspice output format is hard to parse reliably, so we do a basic
-    // sanity check: neospice matches analytical exactly.
     Simulator sim;
     auto ckt = sim.load(cir_path);
     auto result = sim.run(ckt);
@@ -243,6 +250,19 @@ TEST(Sens, NgspiceComparison) {
     auto* v1 = find_entry(std::get<SensResult>(result.analysis), "v1");
     ASSERT_NE(r1, nullptr);
     ASSERT_NE(v1, nullptr);
+
+    const auto& sensitivities = std::get<SensResult>(result.analysis);
+    ASSERT_TRUE(sensitivities.status.converged);
+    ASSERT_EQ(sensitivities.entries.size(), reference.size());
+    for (const auto& [name, expected] : reference) {
+        const auto* entry = find_entry(sensitivities, name);
+        ASSERT_NE(entry, nullptr) << name;
+        ASSERT_TRUE(std::isfinite(entry->sensitivity));
+        EXPECT_NEAR(entry->sensitivity, expected, 1e-6) << name;
+        std::cout << std::setprecision(17) << "DETAIL_SENS|" << name << '|'
+                  << expected << '|' << entry->sensitivity << '|'
+                  << std::abs(entry->sensitivity - expected) << "|1e-6\n";
+    }
 
     // Analytical values for voltage divider
     EXPECT_NEAR(r1->sensitivity, -2.5e-3, 1e-6);
@@ -278,4 +298,94 @@ R4 b 0 4k
 
     // Just verify the output is correct and entries exist
     EXPECT_GE(std::get<SensResult>(result.analysis).entries.size(), 5u);  // 4 resistors + 1 vsource
+}
+
+TEST(Sens, FailedBaselineDoesNotProduceSensitivities) {
+    Simulator sim;
+    auto ckt = sim.parse("Conflicting sources\nV1 out 0 1\nV2 out 0 2\nR1 out 0 1k\n.end\n");
+    ckt.options.no_throw = true;
+    const auto result = solve_sens(ckt, "v(out)");
+    EXPECT_FALSE(result.status.converged);
+    EXPECT_TRUE(result.entries.empty());
+    EXPECT_EQ(ckt.operating_point(), nullptr);
+}
+
+TEST(Sens, FailedPerturbationRestoresParametersInBothErrorModes) {
+    // In each circuit the baseline has real roots, but the forward parameter
+    // perturbation crosses a fold and the KCL equation has no real solution.
+    for (bool no_throw : {false, true}) {
+        for (bool resistor_case : {false, true}) {
+            SCOPED_TRACE(no_throw);
+            SCOPED_TRACE(resistor_case);
+            Simulator sim;
+            auto ckt = sim.parse(resistor_case
+                ? "Resistor fold\nR1 out 0 1\nB1 out 0 I={v(out)^2+0.24999}\n.end\n"
+                : "Voltage fold\nV1 in 0 1\nB1 out 0 I={v(out)^2+v(out)+10000*(v(in)-1)}\n.end\n");
+            ckt.options.no_throw = no_throw;
+            ASSERT_TRUE(solve_dc(ckt).status.converged);
+            if (no_throw) {
+                const auto result = solve_sens(ckt, "v(out)");
+                EXPECT_FALSE(result.status.converged);
+                EXPECT_TRUE(result.entries.empty());
+            } else {
+                EXPECT_THROW(solve_sens(ckt, "v(out)"), SimulationError);
+            }
+            const auto* device = ckt.devices().front().get();
+            if (resistor_case) {
+                const auto* r = dynamic_cast<const Resistor*>(device);
+                ASSERT_NE(r, nullptr);
+                EXPECT_DOUBLE_EQ(r->resistance(), 1.0);
+            } else {
+                const auto* v = dynamic_cast<const VSource*>(device);
+                ASSERT_NE(v, nullptr);
+                EXPECT_DOUBLE_EQ(v->dc_value(), 1.0);
+            }
+            EXPECT_EQ(ckt.operating_point(), nullptr);
+            EXPECT_DOUBLE_EQ(ckt.options.diag_gmin, ckt.options.gshunt);
+        }
+    }
+}
+
+TEST(Sens, SuccessfulRunDoesNotLeavePerturbedOperatingPointCached) {
+    Simulator sim;
+    auto ckt = sim.parse("Divider\nV1 in 0 10\nR1 in out 1k\nR2 out 0 1k\n.end\n");
+    ASSERT_TRUE(solve_dc(ckt).status.converged);
+    ASSERT_NE(ckt.operating_point(), nullptr);
+    const auto baseline = *ckt.operating_point();
+    const auto result = solve_sens(ckt, "v(out)");
+    ASSERT_TRUE(result.status.converged);
+    ASSERT_EQ(result.entries.size(), 3u);
+    // A later AC solve may reuse this cache: it must be absent or describe
+    // the original circuit, not the final perturbed voltage source.
+    if (const auto* cached = ckt.operating_point()) {
+        ASSERT_EQ(cached->size(), baseline.size());
+        for (size_t i = 0; i < baseline.size(); ++i)
+            EXPECT_NEAR((*cached)[i], baseline[i], 1e-13) << i;
+    }
+}
+
+TEST(Sens, FailedCurrentPerturbationRetainsOnlySuccessfulEntries) {
+    for (bool no_throw : {false, true}) {
+        SCOPED_TRACE(no_throw);
+        Simulator sim;
+        // Vsense measures I1 without a resistor whose own perturbation could
+        // change the fold. Perturbing Vsense leaves its current unchanged.
+        auto ckt = sim.parse("Current fold\nI1 in 0 1\nVsense in 0 0\n"
+            "B1 out 0 I={v(out)^2+v(out)+10000*(-i(Vsense)-1)}\n.end\n");
+        ckt.options.no_throw = no_throw;
+        ASSERT_TRUE(solve_dc(ckt).status.converged);
+        if (no_throw) {
+            const auto result = solve_sens(ckt, "v(out)");
+            EXPECT_FALSE(result.status.converged);
+            ASSERT_EQ(result.entries.size(), 1u);
+            EXPECT_EQ(result.entries.front().element, "vsense");
+            EXPECT_DOUBLE_EQ(result.entries.front().sensitivity, 0.0);
+        } else {
+            EXPECT_THROW(solve_sens(ckt, "v(out)"), SimulationError);
+        }
+        const auto* source = dynamic_cast<const ISource*>(ckt.devices().front().get());
+        ASSERT_NE(source, nullptr);
+        EXPECT_DOUBLE_EQ(source->dc_value(), 1.0);
+        EXPECT_EQ(ckt.operating_point(), nullptr);
+    }
 }

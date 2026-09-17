@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include "core/timestep.hpp"
+#include <cmath>
+#include <limits>
 
 using namespace neospice;
 
@@ -60,6 +62,42 @@ TEST(TimeStepController, DoesNotExceedTstop) {
     ctrl.advance(9.5e-6);  // t=9.5e-6
     double next = ctrl.clamp_to_end(1e-6);
     EXPECT_NEAR(next, 0.5e-6, 1e-15);
+}
+
+TEST(TimeStepController, BalancesLastTwoStepsBeforeBreakpoint) {
+    for (double scale : {1.0, 1e-6, 1e-12}) {
+        SCOPED_TRACE(scale);
+        TimeStepController ctrl;
+        ctrl.init(scale, 20 * scale);
+        ctrl.add_source_breakpoint(10 * scale);
+        // A six-unit proposal would leave only four units to the corner.
+        const double first = ctrl.clamp_to_breakpoint(6 * scale);
+        EXPECT_DOUBLE_EQ(first, 5 * scale);
+        ctrl.advance(first);
+        EXPECT_DOUBLE_EQ(ctrl.clamp_to_breakpoint(6 * scale), 5 * scale);
+        EXPECT_DOUBLE_EQ(ctrl.clamp_to_breakpoint(2 * scale), 2 * scale);
+    }
+}
+
+TEST(TimeStepController, NeverEnlargesStepToNearbyBreakpoint) {
+    TimeStepController ctrl;
+    ctrl.init(1.0, 20.0);
+    ctrl.add_source_breakpoint(10.0);
+    // The former ten-percent snap enlarged this proposal to ten.
+    EXPECT_DOUBLE_EQ(ctrl.clamp_to_breakpoint(9.5), 5.0);
+    EXPECT_DOUBLE_EQ(ctrl.clamp_to_breakpoint(11.0), 10.0);
+}
+
+TEST(TimeStepController, BalancesApproachToStopButPreservesFinalStep) {
+    TimeStepController ctrl;
+    ctrl.init(1.0, 10.0);
+    EXPECT_DOUBLE_EQ(ctrl.clamp_to_breakpoint(6.0), 5.0);
+    EXPECT_DOUBLE_EQ(ctrl.clamp_to_breakpoint(10.0), 10.0);
+    double near_stop = 10.0;
+    for (int i = 0; i < 100; ++i) near_stop = std::nextafter(near_stop, 0.0);
+    EXPECT_DOUBLE_EQ(ctrl.clamp_to_breakpoint(near_stop), near_stop);
+    near_stop = std::nextafter(near_stop, 0.0);
+    EXPECT_DOUBLE_EQ(ctrl.clamp_to_breakpoint(near_stop), 5.0);
 }
 
 // --- LTE reference mode tests ---
@@ -179,4 +217,13 @@ TEST(TimeStepController, BreakpointTypeMultipleSoftRemainsSoft) {
 TEST(TimeStepController, RestartStepScaleDefault) {
     SimOptions opts;
     EXPECT_DOUBLE_EQ(opts.restart_step_scale, 0.1);
+}
+
+TEST(TimeStepController, ExplicitMinimumSpacingPreservesCloselySpacedCorners) {
+    TimeStepController ctrl;
+    ctrl.init(1e-6, 1e-3, 1e-6, 1e-16);
+    ctrl.add_source_breakpoint(1e-6);
+    ctrl.add_source_breakpoint(1e-6 + 1e-12);
+    ctrl.advance(1e-6);
+    EXPECT_NEAR(ctrl.next_breakpoint_gap(), 1e-12, 1e-21);
 }

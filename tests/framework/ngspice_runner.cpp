@@ -1,5 +1,6 @@
 #include "framework/ngspice_runner.hpp"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -60,7 +61,7 @@ std::string NgspiceRunner::normalize_name(const std::string& name) {
         }
     }
     // Scale/sweep vectors and special names — keep bare
-    else if (n == "time" || n == "frequency" || n == "v-sweep" ||
+    else if (n == "time" || n == "frequency" || n == "v-sweep" || n == "i-sweep" ||
              n == "onoise_spectrum" || n == "inoise_spectrum") {
         // no wrapping
     }
@@ -75,6 +76,10 @@ DCResult NgspiceRunner::run_dc(const std::string& cir_path) {
     ng_.reset();
     ng_.load_circuit(cir_path);
     ng_.command("run");
+    return read_dc();
+}
+
+DCResult NgspiceRunner::read_dc() {
 
     std::string plot = find_plot("op");
     auto names = vec_names(plot);
@@ -106,6 +111,10 @@ DCSweepResult NgspiceRunner::run_dc_sweep(const std::string& cir_path) {
     ng_.reset();
     ng_.load_circuit(cir_path);
     ng_.command("run");
+    return read_dc_sweep();
+}
+
+DCSweepResult NgspiceRunner::read_dc_sweep() {
 
     std::string plot = find_plot("dc");
     auto names = vec_names(plot);
@@ -114,14 +123,18 @@ DCSweepResult NgspiceRunner::run_dc_sweep(const std::string& cir_path) {
     for (const auto& raw_name : names) {
         std::string qname = plot + "." + raw_name;
         pvector_info vi = ng_.get_vec_info(qname);
-        if (!vi || vi->v_length == 0) continue;
+        if (!vi || vi->v_length <= 0 || !vi->v_realdata || vi->v_compdata)
+            throw std::runtime_error("Invalid real DC sweep vector: " + qname);
 
         std::string name = normalize_name(raw_name);
         std::vector<double> data(vi->v_length);
-        for (int i = 0; i < vi->v_length; ++i)
+        for (int i = 0; i < vi->v_length; ++i) {
             data[i] = vi->v_realdata[i];
+            if (!std::isfinite(data[i]))
+                throw std::runtime_error("Nonfinite DC sweep vector: " + qname);
+        }
 
-        if (name.find("v-sweep") != std::string::npos) {
+        if (name == "v-sweep" || name == "i-sweep") {
             result.sweep_var = name;
             result.sweep_values = std::move(data);
         } else if (name.find("v(") == 0) {
@@ -132,6 +145,12 @@ DCSweepResult NgspiceRunner::run_dc_sweep(const std::string& cir_path) {
             result.voltages[name] = std::move(data);
         }
     }
+    if (result.sweep_values.empty() || (result.voltages.empty() && result.currents.empty()))
+        throw std::runtime_error("DC sweep has no coordinates or observable signals");
+    for (const auto* signals : {&result.voltages, &result.currents})
+        for (const auto& [name, values] : *signals)
+            if (values.size() != result.sweep_values.size())
+                throw std::runtime_error("Incomplete DC sweep vector: " + name);
     return result;
 }
 
@@ -139,6 +158,10 @@ TransientResult NgspiceRunner::run_transient(const std::string& cir_path) {
     ng_.reset();
     ng_.load_circuit(cir_path);
     ng_.command("run");
+    return read_transient();
+}
+
+TransientResult NgspiceRunner::read_transient() {
 
     std::string plot = find_plot("tran");
     auto names = vec_names(plot);
@@ -171,6 +194,10 @@ ACResult NgspiceRunner::run_ac(const std::string& cir_path) {
     ng_.reset();
     ng_.load_circuit(cir_path);
     ng_.command("run");
+    return read_ac();
+}
+
+ACResult NgspiceRunner::read_ac() {
 
     std::string plot = find_plot("ac");
     auto names = vec_names(plot);
@@ -214,6 +241,10 @@ NgspiceNoiseResult NgspiceRunner::run_noise(const std::string& cir_path) {
     ng_.reset();
     ng_.load_circuit(cir_path);
     ng_.command("run");
+    return read_noise();
+}
+
+NgspiceNoiseResult NgspiceRunner::read_noise() {
 
     // Noise produces two plots: spectral density (many points) and integrated
     // noise (single point). Find the spectral density plot.

@@ -65,29 +65,28 @@ struct ModelFixture {
     }
 
     ~ModelFixture() {
-        // BSIM4v7temp mallocs bsim4SizeDependParam nodes and threads them onto
+        // BSIM4v7temp allocates typed arrays and threads them onto
         // model.pSizeDependParamKnot. BSIM4v7Model is a POD, so release here.
         auto *p = model.pSizeDependParamKnot;
         while (p) {
             auto *next = p->pNext;
-            std::free(p);
+            delete[] p;
             p = next;
         }
     }
 };
 
-// Goldens extracted from a patched ngspice (BSIM4.8.0 kernel, b4temp.c patched to
-// emit pParam->BSIM4* and here->BSIM4* fields as T12_GOLDEN stderr lines
-// after BSIM4v7temp completes). See tests/goldens/bsim4v7_nmos_setup.json.
+// Goldens captured from unmodified ngspice 47, explicitly selecting its
+// BSIM4 4.7.0 kernel to match this port. The checked-in GDB script reads
+// preprocessed fields at entry to BSIM4v7load, after setup and temperature
+// processing. See tests/goldens/bsim4v7_nmos_setup.json and README.md.
 //
 // NOTE: leff/weff/cdep0/k1ox/phi live on pParam (bsim4SizeDependParam).
 //       vth0/u0temp/vfb/vsattemp on the instance are copies of pParam
 //       values with stress-effect deltas applied — they are equal to
 //       pParam values here because no stress parameters are set.
 //
-// These are the preprocessing fields whose formulas are identical in
-// BSIM4 4.7.0 (our port) and 4.8.0 (ngspice 42 / local tree) for this
-// minimal model card, so the cross-version comparison is meaningful.
+// Both engines use BSIM4 4.7.0; this does not compare different model versions.
 
 namespace golden {
     constexpr double leff     =  1.00000000000000009e-07;

@@ -1,0 +1,27 @@
+OFF initializes a transistor; it does not disable its final operating point
+VCC pos 0 5
+VEE neg 0 -5
+VBN bn 0 0.65
+VBP bp 0 -0.65
+RCN pos cn 1k
+RCNON pos cnon 1k
+RCP neg cp 1k
+RCPON neg cpon 1k
+RVN pos vn 1k
+RVNON pos vnon 1k
+RVP neg vp 1k
+RVPON neg vpon 1k
+QCN cn bn 0 N OFF
+QCNON cnon bn 0 N
+QCP cp bp 0 P OFF
+QCPON cpon bp 0 P
+QVN vn bn 0 VN OFF
+QVNON vnon bn 0 VN
+QVP vp bp 0 VP OFF
+QVPON vpon bp 0 VP
+.model N NPN(IS=1e-14 BF=100)
+.model P PNP(IS=1e-14 BF=100)
+.model VN NPN(LEVEL=4 IS=1e-14)
+.model VP PNP(LEVEL=4 IS=1e-14)
+.op
+.end

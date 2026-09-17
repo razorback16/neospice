@@ -3,10 +3,49 @@
 #include "core/types.hpp"
 #include "parser/netlist_parser.hpp"
 #include "api/neospice.hpp"
+#include "framework/ngspice_runner.hpp"
+#include "framework/comparator.hpp"
 #include <cmath>
 #include <numeric>
 
 using namespace neospice;
+
+TEST(Noise, InputReferredGainFloorAnalytical) {
+    // The noiseless controlled source drives a 1k/1k divider. Its gain is
+    // half E1's value; output noise is the thermal noise of 500 ohms.
+    // ngspice noisean.c bounds squared gain by N_MINGAIN=1e-20, including
+    // exactly zero gain. This numerical convention is not a test tolerance.
+    for (const auto& [name, gain] : std::vector<std::pair<std::string, double>>{
+            {"zero", 0}, {"below", 1e-12}, {"boundary", 1e-10}, {"above", 1e-8}}) {
+        SCOPED_TRACE(name);
+        Simulator sim;
+        auto ckt = sim.load(std::string(TEST_CIRCUITS_DIR) + "/noise_gain_floor_" + name + ".cir");
+        const auto result = sim.run_noise(ckt, "out", "v1", ACMode::DEC, 1, 1, 10);
+        ASSERT_TRUE(result.status.converged);
+        ASSERT_EQ(result.frequency.size(), 2u);
+        const double expected_output = 4 * BOLTZMANN * T_NOMINAL * 500;
+        const double expected_input = expected_output / std::max(gain * gain, 1e-20);
+        for (size_t i = 0; i < result.frequency.size(); ++i) {
+            EXPECT_NEAR(result.output_noise_density[i], expected_output, expected_output * 1e-10);
+            EXPECT_NEAR(result.input_noise_density[i], expected_input, expected_input * 1e-10);
+        }
+    }
+}
+
+TEST(Noise, InputReferredGainFloorMatchesNgspice) {
+    Simulator sim;
+    NgspiceRunner ng;
+    for (const auto* name : {"zero", "below", "boundary", "above"}) {
+        SCOPED_TRACE(name);
+        const auto path = std::string(TEST_CIRCUITS_DIR) + "/noise_gain_floor_" + name + ".cir";
+        auto ckt = sim.load(path);
+        const auto actual = sim.run_noise(ckt, "out", "v1", ACMode::DEC, 1, 1, 10);
+        const auto reference = ng.run_noise(path);
+        const auto comparison = compare_noise(reference, actual, {1e-8, 1e-20});
+        EXPECT_TRUE(comparison.passed) << comparison.worst_signal << ": " << comparison.worst_error;
+        EXPECT_EQ(comparison.num_points_compared, 4);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Test 1: Parser test — verify .noise command is parsed correctly
@@ -706,5 +745,31 @@ M1 drain gate 0 0 NMOD W=10u L=100n
                     first_val * 0.05)
             << "Noise should be approximately white below GHz at freq="
             << result.frequency[i] << " Hz";
+    }
+}
+
+TEST(Noise, LosslessLinePropagatesExternalResistorNoise) {
+    Simulator sim;
+    NgspiceRunner ng;
+    for (const std::string kind : {"tline", "ltra_lc"}) {
+        SCOPED_TRACE(kind);
+        const std::string path = std::string(TEST_CIRCUITS_DIR) +
+            "/noise_" + kind + "_matched.cir";
+        const auto reference = ng.run_noise(path);
+        auto circuit = sim.load(path);
+        const auto actual = std::get<NoiseResult>(sim.run(circuit).analysis);
+        const auto cmp = compare_noise(reference, actual, {1e-8, 1e-15});
+        EXPECT_TRUE(cmp.passed) << cmp.worst_signal << " " << cmp.worst_error;
+        ASSERT_TRUE(actual.status.converged);
+        ASSERT_EQ(actual.frequency.size(), 29u);
+        ASSERT_EQ(actual.output_noise_density.size(), actual.frequency.size());
+        ASSERT_EQ(actual.input_noise_density.size(), actual.frequency.size());
+        // Equal 50-ohm source and load: equivalent output resistance is 25
+        // ohms; |gain|=1/2. Both resistors contribute, at every frequency.
+        const double expected_output = 4 * BOLTZMANN * circuit.options.temp * 25;
+        for (size_t i = 0; i < actual.frequency.size(); ++i) {
+            EXPECT_NEAR(actual.output_noise_density[i] / expected_output, 1.0, 1e-10);
+            EXPECT_NEAR(actual.input_noise_density[i] / expected_output, 4.0, 1e-10);
+        }
     }
 }

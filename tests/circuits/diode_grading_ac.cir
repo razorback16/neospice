@@ -1,0 +1,30 @@
+Diode grading coefficient and shared-model temperature coverage
+.options tnom=27 temp=27
+Vhalf half 0 DC -1 AC 1
+Vlimit limit 0 DC -1 AC 1
+Vabove above 0 DC -1 AC 1
+Vhigh high 0 DC -1 AC 1
+Vcold cold 0 DC -1 AC 1
+Vhot hot 0 DC -1 AC 1
+Vrawcold rawcold 0 DC -1 AC 1
+Vrawhot rawhot 0 DC -1 AC 1
+Vdelta delta 0 DC -1 AC 1
+Vzero zero 0 DC -1 AC 1
+Dhalf half 0 DHALF
+Dlimit limit 0 DLIMIT
+Dabove above 0 DABOVE
+Dhigh high 0 DHIGH
+Dcold cold 0 DTEMP TEMP=7
+Dhot hot 0 DTEMP TEMP=47
+Drawcold rawcold 0 DRAW TEMP=7
+Drawhot rawhot 0 DRAW TEMP=47
+Ddelta delta 0 DTEMP DTEMP=20
+Dzero zero 0 DTEMP TEMP=0 DTEMP=20
+.model DHALF D(CJO=100p VJ=.5 M=.5 TNOM=27 TLEVC=1 CTA=0 TPB=0)
+.model DLIMIT D(CJO=100p VJ=.5 M=.9 TNOM=27 TLEVC=1 CTA=0 TPB=0)
+.model DABOVE D(CJO=100p VJ=.5 M=.91 TNOM=27 TLEVC=1 CTA=0 TPB=0)
+.model DHIGH D(CJO=100p VJ=.5 M=1.2 TNOM=27 TLEVC=1 CTA=0 TPB=0)
+.model DTEMP D(CJO=100p VJ=.5 M=.8 TM1=.01 TM2=.0001 TNOM=27 TLEVC=1 CTA=0 TPB=0)
+.model DRAW D(CJO=100p VJ=.5 M=1.2 TM1=.01 TNOM=27 TLEVC=1 CTA=0 TPB=0)
+.ac dec 2 1k 100k
+.end

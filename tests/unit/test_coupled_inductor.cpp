@@ -267,14 +267,14 @@ L1 pri 0 1mH
 L2 sec 0 4mH
 K1 L1 L2 0.999
 R2 sec 0 1k
-.ac dec 1 1k 1k
+.ac lin 1 1k 1k
 .end
 )";
 
     NetlistParser parser;
     auto ckt = parser.parse(netlist);
 
-    auto result = solve_ac(ckt, AnalysisCommand::DEC, 1, 1e3, 1e3);
+    auto result = solve_ac(ckt, AnalysisCommand::LIN, 1, 1e3, 1e3);
     ASSERT_EQ(result.frequency.size(), 1u);
 
     auto it_sec = result.voltages.find("v(sec)");
@@ -317,8 +317,8 @@ R2 sec 0 1k
     auto ckt_tight = parser.parse(netlist_tight);
     auto ckt_loose = parser.parse(netlist_loose);
 
-    auto result_tight = solve_ac(ckt_tight, AnalysisCommand::DEC, 1, 1e4, 1e4);
-    auto result_loose = solve_ac(ckt_loose, AnalysisCommand::DEC, 1, 1e4, 1e4);
+    auto result_tight = solve_ac(ckt_tight, AnalysisCommand::LIN, 1, 1e4, 1e4);
+    auto result_loose = solve_ac(ckt_loose, AnalysisCommand::LIN, 1, 1e4, 1e4);
 
     double v_tight = std::abs(result_tight.voltages.at("v(sec)")[0]);
     double v_loose = std::abs(result_loose.voltages.at("v(sec)")[0]);
@@ -359,7 +359,7 @@ V1 in 0 DC 0 AC 1
 L1 in mid 1mH
 L2 mid out 1mH
 R1 out 0 100
-.ac dec 1 1k 1k
+.ac lin 1 1k 1k
 .end
 )";
 
@@ -370,7 +370,7 @@ L1 in mid 1mH
 L2 mid out 1mH
 K1 L1 L2 0.5
 R1 out 0 100
-.ac dec 1 1k 1k
+.ac lin 1 1k 1k
 .end
 )";
 
@@ -378,8 +378,8 @@ R1 out 0 100
     auto ckt_unc = parser.parse(netlist_uncoupled);
     auto ckt_cpl = parser.parse(netlist_coupled);
 
-    auto res_unc = solve_ac(ckt_unc, AnalysisCommand::DEC, 1, 1e3, 1e3);
-    auto res_cpl = solve_ac(ckt_cpl, AnalysisCommand::DEC, 1, 1e3, 1e3);
+    auto res_unc = solve_ac(ckt_unc, AnalysisCommand::LIN, 1, 1e3, 1e3);
+    auto res_cpl = solve_ac(ckt_cpl, AnalysisCommand::LIN, 1, 1e3, 1e3);
 
     // Current through V1
     auto i_unc = std::abs(res_unc.currents.at("i(v1)")[0]);
@@ -627,7 +627,7 @@ TEST_F(CoupledInductorNgspiceTest, CoupledInductorTransient) {
     auto ckt = sim_.load(path);
     auto cs_result = sim_.run(ckt);
     ASSERT_TRUE(std::holds_alternative<TransientResult>(cs_result.analysis));
-    auto cmp = compare_transient(std::get<TransientResult>(cs_result.analysis), ng_result, {5e-1, 1e-1});
+    auto cmp = compare_transient(ng_result, std::get<TransientResult>(cs_result.analysis), {5e-1, 1e-1});
     EXPECT_TRUE(cmp.passed)
         << "Worst: " << cmp.worst_signal << " error: " << cmp.worst_error;
 }

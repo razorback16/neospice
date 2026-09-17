@@ -1,0 +1,29 @@
+VDMOS three-terminal syntax with optional parameters and four/five-terminal controls
+Vdn1 dn1 0 2
+Vgn1 gn1 0 3
+Mn1 dn1 gn1 0 DMOSN
+Vdn3 dn3 0 2
+Vgn3 gn3 0 3
+Mn3 dn3 gn3 0 dMoSn M=2
+Vdn4 dn4 0 2
+Vgn4 gn4 0 3
+Mn4 dn4 gn4 0 0 DMOSN M = 2
+Vdn5 dn5 0 2
+Vgn5 gn5 0 3
+Mn5 dn5 gn5 0 0 0 dMoSn M=2
+Vdp1 dp1 0 -2
+Vgp1 gp1 0 -3
+Mp1 dp1 gp1 0 DMOSP
+Vdp3 dp3 0 -2
+Vgp3 gp3 0 -3
+Mp3 dp3 gp3 0 dMoSp M=2
+Vdp4 dp4 0 -2
+Vgp4 gp4 0 -3
+Mp4 dp4 gp4 0 0 DMOSP M = 2
+Vdp5 dp5 0 -2
+Vgp5 gp5 0 -3
+Mp5 dp5 gp5 0 0 0 dMoSp M=2
+.model DMOSN VDMOS(Vto=1 Kp=20m)
+.model DMOSP VDMOSP(Vto=-1 Kp=20m)
+.op
+.end

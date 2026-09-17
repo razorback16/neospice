@@ -1,0 +1,7 @@
+* Input-referred noise gain floor: above
+V1 in 0 DC 0 AC 1
+E1 buf 0 in 0 2e-8
+R1 buf out 1k
+R2 out 0 1k
+.noise v(out) v1 dec 1 1 10
+.end

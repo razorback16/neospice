@@ -4,13 +4,201 @@
 #include "parser/netlist_parser.hpp"
 #include "parser/model_cards.hpp"
 #include "devices/bjt/bjt_device.hpp"
+#include "devices/vbic/vbic_device.hpp"
+#include "devices/device_registry.hpp"
+#include "core/ckt_mode.hpp"
+#include "core/neo_solver.hpp"
+#include "core/newton.hpp"
 #include "core/dc.hpp"
 #include "core/types.hpp"
+#include "framework/ngspice_runner.hpp"
+#include "framework/comparator.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
 using namespace neospice;
+
+TEST(BJTParser, MixedModelSyntaxInstantiatesVbicAndMatchesNgspice47) {
+    const auto path = std::string(TEST_CIRCUITS_DIR) + "/vbic_model_syntax.cir";
+    NetlistParser parser;
+    auto circuit = parser.parse_file(path);
+    for (const std::string name : {"Q_nparen", "Q_nbare", "Q_nmixed",
+                                   "Q_pparen", "Q_pbare", "Q_pmixed"}) {
+        SCOPED_TRACE(name);
+        const auto* device = circuit.find_device_ptr(name);
+        ASSERT_NE(dynamic_cast<const VBICDevice*>(device), nullptr);
+        EXPECT_EQ(device->state_vars(), 74);
+    }
+    // ngspice 47 dispatches levels 0, 1 and 2 to its same BJT kernel.
+    for (const std::string name : {"Q_gp0", "Q_gp1", "Q_gp2"}) {
+        SCOPED_TRACE(name);
+        ASSERT_NE(dynamic_cast<const BJTDevice*>(circuit.find_device_ptr(name)), nullptr);
+    }
+    NgspiceRunner reference;
+    auto expected = reference.run_dc(path);
+    std::erase_if(expected.node_voltages, [](const auto& item) {
+        return item.first.find('#') != std::string::npos;
+    });
+    const auto actual = solve_dc(circuit);
+    const auto comparison = compare_dc(expected, actual);
+    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
+    EXPECT_GT(std::abs(actual.current("vc_nmixed")), 1e-4);
+    EXPECT_GT(std::abs(actual.current("vc_pmixed")), 1e-4);
+}
+
+namespace {
+void check_off_initialization(Circuit& circuit, bool off) {
+    NeoSolver solver;
+    solver.symbolic(circuit.pattern());
+    auto options = circuit.options;
+    options.max_iter = 0; // Inspect the state after exactly one device load/solve.
+    std::vector<double> solution(circuit.num_vars(), 0.0);
+    circuit.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+    EXPECT_FALSE(newton_solve(circuit, solver, solution, options).converged);
+    const Device* transistor = nullptr;
+    for (const auto& device : circuit.devices())
+        if (device->query_param("vbe")) transistor = device.get();
+    ASSERT_NE(transistor, nullptr);
+    auto vbe = transistor->query_param("vbe");
+    ASSERT_TRUE(vbe.has_value());
+    // ngspice47 bjtload.c/vbicload.c initialize OFF junctions at zero;
+    // ordinary devices start at their critical forward junction voltage.
+    if (off) EXPECT_DOUBLE_EQ(*vbe, 0.0);
+    else EXPECT_GT(std::abs(*vbe), 0.5);
+
+    // OFF also holds junctions at zero in INITFIX even with a biased guess.
+    if (off) {
+        std::fill(solution.begin(), solution.end(), 0.7);
+        circuit.integrator_ctx.mode = MODEDCOP_BIT | MODEINITFIX_BIT;
+        EXPECT_FALSE(newton_solve(circuit, solver, solution, options).converged);
+        EXPECT_DOUBLE_EQ(*transistor->query_param("vbe"), 0.0);
+        EXPECT_DOUBLE_EQ(*transistor->query_param("vbc"), 0.0);
+    }
+}
+}
+
+TEST(BJTParser, OffInitializesJunctionsForBothPolaritiesAndModelFamilies) {
+    for (int level : {1, 4}) {
+        for (const std::string polarity : {"NPN", "PNP"}) {
+            for (const std::string flag : {"", "OFF", "oFf", "off=1", "off=0"}) {
+                SCOPED_TRACE(std::to_string(level) + " " + polarity + " " + flag);
+                NetlistParser parser;
+                auto circuit = parser.parse(
+                    "BJT OFF initialization\nRc c 0 1k\nRb b 0 10k\n"
+                    "Q1 c b 0 QM " + flag + "\n.model QM " + polarity +
+                    "(LEVEL=" + std::to_string(level) + " IS=1e-14)\n.op\n.end\n");
+                check_off_initialization(circuit, !flag.empty() && flag != "off=0");
+            }
+        }
+    }
+}
+
+TEST(BJTParser, RegistryOffInitializesJunctionsForBothModelFamilies) {
+    for (int level : {1, 4}) {
+        for (double off : {0.0, 1.0}) {
+            SCOPED_TRACE(std::to_string(level) + " off=" + std::to_string(off));
+            Circuit circuit;
+            circuit.R("Rc", circuit.node("c"), GND, 1e3);
+            circuit.R("Rb", circuit.node("b"), GND, 1e4);
+            ModelCard model;
+            model.name = "QM";
+            model.type = "npn";
+            model.params = {{"level", level}, {"is", 1e-14}};
+            auto& registry = DeviceRegistry::get_default();
+            auto holder = registry.create_model_card("npn", level, model);
+            ASSERT_NE(holder, nullptr);
+            const int32_t nodes[] = {static_cast<int32_t>(circuit.node("c")),
+                static_cast<int32_t>(circuit.node("b")), -1, -1};
+            auto device = registry.build_device('q', "Q1", nodes, {{"off", off}}, *holder);
+            ASSERT_NE(device, nullptr);
+            circuit.add_model_card_raw(std::move(holder), "QM", "npn");
+            circuit.add_device(std::move(device));
+            circuit.finalize();
+            check_off_initialization(circuit, off != 0.0);
+        }
+    }
+}
+
+TEST(BJTParser, VbicCollectorJunctionInitializationNgspice47) {
+    for (int level : {4, 9}) {
+        for (const std::string polarity : {"NPN", "PNP"}) {
+            for (bool off : {false, true}) {
+                for (bool uic : {false, true}) {
+                    SCOPED_TRACE(std::to_string(level) + " " + polarity +
+                                 " off=" + std::to_string(off) + " uic=" + std::to_string(uic));
+                    NetlistParser parser;
+                    auto circuit = parser.parse(
+                        "VBIC junction initialization\nRc c 0 1k\nRb b 0 10k\n"
+                        "Q1 c b 0 QM ic=0.2,0.6" + std::string(off ? " OFF" : "") +
+                        "\n.model QM " + polarity + "(LEVEL=" + std::to_string(level) +
+                        " IS=1e-14)\n.op\n.end\n");
+                    NeoSolver solver;
+                    solver.symbolic(circuit.pattern());
+                    auto options = circuit.options;
+                    options.max_iter = 0;
+                    circuit.integrator_ctx.mode = MODEINITJCT_BIT |
+                        (uic ? MODETRANOP_BIT | MODEUIC_BIT : MODEDCOP_BIT);
+                    std::vector<double> solution(circuit.num_vars(), 0.0);
+                    const auto initialization = newton_solve(circuit, solver, solution, options);
+                    EXPECT_EQ(initialization.converged, uic);
+                    if (uic) {
+                        // NIiter reports a successful initial load, without
+                        // iterating or solving these prescribed voltages.
+                        EXPECT_EQ(initialization.iterations, 0);
+                        for (double value : solution) EXPECT_DOUBLE_EQ(value, 0.0);
+                    }
+                    const auto* transistor = circuit.find_device_ptr("Q1");
+                    ASSERT_NE(transistor, nullptr);
+                    const auto vbe = transistor->query_param("vbei");
+                    const auto vbc = transistor->query_param("vbci");
+                    const auto vbcx = transistor->query_param("vbcx");
+                    ASSERT_TRUE(vbe && vbc && vbcx);
+                    const double sign = polarity == "NPN" ? 1.0 : -1.0;
+                    if (uic) {
+                        // Explicit junction ICs take precedence even for OFF.
+                        EXPECT_DOUBLE_EQ(*vbe, sign * 0.2);
+                        EXPECT_DOUBLE_EQ(*vbc, sign * (0.2 - 0.6));
+                        EXPECT_DOUBLE_EQ(*vbcx, *vbc);
+                    } else if (off) {
+                        EXPECT_DOUBLE_EQ(*vbe, 0.0);
+                        EXPECT_DOUBLE_EQ(*vbc, 0.0);
+                        EXPECT_DOUBLE_EQ(*vbcx, 0.0);
+                    } else {
+                        // ngspice47 vbicload.c initializes the intrinsic BC
+                        // junction in reverse bias, opposite to the BE bias.
+                        EXPECT_GT(sign * *vbe, 0.5);
+                        EXPECT_DOUBLE_EQ(*vbc, -*vbe);
+                        EXPECT_DOUBLE_EQ(*vbcx, 0.0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST(BJTParser, OffDoesNotDisableBiasedTransistorsNgspice47) {
+    const std::string path = std::string(TEST_CIRCUITS_DIR) + "/bjt_off_bias.cir";
+    NetlistParser parser;
+    auto circuit = parser.parse_file(path);
+    const auto actual = solve_dc(circuit);
+    ASSERT_TRUE(actual.status.converged);
+    NgspiceRunner reference;
+    auto expected = reference.run_dc(path);
+    // Compare every public node and supply current. ngspice exposes additional
+    // VBIC internal nodes whose names are not part of neospice's result API.
+    std::erase_if(expected.node_voltages, [](const auto& item) {
+        return item.first.find('#') != std::string::npos;
+    });
+    const auto comparison = compare_dc(expected, actual, {1e-4, 1e-9});
+    EXPECT_TRUE(comparison.passed) << comparison.worst_signal << " " << comparison.worst_error;
+    for (const std::string name : {"cn", "cp", "vn", "vp"}) {
+        EXPECT_GT(std::abs(actual.voltage(name)), 0.1);
+        EXPECT_LT(std::abs(actual.voltage(name)), 4.9);
+        EXPECT_NEAR(actual.voltage(name), actual.voltage(name + "on"), 1e-7);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Parser tests — verify Q element and .model NPN/PNP parsing
@@ -137,14 +325,30 @@ TEST(BJTParser, PnpModel) {
     EXPECT_EQ(1, bjt_count);
 }
 
-TEST(BJTParser, UnknownModelSkipsWithWarning) {
+TEST(BJTParser, UnknownModelThrows) {
     const std::string netlist =
         "* Unknown model\n"
         "Q1 c b 0 BOGUS\n"
         ".end\n";
 
     NetlistParser p;
-    EXPECT_NO_THROW(p.parse(netlist));
+    EXPECT_THROW(p.parse(netlist), ParseError);
+}
+
+TEST(BJTParser, WrongModelTypeCannotDropTheTransistor) {
+    NetlistParser parser;
+    EXPECT_THROW(parser.parse("Wrong model type\nVc c 0 5\nVb b 0 .65\n"
+                              "Q1 c b 0 QM\n.model QM D(IS=1e-14)\n.op\n.end\n"), ParseError);
+}
+
+TEST(BJTParser, UnsupportedLevelsCannotFallBackToAnotherDevice) {
+    NetlistParser parser;
+    for (int level : {8, 12, 13}) {
+        SCOPED_TRACE(level);
+        EXPECT_THROW(parser.parse("Unsupported BJT level\nVc c 0 5\nVb b 0 .65\n"
+            "Q1 c b 0 QM\n.model QM NPN(LEVEL=" + std::to_string(level) +
+            " IS=1e-14)\n.op\n.end\n"), ParseError);
+    }
 }
 
 TEST(BJTParser, MultiDeviceSameModel) {
