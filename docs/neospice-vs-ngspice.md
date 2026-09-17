@@ -1,20 +1,22 @@
-# neospice vs ngspice: Algorithmic Differences
+# neospice and ngspice: implementation differences
 
-Catalog of deliberate algorithmic divergences from ngspice.
-Each entry documents what neospice does differently, why, and the measured impact.
+The sole reference is the [checksum-pinned ngspice47 release](ngspice47-reference.md).
+Architecture differences do not establish numerical novelty,
+accuracy superiority or speedup. Current failures remain in [JOSS progress](joss-progress.md).
 
 ---
 
 ## 1. Global node-voltage LTE (opt-in)
 
-**ngspice** controls timestep using only device-level charge truncation error
-(`CKTtrunc` calls each device's `trunc` function, which computes LTE from
-charge state history).
+**ngspice** calls device truncation functions through `CKTtrunc`. Charge-history
+error estimates are part of timestep control; source breakpoints and
+transmission-line delay/history constraints also affect the accepted grid.
 
-**neospice** matches ngspice by default (device-level charge LTE only), but
+**neospice** uses device truncation by default and
 offers an *optional* second check — global node-voltage LTE using second
-finite differences of the solution vector — gated behind `.option newtrunc`
-or `.option interp`:
+finite differences of the solution vector — gated behind `.option newtrunc`.
+`.option interp` changes output sampling only; it does not enable this check.
+The controller's local estimate is:
 
 ```
 delta2[i] = sol[i] - 2*sol_prev[i] + sol_prev2[i]
@@ -24,20 +26,21 @@ accept if max(lte[i]/tol[i]) <= trtol   (default trtol = 7.0)
 ```
 
 When enabled, the check is **proposal-only**: it never rejects a step while
-any device already supplies charge LTE, and only forces a rejection on nodes
-with no device LTE at all (resistor/voltage-source-only nets). It is skipped
-for the first 2 steps (need 3 history points) and for 3 steps after a source
-breakpoint (history contaminated by pre-edge values).
+the aggregate device-step proposal is finite. Otherwise the global check may
+reject a step. The implementation uses a circuit-level proposal test, not an
+independent per-node classification of which devices provide LTE. Startup and
+post-breakpoint guards exclude insufficient or discontinuous history.
 
-**Why:** Device-level LTE only monitors charge-storing devices. Nodes driven
-purely by resistive networks or voltage sources have no charge LTE. The
-optional global check catches accumulated integration error on those nodes
-without overriding ngspice-matching device LTE elsewhere.
+**Why:** The optional check adds a solution-history-based step proposal. It can
+also restrict sampling of purely resistive/source circuits, but that is not an
+estimate of accumulated charge-integration error where no such integration
+occurs. Its benefit and interaction with device truncation require validation.
 
-**Impact:** None by default (off ⇒ identical step-acceptance logic to ngspice).
-When enabled it can only add rejections on otherwise-unmonitored nodes.
+**Impact:** The optional global check is off by default. This does not establish
+identical timestep grids or outputs: retained transient comparisons still fail.
 
-**Source:** `src/core/transient.cpp:483-494`, `src/core/timestep.cpp:36-78`
+**Source:** [transient driver](../src/core/transient.cpp),
+[timestep controller](../src/core/timestep.cpp).
 
 ---
 
@@ -63,16 +66,18 @@ point (no frequency dependence for most devices). Calling them N times for
 N frequency points is redundant. The G/C split calls devices once and reuses
 the result.
 
-**Impact:** AC sweep scales as O(N * factorize) instead of
-O(N * (device_stamp + factorize)). For large circuits where device stamping
-dominates, this can be significantly faster.
+**Impact:** This avoids repeated frequency-independent device stamping.
+Per-frequency matrix assembly, frequency-dependent stamps, factorization and
+solves remain. The performance benefit needs paired, correctness-validated
+measurements; it does not follow quantitatively from the architecture alone.
 
 **NQS support:** Devices with frequency-dependent AC behavior (e.g.,
 BSIM4v7 acnqsMod) override `ac_stamp_freq(omega, ax, nnz, ac_rhs)`.
 The base G+jwC is assembled from cached arrays as above, then the hook
 adds per-frequency delta corrections directly into the complex `ax`
-array. This preserves the O(1) device-stamp cost while supporting
-NQS scaling (tau_net relaxation: T0=wt, T2=1/(1+T0^2), T3=T0*T2).
+array. Such hooks still execute at each frequency. LTRA also uses them for
+frequency-dependent propagation. Support is bounded by the device/analysis
+checks in [capabilities](capabilities.md).
 
 **Source:** `src/core/ac.cpp:128` (G/C value cache), `src/core/ac.cpp:195-196`
 (per-frequency assembly), `src/devices/device.hpp` (ac_stamp_freq)
@@ -81,28 +86,36 @@ NQS scaling (tau_net relaxation: T0=wt, T2=1/(1+T0^2), T3=T0*T2).
 
 ## 3. Noise analysis: pre-built adjoint pattern
 
-**ngspice** solves the adjoint system Y^T * adj = e_out by transposing the
-admittance matrix at each frequency point (or by solving Y^H with a
-Hermitian-aware solver).
+**ngspice** reuses the existing factors for its adjoint solve. `NInzIter` calls
+`SMPcaSolve`; the Sparse path calls `spSolveTransposed`. It does not require a
+second transposed-matrix factorization. The transpose is not a Hermitian
+conjugate transpose.
 
-**neospice** pre-builds a separate sparsity pattern for Y^T at setup time,
-performs symbolic factorization once for each of Y and Y^T, then does only
-numeric factorization per frequency.
+**neospice** represents the complex equations as doubled real systems. It
+pre-builds separate patterns and solver instances for gain and adjoint problems,
+then assembles and factors both systems at each frequency.
 
-**Why:** Y^T generally has a different sparsity structure than Y (the pattern
-is asymmetric for active devices). Pre-building avoids runtime transpose and
-enables separate symbolic factorization tuned to each pattern.
+**Trade-off:** Separate patterns fit the current solver interface, but add a
+second numerical factorization compared with reuse of an existing transpose
+solve. This is not evidence of an advantage over ngspice's noise implementation.
 
-**Source:** `src/core/noise.cpp:209-219`
+**Source:** [noise implementation](../src/core/noise.cpp); ngspice
+`src/spicelib/analysis/noisean.c`, `NInzIter` and
+`src/maths/sparse/spsmp.c`.
 
 ---
 
 ## 4. Device-level convergence check
 
-**ngspice** declares Newton convergence based solely on node voltage and
-branch current agreement between successive iterations.
+**ngspice** checks device nonconvergence as well as terminal-variable agreement.
+Device loads such as `b4v7ld.c` set `CKTnoncon`; `NIiter` consults that flag and
+calls `NIconvTest` when appropriate.
 
-**neospice** adds a device-level convergence callback. After node/branch
+ngspice47 preserves the post-solve failure flag set by `DEVconvTest` as well
+as load-time nonconvergence. Both checks matter for the retained
+[RFF70N06 investigation](rff70n06-investigation.md).
+
+**neospice** exposes a device-level convergence callback. After node/branch
 convergence passes, each device's `device_converged()` method is called.
 If any device reports non-convergence, Newton continues iterating.
 
@@ -115,35 +128,37 @@ If any device reports non-convergence, Newton continues iterating.
 currents are still oscillating due to the model's internal feedback loops.
 The device-level check prevents premature declaration of convergence.
 
-**Source:** `src/core/newton.cpp:313-321`
+This is an interface choice for established SPICE behavior. Agreement claims
+must identify the reference version and distinguish load-time flags from
+post-solve callbacks. **Source:** [Newton solver](../src/core/newton.cpp);
+ngspice `src/maths/ni/{niiter.c,niconv.c}`, `src/spicelib/analysis/cktop.c`
+and device load routines.
 
 ---
 
 ## 5. DC operating-point convergence fallback order
 
 **ngspice** `CKTop` tries direct Newton first, then dynamic diagonal-gmin
-stepping, then device-level `new_gmin`, then source stepping.
+stepping, then device-level `new_gmin`, then source stepping and transient-OP
+fallback under the default options. Explicit options can change that sequence.
 
-**neospice** tries direct Newton first, then device-level true-gmin stepping,
-then dynamic diagonal-gmin, then source stepping, gain stepping, and
-pseudo-transient. Beyond that it adds four strict last-resort aids (applied
-only after the entire standard cascade): OPtran transient-startup,
-node-classification initial guess, variable-gain homotopy, and matrix
-equilibration.
+**neospice** now tries direct Newton, dynamic diagonal-gmin, true-gmin,
+source stepping and OPtran in that order. If those fail, additional attempts
+include gain stepping, pseudo-transient continuation, a continuation-seeded
+OPtran retry, node-classification initialization, gain homotopy and equilibration.
+The DC-sweep path has its own continuation implementation and must be checked
+separately; this sequence describes `solve_dc`.
 
 **Why:** The port now matches ngspice's `NIiter` result-vector convention:
 when Newton converges, callers keep the previous iterate (`CKTrhsOld`) rather
 than the just-solved proposal. That fixed a real continuation discrepancy.
-However, the translated diagonal-gmin path can still land on a Newton-stable
-false branch in dependent-source macromodels such as OPA1632. ngspice's own
-`new_gmin` path reaches the reference operating point without changing
-reltol/abstol/vntol or accepting a looser result, so neospice uses that
-official device-level continuation first.
+Continuation order and state transfer can affect nonlinear operating-point
+selection. Matching the reference sequence is therefore part of correctness
+work, with the original model, tolerances and failing regressions preserved.
 
-**Impact:** OPA1632 `.op + .ac dec 10` now matches ngspice and runs within
-1.3× of ngspice in-process. The dynamic diagonal-gmin implementation remains
-available as a fallback, but it is not allowed to override the verified
-ngspice operating point from true-gmin continuation.
+**Impact:** The retained RFF70N06 fixture fails in both neospice and ngspice47.
+Extra continuation methods do not establish better convergence. Performance
+claims require paired accuracy-qualified measurements.
 
 **Source:** `src/core/dc.cpp`, `src/core/convergence.cpp`,
 `src/core/newton.cpp`; ngspice `src/spicelib/analysis/cktop.c`
@@ -151,36 +166,16 @@ ngspice operating point from true-gmin continuation.
 
 ---
 
-## 6. Speed comparison
+## 6. Solver policy and measurement
 
-On a CMOS inverter transient (`tests/circuits/cmos_inverter.cir`: 20ns,
-BSIM4v7/LEVEL=14 NMOS + PMOS, 10fF load), simulation time only (parse/write
-excluded), median of warm runs on the same machine:
-- neospice: ~6.6ms (self-reported `sim=`; min ~5.3ms)
-- ngspice: ~23ms (`Total analysis time` via `rusage`)
-- neospice is **~3.5x faster** for the simulation itself
+The current automatic real-solver policy selects `AmdLuSolver` only for linear
+circuits with at least256 unknowns, with a first-factorization fallback to
+`NeoSolver`. Complex operations delegate to `NeoSolver`. The in-tree ordering
+explicitly forms fill cliques and scans for minimum degree; it is not SuiteSparse
+AMD's quotient-graph implementation. Production solver paths do not call BTF.
+A unique mathematical solution does not imply bit-identical floating-point
+results under different orderings.
 
-The speed advantage comes primarily from the NeoSolver custom sparse LU
-(KLU-style AMD-ordered refactorization) and C++ vs C overhead reduction.
-
-> Methodology: `build/neospice <cir>` prints `parse/sim/write/total` timings;
-> ngspice analysis time obtained from a `.control … run / rusage / .endc`
-> block. Discard the first (cold) run before taking the median.
-
----
-
-## Appendix: Convergence study
-
-CMOS inverter v(out), first rising and falling edges. "Reference" is the
-average of both simulators at 100x tighter tolerances (reltol=1e-5).
-
-| Metric | Reference | ngspice (reltol=1e-3) | neospice (reltol=1e-3) |
-|--------|-----------|----------------------|----------------------|
-| Fall time | 44.75 ps | 45.73 ps (+2.2%) | 46.16 ps (+3.1%) |
-| Rise time | 41.14 ps | 42.51 ps (+3.3%) | 42.08 ps (+2.3%) |
-| Crossing (fall) | 85.57 ps | 85.57 ps (+0.001%) | 85.50 ps (-0.08%) |
-| Crossing (rise) | 5179.0 ps | 5179.0 ps (~0%) | 5179.0 ps (~0%) |
-
-At tight tolerances (reltol=1e-5), the two simulators agree to 0.03%.
-At default tolerances, both are 2-3% off the converged answer in
-complementary directions. Neither is systematically more accurate.
+Use [paired benchmark methods](benchmark-methods.md) for measured comparisons.
+Earlier timing and convergence narratives are preserved in archived evidence;
+they do not establish current speedup or accuracy.

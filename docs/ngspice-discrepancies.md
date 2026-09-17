@@ -1,5 +1,14 @@
 # neospice vs ngspice Discrepancies
 
+## Current validation status
+
+The measurements below are historical. The September 2026 validation repairs
+changed complex AC comparison, transient normalization, solver/output separation,
+and required-reference error handling. Consult [JOSS progress](joss-progress.md)
+for current failures and [validation methods](validation-methods.md) for the
+formulas; these older margins are not evidence for the modified implementation.
+
+
 Collected 2026-04-28 on commit `9ea5868` (926/926 tests passing at that time).
 Rechecked 2026-04-28 after comparator fixes for near-identical time-grid snapping
 and edge-metric margin reporting (928/928 tests passing at that time).

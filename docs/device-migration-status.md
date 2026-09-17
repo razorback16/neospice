@@ -148,7 +148,7 @@ CMOS inverter transient, CMOS inverter transitions.
 - [x] 20 unit tests (setup, Bessel, interpolation, parsing, DC)
 
 **Known limitations (future work):**
-- [ ] AC stamp is simplified resistive approximation (not full Y-parameters — requires framework support for per-frequency device evaluation)
+- [ ] AC stamp is a simplified resistive approximation. The framework already supports per-frequency device stamps; the LTRA implementation still needs to use that hook and be validated.
 
 **Validation:** 5 ngspice comparison tests (`tests/devices/ltra/test_ltra_compare.cpp`):
 DC OP RC line, DC OP RG line, Transient RC, Transient RLC, Transient LC.

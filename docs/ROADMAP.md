@@ -2,13 +2,18 @@
 
 ## Current State
 
-neospice is a modern C++ SPICE simulator with 32 device models and 10 analysis types,
-validated against ngspice across 978 C++ tests with tolerances as tight as 1e-6,
-plus Python binding tests.
+neospice is a C++ SPICE simulator with C++ and Python APIs. See
+[capabilities](capabilities.md) for implemented analyses and their limitations,
+and [JOSS progress](joss-progress.md) for current test evidence. Numerical,
+validation, reproducibility and publication-readiness work in the
+[JOSS goal](joss-readiness-goal.md) takes priority over the future features below.
+ngspice 47 is the sole compatibility target for this work; see the
+[reference setup](ngspice47-reference.md).
 
 ### Analyses
 DC operating point, DC sweep (nested 2-parameter), transient (adaptive Trap/Gear-2/BE),
-AC small-signal, noise (adjoint method), transfer function, sensitivity, pole-zero,
+AC small-signal, noise (adjoint method), transfer function, finite-difference DC
+sensitivity for resistors and independent-source DC values, pole-zero,
 Fourier/THD, parameter sweep (.step), and .measure post-processing.
 
 ### Device Models
@@ -28,13 +33,13 @@ Fourier/THD, parameter sweep (.step), and .measure post-processing.
 `.param` expressions, `.subckt`/`.ends`, `.include`/`.lib`, `.global`, `.ic`, `.nodeset`,
 `.options`, `.func`, `.measure`, `.save`, `.step`, SPICE suffixes (k/m/u/n/p/f/T).
 
-### What sets neospice apart
-- **Performance**: 1.5–6x faster than ngspice in-process; zero subprocess overhead as a library
+### Implemented interfaces and measurement work
+- **Performance evidence**: accuracy-qualified paired measurements are in progress; library calls avoid launching a simulator subprocess. No general speedup is established.
 - **Embeddable C++ API**: handle-based `Simulator`/`Circuit`/`Result` interface with typed device methods and O(1) result access
-- **Auto-differentiation**: B-source expressions get exact Jacobians (no numerical perturbation)
+- **Expression derivatives**: B-source expression evaluation supplies derivatives for supported operations; piecewise boundaries follow the implemented branch conventions.
 - **Modern codebase**: C++20, modular DeviceRegistry factory pattern (add a device without touching central files), auto-migration tooling for ngspice models
-- **Python bindings**: `pip install neospice` — full API with NumPy arrays, typed circuit construction, SPICE notation parser
-- **ngspice-compatible output**: raw file format matches ngspice for drop-in tool compatibility
+- **Python bindings**: documented analysis interfaces, NumPy arrays, typed circuit construction and SPICE notation parsing
+- **Output**: SPICE raw files and structured results; compatibility with a downstream tool requires an actual workflow check
 
 ---
 
@@ -87,9 +92,10 @@ result = ns.dc("amp.cir", reltol=1e-4, gmin=1e-14)
 
 **Priority: High**
 
-The architecture is nearly ready — `Circuit` is value-typed and the solver is
-stateless. Running N simulations on N threads enables Monte Carlo yield analysis
-at (single-thread speedup) x (core count).
+Independent circuit instances are a starting point for parallel parameter
+studies. Thread safety, mutable shared state and reproducible random-number
+behavior still require review and race testing. Scaling must be measured;
+object ownership alone does not establish thread safety or linear speedup.
 
 ### Goals
 - Thread-safe simulation: multiple `Simulator` instances on independent threads
@@ -127,8 +133,11 @@ install. The core is pure C++ with no OS dependencies — Emscripten-friendly.
 
 **Priority: Medium**
 
-Adjoint sensitivity analysis computes dOutput/dParam for all parameters in a
-single extra solve. Essential for optimization and currently absent from ngspice.
+An adjoint sensitivity implementation is a future proposal. neospice currently
+perturbs resistor and independent-source DC values and repeats DC solves.
+An adjoint approach could reduce the solve count for many parameters and one
+output, but still requires parameter-derivative assembly and validation. Do not
+treat the proposed method or its performance as an implemented paper claim.
 
 ### Goals
 - Adjoint method for DC and AC sensitivity
@@ -211,8 +220,9 @@ alongside the SPICE engine in a unified architecture. Each nonlinear device is
 approximated by straight-line segments; within a segment the circuit is linear and
 solves in one shot, and the simulator steps between linear topologies as devices
 cross segment boundaries. This replaces Newton-Raphson iteration with event-driven
-linear solves — eliminating convergence failures and targeting 10–50x speedups over
-SPICE for switching converters.
+linear solves. This is a proposed research direction; its event handling,
+accuracy, convergence behavior and performance have not been implemented or
+established by the current simulator.
 
 ### Goals
 - PWL transient engine with topology caching and a SIMPLIS deck parser (`.SIMULATOR SIMPLIS`)
