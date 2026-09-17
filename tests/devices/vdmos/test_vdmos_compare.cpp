@@ -74,6 +74,13 @@ TEST_F(VDMOSValidation, SelfHeatingFailsExplicitlyAndOnlyThatForm) {
 
     EXPECT_THROW(sim_.load(unsupported), ParseError);
 
+    // mos_terminal_count treats `thermal` as a node-list terminator, so the
+    // flag has to survive subcircuit expansion for the rejection to reach an
+    // expanded instance instead of the deck solving isothermally in silence.
+    EXPECT_THROW(sim_.load(std::string(TEST_CIRCUITS_DIR) +
+                           "/vdmos_thermal_selfheat_subckt.cir"),
+                 ParseError);
+
     // The rejection is narrow: supplying Tj/Tc without the flag, or the flag
     // without Rthjc, leaves ngspice isothermal, and neospice must still agree.
     const auto supported =

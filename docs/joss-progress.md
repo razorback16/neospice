@@ -62,6 +62,15 @@ comparison runs at a 5e-2 relative tolerance with an in-test comment calling it
 whether it is wide enough to hide the original current discrepancy has not been
 established.
 
+The same item has a second open question. `test_ltra_compare.cpp:162-163` erases
+`v(o1#i1)` and `v(o1#i2)` from the reference result before comparing, on the
+grounds that they are ngspice's internal LTRA branch equations. Those are branch
+*currents*, and this goal item is specifically the LTRA current discrepancy, so
+the exclusion needs the justification given to the VDMOS `#gate` node -- a
+demonstration that neospice models the same quantity and that the excluded
+observables agree -- rather than a comment asserting they are private. Until
+that is done, item 1 is passing on port voltages and the source current only.
+
 Item 5's remaining gap closed this checkpoint. neospice ignored the VDMOS
 `thermal` instance flag, so the self-heating form returned a converged operating
 point with the thermal network absent (`v(tj) = v(tc) = 0` against 36.477 and
@@ -95,7 +104,10 @@ What has been established about it:
 
 - The statement stores `nullptr` *into* a pointer variable; it dereferences
   nothing, so it cannot fault or corrupt state whatever the diagnosis.
-- It does not appear in an `-O0` build of the same tree.
+- It does not appear in an `-O0` build of the same tree. The comparison is made
+  on `BsimsoiValidation.NmosOperatingPoint`, which reports twice at `-O2`; an
+  earlier version of this bullet cited a test that reports nothing at either
+  optimization level and so distinguished nothing.
 - It does not reproduce in a minimal program under the same compiler and flags,
   including a shared library, a static archive, an inlined guard destructor and
   `-O2`.
@@ -105,8 +117,14 @@ What has been established about it:
 - Forcing `-ftls-model=initial-exec` does **not** change it, so the
   cross-translation-unit TLS access model is not the explanation. That
   hypothesis is recorded as tested and wrong rather than quietly dropped.
+- A UBSan-only build (no AddressSanitizer) reports the same two occurrences on
+  the same test, so it is not an ASan/UBSan interaction either. That hypothesis
+  is likewise recorded as tested and wrong.
+- The affected build is GCC 14.2.0 (Ubuntu 14.2.0-4ubuntu2~24.04.1).
 
-It remains **unexplained**. It is most likely a GCC 14 instrumentation artifact,
+Four hypotheses have now been tested and falsified (optimization level is the
+only factor that changes the outcome; TLS model, ASan interaction and minimal
+reproduction all came back negative). It remains **unexplained**. It is most likely a GCC 14 instrumentation artifact,
 but that is not proven, and it is recorded as unresolved rather than dismissed.
 It is not material to the paper scope: the statement cannot affect any numerical
 result.

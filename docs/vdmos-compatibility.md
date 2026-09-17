@@ -131,7 +131,18 @@ ngspice additionally creates `v(<inst>#cktTemp)` and `v(<inst>#VdevTemp)` for th
 self-heating form. These are deliberately **not** added to the corpus
 internal-observable filter: excluding a generated node is only defensible where
 neospice models the same node and merely keeps it private, which is not the case
-here. No corpus model declares `Rthjc`/`Rthca`, so no frozen fixture is affected.
+here. That matters because the rejection is a *parse* failure, so it would
+change corpus outcomes if any fixture reached it. It does not: a case-insensitive
+grep over the exact 2,073-file source inventory under
+`third_party/KiCad-Spice-Library/Models` finds zero occurrences of `Rthjc` and
+zero M cards carrying the `thermal` flag, so no fixture in the frozen
+67,359-case corpus can trigger either half of the activation condition.
+
+The flag also survives subcircuit expansion, which is not automatic:
+`mos_terminal_count` (`subcircuit_expand.cpp:49`) treats `thermal` as a
+node-list terminator. `tests/circuits/vdmos_thermal_selfheat_subckt.cir` wraps
+the same instance in a `.subckt` and is rejected on the expanded name `x1.m1`,
+so the boundary cannot silently drop the token and solve isothermally.
 
 Implementing the thermal network remains open; until then the boundary is a
 refusal rather than a wrong number.

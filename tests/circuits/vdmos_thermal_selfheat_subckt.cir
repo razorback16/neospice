@@ -1,0 +1,14 @@
+VDMOS self-heating inside a subcircuit, unsupported
+* Same rejection as vdmos_thermal_selfheat.cir, but reached through subcircuit
+* expansion. mos_terminal_count treats `thermal` as a terminator when counting
+* nodes, so the flag has to survive expansion for the rejection to fire on the
+* expanded instance (x1.m1) rather than the deck silently solving isothermally.
+Vd1 d 0 2
+Vg1 g 0 1.5
+X1 d g 0 tj tc PWR
+.subckt PWR d g s tj tc
+M1 d g s tj tc THERM thermal
+.model THERM VDMOS(Vto=.6468 Kp=.44 Rthjc=1.0 Rthca=10.0)
+.ends
+.op
+.end
