@@ -21,6 +21,15 @@ submission is authorized by this goal.
 
 ## Milestone 3 triage, checkpoint 39 (in progress)
 
+Record: [`2026-09-17-checkpoint39-milestone3.json`](evidence/joss/2026-09-17-checkpoint39-milestone3.json).
+The C++ suite is 1,268 of 1,268 with zero skips and the Python/tools suite is
+405 of 405, against the pinned ngspice 47 build. **A green suite is not a claim
+that nothing is wrong**: goal items 3 and 4 are open, item 1 carries two
+recorded caveats below, and the UBSan finding is unexplained. The record's
+reconstruction patch is verified in both directions against checkpoint 38's
+926-file inventory, whose parent commit is identified by hash match rather than
+assumed from a directory.
+
 Milestone 3 has seven items. This is their state established from evidence, not
 from the previous tracker text, which did not record most of them.
 
