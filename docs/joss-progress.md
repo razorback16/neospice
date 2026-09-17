@@ -88,14 +88,28 @@ overflow, no invalid access. The only UBSan finding is
 `store to null pointer of type 'const struct IntegratorCtx *'`, reported at
 three sites (`newton.cpp:196`, `ac.cpp:103`, `noise.cpp:105`) that are the same
 statement: a guard destructor assigning `nullptr` to a `thread_local` pointer.
-That statement cannot dereference a null pointer; the identical store to a
-thread-local defined in the same translation unit does not report, while the
-three that do all target one defined in `circuit.cpp`; it does not appear in an
-`-O0` build of the same tree; and it does not reproduce in a minimal program
-under the same compiler and flags, including with a shared library, a static
-archive, a guard destructor and `-O2`. It is therefore most likely a GCC 14
-instrumentation artifact rather than a defect, but that is **not proven**, and it
-is recorded as unresolved rather than dismissed.
+The reported column is the assignment operator, so the claim is that the address
+of the thread-local itself is null.
+
+What has been established about it:
+
+- The statement stores `nullptr` *into* a pointer variable; it dereferences
+  nothing, so it cannot fault or corrupt state whatever the diagnosis.
+- It does not appear in an `-O0` build of the same tree.
+- It does not reproduce in a minimal program under the same compiler and flags,
+  including a shared library, a static archive, an inlined guard destructor and
+  `-O2`.
+- The identical store on the preceding line, to a thread-local defined in the
+  same translation unit, never reports; the three that do report all target one
+  defined in `circuit.cpp`.
+- Forcing `-ftls-model=initial-exec` does **not** change it, so the
+  cross-translation-unit TLS access model is not the explanation. That
+  hypothesis is recorded as tested and wrong rather than quietly dropped.
+
+It remains **unexplained**. It is most likely a GCC 14 instrumentation artifact,
+but that is not proven, and it is recorded as unresolved rather than dismissed.
+It is not material to the paper scope: the statement cannot affect any numerical
+result.
 
 Repeating the run on the tree that includes the self-heating rejection and the
 RFF70N06 reclassification gives the same picture with the one real failure gone:
