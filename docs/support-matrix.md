@@ -13,31 +13,59 @@ do, not by what the prose claims. The reference is ngspice 47 only.
 | `~` | **Exercised only.** A test runs this analysis and asserts something, but no ngspice result is involved. This is self-consistency, not agreement. |
 | `X` | **Unsupported, and fails explicitly.** A test asserts that the combination raises rather than returning a result. |
 | `-` | **No coverage.** No test exercises it. |
+| `V*` | Reference-verified, but the widest backing tolerance is looser than the 1e-3 relative the corpus comparison uses. The value is given below. |
 
 | Device                | dc_op | dc_sweep | transient | ac  | noise | tf  | sens | pz  | four |
 | --------------------- | ----- | -------- | --------- | --- | ----- | --- | ---- | --- | ---- |
 | B (ASRC)              | V     | -        | -         | V   | -     | -   | -    | -   | -    |
 | BJT (Gummel-Poon)     | V     | ~        | ~         | V   | V     | -   | -    | -   | -    |
-| BSIM3                 | V     | V        | V         | V   | -     | -   | -    | -   | -    |
+| BSIM3                 | V     | V        | V*        | V   | -     | -   | -    | -   | -    |
 | BSIM3v32              | V     | -        | -         | V   | -     | -   | -    | -   | -    |
-| BSIM4v7               | V     | -        | V         | V   | -     | -   | -    | -   | -    |
+| BSIM4v7               | V*    | -        | V         | V   | -     | -   | -    | -   | -    |
 | BSIMSOI               | V     | -        | -         | V   | -     | -   | -    | -   | -    |
-| Diode                 | V     | V        | V         | V   | V     | -   | -    | -   | -    |
+| Diode                 | V     | V        | V*        | V   | V     | -   | -    | -   | -    |
 | HFET1                 | V     | -        | -         | V   | -     | -   | -    | -   | -    |
-| HFET2                 | V     | V        | V         | V   | -     | -   | -    | -   | -    |
+| HFET2                 | V     | V        | V*        | V   | -     | -   | -    | -   | -    |
 | HiSIM2                | V     | V        | -         | V   | -     | -   | -    | -   | -    |
 | HiSIM_HV              | V     | -        | -         | V   | V     | -   | -    | -   | -    |
 | JFET                  | -     | -        | -         | -   | V     | -   | -    | -   | -    |
-| JFET2                 | V     | -        | V         | V   | -     | -   | -    | -   | -    |
-| K (mutual inductance) | V     | -        | V         | V   | -     | -   | -    | -   | -    |
+| JFET2                 | V     | -        | V*        | V   | -     | -   | -    | -   | -    |
+| K (mutual inductance) | V     | -        | V*        | V   | -     | -   | -    | -   | -    |
 | MES                   | V     | -        | ~         | V   | V     | -   | -    | -   | -    |
-| MOS1                  | V     | V        | V         | V   | -     | -   | -    | -   | -    |
-| MOS2                  | V     | -        | -         | V   | -     | -   | -    | -   | -    |
-| MOS3                  | V     | V        | V         | V   | -     | -   | -    | -   | -    |
+| MOS1                  | V*    | V        | V*        | V   | -     | -   | -    | -   | -    |
+| MOS2                  | V*    | -        | -         | V*  | -     | -   | -    | -   | -    |
+| MOS3                  | V*    | V        | V*        | V   | -     | -   | -    | -   | -    |
 | MOS9                  | V     | -        | -         | V   | -     | -   | -    | -   | -    |
-| O (LTRA)              | V     | -        | V         | V   | -     | -   | -    | -   | -    |
+| O (LTRA)              | V     | -        | V*        | V   | -     | -   | -    | -   | -    |
 | VBIC                  | V     | V        | V         | V   | V     | -   | -    | -   | -    |
 | VDMOS                 | V     | V        | -         | X   | X     | -   | -    | -   | -    |
+
+### What this table does not cover
+
+Rows are device *models* that have isolated tests, or tests
+attributable to them by file. Twelve device types listed in
+`docs/capabilities.md` have no row at all: R, C, L, V, I, E, G, F,
+H, S, W and the lossless T line. They are exercised, but only
+inside multi-device circuit tests, which support no per-device
+claim and so contribute to no cell:
+
+- `tests/framework/ngspice_runner.cpp`
+- `tests/unit/test_dc_sweep.cpp`
+- `tests/unit/test_kicad_lm358_ns.cpp`
+- `tests/unit/test_kicad_opa1632.cpp`
+- `tests/unit/test_ngspice_compare.cpp`
+- `tests/unit/test_noise.cpp`
+- `tests/unit/test_noise_flicker.cpp`
+- `tests/unit/test_noise_temp.cpp`
+- `tests/unit/test_paired_measurement.cpp`
+- `tests/unit/test_rff70n06.cpp`
+- `tests/unit/test_ths4131.cpp`
+
+So "of N cells" below counts only the rows present. It is not a
+coverage figure for the simulator as a whole.
+
+`MOS2` has a row here but is **absent from `docs/capabilities.md`**,
+which lists MOS1, MOS3 and MOS9. One of the two documents is wrong.
 
 ### What the empty columns mean
 
@@ -62,130 +90,38 @@ plausible wrong answer. Enumerating them is the point of this table.
 
 Of 198 cells: **65 reference-verified**, 3 exercised only, 2 explicitly rejected, **128 with no coverage**.
 
-### Tolerances
+### Tolerances wider than the corpus comparison
 
-A `V` is not a uniform claim. These are the literal tolerances passed
-to `compare_*` per file; anything wider than the corpus formula
-(1e-3 relative) is a weaker claim and is listed here so it cannot be
-read as equivalent.
+A `V` is not a uniform claim. Every cell below is reference-verified,
+but at a tolerance looser than the 1e-3 relative bound the corpus
+comparison uses, so it must not be read as the same strength of
+agreement. The value is the widest relative tolerance any backing
+test passes to a comparator.
 
-| File | Comparator | (relative, absolute) |
+| Device | Analysis | Widest relative tolerance |
 | --- | --- | --- |
-| `tests/devices/asrc/test_asrc_compare.cpp` | `compare_ac` | (1e-15, 1e-15) |
-| `tests/devices/asrc/test_asrc_compare.cpp` | `compare_dc` | (1e-6, 1e-12) |
-| `tests/devices/bsim3/test_bsim3_compare.cpp` | `compare_ac` | (2e-14, 1e-15) |
-| `tests/devices/bsim3/test_bsim3_compare.cpp` | `compare_dc` | (1e-3, 1e-9) |
-| `tests/devices/bsim3/test_bsim3_compare.cpp` | `compare_dc` | (2e-15, 1e-9) |
-| `tests/devices/bsim3/test_bsim3_compare.cpp` | `compare_transient` | (2e-1, 5e-2) **wider than 1e-3** |
-| `tests/devices/bsim3v32/test_bsim3v32_compare.cpp` | `compare_ac` | (1e-6, 1e-15) |
-| `tests/devices/bsim3v32/test_bsim3v32_compare.cpp` | `compare_dc` | (1e-3, 1e-9) |
-| `tests/devices/bsim4v7/test_bsim4v7_compare.cpp` | `compare_dc` | (1e-3, 1e-9) |
-| `tests/devices/bsim4v7/test_bsim4v7_compare.cpp` | `compare_dc` | (1e30, 1e30) **wider than 1e-3** |
-| `tests/devices/bsim4v7/test_bsim4v7_compare.cpp` | `compare_dc` | (2e-13, 1e-9) |
-| `tests/devices/bsim4v7/test_bsim4v7_compare.cpp` | `compare_dc` | (5e-3, 1e-9) **wider than 1e-3** |
-| `tests/devices/bsimsoi/test_bsimsoi_compare.cpp` | `compare_ac` | (2e-14, 1e-9) |
-| `tests/devices/bsimsoi/test_bsimsoi_compare.cpp` | `compare_dc` | (1e-12, 1e-6) |
-| `tests/devices/bsimsoi/test_bsimsoi_compare.cpp` | `compare_dc` | (1e-14, 1e-6) |
-| `tests/devices/dio/test_dio_compare.cpp` | `compare_dc` | (1e-4, 1e-12) |
-| `tests/devices/dio/test_dio_compare.cpp` | `compare_noise` | (3e-4, 1e-15) |
-| `tests/devices/dio/test_dio_compare.cpp` | `compare_transient` | (1.5e-1, 1e-1) **wider than 1e-3** |
-| `tests/devices/dio/test_dio_validation.cpp` | `compare_ac` | (1e-4, 1e-9) |
-| `tests/devices/dio/test_dio_validation.cpp` | `compare_noise` | (3e-4, 1e-15) |
-| `tests/devices/dio/test_dio_validation.cpp` | `compare_transient` | (1e-1, 5e-2) **wider than 1e-3** |
-| `tests/devices/dio/test_dio_validation.cpp` | `compare_transient` | (1e-3, 1e-9) |
-| `tests/devices/hfet1/test_hfet1_compare.cpp` | `compare_ac` | (1e-3, 1e-9) |
-| `tests/devices/hfet1/test_hfet1_compare.cpp` | `compare_dc` | (2e-5, 1e-6) |
-| `tests/devices/hfet2/test_hfet2_compare.cpp` | `compare_ac` | (1e-5, 1e-6) |
-| `tests/devices/hfet2/test_hfet2_compare.cpp` | `compare_dc` | (1e-5, 1e-6) |
-| `tests/devices/hfet2/test_hfet2_compare.cpp` | `compare_transient` | (3.5e-2, 5e-3) **wider than 1e-3** |
-| `tests/devices/hisim2/test_hisim2_compare.cpp` | `compare_ac` | (5e-13, 1e-9) |
-| `tests/devices/hisim2/test_hisim2_compare.cpp` | `compare_dc` | (1e-14, 1e-6) |
-| `tests/devices/hisim2/test_hisim2_compare.cpp` | `compare_dc` | (2e-12, 1e-6) |
-| `tests/devices/hisimhv/test_hisimhv_compare.cpp` | `compare_ac` | (2e-12, 1e-9) |
-| `tests/devices/hisimhv/test_hisimhv_compare.cpp` | `compare_dc` | (1e-12, 1e-6) |
-| `tests/devices/hisimhv/test_hisimhv_compare.cpp` | `compare_dc` | (5e-7, 1e-6) |
-| `tests/devices/hisimhv/test_hisimhv_compare.cpp` | `compare_noise` | (1e-5, 1e-30) |
-| `tests/devices/jfet2/test_jfet2_compare.cpp` | `compare_ac` | (1e-13, 1e-9) |
-| `tests/devices/jfet2/test_jfet2_compare.cpp` | `compare_dc` | (2e-12, 1e-9) |
-| `tests/devices/jfet2/test_jfet2_compare.cpp` | `compare_transient` | (1e-1, 1e-3) **wider than 1e-3** |
-| `tests/devices/ltra/test_ltra_compare.cpp` | `compare_ac` | (1e-8, 1e-9) |
-| `tests/devices/ltra/test_ltra_compare.cpp` | `compare_dc` | (1e-3, 1e-9) |
-| `tests/devices/ltra/test_ltra_compare.cpp` | `compare_dc` | (5e-14, 1e-9) |
-| `tests/devices/ltra/test_ltra_compare.cpp` | `compare_transient` | (5e-2, 5e-3) **wider than 1e-3** |
-| `tests/devices/mes/test_mes_compare.cpp` | `compare_ac` | (5e-15, 1e-6) |
-| `tests/devices/mes/test_mes_compare.cpp` | `compare_dc` | (2e-13, 1e-6) |
-| `tests/devices/mes/test_mes_compare.cpp` | `compare_noise` | (1e-8, 1e-20) |
-| `tests/devices/mos1/test_mos1_compare.cpp` | `compare_ac` | (2e-14, 1e-15) |
-| `tests/devices/mos1/test_mos1_compare.cpp` | `compare_dc` | (1e-14, 1e-6) |
-| `tests/devices/mos1/test_mos1_compare.cpp` | `compare_dc` | (1e-2, 1e-6) **wider than 1e-3** |
-| `tests/devices/mos1/test_mos1_compare.cpp` | `compare_transient` | (2e-1, 2e-2) **wider than 1e-3** |
-| `tests/devices/mos2/test_mos2_compare.cpp` | `compare_ac` | (5e-2, 1e-9) **wider than 1e-3** |
-| `tests/devices/mos2/test_mos2_compare.cpp` | `compare_dc` | (1e-2, 1e-6) **wider than 1e-3** |
-| `tests/devices/mos3/test_mos3_compare.cpp` | `compare_ac` | (2e-12, 1e-9) |
-| `tests/devices/mos3/test_mos3_compare.cpp` | `compare_dc` | (1e-2, 1e-6) **wider than 1e-3** |
-| `tests/devices/mos3/test_mos3_compare.cpp` | `compare_dc` | (2e-11, 1e-6) |
-| `tests/devices/mos3/test_mos3_compare.cpp` | `compare_transient` | (5e-2, 5e-3) **wider than 1e-3** |
-| `tests/devices/mos9/test_mos9_compare.cpp` | `compare_ac` | (2e-12, 1e-9) |
-| `tests/devices/mos9/test_mos9_compare.cpp` | `compare_dc` | (1e-11, 1e-6) |
-| `tests/devices/vbic/test_vbic_compare.cpp` | `compare_ac` | (5e-7, 1e-9) |
-| `tests/devices/vbic/test_vbic_compare.cpp` | `compare_dc` | (1e-3, 1e-9) |
-| `tests/devices/vbic/test_vbic_compare.cpp` | `compare_dc` | (1e-9, 1e-9) |
-| `tests/devices/vdmos/test_vdmos_compare.cpp` | `compare_dc` | (1e-3, 1e-6) |
-| `tests/unit/test_bjt.cpp` | `compare_dc` | (1e-4, 1e-9) |
-| `tests/unit/test_bjt_jfet_noise.cpp` | `compare_noise` | (1e-3, 1e-15) |
-| `tests/unit/test_bjt_jfet_noise.cpp` | `compare_noise` | (5e-5, 1e-15) |
-| `tests/unit/test_bsim4v7_ac.cpp` | `compare_ac` | (1e-14, 1e-15) |
-| `tests/unit/test_comparator.cpp` | `compare_ac` | (0.5, 1) **wider than 1e-3** |
-| `tests/unit/test_comparator.cpp` | `compare_dc` | (0.1, 1e-9) **wider than 1e-3** |
-| `tests/unit/test_comparator.cpp` | `compare_noise` | (0.5, 1) **wider than 1e-3** |
-| `tests/unit/test_comparator.cpp` | `compare_transient` | (0.00995, 1e-9) **wider than 1e-3** |
-| `tests/unit/test_comparator.cpp` | `compare_transient` | (0.01005, 1e-9) **wider than 1e-3** |
-| `tests/unit/test_comparator.cpp` | `compare_transient` | (1e-12, 1) |
-| `tests/unit/test_comparator.cpp` | `compare_transient` | (1e-12, 1e-12) |
-| `tests/unit/test_comparator.cpp` | `compare_transient` | (1e-6, 1) |
-| `tests/unit/test_coupled_inductor.cpp` | `compare_ac` | (1e-3, 1e-9) |
-| `tests/unit/test_coupled_inductor.cpp` | `compare_dc` | (1e-3, 1e-9) |
-| `tests/unit/test_coupled_inductor.cpp` | `compare_transient` | (5e-1, 1e-1) **wider than 1e-3** |
-| `tests/unit/test_kicad_bc547a.cpp` | `compare_ac` | (1.5e-4, 1e-6) |
-| `tests/unit/test_kicad_bc547a.cpp` | `compare_dc` | (5e-5, 1e-6) |
-| `tests/unit/test_kicad_lm358_ns.cpp` | `compare_ac` | (1e-3, 1e-6) |
-| `tests/unit/test_kicad_lm358_ns.cpp` | `compare_dc` | (4e-3, 1e-6) **wider than 1e-3** |
-| `tests/unit/test_kicad_opa1632.cpp` | `compare_ac` | (1.5e-4, 1e-6) |
-| `tests/unit/test_kicad_opa1632.cpp` | `compare_dc` | (3e-7, 1e-6) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_ac` | (1e-14, 1e-15) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_ac` | (2e-14, 1e-15) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_ac` | (5e-15, 1e-15) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_dc` | (1e-5, 1e-6) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_dc` | (1e-7, 1e-9) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_dc` | (1e-8, 1e-12) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_noise` | (1e-5, 1e-15) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_noise` | (1e-5, 1e-30) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (1e-12, 1e-12) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (1e-3, 1e-9) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (1e-4, 1e-4) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (1e-7, 1e-7) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (1e-8, 1e-12) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (2e-1, 2e-2) **wider than 1e-3** |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (2e-3, 5e-4) **wider than 1e-3** |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (2e-5, 2e-5) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (3e-5, 3e-5) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (5e-14, 5e-14) |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (5e-2, 1e-3) **wider than 1e-3** |
-| `tests/unit/test_ngspice_compare.cpp` | `compare_transient` | (5e-3, 1e-3) **wider than 1e-3** |
-| `tests/unit/test_noise.cpp` | `compare_noise` | (1e-8, 1e-15) |
-| `tests/unit/test_noise.cpp` | `compare_noise` | (1e-8, 1e-20) |
-| `tests/unit/test_noise_temp.cpp` | `compare_noise` | (1e-3, 1e-15) |
-| `tests/unit/test_ths4131.cpp` | `compare_ac` | (2.5e-4, 1e-6) |
+| BSIM3 | transient | **0.2** |
+| BSIM4v7 | dc_op | **0.005** |
+| Diode | transient | **0.15** |
+| HFET2 | transient | **0.035** |
+| JFET2 | transient | **0.1** |
+| K (mutual inductance) | transient | **0.5** |
+| MOS1 | dc_op | **0.01** |
+| MOS1 | transient | **0.2** |
+| MOS2 | ac | **0.05** |
+| MOS2 | dc_op | **0.01** |
+| MOS3 | dc_op | **0.01** |
+| MOS3 | transient | **0.05** |
+| O (LTRA) | transient | **0.05** |
 
-### Reference comparisons that cannot fail
+### Reference comparisons verified by hand
 
-These tests obtain an ngspice 47 result and compare against it,
-but assert nothing that can fail, so they are excluded from the
-matrix. They still count toward the suite total, which is why
-they are named here rather than silently dropped.
+These count as `V`, but their comparison is not a `compare_*`
+call and was read rather than detected. The weakness of each is
+recorded because a `V` should not hide it.
 
-- `NgspiceCompareTest.BSIM4v7_DC_Audit_BiasRegions` (`tests/devices/bsim4v7/test_bsim4v7_compare.cpp`) -- compares at a 1e30 tolerance and
-  asserts `EXPECT_TRUE(true)`; it prints margins to stderr.
+- `LTRAValidation.TransientLC` (`tests/devices/ltra/test_ltra_compare.cpp`, transient): same hand-rolled form and same vacuous-pass guard as TransientRLC.
+- `LTRAValidation.TransientRLC` (`tests/devices/ltra/test_ltra_compare.cpp`, transient): compares against ngspice by hand-rolled interpolation rather than compare_transient: v(out) only, absolute 0.15 V, no relative bound. The whole comparison sits inside `if (ng_result.voltages.count("v(out)"))`, so a reference result lacking that signal makes the test pass vacuously.
 
 ### Model-form restrictions not visible as a cell
 

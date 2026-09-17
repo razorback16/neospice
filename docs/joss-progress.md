@@ -35,7 +35,7 @@ from the previous tracker text, which did not record most of them.
 
 | Item | State | Evidence |
 |---|---|---|
-| 1. LTRA current discrepancy | Comparison enforced and passing | `LTRAValidation.TransientRC/RLC/LC` assert `compare_transient`; see the caveat below |
+| 1. LTRA current discrepancy | Partially enforced | Only `LTRAValidation.TransientRC` asserts `compare_transient`, at 5e-2. `TransientRLC`/`TransientLC` compare `v(out)` by hand at a 0.15 V absolute bound, inside a guard that passes vacuously if the signal is missing. See the caveats below |
 | 2. RFF70N06 | Classified reference-inconclusive, assertion made executable | `RFF70N06.ReferenceIsInconclusive` pins both engines' failure |
 | 3. VBIC / diode transient | Not yet triaged | `vbic-compatibility.md`, `transient-readiness.md`, `vbic_delay_*.cir` |
 | 4. Corpus mismatch triage | Blocked on the supported matrix | checkpoint 36 is the input population |
@@ -88,7 +88,7 @@ against ngspice 47 (`V`), merely runs it (`~`), asserts that it fails (`X`), or
 never touches it (`-`). Of 198 cells, 65 are reference-verified and 128 have no
 coverage at all.
 
-Three things it surfaced that were not previously written down:
+Six things it surfaced that were not previously written down:
 
 - `.tf`, `.sens`, `.pz` and `.four` have **no reference comparison path at
   all**. `NgspiceRunner` exposes only DC, DC sweep, transient, AC and noise, so
@@ -101,6 +101,29 @@ Three things it surfaced that were not previously written down:
   at a `1e30` tolerance and asserts `EXPECT_TRUE(true)`. It cannot fail. It is
   excluded from the matrix and named in it; it is the only such test in the
   suite.
+
+- **JFET (level 1) has no reference-verified operating point at all.** There is
+  no `tests/devices/jfet/` directory; its only `V` cell is noise, through
+  `tests/unit/test_bjt_jfet_noise.cpp`. Its DC, sweep, transient and AC cells
+  are all `-`.
+- **Thirteen `V` cells rest on tolerances looser than 1e-3**, some by orders of
+  magnitude: K (mutual inductance) transient at **5e-1**, BSIM3 and MOS1
+  transient at **2e-1**, Diode transient at **1.5e-1**, JFET2 at **1e-1**. The
+  LTRA 5e-2 flagged under item 1 is not the outlier it appeared to be; it is
+  one of the tighter members of this group. These cells are marked `V*`.
+- **`LTRAValidation.TransientRLC` and `TransientLC` do not call
+  `compare_transient`**, contrary to the item-1 row above, which has been
+  corrected. They compare `v(out)` alone by hand-rolled interpolation at a
+  0.15 V absolute bound with no relative bound, and the entire comparison is
+  guarded by `if (ng_result.voltages.count("v(out)"))` -- so a reference result
+  lacking that signal makes both tests **pass vacuously**.
+
+Two boundaries of the matrix itself are recorded in it rather than papered
+over: twelve device types from `docs/capabilities.md` (R, C, L, V, I, E, G, F,
+H, S, W and the lossless T line) have no row, because their only coverage is
+inside multi-device circuit tests that support no per-device claim; and `MOS2`
+has a row here but is absent from `docs/capabilities.md`, so one of the two
+documents is wrong.
 
 What remains for item 4 is the *declaration* step -- deciding which cells the
 paper claims -- which is a scope decision rather than a measurement.

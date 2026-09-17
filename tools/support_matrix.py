@@ -132,6 +132,63 @@ def asserts(body: str) -> bool:
     return real_assertions(body) > 0
 
 
+ASSERT_CALL_RE = re.compile(r'\b(?:EXPECT|ASSERT)_[A-Z_]+\s*\(')
+
+
+def assertion_args(body: str):
+    return [_balanced(body, m.end(), '(', ')') for m in ASSERT_CALL_RE.finditer(body)]
+
+
+def reference_ids(body: str):
+    """Identifiers bound to the result of a reference call.
+
+    Matches both `auto x = ng.run_dc(...)` and a bare reassignment to a
+    previously declared variable, which the DC sweep tests use. One level of
+    transitivity is followed, because those tests bind the reference's current
+    vector to a second name before comparing.
+    """
+    ids = set(re.findall(r'([A-Za-z_]\w*)\s*=\s*' + REFERENCE_RECEIVER + r'run_[a-z_]+',
+                         body))
+    for _ in range(2):
+        for m in re.finditer(r'([A-Za-z_]\w*)\s*=\s*([^;]+);', body):
+            name, expr = m.group(1), m.group(2)
+            if name in ids:
+                continue
+            if any(re.search(r'\b' + re.escape(i) + r'\b', expr) for i in ids):
+                ids.add(name)
+    return ids
+
+
+def reference_result_is_asserted(body: str) -> bool:
+    """Whether the reference result actually enters a comparison.
+
+    Merely calling the reference and asserting something is not agreement: a
+    test may assert `reference.status.converged` as a precondition and then
+    check only its own output. A cell is reference-verified when the body runs
+    a comparator, or when an assertion names the value bound to the reference.
+    """
+    if re.search(r'\bcompare_[a-z_]+\s*\(', body):
+        return True
+    ids = reference_ids(body)
+    if not ids:
+        return False
+    return any(re.search(r'\b' + re.escape(i) + r'\b', arg)
+               for arg in assertion_args(body) for i in ids)
+
+
+COMPARE_TOL_RE = re.compile(
+    r'compare_(dc|transient|ac|noise)\s*\([^;]*?\{\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)\s*\}', re.S)
+
+
+def body_tolerances(body: str):
+    """Widest relative tolerance used by each comparator kind in this test."""
+    out = {}
+    for m in COMPARE_TOL_RE.finditer(body):
+        kind, rel = m.group(1), _num(m.group(2))
+        out[kind] = max(out.get(kind, 0.0), rel)
+    return out
+
+
 def _balanced(body: str, start: int, open_ch: str, close_ch: str) -> str:
     i, depth = start, 1
     while i < len(body) and depth:
@@ -163,7 +220,22 @@ def rejection_spans(body: str):
     return out
 
 
+# Tests whose reference comparison the extractor cannot confirm mechanically,
+# each read and classified by hand. The tool fails if it finds an unconfirmed
+# test that is not listed here, so the exception list cannot silently grow.
+MANUAL_V = {
+    'LTRAValidation.TransientRLC':
+        'compares against ngspice by hand-rolled interpolation rather than '
+        'compare_transient: v(out) only, absolute 0.15 V, no relative bound. '
+        'The whole comparison sits inside `if (ng_result.voltages.count("v(out)"))`, '
+        'so a reference result lacking that signal makes the test pass vacuously.',
+    'LTRAValidation.TransientLC':
+        'same hand-rolled form and same vacuous-pass guard as TransientRLC.',
+}
+
 NON_ASSERTING = []
+UNCOMPARED = []
+WIDE = {}      # (device, analysis) -> widest relative tolerance seen
 
 
 def collect():
@@ -175,7 +247,7 @@ def collect():
         text = path.read_text(errors='replace')
         if parts[0] == 'devices' and len(parts) > 2:
             devices = [DEVICE_DIRS[parts[1]]] if parts[1] in DEVICE_DIRS else []
-        elif 'NgspiceRunner' in text:
+        elif re.search(REFERENCE_RECEIVER + r'run_[a-z_]+', text):
             mapped = NON_DEVICE_FILES.get(rel)
             if mapped is None:
                 raise SystemExit(
@@ -200,6 +272,16 @@ def collect():
             ref = analyses_in(body, reference=True)
             if all_calls and shared_ref:
                 ref |= shared_ref          # fixture SetUp() ran the reference
+            if ref and not reference_result_is_asserted(body):
+                if full in MANUAL_V:
+                    UNCOMPARED.append((full, rel, sorted(ref)))
+                else:
+                    raise SystemExit(
+                        f'{full} ({rel}) obtains an ngspice 47 result but no '
+                        'assertion depends on it. Either it is not a reference '
+                        'comparison, or it compares in a form this tool cannot '
+                        'see. Read it and add it to MANUAL_V with a note, or fix '
+                        'the test.')
             rejected = set()
             for span in rejection_spans(body):
                 if re.search(REFERENCE_RECEIVER, span):
@@ -211,7 +293,13 @@ def collect():
                     # A generic run() dispatches on the netlist. Attribute the
                     # rejection to whatever analysis the reference ran here.
                     rejected |= ref
+            tols = body_tolerances(body)
             for device in devices:
+                for a in ref - rejected:
+                    kind = {'dc_op': 'dc', 'dc_sweep': 'dc'}.get(a, a)
+                    if kind in tols:
+                        k = (device, a)
+                        WIDE[k] = max(WIDE.get(k, 0.0), tols[kind])
                 for a in rejected:
                     cells[device][a]['X'].append((full, rel))
                 for a in ref - rejected:
@@ -284,6 +372,9 @@ def render(cells, tol):
     L.append('| `X` | **Unsupported, and fails explicitly.** A test asserts that '
              'the combination raises rather than returning a result. |')
     L.append('| `-` | **No coverage.** No test exercises it. |')
+    L.append('| `V*` | Reference-verified, but the widest backing tolerance is '
+             'looser than the 1e-3 relative the corpus comparison uses. The '
+             'value is given below. |')
     L.append('')
     L.append('| ' + 'Device'.ljust(w) + ' | ' +
              ' | '.join(a.ljust(cw[a]) for a in ANALYSES) + ' |')
@@ -295,8 +386,28 @@ def render(cells, tol):
             st = cells.get(device, {}).get(a, {})
             mark = ('V' if st.get('V') else 'X' if st.get('X')
                     else '~' if st.get('~') else '-')
+            if mark == 'V' and WIDE.get((device, a), 0.0) > 1e-3:
+                mark = 'V*'
             row.append(mark.ljust(cw[a]))
         L.append('| ' + device.ljust(w) + ' | ' + ' | '.join(row) + ' |')
+    L.append('')
+    L.append('### What this table does not cover')
+    L.append('')
+    L.append('Rows are device *models* that have isolated tests, or tests')
+    L.append('attributable to them by file. Twelve device types listed in')
+    L.append('`docs/capabilities.md` have no row at all: R, C, L, V, I, E, G, F,')
+    L.append('H, S, W and the lossless T line. They are exercised, but only')
+    L.append('inside multi-device circuit tests, which support no per-device')
+    L.append('claim and so contribute to no cell:')
+    L.append('')
+    for f in sorted(k for k, v in NON_DEVICE_FILES.items() if v is CIRCUIT):
+        L.append(f'- `{f}`')
+    L.append('')
+    L.append('So "of N cells" below counts only the rows present. It is not a')
+    L.append('coverage figure for the simulator as a whole.')
+    L.append('')
+    L.append('`MOS2` has a row here but is **absent from `docs/capabilities.md`**,')
+    L.append('which lists MOS1, MOS3 and MOS9. One of the two documents is wrong.')
     L.append('')
     L.append('### What the empty columns mean')
     L.append('')
@@ -330,31 +441,29 @@ def render(cells, tol):
              f'{counts["~"]} exercised only, {counts["X"]} explicitly rejected, '
              f'**{counts["-"]} with no coverage**.')
     L.append('')
-    L.append('### Tolerances')
+    L.append('### Tolerances wider than the corpus comparison')
     L.append('')
-    L.append('A `V` is not a uniform claim. These are the literal tolerances passed')
-    L.append('to `compare_*` per file; anything wider than the corpus formula')
-    L.append('(1e-3 relative) is a weaker claim and is listed here so it cannot be')
-    L.append('read as equivalent.')
+    L.append('A `V` is not a uniform claim. Every cell below is reference-verified,')
+    L.append('but at a tolerance looser than the 1e-3 relative bound the corpus')
+    L.append('comparison uses, so it must not be read as the same strength of')
+    L.append('agreement. The value is the widest relative tolerance any backing')
+    L.append('test passes to a comparator.')
     L.append('')
-    L.append('| File | Comparator | (relative, absolute) |')
+    L.append('| Device | Analysis | Widest relative tolerance |')
     L.append('| --- | --- | --- |')
-    for (f, kind), vals in sorted(tol.items()):
-        for rel, absolute in sorted(vals):
-            flag = ' **wider than 1e-3**' if _num(rel) > 1e-3 else ''
-            L.append(f'| `{f}` | `compare_{kind}` | ({rel}, {absolute}){flag} |')
+    for (device, a), v in sorted(WIDE.items()):
+        if v > 1e-3:
+            L.append(f'| {device} | {a} | **{v:g}** |')
     L.append('')
-    if NON_ASSERTING:
-        L.append('### Reference comparisons that cannot fail')
+    if UNCOMPARED:
+        L.append('### Reference comparisons verified by hand')
         L.append('')
-        L.append('These tests obtain an ngspice 47 result and compare against it,')
-        L.append('but assert nothing that can fail, so they are excluded from the')
-        L.append('matrix. They still count toward the suite total, which is why')
-        L.append('they are named here rather than silently dropped.')
+        L.append('These count as `V`, but their comparison is not a `compare_*`')
+        L.append('call and was read rather than detected. The weakness of each is')
+        L.append('recorded because a `V` should not hide it.')
         L.append('')
-        for name, f in sorted(set(NON_ASSERTING)):
-            L.append(f'- `{name}` (`{f}`) -- compares at a 1e30 tolerance and')
-            L.append('  asserts `EXPECT_TRUE(true)`; it prints margins to stderr.')
+        for name, f, ax in sorted(set((n, f, tuple(a)) for n, f, a in UNCOMPARED)):
+            L.append(f'- `{name}` (`{f}`, {", ".join(ax)}): {MANUAL_V[name]}')
         L.append('')
     L.append('### Model-form restrictions not visible as a cell')
     L.append('')
