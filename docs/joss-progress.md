@@ -13,11 +13,66 @@ submission is authorized by this goal.
 |---|---|
 | 1. Scope, eligibility and environment | Pinned ngspice47 CLI/shared build verified locally. CI and migration tests use the same47 source. Full support matrix, actual public timeline and eligibility remain. |
 | 2. Trustworthy validation | Acceptance met for checkpoint 38, conditional on the single explained `RFF70N06.OriginalCorpusOperatingPoint` failure carried to milestone 3. 1,267 C++ and 405 fresh-wheel Python/tooling cases run with zero skips; four reference-gating negative controls pass. See [checkpoint 38](#milestone-2-checkpoint-38). |
-| 3. Numerical correctness | Candidate 37 repairs model/node collisions, assignment precedence, selected MOS3/diode runtime expressions and accidental loading of unused models. New reference regressions pass; broader validation and option support, PA84/CoolMOS/IRF/RFF/TLV and the earlier reference T-line leak remain. Sanitizer results still belong to candidate 36. |
+| 3. Numerical correctness | Triaged against the seven goal items in [checkpoint 39](#milestone-3-triage-checkpoint-39-in-progress). Items 5 and 6 are closed: VDMOS self-heating now fails explicitly instead of returning a converged result with the thermal network absent, and the advertised sensitivity scope matches the implementation. Item 2 needs a classification decision, since ngspice 47 aborts RFF70N06 and so provides no reference answer. Items 3, 4 and 7 remain open; item 4 is blocked on declaring the supported matrix. |
 | 4. Compatibility experiment | Checkpoint 36 executes and independently audits all 67,359 fixtures, retaining all 1,037 outcome changes and unchanged reference results. Candidate 37 repairs need a full rerun. Generated-internal-observable classification is resolved in checkpoint 38; broader parameter/scope coverage and grouping/held-out multi-analysis evaluation remain. |
 | 5. Benchmarks | All34 comprehensive workloads qualify47; THS4131 qualifies5/5. TLV passes its original edge/DC-port contract but retains a strict pointwise discrepancy. Final candidate measurements and interpretation remain. |
 | 6. Documentation and attribution | Current documentation uses47 exclusively. Component copyright/license/distribution audit remains incomplete. |
 | 7. Manuscript and release | Draft paper exists. Actual research use, author confirmations, final release metadata, independent installation and final evidence reconciliation remain. |
+
+## Milestone 3 triage, checkpoint 39 (in progress)
+
+Milestone 3 has seven items. This is their state established from evidence, not
+from the previous tracker text, which did not record most of them.
+
+| Item | State | Evidence |
+|---|---|---|
+| 1. LTRA current discrepancy | Comparison enforced and passing | `LTRAValidation.TransientRC/RLC/LC` assert `compare_transient`; see the caveat below |
+| 2. RFF70N06 | Premise inverted; needs a classification decision | ngspice 47 aborts the fixture, so there is no reference answer |
+| 3. VBIC / diode transient | Not yet triaged | `vbic-compatibility.md`, `transient-readiness.md`, `vbic_delay_*.cir` |
+| 4. Corpus mismatch triage | Blocked on the supported matrix | checkpoint 36 is the input population |
+| 5. Empty/incomplete analyses | Closed | VDMOS AC/noise reject explicitly; MES noise implemented with nine fixtures; VDMOS self-heating now rejected |
+| 6. Advertised analysis scope | Closed, no overclaim found | `sens.cpp:154-163` perturbs exactly resistor resistance and independent-source DC, which is what `capabilities.md` and `README.md` claim |
+| 7. Sanitizers | Baseline run against pinned 47 | see below |
+
+Item 2 is the decision to take first. The goal document's premise was that
+ngspice solved `RFF70N06_HA` and neospice failed it. That is no longer true
+against the pinned reference: ngspice 47 aborts the fixture with
+`doAnalyses: OP: Timestep too small; trouble with x1:dbdmod-instance d.x1.dbody`,
+so there is no reference operating point to match. The fixture must stay in
+corpus accounting and must not be deleted, so the open question is what
+`RFF70N06.OriginalCorpusOperatingPoint` should assert: today it requires a
+converged reference and therefore fails, which reads as an unexplained red test
+rather than as the explicit classification the milestone asks for.
+
+Item 1 is passing but deserves a second look rather than a tick: the transient
+comparison runs at a 5e-2 relative tolerance with an in-test comment calling it
+"very loose". That tolerance predates this work and was not loosened here, but
+whether it is wide enough to hide the original current discrepancy has not been
+established.
+
+Item 5's remaining gap closed this checkpoint. neospice ignored the VDMOS
+`thermal` instance flag, so the self-heating form returned a converged operating
+point with the thermal network absent (`v(tj) = v(tc) = 0` against 36.477 and
+36.172). It is now rejected at parse time, mirroring ngspice 47's activation
+condition exactly so that every isothermal form still runs and still agrees.
+See [vdmos-compatibility](vdmos-compatibility.md).
+
+Item 7's baseline runs ASan and UBSan against the pinned 47 install from a fresh
+build directory, since the in-repo build directories point at system ngspice 42.
+The run is dominated by one finding repeated 616 times: a UBSan
+`store to null pointer` at `newton.cpp:196`, which is a plain assignment of
+`nullptr` to a `thread_local` pointer. That statement cannot dereference a null
+pointer, the same store on the preceding line does not report, the report does
+not appear in an `-O0` build of the same tree, and it does not reproduce in a
+minimal program under the same compiler and flags. It is therefore most likely a
+GCC 14 instrumentation artifact rather than a defect, but that is not yet proven
+and it is recorded as unresolved, not dismissed. Two LeakSanitizer reports are
+the only other findings. A second run with UB recovery enabled is needed before
+the baseline can be called complete, because the first run aborted each test on
+its first report and so could not reach anything later in that test.
+
+Nothing in this section changes corpus totals: checkpoint 36 remains the latest
+complete corpus experiment.
 
 ## Milestone 2 checkpoint 38
 
