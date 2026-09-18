@@ -1,5 +1,36 @@
 ## neospice Capabilities
 
+### Declared scope
+
+This section is the claim the paper makes; everything below it is an
+implementation overview. The claim is defined by the generated
+[support matrix](support-matrix.md), cell by cell, and nothing else:
+
+- **Claimed.** Cells marked `V` or `V*`: a test compares that device and
+  analysis against ngspice 47 and asserts the result. `V*` additionally means
+  the comparison runs at a tolerance looser than 1e-3 relative, and the matrix
+  gives the value -- these are claimed at their stated tolerance, not at the
+  corpus tolerance.
+- **Documented as unsupported.** Cells marked `X`: the combination fails
+  explicitly, by assertion. VDMOS AC and noise, and VDMOS self-heating as a
+  model form.
+- **Outside the claim.** Cells marked `~` (run, but never compared against the
+  reference) and `-` (never exercised). These are not asserted to work and not
+  asserted to fail. A `-` cell may agree, may fail loudly, or may return a
+  plausible wrong answer; nothing establishes which.
+- **Outside verified scope entirely.** `.tf`, `.sens`, `.pz` and `.four`. The
+  test harness cannot obtain a reference result for these analyses, so no
+  output from any of them has ever been compared against ngspice 47. They are
+  implemented and tested against analytic expectations only.
+
+Two further limits belong to the claim rather than to a footnote. Twelve device
+types (R, C, L, V, I, E, G, F, H, S, W and the lossless T line) have no row in
+the matrix, because their only coverage is inside multi-device circuit tests
+that support no per-device claim. And the matrix covers device/analysis pairs,
+not the full parameter space of any model: a claimed cell does not certify
+every option, geometry or temperature path of that device.
+
+
 neospice is a C++ circuit simulator with C++ and Python APIs. The following is
 an implementation overview, not certification of every device/analysis
 combination. The [JOSS progress tracker](joss-progress.md) records current

@@ -106,6 +106,15 @@ ngspice can reuse existing factors for a transpose solve, whereas neospice's
 current noise path factors separate systems. Paired, validated measurements are
 needed before attributing a performance benefit to either arrangement.
 
+The scope of the correctness claim is declared per device and analysis rather
+than per device. A generated support matrix records, for every pair, whether a
+test compares it against ngspice 47 and asserts the result, merely runs it,
+asserts that it fails, or never exercises it; the claim covers only the first
+category, at each cell's stated tolerance. Four analysis types -- transfer
+function, sensitivity, pole-zero and Fourier -- fall outside it entirely,
+because the differential harness cannot obtain a reference result for them, and
+they are checked against analytic expectations alone.
+
 Validation combines analytic checks, API and tooling tests, and differential
 comparisons against the checksum-pinned ngspice 47 release. Comparisons reject empty,
 nonfinite, unsuccessful and structurally invalid results, require the intended
