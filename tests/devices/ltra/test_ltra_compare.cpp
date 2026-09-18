@@ -7,6 +7,8 @@
 #include "api/neospice.hpp"
 #include "framework/ngspice_runner.hpp"
 #include "framework/comparator.hpp"
+#include "devices/ltra.hpp"
+#include "core/circuit.hpp"
 
 #include <cmath>
 #include <string>
@@ -168,7 +170,11 @@ TEST_F(LTRAValidation, TransientRC) {
     // cause large relative errors at fast transients. Focus on absolute error.
     // Check that absolute error in v(out) is small (< 0.1V)
     bool v_out_ok = true;
-    if (ng_result.voltages.count("v(out)")) {
+    // A missing reference signal must fail, not skip: as a plain `if` this
+    // whole comparison was skippable and the test passed vacuously.
+    ASSERT_TRUE(ng_result.voltages.count("v(out)"))
+        << "ngspice 47 returned no v(out); nothing was compared";
+    {
         const auto& ng_v = ng_result.voltages.at("v(out)");
         for (size_t i = 0; i < std::get<TransientResult>(cs_result.analysis).time.size(); ++i) {
             double t = std::get<TransientResult>(cs_result.analysis).time[i];
@@ -221,7 +227,11 @@ TEST_F(LTRAValidation, TransientRLC) {
     // Check that v(out) absolute error vs ngspice is bounded
     bool v_out_ok = true;
     double worst_abs = 0;
-    if (ng_result.voltages.count("v(out)")) {
+    // A missing reference signal must fail, not skip: as a plain `if` this
+    // whole comparison was skippable and the test passed vacuously.
+    ASSERT_TRUE(ng_result.voltages.count("v(out)"))
+        << "ngspice 47 returned no v(out); nothing was compared";
+    {
         const auto& ng_v = ng_result.voltages.at("v(out)");
         for (size_t i = 0; i < std::get<TransientResult>(cs_result.analysis).time.size(); ++i) {
             double t = std::get<TransientResult>(cs_result.analysis).time[i];
@@ -274,7 +284,11 @@ TEST_F(LTRAValidation, TransientLC) {
     // Check that v(out) absolute error vs ngspice is bounded
     bool v_out_ok = true;
     double worst_abs = 0;
-    if (ng_result.voltages.count("v(out)")) {
+    // A missing reference signal must fail, not skip: as a plain `if` this
+    // whole comparison was skippable and the test passed vacuously.
+    ASSERT_TRUE(ng_result.voltages.count("v(out)"))
+        << "ngspice 47 returned no v(out); nothing was compared";
+    {
         const auto& ng_v = ng_result.voltages.at("v(out)");
         for (size_t i = 0; i < std::get<TransientResult>(cs_result.analysis).time.size(); ++i) {
             double t = std::get<TransientResult>(cs_result.analysis).time[i];
@@ -320,5 +334,60 @@ TEST_F(LTRAValidation, ACFrequencyResponseAllLineTypes) {
                 EXPECT_NEAR(std::abs(output[i] - expected), 0.0, 1e-10);
             }
         }
+    }
+}
+
+// ============================================================================
+// LTRA port currents against ngspice 47.
+//
+// ngspice allocates the two LTRA branch equations through CKTmkVolt
+// (ltraset.c:176,182), so it prints them as voltage-named vectors v(<line>#i1)
+// and v(<line>#i2) even though they hold the port currents. The transient
+// comparisons erase both, on the stated grounds that they are implementation
+// variables. That erasure drops exactly the quantity goal item 1 names, so it
+// needs the argument the VDMOS #gate exclusion was given: that neospice models
+// the same quantity, and that its values agree.
+//
+// neospice solves for both as MNA branch unknowns (br_eq1/br_eq2) with the
+// same 20-entry stamp structure, but does not publish them: output_currents()
+// returns their names and nothing calls it. This test reads them out of the
+// solution vector so the comparison is actually performed.
+// ============================================================================
+
+TEST_F(LTRAValidation, PortCurrentsMatchNgspice47) {
+    for (const char* deck : {"/ltra_dc_rc.cir", "/ltra_dc_rg.cir"}) {
+        SCOPED_TRACE(deck);
+        const std::string cir_path = std::string(TEST_CIRCUITS_DIR) + deck;
+
+        const auto reference = ngspice_->run_dc(cir_path);
+        ASSERT_TRUE(reference.node_voltages.count("v(o1#i1)"))
+            << "ngspice 47 no longer exposes the LTRA branch equations; the "
+               "erasure in the transient tests would need rewriting";
+        ASSERT_TRUE(reference.node_voltages.count("v(o1#i2)"));
+
+        auto ckt = sim_.load(cir_path);
+        (void)sim_.run_dc(ckt);
+
+        const auto* device =
+            dynamic_cast<const LossyTransmissionLine*>(ckt.find_device_ptr("o1"));
+        ASSERT_NE(device, nullptr) << "o1 is not an LTRA instance";
+        const std::vector<double>* solution = ckt.operating_point();
+        ASSERT_NE(solution, nullptr) << "no operating point was cached";
+        ASSERT_GT(device->br_eq1(), 0);
+        ASSERT_LT(static_cast<size_t>(device->br_eq2()), solution->size());
+
+        // Both engines index the two ports the same way, so i1 pairs with
+        // br_eq1. A sign flip here would be a real disagreement, not a
+        // convention difference to absorb.
+        const double ng_i1 = reference.node_voltages.at("v(o1#i1)");
+        const double ng_i2 = reference.node_voltages.at("v(o1#i2)");
+        const double neo_i1 = (*solution)[device->br_eq1()];
+        const double neo_i2 = (*solution)[device->br_eq2()];
+
+        const double scale = std::max({std::fabs(ng_i1), std::fabs(ng_i2), 1e-12});
+        EXPECT_NEAR(neo_i1, ng_i1, 1e-9 * scale + 1e-15)
+            << "port 1 current: neospice " << neo_i1 << " vs ngspice " << ng_i1;
+        EXPECT_NEAR(neo_i2, ng_i2, 1e-9 * scale + 1e-15)
+            << "port 2 current: neospice " << neo_i2 << " vs ngspice " << ng_i2;
     }
 }

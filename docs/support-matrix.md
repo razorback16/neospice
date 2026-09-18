@@ -114,14 +114,13 @@ test passes to a comparator.
 | MOS3 | transient | **0.05** |
 | O (LTRA) | transient | **0.05** |
 
-### Reference comparisons verified by hand
+### Reference comparisons weaker than the tier conveys
 
-These count as `V`, but their comparison is not a `compare_*`
-call and was read rather than detected. The weakness of each is
-recorded because a `V` should not hide it.
+These are genuine `V` cells, but a `V` should not hide what the
+comparison actually covers. Each was read rather than inferred.
 
-- `LTRAValidation.TransientLC` (`tests/devices/ltra/test_ltra_compare.cpp`, transient): same hand-rolled form and same vacuous-pass guard as TransientRLC.
-- `LTRAValidation.TransientRLC` (`tests/devices/ltra/test_ltra_compare.cpp`, transient): compares against ngspice by hand-rolled interpolation rather than compare_transient: v(out) only, absolute 0.15 V, no relative bound. The whole comparison sits inside `if (ng_result.voltages.count("v(out)"))`, so a reference result lacking that signal makes the test pass vacuously.
+- `LTRAValidation.TransientLC` (`tests/devices/ltra/test_ltra_compare.cpp`, transient): same hand-rolled, v(out)-only, absolute-bound form as TransientRLC.
+- `LTRAValidation.TransientRLC` (`tests/devices/ltra/test_ltra_compare.cpp`, transient): does not call compare_transient. It compares v(out) alone, by hand-rolled interpolation onto the reference time base, against a 0.15 V absolute bound with no relative bound. No other signal and no branch current is checked.
 
 ### Model-form restrictions not visible as a cell
 
@@ -335,6 +334,7 @@ device does not appear as one. Known restrictions:
 | --- | --- | --- | --- |
 | dc_op | `V` | `LTRAValidation.DCOperatingPointRC` | `tests/devices/ltra/test_ltra_compare.cpp` |
 | dc_op | `V` | `LTRAValidation.DCOperatingPointRG` | `tests/devices/ltra/test_ltra_compare.cpp` |
+| dc_op | `V` | `LTRAValidation.PortCurrentsMatchNgspice47` | `tests/devices/ltra/test_ltra_compare.cpp` |
 | transient | `V` | `LTRAValidation.TransientLC` | `tests/devices/ltra/test_ltra_compare.cpp` |
 | transient | `V` | `LTRAValidation.TransientRC` | `tests/devices/ltra/test_ltra_compare.cpp` |
 | transient | `V` | `LTRAValidation.TransientRLC` | `tests/devices/ltra/test_ltra_compare.cpp` |

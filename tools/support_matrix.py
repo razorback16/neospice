@@ -220,17 +220,18 @@ def rejection_spans(body: str):
     return out
 
 
-# Tests whose reference comparison the extractor cannot confirm mechanically,
-# each read and classified by hand. The tool fails if it finds an unconfirmed
-# test that is not listed here, so the exception list cannot silently grow.
-MANUAL_V = {
+# Reference comparisons that are weaker than the tier alone conveys, each read
+# by hand. A `V` here is real, but the note says what it does and does not
+# cover. The tool fails on an entry that no longer matches any test, so these
+# cannot rot, and fails on an unconfirmed comparison that is not listed.
+WEAK_COMPARISONS = {
     'LTRAValidation.TransientRLC':
-        'compares against ngspice by hand-rolled interpolation rather than '
-        'compare_transient: v(out) only, absolute 0.15 V, no relative bound. '
-        'The whole comparison sits inside `if (ng_result.voltages.count("v(out)"))`, '
-        'so a reference result lacking that signal makes the test pass vacuously.',
+        'does not call compare_transient. It compares v(out) alone, by '
+        'hand-rolled interpolation onto the reference time base, against a '
+        '0.15 V absolute bound with no relative bound. No other signal and no '
+        'branch current is checked.',
     'LTRAValidation.TransientLC':
-        'same hand-rolled form and same vacuous-pass guard as TransientRLC.',
+        'same hand-rolled, v(out)-only, absolute-bound form as TransientRLC.',
 }
 
 NON_ASSERTING = []
@@ -272,9 +273,11 @@ def collect():
             ref = analyses_in(body, reference=True)
             if all_calls and shared_ref:
                 ref |= shared_ref          # fixture SetUp() ran the reference
+            if full in WEAK_COMPARISONS and ref:
+                UNCOMPARED.append((full, rel, sorted(ref)))
             if ref and not reference_result_is_asserted(body):
-                if full in MANUAL_V:
-                    UNCOMPARED.append((full, rel, sorted(ref)))
+                if full in WEAK_COMPARISONS:
+                    pass
                 else:
                     raise SystemExit(
                         f'{full} ({rel}) obtains an ngspice 47 result but no '
@@ -329,6 +332,11 @@ def main():
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args()
     cells = collect()
+    seen = {n for n, _, _ in UNCOMPARED}
+    stale = sorted(set(WEAK_COMPARISONS) - seen)
+    if stale:
+        raise SystemExit(f'WEAK_COMPARISONS lists tests that no longer back any '
+                         f'cell: {stale}. Remove them or fix the note.')
     tol = tolerances()
     doc = render(cells, tol)
     target = ROOT / 'docs/support-matrix.md'
@@ -456,14 +464,13 @@ def render(cells, tol):
             L.append(f'| {device} | {a} | **{v:g}** |')
     L.append('')
     if UNCOMPARED:
-        L.append('### Reference comparisons verified by hand')
+        L.append('### Reference comparisons weaker than the tier conveys')
         L.append('')
-        L.append('These count as `V`, but their comparison is not a `compare_*`')
-        L.append('call and was read rather than detected. The weakness of each is')
-        L.append('recorded because a `V` should not hide it.')
+        L.append('These are genuine `V` cells, but a `V` should not hide what the')
+        L.append('comparison actually covers. Each was read rather than inferred.')
         L.append('')
         for name, f, ax in sorted(set((n, f, tuple(a)) for n, f, a in UNCOMPARED)):
-            L.append(f'- `{name}` (`{f}`, {", ".join(ax)}): {MANUAL_V[name]}')
+            L.append(f'- `{name}` (`{f}`, {", ".join(ax)}): {WEAK_COMPARISONS[name]}')
         L.append('')
     L.append('### Model-form restrictions not visible as a cell')
     L.append('')

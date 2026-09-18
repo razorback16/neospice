@@ -35,7 +35,7 @@ from the previous tracker text, which did not record most of them.
 
 | Item | State | Evidence |
 |---|---|---|
-| 1. LTRA current discrepancy | Partially enforced | Only `LTRAValidation.TransientRC` asserts `compare_transient`, at 5e-2. `TransientRLC`/`TransientLC` compare `v(out)` by hand at a 0.15 V absolute bound, inside a guard that passes vacuously if the signal is missing. See the caveats below |
+| 1. LTRA current discrepancy | Port currents compared and agreeing at DC | `LTRAValidation.PortCurrentsMatchNgspice47` compares both LTRA branch currents against ngspice 47 to 1e-9 relative on the RC and RG decks. The transient caveats below remain |
 | 2. RFF70N06 | Classified reference-inconclusive, assertion made executable | `RFF70N06.ReferenceIsInconclusive` pins both engines' failure |
 | 3. VBIC / diode transient | Not yet triaged | `vbic-compatibility.md`, `transient-readiness.md`, `vbic_delay_*.cir` |
 | 4. Corpus mismatch triage | Blocked on the supported matrix | checkpoint 36 is the input population |
@@ -71,14 +71,42 @@ comparison runs at a 5e-2 relative tolerance with an in-test comment calling it
 whether it is wide enough to hide the original current discrepancy has not been
 established.
 
-The same item has a second open question. `test_ltra_compare.cpp:162-163` erases
-`v(o1#i1)` and `v(o1#i2)` from the reference result before comparing, on the
-grounds that they are ngspice's internal LTRA branch equations. Those are branch
-*currents*, and this goal item is specifically the LTRA current discrepancy, so
-the exclusion needs the justification given to the VDMOS `#gate` node -- a
-demonstration that neospice models the same quantity and that the excluded
-observables agree -- rather than a comment asserting they are private. Until
-that is done, item 1 is passing on port voltages and the source current only.
+The item's second question is now answered. The transient comparison erases
+`v(o1#i1)` and `v(o1#i2)` from the reference result as "internal LTRA branch
+equations". They are not merely internal: ngspice allocates them with
+`CKTmkVolt` (`ltraset.c:176,182`), which is why they print as voltage-named
+vectors, but they hold the two **port currents** -- exactly the quantity this
+goal item names. Erasing them meant the LTRA current comparison had never been
+performed at all; what passed was port voltages and the source current.
+
+`LTRAValidation.PortCurrentsMatchNgspice47` performs it. neospice solves both
+as MNA branch unknowns with the same 20-entry stamp structure, so the
+exclusion gets the argument the VDMOS `#gate` node was given rather than an
+assertion that the values are private: the test reads both out of the solution
+vector by branch index and compares them against ngspice 47. They agree to
+**1e-9 relative** on the RC and RG decks. Pairing port 1 against port 2 makes
+the test fail on both decks, so it discriminates.
+
+Two boundaries of that result, stated rather than glossed:
+
+- It is a **DC operating point** comparison. `Circuit::operating_point()`
+  caches the DC solution; transient branch-current history is not exposed, so
+  the transient port currents are still uncompared.
+- The reason they are uncompared is that neospice never publishes them.
+  `Device::output_currents()` returns `o1#branch1`/`o1#branch2` and **nothing
+  in `src/` calls it** -- it is dead on every device that defines it. Wiring it
+  into result emission would let `compare_transient` compare these directly,
+  but it changes the emitted signal set for several device families and so
+  belongs to a deliberate change, not to this triage.
+
+The 5e-2 relative tolerance on `TransientRC` still stands unexamined, and it is
+not the outlier it looked like: see the wide-tolerance table in the support
+matrix, where thirteen cells sit above 1e-3 and four sit above it by more.
+
+The vacuous-pass guard found in all three LTRA transient tests is fixed. The
+`v(out)` comparison sat inside `if (ng_result.voltages.count("v(out)"))`, so a
+reference result lacking that signal skipped the entire comparison and the test
+passed. It is now an `ASSERT_TRUE` precondition; all three still pass.
 
 The supported matrix that item 4 was blocked on now exists:
 [docs/support-matrix.md](support-matrix.md), generated from the test suite by
