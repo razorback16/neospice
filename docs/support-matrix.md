@@ -334,7 +334,7 @@ device does not appear as one. Known restrictions:
 | --- | --- | --- | --- |
 | dc_op | `V` | `LTRAValidation.DCOperatingPointRC` | `tests/devices/ltra/test_ltra_compare.cpp` |
 | dc_op | `V` | `LTRAValidation.DCOperatingPointRG` | `tests/devices/ltra/test_ltra_compare.cpp` |
-| dc_op | `V` | `LTRAValidation.PortCurrentsMatchNgspice47` | `tests/devices/ltra/test_ltra_compare.cpp` |
+| dc_op | `V` | `LTRAValidation.PortCurrentsMatchNgspice47AtDC` | `tests/devices/ltra/test_ltra_compare.cpp` |
 | transient | `V` | `LTRAValidation.TransientLC` | `tests/devices/ltra/test_ltra_compare.cpp` |
 | transient | `V` | `LTRAValidation.TransientRC` | `tests/devices/ltra/test_ltra_compare.cpp` |
 | transient | `V` | `LTRAValidation.TransientRLC` | `tests/devices/ltra/test_ltra_compare.cpp` |
