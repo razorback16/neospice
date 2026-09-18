@@ -19,6 +19,8 @@ final scholarly argument and actual workflow are established.
 | Architecture and trade-offs | [Source-based comparison](../docs/neospice-vs-ngspice.md); attribution and full documentation audit still open. |
 | Frozen fixture counts | [Experiment definition](../docs/kicad-experiment.md), checkpoint-11 manifest. These are input counts, not final accuracy results. |
 | Current ngspice47 compatibility defects | [Progress](../docs/joss-progress.md), [reference 47](../docs/ngspice47-reference.md); supported correctness blockers remain. |
+| Scope of the correctness claim | [Support matrix](../docs/support-matrix.md), generated from the test suite; [declared scope](../docs/capabilities.md#declared-scope). |
+| What the corpus mismatches are | [Corpus mismatch triage](../docs/corpus-mismatch-triage.md); classified against checkpoint 36, which predates the current tree. Fix work is open. |
 | Actual research workflow and impact | Required author evidence pending. Demonstrations must not be described as adoption. |
 | Benchmarks, figures and final compatibility tables | Pending accuracy-qualified measurements and final candidate evidence. No speedup claim is included. |
 | Eligibility and installation | [JOSS requirements](../docs/joss-requirements-checklist.md); public-history and independent human checks remain. |

@@ -196,6 +196,55 @@ inline bool iequals(const std::string& tok, const char* lit) {
     return lit[i] == '\0';
 }
 
+// A SPICE instance name: a letter followed by name characters only.
+inline bool is_spice_instance_name(const std::string& tok) {
+    if (tok.empty() || !std::isalpha(static_cast<unsigned char>(tok[0])))
+        return false;
+    for (char c : tok) {
+        if (std::isalnum(static_cast<unsigned char>(c))) continue;
+        if (std::strchr("_$.#+-", c) == nullptr) return false;
+    }
+    return true;
+}
+
+// Is this a PSpice digital primitive card?  The discriminator is the primitive
+// type keyword in the second token, not the leading `U`: vendor libraries carry
+// uncommented prose, and "Use of this model ..." would otherwise be read as a
+// device.  The keyword set is the documented PSpice primitive list; it accepts
+// all 35 keywords that occur in the 34,908-model corpus and rejects the three
+// prose lines there that merely begin with a `u`.
+// A PSpice digital interface device (`N` digital input, `O` digital output)
+// is marked by its DGTLNET attribute.  All 89 lines carrying that keyword in
+// the 34,908-model corpus are such cards; no prose line carries it.
+inline bool has_digital_net_attribute(const std::vector<std::string>& tokens) {
+    if (tokens.size() < 3 || !is_spice_instance_name(tokens[0])) return false;
+    for (const auto& tok : tokens)
+        if (tok.size() > 8 && iequals(tok.substr(0, 8), "dgtlnet=")) return true;
+    return false;
+}
+
+inline bool is_digital_primitive_card(const std::vector<std::string>& tokens) {
+    if (tokens.size() < 3 || !is_spice_instance_name(tokens[0])) return false;
+    // `NAND(4)` and `LOGICEXP(20,1)` carry an argument list on the keyword.
+    std::string kw = tokens[1].substr(0, tokens[1].find('('));
+    for (char& c : kw) c = char(std::toupper(static_cast<unsigned char>(c)));
+    static const std::set<std::string> primitives = {
+        // combinational gates, plus their array and tri-state forms
+        "BUF", "INV", "AND", "NAND", "OR", "NOR", "XOR", "NXOR",
+        "BUFA", "INVA", "ANDA", "NANDA", "ORA", "NORA", "XORA", "NXORA",
+        "BUF3", "INV3", "BUF3A", "INV3A", "AO", "AOI", "OA", "OAI",
+        // storage
+        "JKFF", "DFF", "SRFF", "DLTCH",
+        // pullups, programmable arrays, behavioral and timing primitives
+        "PULLUP", "PULLDN", "LOGICEXP", "PINDLY", "CONSTRAINT", "DLYLINE",
+        "PLAND", "PLOR", "PLXOR", "PLNAND", "PLNOR", "PLNXOR",
+        "PLANDC", "PLORC", "PLXORC", "PLNANDC", "PLNORC", "PLNXORC",
+        // mixed-signal interface and stimulus
+        "ADC", "DAC", "ROM", "RAM", "STIM",
+    };
+    return primitives.count(kw) != 0;
+}
+
 // Accept both `.param` and `.params` (and trailing plural) — ngspice matches
 // the directive via ciprefix, so `.params` (source.lib) is treated as `.param`.
 inline bool is_param_card(const std::string& tok) {
@@ -1799,6 +1848,27 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
         {
             static const std::string valid_prefixes = "rvlcdikmqjzxefghbostw";
             if (valid_prefixes.find(elem_type) == std::string::npos) {
+                // A PSpice digital primitive is a real device card, not stray
+                // comment text.  ngspice 47 simulates these under
+                // `ngbehavior=psa`, so dropping the card silently returns an
+                // analog operating point for a circuit that is missing its
+                // devices -- 441 corpus cases did exactly that.  neospice does
+                // not implement digital simulation, so the deck is rejected.
+                // The keyword test keeps prose starting with a `u` out of it.
+                if (elem_type == 'n' && has_digital_net_attribute(tokens)) {
+                    throw ParseError(
+                        "Line " + std::to_string(line.line_number) +
+                        ": digital interface device '" + tokens[0] +
+                        "' is not supported; neospice has no digital simulation "
+                        "engine. See docs/capabilities.md.");
+                }
+                if (elem_type == 'u' && is_digital_primitive_card(tokens)) {
+                    throw ParseError(
+                        "Line " + std::to_string(line.line_number) +
+                        ": digital primitive '" + tokens[0] + "' (" + tokens[1] +
+                        ") is not supported; neospice has no digital simulation "
+                        "engine. See docs/capabilities.md.");
+                }
                 continue; // not a known element type
             }
             // Skip bare words that ended with punctuation (comment text)
@@ -3737,9 +3807,13 @@ void NetlistParser::pass3_resolve_deferred(ParseState& state) {
         }
         std::string model_type = to_lower(it->second.type);
         if (model_type != "ltra") {
-            fprintf(stderr, "Warning: Line %d: O element references non-LTRA model '%s' — skipping\n",
-                    ol.line_number, ol.model_name.c_str());
-            continue;
+            // ngspice 47 reports "model type mismatch" here and stops.  Skipping
+            // dropped the device and solved the rest of the deck: the PSpice
+            // digital output interface (`O0 ... IO_STD` against a `UIO` model)
+            // collides with the LTRA letter and was silently discarded.
+            throw ParseError("Line " + std::to_string(ol.line_number) +
+                ": O element references model '" + ol.model_name +
+                "' of type '" + it->second.type + "', not LTRA");
         }
 
         // Get or create the shared LTRA model

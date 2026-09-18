@@ -110,6 +110,17 @@ unimplemented analysis. DC operating-point and IV-sweep tests remain enabled.
 Unsupported AC/noise fixtures must remain in experiment accounting and must not
 be counted as accuracy matches or accepted performance samples.
 
+PSpice **digital primitives are explicitly unsupported**. ngspice 47 simulates
+them under `ngbehavior=psa`, translating `U` cards to its own digital primitives
+and inserting automatic interface bridges; neospice has no digital simulation
+engine. A `U` card naming a documented PSpice primitive type is rejected at
+parse time with an error naming the instance and the primitive. Previously such
+a card was dropped silently, so the deck solved as an analog circuit with its
+digital devices missing -- see
+[corpus mismatch triage](corpus-mismatch-triage.md) for the 441 corpus cases
+that behaved this way. The rejection keys on the primitive keyword rather than
+the leading letter, because vendor libraries carry uncommented prose.
+
 VDMOS self-heating is **explicitly unsupported** on the same terms. ngspice 47
 activates its thermal network only when an instance carries the `thermal` flag
 and the model gives `Rthjc`; that combination is rejected at parse time with an

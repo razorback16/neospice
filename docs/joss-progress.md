@@ -153,8 +153,99 @@ inside multi-device circuit tests that support no per-device claim; and `MOS2`
 has a row here but is absent from `docs/capabilities.md`, so one of the two
 documents is wrong.
 
-What remains for item 4 is the *declaration* step -- deciding which cells the
-paper claims -- which is a scope decision rather than a measurement.
+The declaration step item 4 was waiting on is done
+([declared scope](capabilities.md#declared-scope)), and the corpus triage it
+unblocked is in [corpus mismatch triage](corpus-mismatch-triage.md). All 1,273
+primary and 1,272 driven mismatches in the checkpoint-36 ngspice-47 run are
+classified there by device family and root cause.
+
+The result is much smaller than the raw count suggests, because the corpus runs
+each declaration twice -- once bare, once with a stimulus -- and the driven
+variant separates real disagreements from undriven-node artifacts. Of 194
+in-scope primary mismatches, **181 match once the same subcircuit is driven**.
+The in-scope population that survives a stimulus is nine cases in two root
+causes:
+
+- **A node held only by `gmin` runs away.** In the NEC power-MOSFET
+  macromodels, an internal node connected to nothing but two reverse-biased
+  `CJO=0` diodes settles at **-100 kV** where ngspice 47 puts it at 4e-16 V,
+  scaling as `1/gmin²`; the resulting 100 nA of `gmin` leakage reaches the
+  terminals through the model's own current source as 10 mV. The circuit is
+  undriven, so the correct answer is zero and neospice's is not merely different
+  from the reference but physically impossible. 119 primary cases. Reduced to an
+  eight-device regression circuit: the runaway needs the `FGD`/`EVGD`/`EGD1`/
+  `EGD2`/`DCRR` feedback loop and disappears when any one of them is removed;
+  the MOSFET itself is irrelevant. The `verbose` Newton trace shows the iterate
+  walking node 8 by exactly one thermal voltage per iteration for forty
+  iterations while `DCRR` reports non-convergence, then settling on a fixed
+  point of the *limited* iteration that is not a root. `DEVpnjlim` is
+  byte-identical to ngspice's, so the divergence is elsewhere. **Open.**
+- **A different DC basin in three CLC current-feedback amplifiers**
+  (`clc409`, `clc505`, `clc532`, each duplicated across `comlin.lib` and
+  `comlinr.lib`). `v(in_m)` 2.478 V against 6.317 V, supply current off by
+  56 %. This is the only in-scope cluster that is large in absolute terms and
+  survives a stimulus. **Open.**
+
+A third in-scope group -- 69 TVS, zener and diode cases -- is *not* a defect.
+Its disagreement scales linearly with `gmin` (1e-10 → 1.4 mV, 1e-14 → 30 nV),
+the signature of the `gmin` floor rather than of a model error, on nets that
+carry no source; 65 of the 69 match once driven and the other four have no
+driven variant. They are recorded as ill-posed fixtures. No tolerance was
+changed.
+
+The largest cluster in the corpus turned out not to be an accuracy problem at
+all, and it is the one this milestone is named for. 441 primary and 415 driven
+mismatches are PSpice digital primitives, which ngspice 47 simulates under
+`ngbehavior=psa` and neospice was **dropping silently** -- returning a
+successful analog operating point for a circuit missing its devices, with only a
+floating-node warning. The same was true of the digital interface devices: an
+`N` card was discarded without any message, and an `O` card, whose letter
+collides with the LTRA device, resolved its model, saw it was a `UIO` rather
+than an `LTRA`, warned, and skipped -- where ngspice 47 calls that a model type
+mismatch and stops.
+
+All three now fail explicitly, which is what the project's standing rule
+requires of an unsupported model: `U` cards naming a documented PSpice
+primitive, `N` cards carrying the `DGTLNET` interface attribute, and `O` cards
+whose model is not an LTRA. The rejection keys on the primitive keyword and the
+interface attribute rather than on the leading letter, because vendor libraries
+carry uncommented prose: a first attempt keyed on the leading letter plus an
+instance-name shape, and its own regression test caught it rejecting the line
+"Use of this model is subject to the terms below". Four regression tests in
+`tests/unit/test_parser.cpp` pin the rejection, its survival through subcircuit
+expansion, the requirement that prose not trigger it, and that a real LTRA card
+still parses.
+
+Every one of the 67,359 checkpoint-36 fixtures was re-parsed with the rebuilt
+binary to measure what the rejection costs. It turns 3,274 corpus outcomes into
+explicit failures:
+
+| Previous outcome | Primary | Driven |
+| --- | --- | --- |
+| MATCH | 104 | 107 |
+| MISMATCH | 407 | 491 |
+| NEO_ONLY | 263 | 1,056 |
+| NEO_TRIVIAL | 834 | -- |
+| BOTH_FAIL | 12 | -- |
+
+**No outcome outside that set changed.** Every other fixture that now fails to
+parse was already `BOTH_FAIL` or `NG_ONLY` in checkpoint 36 and fails for its own
+pre-existing reason; no `MATCH`, `MISMATCH`, `NEO_ONLY` or `NEO_TRIVIAL` case was
+lost to anything but the digital rejection.
+
+The 211 lost matches are the real cost and are stated rather than netted out.
+They come entirely from the digital libraries (`dig604` 126, `dig195` 54,
+`dig874` 20, `dig652` 8, `dig381` 6 and similar), where both simulators happened
+to agree on the analog-only signals of a circuit whose digital devices neospice
+had discarded. A headline corpus MATCH count computed before this change is
+higher by 211 for that reason, and those were not earned. Two fixtures
+(`OPA1662`, `CA3140`) do not terminate under either simulator and remain
+recorded as the `timeout` BOTH_FAIL cases checkpoint 36 already names; the
+re-parse confirms they still do not terminate.
+
+Two further boundaries surfaced and were not acted on: MOS2 has a matrix row but
+is absent from `docs/capabilities.md`, and the `dig000` fixtures expose another
+silent-default path (`failed to evaluate .param 'dpwr' -- defaulting to 0`).
 
 Item 5's remaining gap closed this checkpoint. neospice ignored the VDMOS
 `thermal` instance flag, so the self-heating form returned a converged operating

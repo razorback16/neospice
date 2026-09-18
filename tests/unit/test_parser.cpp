@@ -654,3 +654,92 @@ R3 5 0 1k
     ASSERT_NE(poly, nullptr)
         << "HOUT POLY(1),(V1) was dropped instead of resolving Vsense V1";
 }
+
+TEST(Parser, DigitalPrimitivesFailExplicitlyRatherThanBeingDropped) {
+    // ngspice 47 simulates PSpice digital primitives under `ngbehavior=psa`.
+    // neospice has no digital engine, so it must reject the deck: silently
+    // dropping the card returned an analog operating point for a circuit
+    // missing its devices, which is how 441 corpus cases mismatched.
+    NetlistParser parser;
+    const std::string deck =
+        "* digital primitive\n"
+        "V1 in 0 DC 3.3\n"
+        "R1 in a 1k\n"
+        "U1 INV DPWR DGND a y IO_STD\n"
+        ".MODEL IO_STD UIO (drvh=96.4 drvl=104)\n"
+        "Ry y 0 1k\n"
+        ".op\n"
+        ".end\n";
+    EXPECT_THROW(parser.parse(deck), ParseError);
+}
+
+TEST(Parser, DigitalRejectionSurvivesSubcircuitExpansion) {
+    // The corpus fixtures all instantiate the digital part through an X card,
+    // so the rejection has to reach an expanded instance (`x1.u1`) and not only
+    // a top-level one.
+    NetlistParser parser;
+    const std::string deck =
+        "* digital primitive inside a subcircuit\n"
+        "V1 in 0 DC 3.3\n"
+        "X1 in out GATE\n"
+        "Rl out 0 1k\n"
+        ".subckt GATE a y\n"
+        "U1 INV DPWR DGND a y IO_STD\n"
+        ".ends\n"
+        ".MODEL IO_STD UIO (drvh=96.4 drvl=104)\n"
+        ".op\n"
+        ".end\n";
+    EXPECT_THROW(parser.parse(deck), ParseError);
+}
+
+TEST(Parser, CommentProseIsNotMistakenForADigitalPrimitive) {
+    // The rejection keys on a device-card shape, not on the leading letter.
+    // Vendor libraries carry uncommented prose; rejecting a netlist over its
+    // own documentation text would be worse than the defect being fixed.
+    NetlistParser parser;
+    const std::string deck =
+        "* prose that begins with the digital device letter\n"
+        "Use of this model is subject to the terms below\n"
+        "Unless otherwise noted, all values are typical\n"
+        "V1 in 0 DC 1\n"
+        "R1 in 0 1k\n"
+        ".op\n"
+        ".end\n";
+    auto ckt = parser.parse(deck);
+    EXPECT_EQ(ckt.devices().size(), 2u);
+}
+
+TEST(Parser, DigitalInterfaceDevicesFailExplicitly) {
+    // PSpice digital interface devices are marked by DGTLNET. The `O` form
+    // collides with the LTRA device letter: neospice resolved the model, saw
+    // it was not an LTRA, warned and skipped, and solved the rest of the deck.
+    // ngspice 47 calls that a model type mismatch and stops.
+    NetlistParser parser;
+    const std::string head =
+        "* digital interface devices\n"
+        "V1 a 0 DC 3.3\n"
+        "R1 a b 1k\n"
+        "Rb b 0 1k\n"
+        ".MODEL IO_STD UIO (drvh=96.4 drvl=104)\n"
+        ".MODEL DO74 DOUTPUT (s0name=\"0\" s0vlo=0.1 s0vhi=0.5)\n"
+        ".MODEL DIN74 DINPUT (s0name=\"0\" s0tsw=3n)\n";
+    const std::string tail = ".op\n.end\n";
+    EXPECT_THROW(parser.parse(head + "N1 b DGND DPWR DIN74 DGTLNET=D IO_STD\n" + tail),
+                 ParseError);
+    EXPECT_THROW(parser.parse(head + "O0 b DGND DO74 DGTLNET=D IO_STD\n" + tail),
+                 ParseError);
+}
+
+TEST(Parser, LossyLineStillParsesAgainstItsOwnModel) {
+    // The O rejection must key on the model type, not on the letter: a real
+    // LTRA card has to keep working.
+    NetlistParser parser;
+    auto ckt = parser.parse(
+        "* lossy line\n"
+        "V1 in 0 DC 1\n"
+        "O1 in 0 out 0 TLINE\n"
+        "Rl out 0 50\n"
+        ".MODEL TLINE LTRA (R=0.2 L=9.13e-9 C=3.65e-12 LEN=1)\n"
+        ".op\n.end\n");
+    EXPECT_GT(ckt.devices().size(), 2u);
+}

@@ -112,10 +112,16 @@ accommodate them.
 
 ## Digital: outside the claim, and silently wrong
 
-441 primary and 415 driven mismatches come from PSpice digital primitives --
-`.model` types `UGATE`, `UEFF`, `UTGATE`, `UGFF`, `UIO`, `DINPUT`, `DOUTPUT` and
-`UPLD`, instantiated on `U` cards, concentrated in `dig000.lib` (289),
-`dig874.lib` (44), `analog.lib` (32), `cmos.lib` (31) and `dig652.lib` (22).
+441 primary and 491 driven mismatches are classified here as digital, by the
+presence of PSpice digital `.model` types -- `UGATE`, `UEFF`, `UTGATE`, `UGFF`,
+`UIO`, `DINPUT`, `DOUTPUT`, `UPLD` -- anywhere in the library the fixture
+includes, concentrated in `dig000.lib` (289), `dig874.lib` (44), `analog.lib`
+(32), `cmos.lib` (31) and `dig652.lib` (22). That test is by library rather
+than by hierarchy, so it over-counts: re-running the 932 fixtures against the
+rebuilt parser rejects 898 and leaves 34 (all in `analog.lib`) parsing
+normally, because their digital cards sit in sibling subcircuits they never
+instantiate. Those 34 are analog voltage references that mismatch for some
+other reason and are not triaged here.
 
 ngspice 47 in `ngbehavior=psa` **simulates these**, translating them to its
 digital primitives and inserting automatic bridges (the reference output carries
@@ -125,12 +131,35 @@ legitimate scope boundary. What is not legitimate is how it declines: neospice
 successful analog result for a circuit that is missing its devices. On
 `74ALS13` that produces `v(out_net) = 0` against the reference's 3.3 V.
 
-This is general, not specific to digital: every unrecognized device letter --
-`U`, `N`, `A`, `Y` and any other -- is dropped with a return code of 0. It is
-the "silent unsupported behavior" in this milestone's title, and it is the one
-corpus cluster that violates the project's own standing rule that unsupported
-models may remain only if they *fail explicitly*, are documented, and stay in
-the corpus accounting.
+This was general, not specific to the primitives: every unrecognized device
+letter -- `U`, `N`, `A`, `Y` and any other -- was dropped with a return code of
+0, and the digital *interface* devices were worse. An `N` card vanished with no
+message at all. An `O` card collides with the LTRA device letter: neospice
+resolved its model, saw a `UIO` rather than an `LTRA`, printed
+`Warning: O element references non-LTRA model 'IO_STD' -- skipping`, and solved
+the rest of the deck, where ngspice 47 calls that a model type mismatch and
+stops. This is the "silent unsupported behavior" in this milestone's title, and
+the one corpus cluster that violated the project's own standing rule that
+unsupported models may remain only if they *fail explicitly*, are documented,
+and stay in the corpus accounting.
+
+This has been fixed. `U` cards naming a documented PSpice primitive, `N` cards
+carrying the `DGTLNET` interface attribute, and `O` cards whose model is not an
+LTRA (the PSpice digital *output* interface collides with the LTRA device
+letter, and neospice was skipping the card with a warning where ngspice 47
+reports a model type mismatch and stops) are now parse errors.
+
+The rejection keys on the primitive keyword and the interface attribute, not on
+the leading letter. A first attempt keyed on the letter plus an instance-name
+shape, and its own regression test caught it rejecting the line "Use of this
+model is subject to the terms below": vendor libraries carry uncommented prose,
+and there are 27,011 non-comment lines in this corpus beginning with `a` alone,
+nearly all of them hex data. The keywords accept all 35 primitive types that
+occur in the corpus and reject the three `u` lines there that are prose, and the
+`DGTLNET` attribute appears on 89 lines, every one of them an interface card.
+Four regression tests in `tests/unit/test_parser.cpp` pin the rejection, its
+survival through subcircuit expansion, the requirement that prose not trigger
+it, and that a real LTRA card still parses.
 
 ## Unrowed analog
 
