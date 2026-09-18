@@ -354,7 +354,7 @@ TEST_F(LTRAValidation, ACFrequencyResponseAllLineTypes) {
 // solution vector so the comparison is actually performed.
 // ============================================================================
 
-TEST_F(LTRAValidation, PortCurrentsMatchNgspice47) {
+TEST_F(LTRAValidation, PortCurrentsMatchNgspice47AtDC) {
     for (const char* deck : {"/ltra_dc_rc.cir", "/ltra_dc_rg.cir"}) {
         SCOPED_TRACE(deck);
         const std::string cir_path = std::string(TEST_CIRCUITS_DIR) + deck;
@@ -373,7 +373,10 @@ TEST_F(LTRAValidation, PortCurrentsMatchNgspice47) {
         ASSERT_NE(device, nullptr) << "o1 is not an LTRA instance";
         const std::vector<double>* solution = ckt.operating_point();
         ASSERT_NE(solution, nullptr) << "no operating point was cached";
-        ASSERT_GT(device->br_eq1(), 0);
+        // Branch unknowns are indexed after every node, so this also proves
+        // these are branch indices rather than node indices.
+        ASSERT_GE(device->br_eq1(), ckt.num_nodes());
+        ASSERT_GE(device->br_eq2(), ckt.num_nodes());
         ASSERT_LT(static_cast<size_t>(device->br_eq2()), solution->size());
 
         // Both engines index the two ports the same way, so i1 pairs with
