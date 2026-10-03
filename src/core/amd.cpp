@@ -9,6 +9,8 @@ See NOTICE and CREDITS.md.
 #include "core/amd.hpp"
 #include <algorithm>
 #include <cmath>
+#include <set>
+#include <utility>
 #include <vector>
 
 namespace neospice {
@@ -83,17 +85,17 @@ std::vector<int32_t> amd_ordering(int32_t n, const int32_t* col_ptr,
     }
 
     // ---- Main elimination loop (non-dense nodes only) ----
+    // Live vertices ordered by (degree, index): the first element is the
+    // lowest-index vertex of minimum degree, the same tie-break as a linear
+    // scan, without its O(n) cost per step.
+    std::set<std::pair<int32_t, int32_t>> live;
+    for (int32_t i = 0; i < n; ++i)
+        if (!eliminated[i]) live.emplace(degree[i], i);
+
     int32_t non_dense_count = n - static_cast<int32_t>(dense_nodes.size());
     for (int32_t step = 0; step < non_dense_count; ++step) {
-        // Find non-eliminated node with minimum degree
-        int32_t best = -1;
-        int32_t best_deg = n + 1;
-        for (int32_t i = 0; i < n; ++i) {
-            if (!eliminated[i] && degree[i] < best_deg) {
-                best_deg = degree[i];
-                best = i;
-            }
-        }
+        const int32_t best = live.begin()->second;
+        live.erase(live.begin());
 
         perm.push_back(best);
         eliminated[best] = true;
@@ -122,9 +124,14 @@ std::vector<int32_t> amd_ordering(int32_t n, const int32_t* col_ptr,
         for (int32_t nb : neighbors) {
             adj[nb].erase(
                 std::lower_bound(adj[nb].begin(), adj[nb].end(), best));
-            degree[nb] = 0;
+            int32_t d = 0;
             for (int32_t x : adj[nb])
-                if (!eliminated[x]) ++degree[nb];
+                if (!eliminated[x]) ++d;
+            if (d != degree[nb]) {
+                live.erase({degree[nb], nb});
+                degree[nb] = d;
+                live.emplace(d, nb);
+            }
         }
     }
 
