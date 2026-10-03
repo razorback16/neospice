@@ -14,7 +14,7 @@ submission is authorized by this goal.
 | 1. Scope, eligibility and environment | Pinned ngspice47 CLI/shared build verified locally. CI and migration tests use the same47 source. Full support matrix, actual public timeline and eligibility remain. |
 | 2. Trustworthy validation | Acceptance met for checkpoint 38. The one condition carried out of it, the explained `RFF70N06.OriginalCorpusOperatingPoint` failure, is discharged in milestone 3 by classifying the fixture reference-inconclusive rather than by solving it. 1,267 C++ and 405 fresh-wheel Python/tooling cases run with zero skips; four reference-gating negative controls pass. See [checkpoint 38](#milestone-2-checkpoint-38). |
 | 3. Numerical correctness | Triaged against the seven goal items in [checkpoint 39](#milestone-3-triage-checkpoint-39-in-progress). Items 5 and 6 are closed: VDMOS self-heating now fails explicitly instead of returning a converged result with the thermal network absent, and the advertised sensitivity scope matches the implementation. Item 2 needs a classification decision, since ngspice 47 aborts RFF70N06 and so provides no reference answer. Items 3, 4 and 7 remain open; item 4 is blocked on declaring the supported matrix. |
-| 4. Compatibility experiment | Checkpoint 36 executes and independently audits all 67,359 fixtures, retaining all 1,037 outcome changes and unchanged reference results. Candidate 37 repairs need a full rerun. Generated-internal-observable classification is resolved in checkpoint 38; broader parameter/scope coverage and grouping/held-out multi-analysis evaluation remain. |
+| 4. Compatibility experiment | Checkpoint 36 executes and independently audits all 67,359 fixture runs (34,908 declaration cases: 34,908 primary runs plus 32,451 isolated driven variants), retaining all 1,037 outcome changes and unchanged reference results. Candidate 37 repairs need a full rerun. Generated-internal-observable classification is resolved in checkpoint 38; broader parameter/scope coverage and grouping/held-out multi-analysis evaluation remain. |
 | 5. Benchmarks | All34 comprehensive workloads qualify47; THS4131 qualifies5/5. TLV passes its original edge/DC-port contract but retains a strict pointwise discrepancy. Final candidate measurements and interpretation remain. |
 | 6. Documentation and attribution | Current documentation uses47 exclusively. Component copyright/license/distribution audit remains incomplete. |
 | 7. Manuscript and release | Draft paper exists. Actual research use, author confirmations, final release metadata, independent installation and final evidence reconciliation remain. |
@@ -216,9 +216,9 @@ instance-name shape, and its own regression test caught it rejecting the line
 expansion, the requirement that prose not trigger it, and that a real LTRA card
 still parses.
 
-Every one of the 67,359 checkpoint-36 fixtures was re-parsed with the rebuilt
-binary to measure what the rejection costs. It turns 3,274 corpus outcomes into
-explicit failures:
+Every one of the 67,359 checkpoint-36 fixture runs (34,908 cases) was re-parsed
+with the rebuilt binary to measure what the rejection costs. It turns 3,274
+corpus outcomes into explicit failures:
 
 | Previous outcome | Primary | Driven |
 | --- | --- | --- |
@@ -431,11 +431,12 @@ temperature sanitizer tests and 11 VDMOS sanitizer tests pass. Leak detection
 is enabled. All 34 comprehensive, five THS4131 and one TLV benchmark accuracy
 gates pass. No new timing or publication-readiness claim is made.
 
-The entire 67,359-fixture corpus completes and its outcomes are independently
-recomputed. Primary has 20,027 MATCH, 1,273 MISMATCH, 224 NG_ONLY, 4,179
-NEO_ONLY, 5,101 NEO_TRIVIAL and 4,104 BOTH_FAIL. Driven has 22,447 MATCH,
-1,272 MISMATCH, 493 NG_ONLY, 6,902 NEO_ONLY and 1,337 BOTH_FAIL. Keep these
-populations separate; they are not a combined matched-model percentage.
+The entire corpus run (34,908 cases, 67,359 fixture runs) completes and its
+outcomes are independently recomputed. Primary has 20,027 MATCH, 1,273 MISMATCH,
+224 NG_ONLY, 4,179 NEO_ONLY, 5,101 NEO_TRIVIAL and 4,104 BOTH_FAIL. Driven has
+22,447 MATCH, 1,272 MISMATCH, 493 NG_ONLY, 6,902 NEO_ONLY and 1,337 BOTH_FAIL.
+Keep these populations separate; they are not a combined matched-model
+percentage.
 
 All 1,037 changed outcomes become explicit native parse failures: 892 unsupported
 runtime parameter cases, 138 unresolved expression-parameter cases, five model/
@@ -485,13 +486,14 @@ SGN20N40L/VT6K1 corpus fixtures now bind their VDMOS devices and match their
 minimal reference operating points. See [VDMOS compatibility](vdmos-compatibility.md).
 
 Candidate 35 passes 1,251/1,252 C++ tests, all 393 Python/tooling tests, 51
-parser/BJT and eight VDMOS sanitizer cases with leak detection, and all
-34 + 5 + 1 benchmark accuracy gates. The required RFF failure remains.
-The full 67,359-fixture rerun and independent outcome audit complete with no
-outcome regressions or changed reference results. Four NG_ONLY outcomes become
-MATCH: both SGN20N40L and VT6K1 variants. Seven BOTH_FAIL outcomes become six
-NEO_ONLY and one NEO_TRIVIAL; reference failure is not a compatibility success.
-All 11 outcome changes are [triaged](evidence/joss/2026-09-11-checkpoint35-transition-triage.json).
+parser/BJT and eight VDMOS sanitizer cases with leak detection, and all 34 + 5 +
+1 benchmark accuracy gates. The required RFF failure remains. The full rerun of
+all 67,359 fixture runs over 34,908 cases and independent outcome audit complete
+with no outcome regressions or changed reference results. Four NG_ONLY outcomes
+become MATCH: both SGN20N40L and VT6K1 variants. Seven BOTH_FAIL outcomes become
+six NEO_ONLY and one NEO_TRIVIAL; reference failure is not a compatibility
+success. All 11 outcome changes are
+[triaged](evidence/joss/2026-09-11-checkpoint35-transition-triage.json).
 
 Primary results contain 20,229 MATCH and 1,273 MISMATCH; driven results contain
 22,889 MATCH and 1,273 MISMATCH. The [summary](evidence/joss/2026-09-11-checkpoint35-corpus-run47-summary.json),
@@ -534,14 +536,14 @@ The frozen candidate passes 1,248/1,249 C++ tests, all 393 Python/tooling tests,
 34 + 5 + 1 benchmark accuracy gates. RFF remains the sole C++ failure. No
 tolerance was relaxed and no new performance timing was collected.
 
-All 67,359 corpus fixtures complete and their outcomes are independently
-recomputed. Four mismatches become matches: two driven BFQ790 fixtures and
-both TL072-R variants. All 456 newly explicit native failures have an earlier
-warning that the same offending card was skipped. Of these, 452 also fail in
-the reference. The other four are SGN20N40L and VT6K1, whose three-terminal
-VDMOS cards were omitted; three had misleading MATCH outcomes and one was
-a MISMATCH. The underlying VDMOS parser defect remains a blocker. No reference
-result changes, fixtures are removed, or tolerances are relaxed.
+All 67,359 corpus fixture runs over 34,908 cases complete and their outcomes are
+independently recomputed. Four mismatches become matches: two driven BFQ790
+fixtures and both TL072-R variants. All 456 newly explicit native failures have
+an earlier warning that the same offending card was skipped. Of these, 452 also
+fail in the reference. The other four are SGN20N40L and VT6K1, whose
+three-terminal VDMOS cards were omitted; three had misleading MATCH outcomes and
+one was a MISMATCH. The underlying VDMOS parser defect remains a blocker. No
+reference result changes, fixtures are removed, or tolerances are relaxed.
 
 Primary results contain 20,227 MATCH and 1,273 MISMATCH; driven results contain
 22,887 MATCH and 1,273 MISMATCH. All failure and trivial-result categories are
@@ -581,17 +583,19 @@ run fails on the existing 120-byte reference TRAsetup leak; that result and
 its isolated allocation stack are retained.
 
 [Checkpoint 33](evidence/joss/2026-09-11-validation-33.json) freezes binary
-SHA-256 `db85f6cdb74c4883f2e749fb921149fc923233f56f7f7469eebbc47ca398dc6f`.
-All 67,359 fixtures complete with no outcome or saved engine-result changes
-from checkpoint 32. The audit verifies 649,758 artifact hashes and recomputes
-all outcome decisions. Evidence:
+SHA-256 `db85f6cdb74c4883f2e749fb921149fc923233f56f7f7469eebbc47ca398dc6f`. All
+67,359 fixture runs over 34,908 cases complete with no outcome or saved
+engine-result changes from checkpoint 32. The audit verifies 649,758 artifact
+hashes and recomputes all outcome decisions. Evidence:
 [summary](evidence/joss/2026-09-11-checkpoint33-corpus-run47-summary.json),
 [ledger](evidence/joss/2026-09-11-checkpoint33-corpus-run47-records.json.gz),
 [transitions](evidence/joss/2026-09-11-checkpoint33-candidate47-transitions.json).
-The [complete raw-run archive](evidence/joss/2026-09-11-checkpoint33-full-corpus.tar.gz)
-retains all 649,790 regular files, including successful and unsuccessful raw
-outputs; its [verification record](evidence/joss/2026-09-11-checkpoint33-full-corpus-archive.json)
-checks every archived file. These are operating-point results, not performance
+The [complete raw-run
+archive](evidence/joss/2026-09-11-checkpoint33-full-corpus.tar.gz) retains all
+649,790 regular files, including successful and unsuccessful raw outputs; its
+[verification
+record](evidence/joss/2026-09-11-checkpoint33-full-corpus-archive.json) checks
+every archived file. These are operating-point results, not performance
 measurements or full-option certification.
 
 The [model-binding diagnostic](evidence/joss/2026-09-11-checkpoint33-model-binding-audit.json)
@@ -633,14 +637,15 @@ regressions and unchanged reference results. All six IGBT regressions below
 are resolved in this family rerun; PA84 remains. See the
 [investigation and family evidence](bjt-off-investigation.md).
 
-The full 67,359-fixture run also completes: 35 driven mismatches become matches,
-with no outcome regressions and no changed reference results. Primary has
-20,228 MATCH and 1,274 MISMATCH; driven has 22,885 MATCH and 1,277 MISMATCH.
-All failure and trivial-result categories remain in the accounting. Native
-values/status change in 1,628 fixtures, so unchanged outcome labels must not
-be read as proof that every individual error margin improved. Benchmark
-accuracy verification passes all 34 comprehensive workloads, five THS4131
-workflows and the original TLV contract; no new timing claims are made.
+The full run of all 67,359 fixture runs over 34,908 cases also completes: 35
+driven mismatches become matches, with no outcome regressions and no changed
+reference results. Primary has 20,228 MATCH and 1,274 MISMATCH; driven has
+22,885 MATCH and 1,277 MISMATCH. All failure and trivial-result categories
+remain in the accounting. Native values/status change in 1,628 fixtures, so
+unchanged outcome labels must not be read as proof that every individual error
+margin improved. Benchmark accuracy verification passes all 34 comprehensive
+workloads, five THS4131 workflows and the original TLV contract; no new timing
+claims are made.
 
 Checkpoint 31 full-corpus evidence:
 [summary](evidence/joss/2026-09-11-checkpoint31-corpus-run47-summary.json),

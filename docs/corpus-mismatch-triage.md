@@ -4,11 +4,13 @@ Milestone 3 item 4 asks for every full-corpus mismatch to be triaged by root
 cause and model family, classified against the declared supported scope, and
 reduced to representative regression circuits. This page is that triage.
 
-Source data: `docs/evidence/joss/2026-09-11-checkpoint36-corpus-run47-records.json.gz`
-(67,359 fixture outcomes) and the matching case archive
-`2026-09-11-checkpoint36-full-corpus.tar.gz`. Every corpus fixture in that run is
-a `.op` deck, so only the `dc_op` column of the
-[support matrix](support-matrix.md) is involved.
+Source data:
+`docs/evidence/joss/2026-09-11-checkpoint36-corpus-run47-records.json.gz`
+(67,359 fixture outcomes, one per fixture run: 34,908 primary runs plus 32,451
+isolated driven variants over 34,908 declaration cases) and the matching case
+archive `2026-09-11-checkpoint36-full-corpus.tar.gz`. Every corpus fixture in
+that run is a `.op` deck, so only the `dc_op` column of the [support
+matrix](support-matrix.md) is involved.
 
 **This classification is against checkpoint 36 and is not a current-state
 report.** Checkpoint 36 predates every phase-3 change. Classification by device

@@ -174,13 +174,15 @@ The OSDI branch is not certified by these probes. Full build provenance and any
 additional runtime dependency audit still belong in the final release evidence.
 
 The runner derives required public nodes and voltage-source currents from the
-limited generated-fixture grammar before execution. All 67,359 frozen fixtures
-pass this grammar check. Matching requires these signals in both results, plus
-all non-internal reference outputs; a public name resembling an internal node
-still receives a value comparison. The existing symmetric additive corpus
-formula is retained: `abs(neo-ng) <= 1e-3*max(abs(neo),abs(ng)) + floor`, with
-floor 1e-6 V for voltages and 1e-9 A for currents. This is distinct from the C++
-reference-normalized waveform comparison documented in validation methods.
+limited generated-fixture grammar before execution. All 67,359 frozen fixture
+runs (34,908 declaration cases: 34,908 primary runs plus 32,451 isolated driven
+variants) pass this grammar check. Matching requires these signals in both
+results, plus all non-internal reference outputs; a public name resembling an
+internal node still receives a value comparison. The existing symmetric additive
+corpus formula is retained: `abs(neo-ng) <= 1e-3*max(abs(neo),abs(ng)) + floor`,
+with floor 1e-6 V for voltages and 1e-9 A for currents. This is distinct from
+the C++ reference-normalized waveform comparison documented in validation
+methods.
 
 ## Generated internal observables
 
@@ -275,8 +277,9 @@ runtime preflight and a complete C++ suite with ten retained failures; see
 
 ## Current completed ngspice47 experiment
 
-Checkpoint29 stage2 preserves all67,359 frozen fixtures. Results are separate
-for the original34908 primary cases and32451 isolated/driven variants:
+Checkpoint29 stage2 preserves all 67,359 frozen fixture runs over 34,908 cases.
+Results are separate for the 34,908 primary runs and 32,451 isolated/driven
+variant runs:
 
 | Outcome | Primary | Isolated/driven |
 |---|---:|---:|

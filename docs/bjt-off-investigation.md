@@ -74,11 +74,12 @@ commands, test results, the source patch and archived diagnostics. The family
 [transitions](evidence/joss/2026-09-11-checkpoint31-irf-family47-transitions.json)
 retain the population and unresolved results.
 
-The full 67,359-fixture evaluation completes against the frozen corrected
-binary. Relative to checkpoint 29, 35 driven fixtures change from MISMATCH to
-MATCH: the 26 IRF cases, eight triac cases in `tectriac.lib`, and one IGBT in
-`m_igbt.lib`. There are no outcome regressions; 1,628 native results change and
-all reference results remain unchanged. The audit retains all other outcomes:
+The full evaluation of all 67,359 fixture runs over 34,908 cases completes
+against the frozen corrected binary. Relative to checkpoint 29, 35 driven
+fixtures change from MISMATCH to MATCH: the 26 IRF cases, eight triac cases in
+`tectriac.lib`, and one IGBT in `m_igbt.lib`. There are no outcome regressions;
+1,628 native results change and all reference results remain unchanged. The
+audit retains all other outcomes:
 
 | Variant | MATCH | MISMATCH | NG_ONLY | NEO_ONLY | NEO_TRIVIAL | BOTH_FAIL |
 |---|---:|---:|---:|---:|---:|---:|

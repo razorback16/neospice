@@ -112,13 +112,14 @@ be used as thermal-validation evidence.
 
 [Checkpoint 32](evidence/joss/2026-09-11-validation-32.json) records the source
 patch, regression results, raw option probes, their audit script and the full
-corpus evaluation. The [option diagnostic](evidence/joss/2026-09-11-checkpoint32-vbic-option-audit.json)
-retains all five public AC observables for the TD controls. The complete
-67,359-fixture corpus has no outcome or saved engine-result changes from
-checkpoint 31; its model-binding and option coverage still need auditing.
-Candidate 33's [validation record](evidence/joss/2026-09-11-validation-33.json)
-records the subsequent delay and startup work. PA84, RFF70N06 and other
-publication blockers remain.
+corpus evaluation. The [option
+diagnostic](evidence/joss/2026-09-11-checkpoint32-vbic-option-audit.json)
+retains all five public AC observables for the TD controls. The complete corpus
+run (34,908 cases, 67,359 fixture runs) has no outcome or saved engine-result
+changes from checkpoint 31; its model-binding and option coverage still need
+auditing. Candidate 33's [validation
+record](evidence/joss/2026-09-11-validation-33.json) records the subsequent
+delay and startup work. PA84, RFF70N06 and other publication blockers remain.
 
 A [lexical corpus scan](evidence/joss/2026-09-11-checkpoint33-vbic-corpus-scope.json)
 verifies all 2,073 pinned source-file hashes and finds three numeric level-4/9

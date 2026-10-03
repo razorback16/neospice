@@ -62,15 +62,16 @@ These are tested behaviors, not a claim that every ngspice feature is supported.
 
 ## Remaining compatibility work
 
-The current candidate 37 passes 1,265 of 1,266 C++ tests against 47; the required RFF70N06
-operating-point regression remains failing. It is retained even though the
-reference also fails this fixture. The full frozen corpus contains67,359 cases
-across two distinct fixture variants; remaining mismatches, model binding,
-option coverage and evaluation grouping require investigation.
-The [VDMOS audit](vdmos-compatibility.md) distinguishes repaired terminal syntax
-from broader option coverage. Candidate 37's reference regressions pass for
-the model/node scope collision and temperature-expression assignment precedence;
-its full-corpus, fresh-wheel, sanitizer and benchmark validation remain pending.
+The current candidate 37 passes 1,265 of 1,266 C++ tests against 47; the
+required RFF70N06 operating-point regression remains failing. It is retained
+even though the reference also fails this fixture. The full frozen corpus
+contains 67,359 fixture runs (34,908 declaration cases: 34,908 primary runs plus
+32,451 isolated driven variants); remaining mismatches, model binding, option
+coverage and evaluation grouping require investigation. The [VDMOS
+audit](vdmos-compatibility.md) distinguishes repaired terminal syntax from
+broader option coverage. Candidate 37's reference regressions pass for the
+model/node scope collision and temperature-expression assignment precedence; its
+full-corpus, fresh-wheel, sanitizer and benchmark validation remain pending.
 
 All34 comprehensive benchmark workloads pass their accuracy gates. TLV3201
 passes its original edge/DC-port contract but retains a strict pointwise

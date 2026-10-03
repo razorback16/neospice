@@ -127,16 +127,17 @@ still agree with ngspice (both engines ground the thermal nodes).
 `VDMOSValidation.SelfHeatingFailsExplicitlyAndOnlyThatForm` holds both halves,
 checking first that the reference really does solve the rejected form.
 
-ngspice additionally creates `v(<inst>#cktTemp)` and `v(<inst>#VdevTemp)` for the
-self-heating form. These are deliberately **not** added to the corpus
+ngspice additionally creates `v(<inst>#cktTemp)` and `v(<inst>#VdevTemp)` for
+the self-heating form. These are deliberately **not** added to the corpus
 internal-observable filter: excluding a generated node is only defensible where
 neospice models the same node and merely keeps it private, which is not the case
 here. That matters because the rejection is a *parse* failure, so it would
-change corpus outcomes if any fixture reached it. It does not: a case-insensitive
-grep over the exact 2,073-file source inventory under
+change corpus outcomes if any fixture reached it. It does not: a
+case-insensitive grep over the exact 2,073-file source inventory under
 `third_party/KiCad-Spice-Library/Models` finds zero occurrences of `Rthjc` and
-zero M cards carrying the `thermal` flag, so no fixture in the frozen
-67,359-case corpus can trigger either half of the activation condition.
+zero M cards carrying the `thermal` flag, so no fixture in the frozen corpus
+(34,908 cases, 67,359 fixture runs) can trigger either half of the activation
+condition.
 
 The flag also survives subcircuit expansion, which is not automatic:
 `mos_terminal_count` (`subcircuit_expand.cpp:49`) treats `thermal` as a
