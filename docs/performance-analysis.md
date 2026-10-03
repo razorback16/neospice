@@ -89,8 +89,12 @@ paired harness accepted all 34 workloads against ngspice 47.
   `NIacIter`/`NInzIter` sequence. Its worst normalized error against ngspice 47
   fell from 1.9e-13 to 1.9e-15 (`noise_rc_grid_24`) and from 3.1e-12 to 2.7e-15
   (`noise_diode_rc_grid_24`).
-- **KiCad corpus.** In a full rerun of the historical 34,908-fixture KiCad
-  cohort (`tools/compare_kicad_models.py`) against the previous build, neospice values changed in 15 fixtures. All came from
+- **KiCad corpus.** The KiCad cohort has 34,908 declaration cases (32,457
+  subcircuits, 2,451 models). Checkpoint 36's 67,359 records are those cases'
+  34,908 primary runs plus 32,451 isolated driven runs of the subcircuits; they
+  are not 67,359 distinct circuits. The primary runs of all 34,908 cases were
+  repeated with `tools/compare_kicad_models.py` against the previous build.
+  neospice values changed in 15 cases. All came from
   `c4a0d84` through MOS2. Like ngspice, `MOS2temp` resets every instance's
   `MOS2von` and `MOS2mode`. The old per-instance reruns repeated that reset after
   earlier instances had already loaded. That changed the next iteration's
@@ -98,9 +102,9 @@ paired harness accepted all 34 workloads against ngspice 47.
   any load. Among the ngspice 47 temperature routines checked (MOS1, MOS3,
   MOS9, BSIM3, BSIM4), only MOS2's has this reset. The 14 matching fixtures
   still match at under 1e-4 of tolerance, and the one mismatch is unchanged.
-  The canonical 67,359-fixture experiment (checkpoint 36) has not been rerun
-  with these commits. Every other status difference between the two
-  runs came from ngspice-side variation or from timeouts under machine load.
+  The isolated driven runs have not been repeated with these commits. Every
+  other status difference between the two runs came from ngspice-side
+  variation or from timeouts under machine load.
 
 No new timing is claimed here. An indicative paired run on a contended
 machine (5 samples) is not evidence. A qualified 30-sample paired measurement on
