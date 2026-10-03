@@ -81,20 +81,25 @@ Verification: 1,274 C++ tests and 413 Python/tooling tests passed. The
 paired harness accepted all 34 workloads against ngspice 47.
 
 - **Byte-identical output.** `d3070f5` and `02a4f98` produce byte-identical
-  output on all 224 repository and benchmark netlists that write output.
-  `c4a0d84` does too.
+  output on all 224 repository and benchmark netlists that write output, and
+  do not change any arithmetic. `c4a0d84` is byte-identical on those 224
+  netlists but not in general: it changes MOS2 round-off, as the corpus rerun
+  below shows.
 - **Noise moved closer to ngspice.** After `799f4a6`, noise follows ngspice's
   `NIacIter`/`NInzIter` sequence. Its worst normalized error against ngspice 47
   fell from 1.9e-13 to 1.9e-15 (`noise_rc_grid_24`) and from 3.1e-12 to 2.7e-15
   (`noise_diode_rc_grid_24`).
-- **KiCad corpus.** In a full rerun of the 34,908-fixture KiCad corpus against
-  the previous build, neospice values changed in 15 fixtures. All came from
+- **KiCad corpus.** In a full rerun of the historical 34,908-fixture KiCad
+  cohort (`tools/compare_kicad_models.py`) against the previous build, neospice values changed in 15 fixtures. All came from
   `c4a0d84` through MOS2. Like ngspice, `MOS2temp` resets every instance's
   `MOS2von` and `MOS2mode`. The old per-instance reruns repeated that reset after
   earlier instances had already loaded. That changed the next iteration's
   limiting and departed from ngspice, where the temperature pass runs once before
-  any load. The 14 matching fixtures still match at under 1e-4 of tolerance, and
-  the one mismatch is unchanged. Every other status difference between the two
+  any load. Among the ngspice 47 temperature routines checked (MOS1, MOS3,
+  MOS9, BSIM3, BSIM4), only MOS2's has this reset. The 14 matching fixtures
+  still match at under 1e-4 of tolerance, and the one mismatch is unchanged.
+  The canonical 67,359-fixture experiment (checkpoint 36) has not been rerun
+  with these commits. Every other status difference between the two
   runs came from ngspice-side variation or from timeouts under machine load.
 
 No new timing is claimed here. An indicative paired run on a contended
