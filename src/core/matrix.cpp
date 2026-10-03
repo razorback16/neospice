@@ -76,16 +76,20 @@ void SparsityBuilder::add(int32_t row, int32_t col) {
     entries_.emplace_back(row, col);
 }
 
-bool SparsityBuilder::has_diagonal(int32_t i) const {
+std::vector<bool> SparsityBuilder::diagonal_mask() const {
+    std::vector<bool> mask(n_, false);
     for (const auto& [r, c] : entries_)
-        if (r == i && c == i) return true;
-    return false;
+        if (r == c && r >= 0 && r < n_) mask[r] = true;
+    return mask;
 }
 
-bool SparsityBuilder::has_any_entry(int32_t i) const {
-    for (const auto& [r, c] : entries_)
-        if (r == i || c == i) return true;
-    return false;
+std::vector<bool> SparsityBuilder::entry_mask() const {
+    std::vector<bool> mask(n_, false);
+    for (const auto& [r, c] : entries_) {
+        if (r >= 0 && r < n_) mask[r] = true;
+        if (c >= 0 && c < n_) mask[c] = true;
+    }
+    return mask;
 }
 
 SparsityPattern SparsityBuilder::build() const {

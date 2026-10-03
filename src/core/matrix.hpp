@@ -65,13 +65,13 @@ public:
     /// Deduplicate, sort by (col, row), and return a SparsityPattern.
     SparsityPattern build() const;
 
-    /// Check whether a diagonal entry (i,i) has been registered.
-    bool has_diagonal(int32_t i) const;
+    /// Per variable: whether a diagonal entry (i,i) has been registered.
+    std::vector<bool> diagonal_mask() const;
 
-    /// Check whether variable i appears in ANY registered entry (as row or
+    /// Per variable: whether it appears in ANY registered entry (as row or
     /// column), i.e. the device stamps couple it to the rest of the system.
     /// A node with no such entry is structurally isolated ("dead").
-    bool has_any_entry(int32_t i) const;
+    std::vector<bool> entry_mask() const;
 
 private:
     int32_t n_;

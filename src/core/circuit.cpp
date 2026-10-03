@@ -267,9 +267,7 @@ void Circuit::finalize() {
     // Record which diagonals are stamped by devices before adding structural
     // placeholders.  ngspice's LoadGmin only touches existing diagonal
     // elements, not later-created placeholders.
-    organic_diagonal_.assign(num_vars_, false);
-    for (int32_t i = 0; i < num_vars_; ++i)
-        organic_diagonal_[i] = builder.has_diagonal(i);
+    organic_diagonal_ = builder.diagonal_mask();
 
     // ngspice always allocates a per-node diagonal element (CKTsetup binds one
     // for every node, independent of which devices stamp it).  Mirror that for
@@ -284,8 +282,9 @@ void Circuit::finalize() {
     // source, which owns off-diagonal (node,branch) entries — are NOT dead and
     // are left untouched, so legitimate solutions are never perturbed.
     dead_nodes_.clear();
+    const std::vector<bool> coupled = builder.entry_mask();
     for (int32_t i = 0; i < next_node_; ++i)
-        if (!builder.has_any_entry(i)) {
+        if (!coupled[i]) {
             builder.add(i, i);
             dead_nodes_.push_back(i);
         }
