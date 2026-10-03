@@ -27,6 +27,10 @@ public:
                          const std::vector<double>& ax) override;
     bool refactorize_complex(const std::vector<double>& ax) override;
     void solve_complex(std::vector<double>& rhs) override;
+    // Solves A^T x = b (plain transpose, not conjugate) with the current
+    // complex factorization, like ngspice's spSolveTransposed. Same
+    // interleaved (re, im) layout as solve_complex.
+    void solve_complex_transposed(std::vector<double>& rhs);
     const char* name() const override { return "markowitz"; }
 
     // [3D] Row/column equilibration toggle. Default OFF: when off, behavior is

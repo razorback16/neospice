@@ -139,49 +139,13 @@ NoiseResult solve_noise(Circuit& ckt,
     }
 
     // ---------------------------------------------------------------
-    // 6. Build 2n x 2n sparsity pattern (same as AC)
-    //    Layout: rows/cols 0..n-1 are real part, n..2n-1 are imaginary part
-    //    [Re(Y)  -Im(Y)] [Re(x)]   [Re(b)]
-    //    [Im(Y)   Re(Y)] [Im(x)] = [Im(b)]
+    // 6. One complex solver for both systems, as in ngspice noisean.c:
+    //    NIacIter factors Y and solves Y x = e_input for the gain, then
+    //    NInzIter reuses that factorization to solve Y^T adj = e_out
+    //    (SMPcaSolve -> spSolveTransposed).
     // ---------------------------------------------------------------
-    const int32_t n2 = 2 * n;
-    SparsityBuilder builder(n2);
-
-    const auto& entries = pattern.entries();
-    for (const auto& [r, c] : entries) {
-        builder.add(r, c);
-        builder.add(r + n, c + n);
-        builder.add(r, c + n);
-        builder.add(r + n, c);
-    }
-
-    auto pattern_2n = builder.build();
-    NumericMatrix mat_2n(pattern_2n);
-
-    // We need two solvers:
-    //   1. For the adjoint problem: Y^T * adj = e_out
-    //   2. For the gain computation: Y * x = e_input
-    // Since Y^T has a different sparsity structure from Y, we build a
-    // separate transposed pattern.
-
-    // Build transposed pattern for Y^T
-    SparsityBuilder builder_t(n2);
-    for (const auto& [r, c] : entries) {
-        // Transpose: swap row and col
-        builder_t.add(c, r);
-        builder_t.add(c + n, r + n);
-        builder_t.add(c + n, r);
-        builder_t.add(c, r + n);
-    }
-    auto pattern_2n_t = builder_t.build();
-    NumericMatrix mat_2n_t(pattern_2n_t);
-
-    // Symbolic factorization once for each
-    auto gain_solver = std::make_unique<NeoSolver>();    // for Y * x = e_input
-    gain_solver->symbolic(pattern_2n);
-
-    auto adj_solver = std::make_unique<NeoSolver>();   // for Y^T * adj = e_out
-    adj_solver->symbolic(pattern_2n_t);
+    auto solver = std::make_unique<NeoSolver>();
+    solver->symbolic(pattern);
 
     // ---------------------------------------------------------------
     // 7. Prepare result
@@ -191,12 +155,17 @@ NoiseResult solve_noise(Circuit& ckt,
     noise_result.output_noise_density.resize(freqs.size(), 0.0);
     noise_result.input_noise_density.resize(freqs.size(), 0.0);
 
-    // Initialize per-device breakdown
-    for (const auto& dev : ckt.devices()) {
+    // Initialize per-device breakdown; remember each device's row so the
+    // sweep does not look names up per frequency.
+    std::vector<std::vector<double>*> device_rows(ckt.devices().size(), nullptr);
+    for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
+        const auto& dev = ckt.devices()[d];
         auto sources = dev->noise_sources(1.0, dc_solution);
         auto corr = dev->correlated_noise_sources(1.0, dc_solution);
         if (!sources.empty() || !corr.empty()) {
-            noise_result.device_noise[to_lower(dev->name())].resize(freqs.size(), 0.0);
+            auto& row = noise_result.device_noise[to_lower(dev->name())];
+            row.resize(freqs.size(), 0.0);
+            device_rows[d] = &row;
         }
     }
 
@@ -206,6 +175,9 @@ NoiseResult solve_noise(Circuit& ckt,
     const int32_t nnz = pattern.nnz();
     std::vector<double> ax(2 * nnz);
     std::vector<std::complex<double>> device_rhs(n);
+    // Interleaved (re, im) per variable.
+    std::vector<double> rhs_gain(2 * n);
+    std::vector<double> rhs_adj(2 * n);
     for (size_t fi = 0; fi < freqs.size(); ++fi) {
         double omega = 2.0 * M_PI * freqs[fi];
 
@@ -221,74 +193,34 @@ NoiseResult solve_noise(Circuit& ckt,
         for (auto& dev : ckt.devices())
             dev->ac_stamp_freq(omega, ax, nnz, device_rhs);
 
-        // Build Y matrix (2n x 2n)
-        mat_2n.clear();
-        for (const auto& [r, c] : entries) {
-            const auto offset = pattern.offset(r, c);
-            const double re_y = ax[2 * offset];
-            const double im_y = ax[2 * offset + 1];
-
-            // Top-left: Re(Y)
-            mat_2n.add(pattern_2n.offset(r, c), re_y);
-            // Bottom-right: Re(Y)
-            mat_2n.add(pattern_2n.offset(r + n, c + n), re_y);
-            // Top-right: -Im(Y)
-            mat_2n.add(pattern_2n.offset(r, c + n), -im_y);
-            // Bottom-left: Im(Y)
-            mat_2n.add(pattern_2n.offset(r + n, c), im_y);
-        }
-
-        // Build Y^T matrix (transpose of Y)
-        mat_2n_t.clear();
-        for (const auto& [r, c] : entries) {
-            const auto offset = pattern.offset(r, c);
-            const double re_y = ax[2 * offset];
-            const double im_y = ax[2 * offset + 1];
-
-            // Y^T: swap (r,c) -> (c,r)
-            // Top-left: Re(Y^T)
-            mat_2n_t.add(pattern_2n_t.offset(c, r), re_y);
-            // Bottom-right: Re(Y^T)
-            mat_2n_t.add(pattern_2n_t.offset(c + n, r + n), re_y);
-            // Top-right: -Im(Y^T)
-            mat_2n_t.add(pattern_2n_t.offset(c, r + n), -im_y);
-            // Bottom-left: Im(Y^T)
-            mat_2n_t.add(pattern_2n_t.offset(c + n, r), im_y);
-        }
-
-        // ---- Solve adjoint: Y^T * adj = e_out ----
-        std::vector<double> rhs_adj(n2, 0.0);
-        rhs_adj[out_idx] = 1.0;  // unit real excitation at output node
-
         if (fi == 0) {
-            adj_solver->numeric(pattern_2n_t, mat_2n_t);
+            solver->numeric_complex(pattern, ax);
         } else {
-            adj_solver->refactorize(mat_2n_t);
+            solver->refactorize_complex(ax);
         }
-        adj_solver->solve(rhs_adj);
-        // rhs_adj now contains adj: rhs_adj[i] = Re(adj[i]), rhs_adj[i+n] = Im(adj[i])
 
         // ---- Compute gain: Y * x = e_input ----
         // The input excitation is a unit voltage at the input source's branch equation
-        std::vector<double> rhs_gain(n2, 0.0);
-        rhs_gain[input_branch] = 1.0;  // unit real excitation at input source branch
-
-        if (fi == 0) {
-            gain_solver->numeric(pattern_2n, mat_2n);
-        } else {
-            gain_solver->refactorize(mat_2n);
-        }
-        gain_solver->solve(rhs_gain);
+        std::fill(rhs_gain.begin(), rhs_gain.end(), 0.0);
+        rhs_gain[2 * input_branch] = 1.0;
+        solver->solve_complex(rhs_gain);
 
         // Gain from input source to output node
-        double gain_re = rhs_gain[out_idx];
-        double gain_im = rhs_gain[out_idx + n];
+        double gain_re = rhs_gain[2 * out_idx];
+        double gain_im = rhs_gain[2 * out_idx + 1];
         double gain_sq = gain_re * gain_re + gain_im * gain_im;
+
+        // ---- Solve adjoint: Y^T * adj = e_out ----
+        std::fill(rhs_adj.begin(), rhs_adj.end(), 0.0);
+        rhs_adj[2 * out_idx] = 1.0;  // unit real excitation at output node
+        solver->solve_complex_transposed(rhs_adj);
+        // rhs_adj[2i] = Re(adj[i]), rhs_adj[2i+1] = Im(adj[i])
 
         // ---- Accumulate noise from all devices ----
         double total_output_noise = 0.0;
 
-        for (const auto& dev : ckt.devices()) {
+        for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
+            const auto& dev = ckt.devices()[d];
             auto sources = dev->noise_sources(freqs[fi], dc_solution);
             if (sources.empty()) continue;
 
@@ -299,12 +231,12 @@ NoiseResult solve_noise(Circuit& ckt,
                 double adj_j_re = 0.0, adj_j_im = 0.0;
 
                 if (ns.node_i >= 0 && ns.node_i < n) {
-                    adj_i_re = rhs_adj[ns.node_i];
-                    adj_i_im = rhs_adj[ns.node_i + n];
+                    adj_i_re = rhs_adj[2 * ns.node_i];
+                    adj_i_im = rhs_adj[2 * ns.node_i + 1];
                 }
                 if (ns.node_j >= 0 && ns.node_j < n) {
-                    adj_j_re = rhs_adj[ns.node_j];
-                    adj_j_im = rhs_adj[ns.node_j + n];
+                    adj_j_re = rhs_adj[2 * ns.node_j];
+                    adj_j_im = rhs_adj[2 * ns.node_j + 1];
                 }
 
                 // |adj[i] - adj[j]|^2
@@ -319,15 +251,12 @@ NoiseResult solve_noise(Circuit& ckt,
             total_output_noise += device_contribution;
 
             // Per-device breakdown
-            std::string dev_key = to_lower(dev->name());
-            auto it = noise_result.device_noise.find(dev_key);
-            if (it != noise_result.device_noise.end()) {
-                it->second[fi] = device_contribution;
-            }
+            if (device_rows[d]) (*device_rows[d])[fi] = device_contribution;
         }
 
         // ---- Accumulate correlated noise from all devices ----
-        for (const auto& dev : ckt.devices()) {
+        for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
+            const auto& dev = ckt.devices()[d];
             auto corr = dev->correlated_noise_sources(freqs[fi], dc_solution);
             if (corr.empty()) continue;
 
@@ -336,8 +265,8 @@ NoiseResult solve_noise(Circuit& ckt,
                 auto adj_val = [&](int32_t node, double& re, double& im) {
                     re = im = 0.0;
                     if (node >= 0 && node < n) {
-                        re = rhs_adj[node];
-                        im = rhs_adj[node + n];
+                        re = rhs_adj[2 * node];
+                        im = rhs_adj[2 * node + 1];
                     }
                 };
                 double h1_re_i, h1_im_i, h1_re_j, h1_im_j;
@@ -364,11 +293,7 @@ NoiseResult solve_noise(Circuit& ckt,
 
             total_output_noise += device_contribution;
 
-            std::string dev_key = to_lower(dev->name());
-            auto it = noise_result.device_noise.find(dev_key);
-            if (it != noise_result.device_noise.end()) {
-                it->second[fi] += device_contribution;
-            }
+            if (device_rows[d]) (*device_rows[d])[fi] += device_contribution;
         }
 
         noise_result.output_noise_density[fi] = total_output_noise;

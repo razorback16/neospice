@@ -286,4 +286,25 @@ void NeoSolver::solve_complex(std::vector<double>& rhs) {
     }
 }
 
+void NeoSolver::solve_complex_transposed(std::vector<double>& rhs) {
+    if (!symbolized_)
+        throw std::logic_error("NeoSolver::solve_complex_transposed: symbolic() not called");
+    if (!factored_complex_)
+        throw std::logic_error("NeoSolver::solve_complex_transposed: numeric_complex() not called");
+    if (static_cast<int32_t>(rhs.size()) != 2 * n_)
+        throw std::invalid_argument("NeoSolver::solve_complex_transposed: rhs size must be 2*n");
+
+    for (int32_t i = 0; i < n_; ++i) {
+        rhs_1_[i + 1] = rhs[2 * i];
+        irhs_1_[i + 1] = rhs[2 * i + 1];
+    }
+
+    matrix_->solve_transposed(rhs_1_.data(), sol_1_.data(), irhs_1_.data(), isol_1_.data());
+
+    for (int32_t i = 0; i < n_; ++i) {
+        rhs[2 * i] = sol_1_[i + 1];
+        rhs[2 * i + 1] = isol_1_[i + 1];
+    }
+}
+
 }  // namespace neospice
