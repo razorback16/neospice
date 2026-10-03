@@ -201,9 +201,12 @@ void MESDevice::evaluate(const std::vector<double>& voltages,
 
     // First-call MEStemp.
     if (!temp_done_) {
-        int rc = MEStemp(model_, &ckt);
-        if (rc != Shim::OK) {
-            throw std::runtime_error("MEStemp failed with rc=" + std::to_string(rc));
+        if (model_->neoTempStale) {
+            int rc = MEStemp(model_, &ckt);
+            if (rc != Shim::OK) {
+                throw std::runtime_error("MEStemp failed with rc=" + std::to_string(rc));
+            }
+            model_->neoTempStale = false;
         }
         temp_done_ = true;
     }

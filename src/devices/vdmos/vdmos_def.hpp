@@ -355,6 +355,10 @@ struct VDMOSModel {       /* model structure for a VDMOS */
     VDMOSModel *VDMOSnextModel;          /* pointer to next possible model */
     VDMOSInstance *VDMOSinstances;       /* pointer to list of instances */
     const char *VDMOSmodName;            /* model name */
+    /* neospice: set when the shared temperature pass must rerun. The first
+     * instance evaluated after a reset runs the temperature routine over
+     * the whole model, as ngspice's CKTtemp does once; the rest skip it. */
+    bool neoTempStale = true;
 
     int VDMOStype;       /* device type : 1 = nmos,  -1 = pmos */
     double VDMOStnom;        /* temperature at which parameters measured */

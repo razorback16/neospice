@@ -55,7 +55,10 @@ public:
                          const SimOptions& opts) const override;
     bool device_converged() const override;
     std::optional<double> query_param(const std::string& name) const override;
-    void reset_temp() override { temp_done_ = false; }
+    void reset_temp() override {
+        temp_done_ = false;
+        model_->neoTempStale = true;
+    }
 
     /// Set initial condition voltages (called by parser when ic=VBE,VCE is present).
     void set_ic(double vbe, bool vbe_given, double vce, bool vce_given);

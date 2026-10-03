@@ -226,9 +226,12 @@ void MOS2Device::evaluate(const std::vector<double>& voltages,
 
     // First-call MOS2temp.
     if (!temp_done_) {
-        int rc = MOS2temp(model_, &ckt);
-        if (rc != Shim::OK) {
-            throw std::runtime_error("MOS2temp failed with rc=" + std::to_string(rc));
+        if (model_->neoTempStale) {
+            int rc = MOS2temp(model_, &ckt);
+            if (rc != Shim::OK) {
+                throw std::runtime_error("MOS2temp failed with rc=" + std::to_string(rc));
+            }
+            model_->neoTempStale = false;
         }
         temp_done_ = true;
     }

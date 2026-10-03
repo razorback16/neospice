@@ -218,9 +218,12 @@ void HFETADevice::evaluate(const std::vector<double>& voltages,
 
     // First-call HFETAtemp.
     if (!temp_done_) {
-        int rc = HFETAtemp(model_, &ckt);
-        if (rc != Shim::OK) {
-            throw std::runtime_error("HFETAtemp failed with rc=" + std::to_string(rc));
+        if (model_->neoTempStale) {
+            int rc = HFETAtemp(model_, &ckt);
+            if (rc != Shim::OK) {
+                throw std::runtime_error("HFETAtemp failed with rc=" + std::to_string(rc));
+            }
+            model_->neoTempStale = false;
         }
         temp_done_ = true;
     }

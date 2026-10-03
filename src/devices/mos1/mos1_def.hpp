@@ -353,6 +353,10 @@ struct MOS1Model {       /* model structure for a resistor */
     MOS1Instance * MOS1instances; /* pointer to list of instances 
                                    * that have this model */
     const char *MOS1modName;       /* pointer to character string naming this model */
+    /* neospice: set when the shared temperature pass must rerun. The first
+     * instance evaluated after a reset runs the temperature routine over
+     * the whole model, as ngspice's CKTtemp does once; the rest skip it. */
+    bool neoTempStale = true;
 
     /* --- end of generic struct MOS1Model --- */
 

@@ -252,18 +252,21 @@ void BSIM3v32Device::evaluate(const std::vector<double>& voltages,
 
     // First-call BSIM3v32temp.
     if (!temp_done_) {
-        // The temperature routine rebuilds the shared model's entire list.
-        // Release the previous list before it resets the owning head pointer.
-        auto* old = model_->pSizeDependParamKnot;
-        while (old) {
-            auto* next = old->pNext;
-            delete[] old;
-            old = next;
-        }
-        model_->pSizeDependParamKnot = nullptr;
-        int rc = BSIM3v32temp(model_, &ckt);
-        if (rc != Shim::OK) {
-            throw std::runtime_error("BSIM3v32temp failed with rc=" + std::to_string(rc));
+        if (model_->neoTempStale) {
+            // The temperature routine rebuilds the shared model's entire list.
+            // Release the previous list before it resets the owning head pointer.
+            auto* old = model_->pSizeDependParamKnot;
+            while (old) {
+                auto* next = old->pNext;
+                delete[] old;
+                old = next;
+            }
+            model_->pSizeDependParamKnot = nullptr;
+            int rc = BSIM3v32temp(model_, &ckt);
+            if (rc != Shim::OK) {
+                throw std::runtime_error("BSIM3v32temp failed with rc=" + std::to_string(rc));
+            }
+            model_->neoTempStale = false;
         }
         temp_done_ = true;
     }

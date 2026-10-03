@@ -224,9 +224,12 @@ void VDMOSDevice::evaluate(const std::vector<double>& voltages,
 
     // First-call VDMOStemp.
     if (!temp_done_) {
-        int rc = VDMOStemp(model_, &ckt);
-        if (rc != Shim::OK) {
-            throw std::runtime_error("VDMOStemp failed with rc=" + std::to_string(rc));
+        if (model_->neoTempStale) {
+            int rc = VDMOStemp(model_, &ckt);
+            if (rc != Shim::OK) {
+                throw std::runtime_error("VDMOStemp failed with rc=" + std::to_string(rc));
+            }
+            model_->neoTempStale = false;
         }
         temp_done_ = true;
     }

@@ -327,9 +327,12 @@ void B4SOIDevice::evaluate(const std::vector<double>& voltages,
 
     // First-call B4SOItemp.
     if (!temp_done_) {
-        int rc = B4SOItemp(model_, &ckt);
-        if (rc != Shim::OK) {
-            throw std::runtime_error("B4SOItemp failed with rc=" + std::to_string(rc));
+        if (model_->neoTempStale) {
+            int rc = B4SOItemp(model_, &ckt);
+            if (rc != Shim::OK) {
+                throw std::runtime_error("B4SOItemp failed with rc=" + std::to_string(rc));
+            }
+            model_->neoTempStale = false;
         }
         temp_done_ = true;
     }

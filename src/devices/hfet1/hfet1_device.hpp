@@ -56,7 +56,10 @@ public:
                          const SimOptions& opts) const override;
     bool device_converged() const override;
     std::optional<double> query_param(const std::string& name) const override;
-    void reset_temp() override { temp_done_ = false; }
+    void reset_temp() override {
+        temp_done_ = false;
+        model_->neoTempStale = true;
+    }
 
     /// Set initial condition voltages on the underlying UCB instance.
     void set_ic(double vds, bool vds_given, double vgs, bool vgs_given);

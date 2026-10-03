@@ -1084,6 +1084,10 @@ struct B4SOIModel {
     B4SOIModel *B4SOInextModel;
     B4SOIInstance *B4SOIinstances;
     const char *B4SOImodName;
+    /* neospice: set when the shared temperature pass must rerun. The first
+     * instance evaluated after a reset runs the temperature routine over
+     * the whole model, as ngspice's CKTtemp does once; the rest skip it. */
+    bool neoTempStale = true;
 
     /* --- end of generic struct B4SOIModel --- */
 

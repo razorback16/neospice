@@ -70,7 +70,10 @@ public:
         double freq, const std::vector<double>& dc_solution) const override;
     std::vector<CorrelatedNoiseSource> correlated_noise_sources(
         double freq, const std::vector<double>& dc_solution) const override;
-    void reset_temp() override { temp_done_ = false; }
+    void reset_temp() override {
+        temp_done_ = false;
+        model_->neoTempStale = true;
+    }
     SoaResult check_soa(const std::vector<double>& solution) const override;
 
     /// Set initial condition voltages on the underlying UCB instance.

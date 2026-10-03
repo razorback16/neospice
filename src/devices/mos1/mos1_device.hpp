@@ -71,7 +71,10 @@ public:
     bool device_converged() const override;
     bool device_converged(const std::vector<double>& solution) const override;
     std::optional<double> query_param(const std::string& name) const override;
-    void reset_temp() override { temp_done_ = false; }
+    void reset_temp() override {
+        temp_done_ = false;
+        model_->neoTempStale = true;
+    }
 
     /// Set initial condition voltages on the underlying UCB instance.
     /// Called by the parser after make() when ic=VDS,VGS,VBS is present.

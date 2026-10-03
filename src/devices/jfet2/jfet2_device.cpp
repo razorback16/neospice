@@ -203,9 +203,12 @@ void JFET2Device::evaluate(const std::vector<double>& voltages,
 
     // First-call JFET2temp.
     if (!temp_done_) {
-        int rc = JFET2temp(model_, &ckt);
-        if (rc != Shim::OK) {
-            throw std::runtime_error("JFET2temp failed with rc=" + std::to_string(rc));
+        if (model_->neoTempStale) {
+            int rc = JFET2temp(model_, &ckt);
+            if (rc != Shim::OK) {
+                throw std::runtime_error("JFET2temp failed with rc=" + std::to_string(rc));
+            }
+            model_->neoTempStale = false;
         }
         temp_done_ = true;
     }
