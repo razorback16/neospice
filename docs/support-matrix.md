@@ -62,6 +62,7 @@ claim and so contribute to no cell:
 - `tests/unit/test_parallel_sweep.cpp`
 - `tests/unit/test_rff70n06.cpp`
 - `tests/unit/test_ths4131.cpp`
+- `tests/wasm/gallery_reference.cpp`
 
 So "of N cells" below counts only the rows present. It is not a
 coverage figure for the simulator as a whole.

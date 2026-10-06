@@ -77,6 +77,7 @@ NON_DEVICE_FILES = {
     'tests/unit/test_gradient.cpp': CIRCUIT,
     'tests/unit/test_rff70n06.cpp': CIRCUIT,
     'tests/framework/ngspice_runner.cpp': CIRCUIT,
+    'tests/wasm/gallery_reference.cpp': CIRCUIT,
 }
 
 TEST_RE = re.compile(r'^\s*TEST(_F|_P)?\s*\(\s*([A-Za-z0-9_]+)\s*,\s*([A-Za-z0-9_]+)\s*\)',

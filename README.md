@@ -10,7 +10,12 @@ neospice is an independent C++20 reimplementation of the SPICE circuit simulator
 
 It reads SPICE netlists, writes ngspice-format raw results, and pairs a self-contained Sparse 1.3-compatible solver stack and differentiated behavioral sources with an embeddable API for EDA tools, optimization loops, and notebooks.
 
-Publication validation targets ngspice 47 exclusively. The current working tree retains an operating-point regression failure and corpus mismatches. See the [progress tracker](docs/joss-progress.md) and [comparison methods](docs/validation-methods.md). The project is not yet ready for a JOSS submission.
+Version **0.2.0** is a beta release; 1.0 is reserved for further stability work.
+See the [release notes](docs/release-0.2.md). Publication validation targets
+ngspice 47 exclusively. Known model limitations and corpus mismatches remain;
+see the [progress tracker](docs/joss-progress.md) and
+[comparison methods](docs/validation-methods.md). The project is not yet ready
+for a JOSS submission.
 
 An initial [JOSS manuscript draft and PDF](paper/README.md) are available for
 review. Actual research evidence, final validation/benchmarks and human

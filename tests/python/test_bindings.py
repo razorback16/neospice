@@ -501,4 +501,4 @@ C1 out 0 1n
 
     def test_version(self):
         assert hasattr(neospice, "__version__")
-        assert neospice.__version__ == "0.1.0"
+        assert neospice.__version__ == "0.2.0"
