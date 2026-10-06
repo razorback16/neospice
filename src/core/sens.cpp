@@ -64,6 +64,10 @@ struct ParameterRestorer {
     ~ParameterRestorer() { (device.*setter)(original); }
 };
 
+// Apple Clang on macOS 14 needs an explicit guide for aggregate deduction.
+template<class T>
+ParameterRestorer(T&, void (T::*)(double), double) -> ParameterRestorer<T>;
+
 struct SensitivityCacheGuard {
     Circuit& circuit;
     // Device states may describe the final perturbation. A subsequent analysis
