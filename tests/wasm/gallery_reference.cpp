@@ -45,8 +45,8 @@ int main(int argc, char** argv) {
             for (auto& t : actual.time) in >> t;
             read_real(in, actual.voltages, nv, count); read_real(in, actual.currents, ni, count);
             const auto expected = reference.run_transient(argv[1]);
-            if (id == "ring-oscillator") {
-                // Existing RingOscillator5Stage contract, unchanged.
+            if (id == "ring-oscillator" || id == "comparator-oscillator") {
+                // Existing RingOscillator5Stage contract, also applied to the comparator oscillator.
                 comparison = compare_transient_oscillator(expected, actual, {2e-4, 1e-3, 5e-2, 5e-2, 3});
             } else if (id == "cmos-inverter") {
                 const auto invalid = validate_transient_data(expected, actual);

@@ -49,7 +49,7 @@ async function project(page: Page) {
     return s.projects[s.current];
   });
 }
-test("all eight examples run, plots render, both themes work", async ({
+test("all gallery examples run, plots render, both themes work", async ({
   page,
 }) => {
   for (const id of [
@@ -61,6 +61,7 @@ test("all eight examples run, plots render, both themes work", async ({
     "active-filter",
     "cmos-inverter",
     "ring-oscillator",
+    "comparator-oscillator",
   ]) {
     await page.getByTestId(`example-${id}`).click();
     await run(page);
@@ -75,6 +76,31 @@ test("all eight examples run, plots render, both themes work", async ({
   await page.screenshot({ path: "test-results/dark-desktop.png" });
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+});
+test("comparator oscillator exposes editable response and three distinct signals", async ({
+  page,
+}) => {
+  await page.getByTestId("example-comparator-oscillator").click();
+  await run(page);
+  const d = await project(page);
+  expect(d.probes).toEqual(["v(out)", "v(cap)", "v(threshold)"]);
+  expect(new Set(Object.values(d.probeColors)).size).toBe(3);
+  await page
+    .getByRole("button", { name: "X1 Comparator", exact: true })
+    .press("Enter");
+  await expect(page.getByLabel("Output response", { exact: true })).toHaveValue(
+    "5n",
+  );
+  await page.getByLabel("Output response", { exact: true }).fill("10n");
+  await run(page);
+  await expect(page.locator(".uplot canvas")).toBeVisible();
+  await page.reload();
+  await page
+    .getByRole("button", { name: "X1 Comparator", exact: true })
+    .press("Enter");
+  await expect(page.getByLabel("Output response", { exact: true })).toHaveValue(
+    "10n",
+  );
 });
 test("DC, AC, transient settings and slider auto-run", async ({ page }) => {
   await page.getByRole("button", { name: "DC point", exact: true }).click();

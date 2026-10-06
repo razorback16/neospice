@@ -163,6 +163,10 @@ export function compile(
       lines.push(
         `${c.id} ${n("out")} 0 ${n("plus")} ${n("minus")} ${num("value", true)}`,
       );
+    else if (c.kind === "CMP")
+      lines.push(
+        `${c.id} ${n("plus")} ${n("minus")} ${n("vcc")} ${n("vee")} ${n("out")} NEOSPICE_LAB_CMP GAIN=${num("value", true)} RESPONSE=${num("response", true)}`,
+      );
     else {
       if (!p.model || !Object.hasOwn(doc.models, p.model))
         throw new Error(`${c.id}: select an available inline model.`);
@@ -187,6 +191,15 @@ export function compile(
     const p = w.currentProbe;
     lines.push(`${p.id} ${p.reversed ? b : a} ${p.reversed ? a : b} DC 0`);
   }
+  if (parts.some((c) => c.kind === "CMP"))
+    lines.push(
+      "* Simplified comparator: smooth rail-limited transfer, 10 ohm output, finite response.",
+      ".subckt NEOSPICE_LAB_CMP plus minus vcc vee out params: GAIN=100 RESPONSE=5n",
+      "Bdrive drive vee V={V(vcc,vee)/2*(1+tanh(GAIN*V(plus,minus)))}",
+      "Rdrive drive out 10",
+      "Cresponse out vee {RESPONSE/10}",
+      ".ends NEOSPICE_LAB_CMP",
+    );
   for (const model of [...usedModels].sort()) lines.push(doc.models[model]);
   const initial = new Map<string, number>();
   for (const j of doc.junctions)

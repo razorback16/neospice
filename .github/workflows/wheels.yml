@@ -2,8 +2,28 @@ name: Build wheels and publish to PyPI
 
 on:
   push:
+    branches: [main]
     tags:
       - "v*"
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'python/**'
+      - 'tests/python/**'
+      - '**/CMakeLists.txt'
+      - 'cmake/**'
+      - 'pyproject.toml'
+      - '.github/workflows/wheels.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'python/**'
+      - 'tests/python/**'
+      - '**/CMakeLists.txt'
+      - 'cmake/**'
+      - 'pyproject.toml'
+      - '.github/workflows/wheels.yml'
   workflow_dispatch:
 
 jobs:
@@ -27,6 +47,9 @@ jobs:
 
       - uses: pypa/cibuildwheel@v3.4.1
         env:
+          # Catch platform regressions before a release. Tags and manual builds
+          # still test every supported Python version; branch/PR builds use 3.12.
+          CIBW_BUILD: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'cp310-* cp311-* cp312-* cp313-* cp314-*' || 'cp312-*' }}
           # Build only the runner's native arch. aarch64 builds natively on
           # ubuntu-24.04-arm instead of under QEMU emulation (~10-30x faster).
           # On macOS, openblas/sleef come from Homebrew as single-arch dylibs,

@@ -122,11 +122,26 @@ test("device order matches SPICE D, Q, M and E pin contracts", () => {
   }
 });
 test("oscillator startup voltages are retained in generated SPICE", () => {
-  const d = clone(GALLERY.at(-1)!.document);
+  const d = clone(GALLERY.find((e) => e.id === "ring-oscillator")!.document);
   assert.match(
     compile(d).text,
     /\.ic V\(n1\)=0 V\(n2\)=1.8 V\(n3\)=0 V\(n4\)=1.8 V\(n5\)=0/,
   );
+});
+test("comparator pins, response and startup survive project import", () => {
+  const d = readDocument(
+    JSON.stringify(
+      GALLERY.find((e) => e.id === "comparator-oscillator")!.document,
+    ),
+  );
+  const text = compile(d).text;
+  assert.match(
+    text,
+    /X1 threshold cap vcc 0 out NEOSPICE_LAB_CMP GAIN=100 RESPONSE=5e-9/,
+  );
+  assert.match(text, /\.ic V\(cap\)=0/);
+  d.components.find((c) => c.id === "X1")!.props.response = "0";
+  assert.throws(() => compile(d), /response must be greater than zero/);
 });
 test("deleting a component also removes its wires", () => {
   const d = deleteSelection(rc(), "R1");

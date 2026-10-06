@@ -46,6 +46,7 @@ jobs:
         run: python -m pip install '.[dev,benchmarks]'
 
       - name: Test C++, both Python APIs and migration tools
+        id: tests
         env:
           NGSPICE_DIR: ${{ runner.temp }}/ngspice47/source
         run: |
@@ -57,7 +58,7 @@ jobs:
           test "$cpp_status" -eq 0 && test "$python_status" -eq 0
 
       - name: Require executed tests without skips
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |
           python - <<'PY'
           from pathlib import Path

@@ -614,6 +614,83 @@ const mosModels = {
     document: d,
   });
 }
+{
+  const { d, part, net, ground, wire } = builder(
+    "comparator-oscillator",
+    "Comparator relaxation oscillator",
+  );
+  part("VCC", "V", 100, 260, 0, { dc: "5", ac: "0" });
+  part("R2", "R", 300, 180, 90, { value: "20k" });
+  part("R3", "R", 300, 400, 90, { value: "20k" });
+  part("R4", "R", 700, 440, 0, { value: "20k" });
+  part("R1", "R", 740, 120, 0, { value: "6.8k" });
+  part("C1", "C", 460, 200, 90, { value: "100p" });
+  part("X1", "CMP", 620, 280);
+  const supply = net("vcc", 100, 80, ["VCC.p"]);
+  wire(supply, "R2.a", [{ x: 300, y: 80 }]);
+  net("vcc", 620, 200, ["X1.vcc"]);
+  const threshold = net("threshold", 300, 300, ["R2.b", "R3.a", "X1.plus"]);
+  wire(threshold, "R4.a", [
+    { x: 400, y: 300 },
+    { x: 400, y: 440 },
+  ]);
+  const capacitor = net("cap", 460, 120, ["C1.a", "R1.a"], "0");
+  wire(capacitor, "X1.minus", [
+    { x: 540, y: 120 },
+    { x: 540, y: 260 },
+  ]);
+  const output = net("out", 940, 280, ["X1.out"]);
+  wire(output, "R1.b", [{ x: 940, y: 120 }]);
+  wire(output, "R4.b", [{ x: 940, y: 440 }]);
+  ground("G1", 100, 360, ["VCC.n"]);
+  ground("G2", 300, 500, ["R3.b"]);
+  ground("G3", 460, 260, ["C1.b"]);
+  ground("G4", 620, 360, ["X1.vee"]);
+  d.probes = ["v(out)", "v(cap)", "v(threshold)"];
+  d.probeColors = {
+    "v(out)": "#139b88",
+    "v(cap)": "#5e83dc",
+    "v(threshold)": "#dd9855",
+  };
+  d.probeAnchors = {
+    "v(threshold)": {
+      ref: threshold,
+      wireId: d.wires.find((w) => w.from === threshold && w.to === "R4.a")!.id,
+      position: 0.8,
+    },
+  };
+  d.analysis = { ...d.analysis, step: "0.25n", stop: "10u" };
+  examples.push({
+    id: "comparator-oscillator",
+    title: d.title,
+    category: "OSCILLATORS",
+    description: "A charging capacitor. A changing threshold.",
+    lesson:
+      "Positive feedback switches the threshold between about 1.67 V and 3.33 V. The timing capacitor charges and discharges through R₁ until the comparator flips. Increase R₁ or C₁ to slow the oscillation. This adapts the notebook's simplified comparator with a 5 ns output response; it is not a TI TLV3201 device model.",
+    accent: "amber",
+    tunes: [
+      {
+        part: "R1",
+        property: "value",
+        label: "Timing resistance",
+        unit: "Ω",
+        min: 3300,
+        max: 10000,
+        log: true,
+      },
+      {
+        part: "C1",
+        property: "value",
+        label: "Timing capacitance",
+        unit: "F",
+        min: 47e-12,
+        max: 220e-12,
+        log: true,
+      },
+    ],
+    document: d,
+  });
+}
 export const GALLERY: Example[] = examples.map((e, i) => ({
   ...e,
   number: String(i + 1).padStart(2, "0"),

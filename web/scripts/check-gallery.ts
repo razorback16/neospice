@@ -66,6 +66,27 @@ try {
       }
       if (example.id === "bridge-rectifier")
         assert.ok((result.voltages["v(out)"] as number[]).at(-1)! > 3);
+      if (example.id === "comparator-oscillator") {
+        const output = result.voltages["v(out)"] as number[];
+        const capacitor = result.voltages["v(cap)"] as number[];
+        const threshold = result.voltages["v(threshold)"] as number[];
+        assert.ok(Math.min(...output) < 0.05 && Math.max(...output) > 4.95);
+        assert.ok(Math.min(...threshold) > 1.6 && Math.max(...threshold) < 3.4);
+        const crossings = axis.filter(
+          (t, i) =>
+            i > 0 && t > 1e-6 && output[i - 1] < 2.5 && output[i] >= 2.5,
+        );
+        assert.ok(crossings.length >= 6, "Comparator must sustain oscillation");
+        const period =
+          (crossings.at(-1)! - crossings[0]) / (crossings.length - 1);
+        // Ideal equal-divider result: T = 2 RC ln(2); allow finite output response.
+        assert.ok(
+          Math.abs(period / (2 * 6800 * 100e-12 * Math.log(2)) - 1) < 0.1,
+        );
+        capacitor.forEach((v, i) => {
+          if (axis[i] > 2e-6) assert.ok(v > 1.5 && v < 3.5);
+        });
+      }
       console.log(`${example.id}: WASM converged, ${axis.length} samples`);
       if (reference) {
         const deck = join(directory, example.id + ".cir");
@@ -129,5 +150,5 @@ try {
 }
 assert.equal(failures, 0, `${failures} gallery checks failed`);
 console.log(
-  `All 8 gallery circuits and 32 tuning endpoints passed${reference ? " with ngspice 47 comparisons" : ""}.`,
+  `All ${GALLERY.length} gallery circuits and ${GALLERY.reduce((sum, e) => sum + e.tunes.length * 2, 0)} tuning endpoints passed${reference ? " with ngspice 47 comparisons" : ""}.`,
 );

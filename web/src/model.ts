@@ -1,7 +1,19 @@
 export const COMPONENT_DRAG_TYPE = "application/x-neospice-component";
 export type Point = { x: number; y: number };
 export type Kind =
-  "R" | "C" | "L" | "V" | "I" | "D" | "QN" | "QP" | "MN" | "MP" | "OP" | "G";
+  | "R"
+  | "C"
+  | "L"
+  | "V"
+  | "I"
+  | "D"
+  | "QN"
+  | "QP"
+  | "MN"
+  | "MP"
+  | "OP"
+  | "CMP"
+  | "G";
 export type Component = Point & {
   id: string;
   kind: Kind;
@@ -179,6 +191,19 @@ export const PARTS: Record<Kind, PartSpec> = {
       { id: "out", x: 40, y: 0 },
     ],
     defaults: { value: "100k" },
+  },
+  CMP: {
+    name: "Comparator",
+    prefix: "X",
+    unit: "1/V",
+    pins: [
+      { id: "plus", x: -40, y: 20 },
+      { id: "minus", x: -40, y: -20 },
+      { id: "out", x: 40, y: 0 },
+      { id: "vcc", x: 0, y: -40 },
+      { id: "vee", x: 0, y: 40 },
+    ],
+    defaults: { value: "100", response: "5n" },
   },
   G: {
     name: "Ground",

@@ -164,7 +164,13 @@ function Inspector({
       </div>
       {p.value !== undefined && (
         <Field
-          label={part.kind === "OP" ? "Open-loop gain" : "Value"}
+          label={
+            part.kind === "OP"
+              ? "Open-loop gain"
+              : part.kind === "CMP"
+                ? "Transfer steepness"
+                : "Value"
+          }
           value={p.value}
           unit={PARTS[part.kind].unit}
           onChange={(v) => update("value", v)}
@@ -297,6 +303,21 @@ function Inspector({
               }}
             />
           </details>
+        </>
+      )}
+      {part.kind === "CMP" && (
+        <>
+          <Field
+            label="Output response"
+            value={p.response}
+            unit="s"
+            onChange={(v) => update("response", v)}
+          />
+          <div className="note">
+            Simplified comparator with supply rails, a smooth switching curve,
+            10 Ω output resistance, and a finite response time. Not a
+            manufacturer device model.
+          </div>
         </>
       )}
       {part.kind === "OP" && (

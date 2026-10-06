@@ -71,7 +71,7 @@ The uncommon local port is a convenience, not authentication. See
 
 - **Examples**: RC low-pass, RLC resonator, bridge rectifier, diode clipper,
   common-emitter amplifier, Sallen–Key filter, CMOS inverter and a five-stage
-  CMOS ring oscillator. Each opens as a local editable copy. Slider controls
+  CMOS ring oscillator, plus a comparator relaxation oscillator. Each opens as a local editable copy. Slider controls
   rerun the selected analysis after a short debounce.
 - **Components**: click a library part to pick it up. Its symbol follows the
   mouse and previews the snapped position on the canvas; click to place one copy.
@@ -79,7 +79,8 @@ The uncommon local port is a convenience, not authentication. See
   pressing **Esc** cancels placement. On touch screens, tap a library part and
   then the canvas. Existing placed components can be dragged to move them. The palette
   includes R/C/L, voltage/current sources, ground, diodes, NPN/PNP, NMOS/PMOS,
-  and a finite-gain ideal VCVS op-amp. The latter has no rails, saturation or
+  a finite-gain ideal VCVS op-amp, and a simplified comparator with supply pins
+  and adjustable output response. The op-amp has no rails, saturation or
   bandwidth model. CMOS gallery circuits use inline BSIM4 models.
 - **Wires**: click a terminal, optionally click bends, then another terminal.
   Click an existing wire while wiring to create a branch junction. Double-click
@@ -132,6 +133,23 @@ Keyboard: **V** select, **W** wire, **R** rotate, **Delete** remove,
 **Ctrl/Cmd+D** duplicate, **Ctrl/Cmd+Z** undo, **Ctrl/Cmd+Shift+Z** redo,
 **Ctrl/Cmd+Enter** run, **Esc** cancel placement/wiring/selection. Scroll or use buttons to
 zoom; Pan moves the canvas. Phone layouts expose Library/Circuit/Settings tabs.
+
+## Comparator relaxation oscillator
+
+The ninth example adapts the [Python notebook](../examples/rc_relaxation_oscillator/rc_relaxation_oscillator.ipynb)
+with a 5 V supply, three 20 kΩ threshold/feedback resistors, a 6.8 kΩ timing
+resistor and a 100 pF timing capacitor. Output, capacitor voltage and switching
+threshold have distinct probe colors. The timing resistance and capacitance
+are adjustable; the comparator is also available in the component library.
+
+This is a simplified behavioral comparator, not TI's TLV3201 model. A `tanh`
+transfer drives a 10 Ω output resistance and an output capacitor, with a
+default response time of 5 ns. Both ngspice 47 and neospice abort the
+instantaneous-output version within a 10 µs run at default solver settings. The
+finite response represents output dynamics without relaxing solver tolerances.
+The default step is 0.25 ns over 10 µs, checked against ngspice 47 with the
+existing oscillator contract. A 0.5 ns step missed its 0.02% period bound;
+refinement to 0.25, 0.1 and 0.05 ns passed without changing that bound.
 
 ## GitHub Pages
 
@@ -189,8 +207,8 @@ native comparators to the **same generated netlists** run by ngspice 47. There
 is no second hand-maintained netlist copy or alternate reference version. RC,
 RLC, CMOS edge and oscillator checks retain the existing comparison contracts.
 New analog checks use fixed tolerances defined in `gallery_reference.cpp`;
-failures retain per-signal error diagnostics. All eight default gallery analyses
-passed locally. The 32 slider endpoints were additionally checked for
+failures retain per-signal error diagnostics. All nine default gallery analyses
+passed locally. The 36 slider endpoints were additionally checked for
 convergence; they are not separate ngspice parity claims.
 
 The model tests cover connectivity, crossing/junction behavior, SPICE suffixes,
@@ -198,8 +216,8 @@ pin order, startup conditions, imports, sensor insertion/removal/reversal,
 voltage-probe attachment and validation. Browser acceptance tests cover
 examples, analyses, project editing and persistence, exports, errors, cancellation,
 timeouts, missing WASM assets, themes, mobile layout, touch wiring, probes,
-component pickup, drag-and-drop, grid snapping and canceled placement.
-All 17 acceptance cases were also verified at the `/neospice/` path.
+component pickup, drag-and-drop, grid snapping, canceled placement and comparator response persistence.
+The original 17 acceptance cases were also verified at the `/neospice/` path.
 All 17 were exercised on the public GitHub Pages URL as well; one initial
 asset request hit Chromium's `ERR_NETWORK_CHANGED`, and that case passed on
 retry without changes.

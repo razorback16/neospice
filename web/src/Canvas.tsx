@@ -891,10 +891,10 @@ export function Canvas({
             {c.kind !== "G" && (
               <g
                 className="component-label"
-                transform={`translate(${c.x + (c.rotation % 180 === 90 || ["V", "I", "QN", "QP", "MN", "MP"].includes(c.kind) ? 48 : 0)} ${c.y + (c.rotation % 180 === 90 || ["V", "I", "QN", "QP", "MN", "MP"].includes(c.kind) ? -5 : -33)})`}
+                transform={`translate(${c.x + (c.rotation % 180 === 90 || ["V", "I", "QN", "QP", "MN", "MP", "CMP"].includes(c.kind) ? 48 : 0)} ${c.y + (c.rotation % 180 === 90 || ["V", "I", "QN", "QP", "MN", "MP", "CMP"].includes(c.kind) ? -5 : -33)})`}
                 textAnchor={
                   c.rotation % 180 === 90 ||
-                  ["V", "I", "QN", "QP", "MN", "MP"].includes(c.kind)
+                  ["V", "I", "QN", "QP", "MN", "MP", "CMP"].includes(c.kind)
                     ? "start"
                     : "middle"
                 }

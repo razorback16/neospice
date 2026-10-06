@@ -114,15 +114,15 @@ TypeScript declarations and a minimal Worker-based demo. DC/AC/transient,
 supported adjoint gradients and incremental solves are exposed.
 
 The [Circuit Lab](circuit-lab.md) adds a visual schematic editor with explicit
-pin/junction wiring, an analog component palette, eight editable circuit
+pin/junction wiring, an analog component palette, nine editable circuit
 examples, independent SPICE text mode, light/dark themes, interactive plots and
 local project saving. Production builds support repository subpaths for GitHub
 Pages; [the published app](https://razorback16.github.io/neospice/) is deployed
 manually after browser and ngspice 47 gallery checks. Local preview and temporary
 tunnel scripts are included.
 
-All eight default gallery analyses pass local ngspice 47 comparisons, with the
-existing CMOS edge and oscillator contracts retained; 32 slider endpoints
+All nine default gallery analyses pass local ngspice 47 comparisons, with the
+existing CMOS edge and oscillator contracts retained; 36 slider endpoints
 converge. Node model tests and Chromium browser tests cover the app. GitHub
 Actions passed the browser and ngspice 47 gallery/probe comparisons, and the
 published Pages app was verified with all 17 browser acceptance cases.

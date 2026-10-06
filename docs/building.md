@@ -98,6 +98,24 @@ cd build && ctest -j$(nproc) --output-on-failure
 
 ## Python and tooling development
 
+### Continuous integration
+
+The native CI workflow requires the generated support matrix to match the
+tests. New reference-calling helpers must be classified in
+`tools/support_matrix.py`; the browser gallery bridge is circuit-level
+coverage. Test-report validation runs only after the test step has executed,
+so an earlier setup failure does not produce misleading missing-report errors.
+
+Changes to native sources, bindings or packaging run Python 3.12 wheel builds
+and API tests on Linux x86_64, Linux ARM64 and macOS 14 ARM64 before release.
+Release tags and manually requested wheel builds still cover Python 3.10–3.14;
+only release tags publish to PyPI. This catches Apple Clang and standard-library
+portability issues before tagging. The 0.2.0 fixes provide explicit template
+deduction for the sensitivity helper and automatically joined `std::thread`
+workers where macOS 14 lacks `std::jthread`.
+
+### Local environment
+
 Use a new virtual environment and install the current checkout. A regular wheel
 installation avoids stale editable-install hooks after moving or renaming a
 checkout. Reinstall after changing Python or C++ sources.

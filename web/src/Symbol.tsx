@@ -52,11 +52,12 @@ export function Symbol({ kind }: { kind: Kind }) {
           )}
         </>
       )}
-      {kind === "OP" && (
+      {(kind === "OP" || kind === "CMP") && (
         <>
           <path d="M-24 -30L28 0 -24 30ZM-40 -20H-24M-40 20H-24M28 0H40M-18 -17H-10M-18 17H-10M-14 13V21" />
         </>
       )}
+      {kind === "CMP" && <path d="M0 -40V-16M0 16V40M-8 5H-2V-5H5" />}
       {kind === "G" && <path d="M0 0V12M-16 12H16M-10 19H10M-4 26H4" />}
     </g>
   );
