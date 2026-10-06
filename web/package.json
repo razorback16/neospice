@@ -1,0 +1,38 @@
+{
+  "name": "neospice-circuit-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 48173 --strictPort",
+    "stage:wasm": "node scripts/stage-wasm.mjs",
+    "build": "npm run stage:wasm && tsc -b && vite build",
+    "preview": "python3 scripts/serve.py --port 48173",
+    "test": "node --import tsx tests/model.test.ts",
+    "test:gallery": "node --import tsx scripts/check-gallery.ts",
+    "test:probes": "node --import tsx scripts/check-probes.ts",
+    "test:browser": "playwright test",
+    "tunnel": "cloudflared tunnel --url http://127.0.0.1:48173",
+    "preview:start": "bash scripts/preview.sh start",
+    "preview:stop": "bash scripts/preview.sh stop",
+    "preview:status": "bash scripts/preview.sh status",
+    "format": "prettier --write src tests scripts/*.ts scripts/*.mjs public/simulation-worker.mjs *.ts *.json index.html"
+  },
+  "dependencies": {
+    "lucide-react": "1.52.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "uplot": "1.6.32"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "prettier": "3.9.9",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.3"
+  }
+}

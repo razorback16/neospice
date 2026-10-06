@@ -5,6 +5,15 @@ JavaScript API, TypeScript declarations and a Web Worker demo. The module runs
 locally in a browser or Node. It does not upload netlists or contact a simulation
 service. Emscripten **6.0.11** was used for validation.
 
+## Circuit Lab application
+
+The [Circuit Lab](circuit-lab.md) application builds on this API with a visual
+schematic editor, eight editable examples, light/dark themes, interactive plots,
+a separate netlist workspace, and project/CSV exports. It has a static production
+build suitable for GitHub Pages and a local preview on port **48173** with optional
+Cloudflare tunneling. See its guide for frontend build and hosting instructions.
+The commands below still build the minimal API demo independently.
+
 ## Build
 
 Install the [official Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html)

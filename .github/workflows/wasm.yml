@@ -3,11 +3,24 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Publish the tested Circuit Lab to GitHub Pages
+        type: boolean
+        default: false
+permissions:
+  contents: read
 jobs:
   wasm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Install pinned Emscripten SDK
         run: |
           git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
@@ -20,6 +33,33 @@ jobs:
           emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release
           cmake --build build-wasm -j2
           node tests/wasm/smoke.mjs build-wasm/wasm
+      - name: Build and test Circuit Lab
+        working-directory: web
+        env:
+          WASM_DIR: ../build-wasm/wasm
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: |
+          npm ci
+          npm test
+          npm run build
+          npm run test:gallery
+          npm run test:probes
+      - name: Install browser
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Browser acceptance at the Pages subpath
+        working-directory: web
+        env:
+          LAB_URL: http://127.0.0.1:48173/${{ github.event.repository.name }}/
+        run: |
+          python3 scripts/serve.py --port 48173 --base '/${{ github.event.repository.name }}/' > /tmp/circuit-lab-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent "$LAB_URL" > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run test:browser
       - uses: actions/upload-artifact@v4
         with:
           name: neospice-webassembly
@@ -28,3 +68,75 @@ jobs:
             build-wasm/wasm/*.wasm
             build-wasm/wasm/*.d.mts
             build-wasm/wasm/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neospice-circuit-lab
+          path: web/dist
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: circuit-lab-browser-failures
+          path: web/test-results
+      - uses: actions/upload-pages-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.deploy
+        with:
+          path: web/dist
+  gallery-reference:
+    needs: wasm
+    runs-on: ubuntu-latest
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: neospice-webassembly
+          path: build-wasm/wasm
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libopenblas-dev libsleef-dev pkg-config curl bison flex
+      - name: Build pinned ngspice 47 reference
+        run: |
+          bash scripts/build-ngspice47-reference.sh "$RUNNER_TEMP/ngspice47"
+          echo "PKG_CONFIG_PATH=$RUNNER_TEMP/ngspice47/shared/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/ngspice47/shared/lib" >> "$GITHUB_ENV"
+          echo "SPICE_SCRIPTS=$RUNNER_TEMP/ngspice47/shared/share/ngspice/scripts" >> "$GITHUB_ENV"
+      - name: Build comparison bridge
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_RPATH="$RUNNER_TEMP/ngspice47/shared/lib"
+          cmake --build build --target neospice_gallery_reference -j2
+      - name: Compare the actual browser gallery against ngspice 47
+        working-directory: web
+        env:
+          WASM_DIR: ../build-wasm/wasm
+          GALLERY_REFERENCE: ../build/tests/neospice_gallery_reference
+        run: |
+          npm ci
+          npm run test:gallery -- --reference
+          npm run test:probes -- --reference
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref == 'refs/heads/main'
+    needs: [wasm, gallery-reference]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Publish Circuit Lab
+        id: deployment
+        uses: actions/deploy-pages@v4

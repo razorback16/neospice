@@ -255,3 +255,12 @@ add_executable(bench_ordering_spike
 )
 target_link_libraries(bench_ordering_spike PRIVATE neospice_lib)
 target_include_directories(bench_ordering_spike PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Optional bridge from the browser gallery to the existing ngspice 47 comparators.
+# Build explicitly; npm run test:gallery drives this executable with WASM results.
+add_executable(neospice_gallery_reference EXCLUDE_FROM_ALL
+    wasm/gallery_reference.cpp framework/ngspice_runner.cpp framework/comparator.cpp)
+target_include_directories(neospice_gallery_reference PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${NGSPICE_INCLUDE_DIRS})
+target_link_directories(neospice_gallery_reference PRIVATE ${NGSPICE_LIBRARY_DIRS})
+target_link_libraries(neospice_gallery_reference PRIVATE neospice_lib ${NGSPICE_LIBRARIES})

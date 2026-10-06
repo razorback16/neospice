@@ -107,18 +107,28 @@ in that order; historical phase numbers below are retained for reference.
 
 ---
 
-## Phase 3: WebAssembly (WASM) — Initial browser API implemented
+## Phase 3: WebAssembly (WASM) — Browser API and Circuit Lab implemented
 
 An Emscripten 6.0.11 CMake target produces a WASM module, ES-module wrapper,
-TypeScript declarations and a Worker-based circuit editor with resistor tuning.
-DC/AC/transient, supported adjoint gradients and incremental solves are exposed.
-Node and headless Chrome smoke tests have run locally; the new CI job is
-configured but remote execution is not yet verified.
+TypeScript declarations and a minimal Worker-based demo. DC/AC/transient,
+supported adjoint gradients and incremental solves are exposed.
 
-See [WebAssembly](webassembly.md) for build commands and validation. This is a
-single-threaded browser module; parallel batches and LAPACK pole-zero analysis
-are excluded. Sub-second simulation targets remain workload-dependent goals,
-not established performance claims.
+The [Circuit Lab](circuit-lab.md) adds a visual schematic editor with explicit
+pin/junction wiring, an analog component palette, eight editable circuit
+examples, independent SPICE text mode, light/dark themes, interactive plots and
+local project saving. Production builds support repository subpaths for GitHub
+Pages; the workflow prepares manual deployment after browser and ngspice 47
+gallery checks. Local preview and temporary tunnel scripts are included.
+
+All eight default gallery analyses pass local ngspice 47 comparisons, with the
+existing CMOS edge and oscillator contracts retained; 32 slider endpoints
+converge. Node model tests and Chromium browser tests cover the app. Remote
+Actions execution and Pages publication remain unverified until run remotely.
+
+See [WebAssembly](webassembly.md) for the underlying API and build commands.
+This is a single-threaded browser module; parallel batches and LAPACK pole-zero
+analysis are excluded. Latency remains workload-dependent, and arbitrary
+SPICE-to-schematic import is outside the first editor release.
 
 ---
 
@@ -502,7 +512,7 @@ r = parse_value("4.7k")    # 4700.0
 | —     | Generic set_param()        | Optimization    | Medium   | Done |
 | 1     | Python bindings            | Adoption        | Medium   | Done |
 | 2     | Parallel sweeps            | Performance     | Medium   | Planned |
-| 3     | WASM build                 | Accessibility   | Low      | Planned |
+| 3     | WASM + Circuit Lab         | Accessibility   | Medium   | Implemented locally |
 | 4     | Sensitivity/gradients      | Optimization    | High     | Planned |
 | 5     | Incremental re-simulation  | Interactivity   | Medium   | Planned |
 | 6     | GPU acceleration           | Large circuits  | High     | Planned |

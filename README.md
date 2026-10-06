@@ -27,6 +27,25 @@ not a submission-ready release.
 - **C++ and Python validation** -- analytical checks and ngspice comparisons, with current failures and test results in the [progress tracker](docs/joss-progress.md)
 - **Corpus harness** -- a historical cohort of **34,908 KiCad operating-point fixtures**; [input freezing](docs/kicad-experiment.md) now records declaration identities and separate planned rescues. Completed ngspice 47 audits are linked from the progress tracker; declaration binding and full-model scope still need interpretation. Minimal operating-point fixtures do not certify transient, AC, or noise behavior.
 
+## Browser Circuit Lab
+
+Build and simulate circuits in a visual schematic editor, or use an editable
+SPICE netlist. [Circuit Lab](docs/circuit-lab.md) includes eight interactive
+examples, light/dark themes, DC/AC/transient plots, parameter tuning, local
+project saving, and CSV export. The simulator runs entirely in your browser
+using WebAssembly.
+
+```sh
+# Build the WASM artifacts first; see docs/webassembly.md.
+npm --prefix web ci
+npm --prefix web run build
+npm --prefix web run preview
+```
+
+Open **http://127.0.0.1:48173/**. The [Circuit Lab guide](docs/circuit-lab.md)
+covers the visual editor, external preview tunnel, tests and manual GitHub Pages
+deployment. The existing minimal WASM demo is also retained.
+
 ## Quick Start (C++)
 
 ### Prerequisites

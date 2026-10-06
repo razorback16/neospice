@@ -38,3 +38,13 @@ tests/regression/*.raw
 # records and stay local, so cloning the repository does not pull ~1.8 GB.
 docs/evidence/**/*.tar.gz
 docs/evidence/**/*.json.gz
+
+# Browser circuit lab dependencies, staged WASM, and generated reports
+/web/node_modules/
+/web/dist/
+/web/public/simulator/
+/web/test-results/
+/web/playwright-report/
+/web/*.tsbuildinfo
+/web/.preview/
+/web/public/licenses.txt
