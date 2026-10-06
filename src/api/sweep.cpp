@@ -81,12 +81,19 @@ SweepResult Simulator::run_sweep(const std::string& netlist,
             }
         }
     };
-    // jthread joins during unwinding if launching a later worker fails.
+    // Join during unwinding if launching a later worker fails. Use std::thread
+    // because the macOS 14 standard library does not provide std::jthread.
     // Even workers=1 uses an isolated thread, preserving the caller's RNG.
     {
-        std::vector<std::jthread> pool;
-        pool.reserve(workers);
-        for (unsigned i = 0; i < workers; ++i) pool.emplace_back(work);
+        struct WorkerPool {
+            std::vector<std::thread> threads;
+            ~WorkerPool() {
+                for (auto& thread : threads)
+                    if (thread.joinable()) thread.join();
+            }
+        } pool;
+        pool.threads.reserve(workers);
+        for (unsigned i = 0; i < workers; ++i) pool.threads.emplace_back(work);
     }
     return batch;
 #endif

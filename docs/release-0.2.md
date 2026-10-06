@@ -23,7 +23,8 @@ promise compatibility for every SPICE model or analysis.
   native APIs. See [capabilities](capabilities.md) for supported scope.
 - Solver and device improvements, including shared model temperature setup and
   factorization reuse for noise analysis.
-- An explicit sensitivity-helper deduction guide for Apple Clang compatibility.
+- Apple Clang compatibility fixes for sensitivity-helper deduction and
+  automatically joined sweep workers on macOS 14.
 - Validation against checksum-pinned ngspice 47, with browser acceptance and
   numerical checks for the gallery and current probes.
 
