@@ -20,7 +20,7 @@ using namespace Shim;
 
 /* ARGSUSED */
 
-int iret, vbic_4T_it_cf_t(double *, double *, double *);
+int vbic_4T_it_cf_t(double *, double *, double *);
 
 int
 VBICtemp(VBICModel *inModel, Shim::Ckt *ckt)
@@ -190,7 +190,7 @@ VBICtemp(VBICModel *inModel, Shim::Ckt *ckt)
             pnom[106] = model->VBICrevVersion;
             pnom[107] = model->VBICrefVersion;
             
-            iret = vbic_4T_it_cf_t(p,pnom,&TAMB);
+            vbic_4T_it_cf_t(p,pnom,&TAMB);
             
             here->VBICttnom = p[0];
             here->VBICtextCollResist = p[1];

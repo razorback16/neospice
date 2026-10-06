@@ -88,85 +88,67 @@ result = ns.dc("amp.cir", reltol=1e-4, gmin=1e-14)
 
 ---
 
-## Phase 2: Parallel Parameter Sweeps
+## Phase 2: Parallel Parameter Sweeps — Implemented
 
-**Priority: High**
+`Simulator::run_sweep()` uses independent circuits in a bounded worker pool with
+ordered results and per-job errors. `Simulator::monte_carlo()` adds seeded
+Gaussian/uniform variations and Gaussian correlation. Top-level parameter
+and primitive-value overrides plus temperature corners support parameter/PVT
+studies. Python exposes `sweep()` and `monte_carlo()`; `summarize_samples()`
+provides mean, sample sigma, inclusive-limit yield and histograms.
 
-Independent circuit instances are a starting point for parallel parameter
-studies. Thread safety, mutable shared state and reproducible random-number
-behavior still require review and race testing. Scaling must be measured;
-object ownership alone does not establish thread safety or linear speedup.
+See [parallel studies](parallel-studies.md) for APIs, reproducibility scope,
+thread ownership, race-test commands and limits. Worker-count selection uses
+hardware concurrency, not an optimization measurement. No scaling claim is made.
 
-### Goals
-- Thread-safe simulation: multiple `Simulator` instances on independent threads
-- Built-in Monte Carlo engine: Gaussian/uniform parameter variation with correlation
-- Corner analysis: systematic process/voltage/temperature (PVT) sweeps
-- Results aggregation: statistical summaries (yield, sigma, histograms)
-
-### Deliverables
-- `Simulator::run_sweep()` API with thread pool
-- Python integration: `neospice.monte_carlo("circuit.cir", params, n=10000)`
-- Automatic detection of optimal thread count
+The completed [simulation workflows goal](simulation-workflows-goal.md) covered
+parallel studies, adjoint sensitivity, incremental re-simulation and WebAssembly,
+in that order; historical phase numbers below are retained for reference.
 
 ---
 
-## Phase 3: WebAssembly (WASM) Build
+## Phase 3: WebAssembly (WASM) — Initial browser API implemented
 
-**Priority: Medium**
+An Emscripten 6.0.11 CMake target produces a WASM module, ES-module wrapper,
+TypeScript declarations and a Worker-based circuit editor with resistor tuning.
+DC/AC/transient, supported adjoint gradients and incremental solves are exposed.
+Node and headless Chrome smoke tests have run locally; the new CI job is
+configured but remote execution is not yet verified.
 
-Compile neospice to WebAssembly for browser-based circuit simulation with no
-install. The core is pure C++ with no OS dependencies — Emscripten-friendly.
-
-### Goals
-- `neospice.wasm` + JS wrapper for browser use
-- Sub-second simulation of moderate circuits (50–200 nodes) in the browser
-- Integration-ready for web-based EDA tools and educational platforms
-
-### Deliverables
-- Emscripten build target in CMake
-- JavaScript/TypeScript API wrapper
-- Demo web page with interactive circuit editor
+See [WebAssembly](webassembly.md) for build commands and validation. This is a
+single-threaded browser module; parallel batches and LAPACK pole-zero analysis
+are excluded. Sub-second simulation targets remain workload-dependent goals,
+not established performance claims.
 
 ---
 
-## Phase 4: Sensitivity & Gradient Computation
+## Phase 4: Sensitivity & Gradient Computation — Initial API implemented
 
-**Priority: Medium**
+`Simulator::sensitivity()` computes DC adjoint Jacobians for nominal R/C/L and
+independent-source DC values, including nonlinear-circuit operating-point
+linearization. `sensitivity_ac()` supplies complex AC gradients for linear
+circuits, including R/C/uncoupled-L and independent-source magnitude/phase.
+One transpose solve is required per output (per frequency for AC).
 
-An adjoint sensitivity implementation is a future proposal. neospice currently
-perturbs resistor and independent-source DC values and repeats DC solves.
-An adjoint approach could reduce the solve count for many parameters and one
-output, but still requires parameter-derivative assembly and validation. Do not
-treat the proposed method or its performance as an implemented paper claim.
-
-### Goals
-- Adjoint method for DC and AC sensitivity
-- Efficient gradient of any output w.r.t. all component values in O(1) extra solves
-- Integration with Python optimization frameworks (SciPy, Optuna, PyTorch)
-
-### Deliverables
-- `Simulator::sensitivity()` API returning Jacobian matrices
-- Automatic differentiation through the device evaluation chain
-- Gradient-based circuit optimization examples
+[Adjoint gradients](adjoint-gradients.md) documents shapes, supported parameters,
+failure handling and Python optimization use. Semiconductor model-parameter
+AD, nonlinear bias-dependent AC gradients and coupled-inductor AC derivatives
+remain future work and are explicitly rejected. Existing `.sens` is unchanged.
 
 ---
 
-## Phase 5: Incremental Re-simulation
+## Phase 5: Incremental Re-simulation — Initial API implemented
 
-**Priority: Medium**
+`Circuit::update_param()` validates primary-value updates and invalidates bias
+and temperature preparation. `Simulator::re_solve()` and `re_solve_ac()` retain
+per-circuit symbolic factorization and workspaces. Linear DC and AC reuse
+numeric refactorization; nonlinear DC preserves normal convergence startup and
+fallbacks. Cache ownership, resets and counters are public and tested.
 
-When a component value changes, avoid full re-solve. The NeoSolver refactorize path
-already supports partial matrix updates — exploit this for interactive workflows.
-
-### Goals
-- Symbolic factorization cached across runs; only numeric refactorize on value change
-- Hot-path for single-parameter tweaks: update affected matrix entries, refactorize, solve
-- Target: <1ms for re-simulation of a 100-node circuit after a single component change
-
-### Deliverables
-- `Circuit::update_param()` + `Simulator::re_solve()` API
-- Incremental AC sweep (re-solve only at frequencies where the change is significant)
-- GUI integration example (slider-driven component tuning)
+[Incremental simulation](incremental-simulation.md) documents the workflow.
+All requested AC frequencies are recomputed. Partial restamping, approximate
+frequency skipping and incremental transient resume remain future work.
+Sub-millisecond latency and speedup targets are not yet measured claims.
 
 ---
 
@@ -382,11 +364,11 @@ symbolic re-analysis.
 
 ```cpp
 auto ckt = sim.load("amp.cir");
-auto baseline = sim.run_ac(ckt, DEC, 10, 1, 100e6);
+auto baseline = sim.re_solve_ac(ckt, DEC, 10, 1, 100e6);
 
 ckt.set_param("r1", 2.2e3);
 ckt.set_param("c1", 47e-12);
-auto tweaked = sim.run_ac(ckt, DEC, 10, 1, 100e6);
+auto tweaked = sim.re_solve_ac(ckt, DEC, 10, 1, 100e6);
 ```
 
 ### Streaming / Callback Results

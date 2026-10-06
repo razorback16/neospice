@@ -11,6 +11,8 @@ See NOTICE and CREDITS.md for full attribution.
 **********/
 
 #include "core/dc.hpp"
+#include "core/analysis_cache.hpp"
+#include <cstdlib>
 #include "core/newton.hpp"
 #include "core/convergence.hpp"
 #include "core/neo_solver.hpp"
@@ -61,7 +63,7 @@ struct DiagonalGminCleanup {
 };
 } // namespace
 
-DCResult solve_dc(Circuit& ckt) {
+static DCResult solve_dc_impl(Circuit& ckt, AnalysisCache* reuse) {
     auto t_start = std::chrono::steady_clock::now();
     DiagonalGminCleanup diagonal_cleanup{ckt.options};
     ckt.clear_operating_point();
@@ -92,8 +94,26 @@ DCResult solve_dc(Circuit& ckt) {
     }
 
     // 2. Create solver and perform symbolic analysis
-    auto solver = make_solver(ckt.num_vars(), ckt.is_linear());
-    solver->symbolic(ckt.pattern());
+    std::unique_ptr<ISolver> owned_solver;
+    ISolver* solver;
+    if (reuse) {
+        const auto env = [](const char* name) { const char* value=std::getenv(name); return value ? std::string(value) : std::string{}; };
+        auto policy=env("NEOSPICE_SOLVER")+"/"+env("NEOSPICE_FORCE_AMDLU");
+        if (!reuse->dc_solver || reuse->dc_policy != policy) {
+            reuse->dc_solver=make_solver(ckt.num_vars(),ckt.is_linear());
+            reuse->dc_solver->symbolic(ckt.pattern());
+            reuse->dc_workspace=std::make_unique<NewtonWorkspace>(ckt.pattern());
+            reuse->dc_policy=policy;
+            reuse->dc_ready=false;
+            ++reuse->statistics.dc_symbolic_analyses;
+        }
+        solver=reuse->dc_solver.get();
+        ++reuse->statistics.dc_runs;
+    } else {
+        owned_solver=make_solver(ckt.num_vars(),ckt.is_linear());
+        owned_solver->symbolic(ckt.pattern());
+        solver=owned_solver.get();
+    }
 
     // Publish SimOptions for BSIM4v7Device (and any future state-storing
     // device) via the same integrator_ctx channel used for CKTmode/ag.
@@ -112,10 +132,14 @@ DCResult solve_dc(Circuit& ckt) {
     SimStatus sim_status;
 
     // 3. Try newton_solve first (initial junction guess mode)
-    ckt.integrator_ctx.mode = MODEDCOP_BIT | MODEINITJCT_BIT;
+    ckt.integrator_ctx.mode = MODEDCOP_BIT |
+        ((reuse && reuse->dc_ready && ckt.is_linear()) ? MODEINITFLOAT_BIT : MODEINITJCT_BIT);
     NewtonResult result;
     try {
-        result = newton_solve(ckt, *solver, solution, direct_attempt_options(ckt.options));
+        if (reuse)
+            result = newton_solve(ckt,*solver,solution,direct_attempt_options(ckt.options),*reuse->dc_workspace);
+        else
+            result = newton_solve(ckt, *solver, solution, direct_attempt_options(ckt.options));
     } catch (const std::runtime_error& e) {
         result.converged = false;
         if (ckt.options.verbose)
@@ -457,6 +481,22 @@ DCResult solve_dc(Circuit& ckt) {
     dc_result.status = sim_status;
 
     return dc_result;
+}
+
+DCResult solve_dc(Circuit& ckt) { return solve_dc_impl(ckt,nullptr); }
+
+DCResult re_solve_dc(Circuit& ckt) {
+    auto& cache=ckt.analysis_cache();
+    try {
+        auto result=solve_dc_impl(ckt,&cache);
+        cache.dc_ready=result.status.converged;
+        if (!cache.dc_ready) cache.dc_solver.reset();
+        return result;
+    } catch (...) {
+        cache.dc_ready=false;
+        cache.dc_solver.reset();
+        throw;
+    }
 }
 
 // ---------------------------------------------------------------------------

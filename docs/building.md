@@ -133,3 +133,10 @@ reject automatic generation. JFET level 1 is a native implementation without a
 `jfet.yaml` migration descriptor; `jfet2.yaml` covers the migrated level 2 device.
 The descriptor suite checks all 18 automatic migration descriptors and both
 manual metadata files.
+
+## Browser / WebAssembly
+
+The [Emscripten build](webassembly.md) uses a separate build directory and does
+not require native OpenBLAS, SLEEF, libngspice or OpenMP. Build with Emscripten
+6.0.11 using `emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release`.
+The JS/TypeScript API, demo and validation commands are documented there.

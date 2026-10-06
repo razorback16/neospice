@@ -88,7 +88,7 @@ using namespace Shim;
 #include "hsmhvevalenv.hpp"
 
 /* local variables used in macro functions */
-static double TMF0 , TMF1 , TMF2 , TMF3 ;
+static thread_local double TMF0 , TMF1 , TMF2 , TMF3 ;
 
 /*===========================================================*
 * pow

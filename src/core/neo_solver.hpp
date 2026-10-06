@@ -23,6 +23,7 @@ public:
                  double diag_gmin = 0.0) override;
     bool refactorize(const NumericMatrix& mat, double diag_gmin = 0.0) override;
     void solve(std::vector<double>& rhs) override;
+    void solve_transposed(std::vector<double>& rhs);
     void numeric_complex(const SparsityPattern& pattern,
                          const std::vector<double>& ax) override;
     bool refactorize_complex(const std::vector<double>& ax) override;

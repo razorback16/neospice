@@ -184,4 +184,6 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
                   int npoints, double fstart, double fstop,
                   const ACOptions& opts);
 
+ACResult re_solve_ac(Circuit&, ACMode, int, double, double);
+
 } // namespace neospice

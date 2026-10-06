@@ -78,6 +78,19 @@ DCResult Simulator::run_dc(Circuit& ckt) {
     return result;
 }
 
+DCResult Simulator::re_solve(Circuit& ckt) {
+    ckt.finalize_if_needed();
+    auto result = neospice::re_solve_dc(ckt);
+    apply_save_filter(result,ckt.save_signals);
+    return result;
+}
+ACResult Simulator::re_solve_ac(Circuit& ckt, ACMode mode, int npoints, double fstart, double fstop) {
+    ckt.finalize_if_needed();
+    auto result = neospice::re_solve_ac(ckt,mode,npoints,fstart,fstop);
+    apply_save_filter(result,ckt.save_signals);
+    return result;
+}
+
 DCSweepResult Simulator::run_dc_sweep(Circuit& ckt,
                                       const std::vector<DCSweepParam>& params) {
     ckt.finalize_if_needed();
@@ -135,6 +148,18 @@ TFResult Simulator::run_tf(Circuit& ckt, const std::string& output_var,
 SensResult Simulator::run_sens(Circuit& ckt, const std::string& output_var) {
     ckt.finalize_if_needed();
     return solve_sens(ckt, output_var);
+}
+
+GradientResult Simulator::sensitivity(Circuit& ckt, const std::vector<std::string>& outputs,
+                                      const std::vector<std::string>& parameters) {
+    ckt.finalize_if_needed();
+    return solve_gradient(ckt, outputs, parameters);
+}
+
+ACGradientResult Simulator::sensitivity_ac(Circuit& ckt, const std::vector<std::string>& outputs,
+    const std::vector<std::string>& parameters, const std::vector<double>& frequencies) {
+    ckt.finalize_if_needed();
+    return solve_ac_gradient(ckt, outputs, parameters, frequencies);
 }
 
 SimulationResult Simulator::run(Circuit& ckt) {

@@ -20,6 +20,7 @@ using namespace neospice;
 NAMESPACE_BEGIN(NB_NAMESPACE)
 NAMESPACE_BEGIN(detail)
 template <> struct is_copy_constructible<SimulationResult> : std::false_type {};
+template <> struct is_copy_constructible<SweepResult> : std::false_type {};
 template <> struct is_copy_constructible<StepResult>       : std::false_type {};
 NAMESPACE_END(detail)
 NAMESPACE_END(NB_NAMESPACE)
@@ -154,6 +155,9 @@ NB_MODULE(_core, m) {
             return c.device_info(name);
         })
         .def("set_param", &Circuit::set_param)
+        .def("update_param", &Circuit::update_param)
+        .def("clear_reuse_cache", &Circuit::clear_reuse_cache)
+        .def("reuse_statistics", &Circuit::reuse_statistics)
         .def("R", [](Circuit& c, const std::string& name,
                      const std::string& n1, const std::string& n2, double val) -> int {
             return static_cast<int32_t>(c.R(name, c.node(n1), c.node(n2), val));
@@ -251,12 +255,86 @@ NB_MODULE(_core, m) {
         .def_ro("nodes", &DeviceInfo::nodes)
         .def_ro("value", &DeviceInfo::value);
 
+    nb::class_<SweepPoint>(m, "SweepPoint")
+        .def(nb::init<>())
+        .def_rw("parameters", &SweepPoint::parameters)
+        .def_rw("device_values", &SweepPoint::device_values)
+        .def_rw("temperature_celsius", &SweepPoint::temperature_celsius);
+    nb::class_<SweepOptions>(m, "SweepOptions")
+        .def(nb::init<>())
+        .def_rw("workers", &SweepOptions::workers)
+        .def_rw("seed", &SweepOptions::seed);
+    nb::class_<SweepSample>(m, "SweepSample")
+        .def_ro("point", &SweepSample::point)
+        .def_ro("error", &SweepSample::error)
+        .def_prop_ro("result", [](SweepSample& sample) -> SimulationResult* {
+            return sample.result ? &*sample.result : nullptr;
+        }, nb::rv_policy::reference_internal);
+    nb::class_<SweepResult>(m, "SweepResult")
+        .def_prop_ro("samples", [](nb::object owner) {
+            auto& batch = nb::cast<SweepResult&>(owner);
+            nb::list samples;
+            for (auto& sample : batch.samples)
+                samples.append(nb::cast(&sample, nb::rv_policy::reference_internal, owner));
+            return samples;
+        })
+        .def_ro("workers_used", &SweepResult::workers_used);
+    nb::enum_<VariationDistribution>(m, "VariationDistribution")
+        .value("Gaussian", VariationDistribution::Gaussian)
+        .value("Uniform", VariationDistribution::Uniform);
+    nb::class_<ParameterVariation>(m, "ParameterVariation")
+        .def(nb::init<>())
+        .def_rw("parameter", &ParameterVariation::parameter)
+        .def_rw("nominal", &ParameterVariation::nominal)
+        .def_rw("spread", &ParameterVariation::spread)
+        .def_rw("distribution", &ParameterVariation::distribution);
+    nb::class_<MonteCarloOptions>(m, "MonteCarloOptions")
+        .def(nb::init<>())
+        .def_rw("samples", &MonteCarloOptions::samples)
+        .def_rw("execution", &MonteCarloOptions::execution)
+        .def_rw("correlation", &MonteCarloOptions::correlation);
+    nb::class_<SampleStatistics>(m, "SampleStatistics")
+        .def_ro("count", &SampleStatistics::count)
+        .def_ro("mean", &SampleStatistics::mean)
+        .def_ro("standard_deviation", &SampleStatistics::standard_deviation)
+        .def_ro("minimum", &SampleStatistics::minimum)
+        .def_ro("maximum", &SampleStatistics::maximum)
+        .def_ro("yield_fraction", &SampleStatistics::yield)
+        .def_ro("histogram", &SampleStatistics::histogram)
+        .def_ro("bin_edges", &SampleStatistics::bin_edges);
+    m.def("summarize_samples", &summarize_samples,
+          nb::arg("values"), nb::arg("lower"), nb::arg("upper"), nb::arg("bins") = 10);
+
+    nb::class_<GradientResult>(m, "GradientResult")
+        .def_ro("outputs", &GradientResult::outputs)
+        .def_ro("parameters", &GradientResult::parameters)
+        .def_ro("values", &GradientResult::values)
+        .def_ro("jacobian", &GradientResult::jacobian)
+        .def_ro("adjoint_solves", &GradientResult::adjoint_solves)
+        .def_ro("status", &GradientResult::status);
+    nb::class_<ACGradientResult>(m, "ACGradientResult")
+        .def_ro("outputs", &ACGradientResult::outputs)
+        .def_ro("parameters", &ACGradientResult::parameters)
+        .def_ro("frequency", &ACGradientResult::frequency)
+        .def_ro("values", &ACGradientResult::values)
+        .def_ro("jacobian", &ACGradientResult::jacobian)
+        .def_ro("adjoint_solves", &ACGradientResult::adjoint_solves)
+        .def_ro("status", &ACGradientResult::status);
+
+    nb::class_<ReuseStatistics>(m, "ReuseStatistics")
+        .def_ro("dc_symbolic_analyses", &ReuseStatistics::dc_symbolic_analyses)
+        .def_ro("ac_symbolic_analyses", &ReuseStatistics::ac_symbolic_analyses)
+        .def_ro("dc_runs", &ReuseStatistics::dc_runs)
+        .def_ro("ac_runs", &ReuseStatistics::ac_runs);
+
     // --- Simulator ---
     nb::class_<Simulator>(m, "Simulator")
         .def(nb::init<>())
         .def("load", &Simulator::load)
         .def("parse", &Simulator::parse)
         .def("run_dc", &Simulator::run_dc)
+        .def("re_solve", &Simulator::re_solve)
+        .def("re_solve_ac", &Simulator::re_solve_ac)
         .def("run_transient",
              nb::overload_cast<Circuit&, double, double>(&Simulator::run_transient))
         .def("run_transient_with_opts",
@@ -272,8 +350,18 @@ NB_MODULE(_core, m) {
         .def("run_dc_sweep", &Simulator::run_dc_sweep)
         .def("run_tf", &Simulator::run_tf)
         .def("run_sens", &Simulator::run_sens)
+        .def("sensitivity", &Simulator::sensitivity, nb::arg("circuit"), nb::arg("outputs"),
+             nb::arg("parameters") = std::vector<std::string>{})
+        .def("sensitivity_ac", &Simulator::sensitivity_ac, nb::arg("circuit"), nb::arg("outputs"),
+             nb::arg("parameters"), nb::arg("frequencies"))
         .def("run", &Simulator::run)
-        .def("run_step_sweep", &Simulator::run_step_sweep);
+        .def("run_step_sweep", &Simulator::run_step_sweep)
+        .def("run_sweep", &Simulator::run_sweep, nb::arg("netlist"), nb::arg("points"),
+             nb::arg("options") = SweepOptions{}, nb::arg("from_file") = false,
+             nb::call_guard<nb::gil_scoped_release>())
+        .def("monte_carlo", &Simulator::monte_carlo, nb::arg("netlist"), nb::arg("variations"),
+             nb::arg("options") = MonteCarloOptions{}, nb::arg("from_file") = false,
+             nb::call_guard<nb::gil_scoped_release>());
 
     // --- DCResult ---
     nb::class_<DCResult>(m, "DCResult")

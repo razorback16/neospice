@@ -1777,7 +1777,7 @@ line755: /* standard entry if HSMHVevaluate is bypassed */
           !(ckt->CKTmode & MODEINITFIX) && !(ckt->CKTmode & MODEINITJCT))
           showPhysVal = 1;
         if (model->HSMHV_show_Given && showPhysVal && isConv) {
-          static int isFirst = 1;
+          static thread_local int isFirst = 1;
           if (vds != vds_pre)
             ShowPhysVals(here, model, isFirst, vds_pre, vgs, vbs, vgd, vbd, vgb);
           else

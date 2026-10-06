@@ -38,8 +38,6 @@ using namespace Shim;
 #define Meter2Micron 1.0e6
 #define EPS0 8.85418e-12
 
-double epsrox, toxe, epssub;
-double NchMax; /* v4.4  */
 
 int
 B4SOIsetup(
@@ -48,6 +46,8 @@ B4SOIModel *inModel,
 Shim::Ckt *ckt,
 int *states)
 {
+double epsrox, toxe, epssub;
+double NchMax; /* v4.4  */
 B4SOIModel *model = inModel;
 B4SOIInstance *here;
 int error;

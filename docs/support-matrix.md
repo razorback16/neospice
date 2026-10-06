@@ -51,6 +51,7 @@ claim and so contribute to no cell:
 
 - `tests/framework/ngspice_runner.cpp`
 - `tests/unit/test_dc_sweep.cpp`
+- `tests/unit/test_gradient.cpp`
 - `tests/unit/test_kicad_lm358_ns.cpp`
 - `tests/unit/test_kicad_opa1632.cpp`
 - `tests/unit/test_ngspice_compare.cpp`
@@ -58,6 +59,7 @@ claim and so contribute to no cell:
 - `tests/unit/test_noise_flicker.cpp`
 - `tests/unit/test_noise_temp.cpp`
 - `tests/unit/test_paired_measurement.cpp`
+- `tests/unit/test_parallel_sweep.cpp`
 - `tests/unit/test_rff70n06.cpp`
 - `tests/unit/test_ths4131.cpp`
 

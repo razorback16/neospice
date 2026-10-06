@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -38,6 +39,8 @@ struct ParseState {
 
     // Subcircuit definitions (reference to parser's map)
     std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs;
+
+    std::map<std::string, double> parameter_overrides;
 
     // Expression/param state
     std::unordered_map<std::string, FuncDef> func_defs;

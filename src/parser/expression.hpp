@@ -1,10 +1,14 @@
 #pragma once
 #include <string>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 #include <utility>
 
 namespace neospice {
+
+/// Reset the current thread's expression RNG and cached distribution state.
+void seed_expression_rng(std::uint64_t seed);
 
 /// A user-defined .func definition: name, formal parameters, and body.
 struct FuncDef {

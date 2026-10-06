@@ -1,3 +1,4 @@
+#include <mutex>
 /**** BSIM4.7.0 Released by Darsen Lu 04/08/2011 ****/
 
 /**********
@@ -39,6 +40,8 @@ BSIM4v7Model *model,
 BSIM4v7Instance *here,
 Shim::Ckt *ckt)
 {
+    static std::mutex log_mutex;
+    const std::lock_guard<std::mutex> log_guard(log_mutex);
 struct bsim4SizeDependParam *pParam;
 int Fatal_Flag = 0;
 FILE *fplog;

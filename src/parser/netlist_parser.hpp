@@ -14,6 +14,9 @@ public:
     Circuit parse(const std::string& netlist);
     Circuit parse_file(const std::string& filepath);
 
+    void set_parameter_overrides(const std::map<std::string, double>& values) {
+        parameter_overrides_ = values;
+    }
     void set_dialect(SpiceDialect d) { dialect_ = d; }
     SpiceDialect dialect() const { return dialect_; }
 
@@ -51,6 +54,7 @@ public:
         const std::unordered_map<std::string, std::string>& instance_params = {});
 
 private:
+    std::map<std::string, double> parameter_overrides_;
     SpiceDialect dialect_ = SpiceDialect::AUTO;
     std::optional<bool> force_pspice_compat_;  // nullopt = derive from dialect_
     std::unordered_map<std::string, SubcircuitDef> subcircuit_defs_;

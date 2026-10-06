@@ -318,7 +318,7 @@ def generate_shim_cpp(desc: _Desc) -> str:
 
     # --- CKTmkVolt ---------------------------------------------------------
     parts.append("\n")
-    parts.append("static CKTnode s_tmp_node_;\n")
+    parts.append("static thread_local CKTnode s_tmp_node_;\n")
     parts.append("\n")
     parts.append("int CKTmkVolt(Ckt *ckt, CKTnode **node_out,\n")
     parts.append("              const char * /*basename*/, const char *suffix) {\n")

@@ -15,6 +15,12 @@ foreach(_cmake_file IN LISTS _device_dirs)
 endforeach()
 set(NEOSPICE_DEVICE_NAMES "${NEOSPICE_DEVICE_NAMES}" PARENT_SCOPE)
 
+if(EMSCRIPTEN)
+    set(_PZ_SOURCE core/pz_unavailable.cpp)
+else()
+    set(_PZ_SOURCE core/pz.cpp)
+endif()
+
 add_library(neospice_lib
     core/types.cpp
     core/matrix.cpp
@@ -37,10 +43,11 @@ add_library(neospice_lib
     core/topology.cpp
     core/tf.cpp
     core/sens.cpp
+    core/gradient.cpp
     core/transient.cpp
     core/ac.cpp
     core/noise.cpp
-    core/pz.cpp
+    ${_PZ_SOURCE}
     core/fourier.cpp
     core/measure.cpp
     core/timestep.cpp
@@ -73,6 +80,7 @@ add_library(neospice_lib
     parser/subcircuit_expand.cpp
     parser/netlist_parser.cpp
     api/neospice.cpp
+    api/sweep.cpp
     api/circuit_typed.cpp
     api/circuit_include.cpp
     api/measure_utils.cpp
@@ -86,15 +94,18 @@ target_include_directories(neospice_lib PUBLIC
     ${PROJECT_SOURCE_DIR}/include
 )
 
+if(NOT EMSCRIPTEN)
 target_include_directories(neospice_lib PRIVATE
     ${SLEEF_INCLUDE_DIR}
 )
 
 target_link_libraries(neospice_lib PUBLIC
+    Threads::Threads
     PkgConfig::OPENBLAS
     ${SLEEF_LIBRARY}
 )
 
 if(OpenMP_CXX_FOUND)
     target_link_libraries(neospice_lib PUBLIC OpenMP::OpenMP_CXX)
+endif()
 endif()

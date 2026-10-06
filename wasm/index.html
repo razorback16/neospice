@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>neospice · Circuit lab</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#e8edf4;background:#101723;color-scheme:dark}*{box-sizing:border-box}body{max-width:1180px;margin:auto;padding:32px}header{border-bottom:1px solid #344155;margin-bottom:24px;padding-bottom:24px}h1{font-size:32px;margin:8px 0}p{color:#a9b8cb;line-height:1.5}main{display:grid;grid-template-columns:1fr 1.2fr;gap:24px}section{background:#182333;border:1px solid #344155;border-radius:14px;padding:22px}label{display:block;font-size:14px;margin:16px 0 7px}textarea,input,select,button{font:inherit}textarea{width:100%;min-height:325px;resize:vertical;padding:16px;border:1px solid #41516a;border-radius:8px;background:#101723;font-family:monospace;font-size:14px;line-height:1.6}input,select{padding:8px;border:1px solid #41516a;border-radius:6px;max-width:100%}input[type=range]{width:100%;padding:0;accent-color:#54d9bb}button{cursor:pointer;border:0;border-radius:7px;padding:10px 16px;background:#54d9bb;color:#112b26;font-weight:650}button.secondary{background:#344155;color:#e8edf4}.controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.controls label{margin-top:12px}#state{min-height:48px;font-size:14px;color:#a9b8cb;overflow-wrap:anywhere}#state.error{color:#ffb3aa}#reading{font-size:28px;min-height:40px;margin:16px 0}canvas{width:100%;height:300px;background:#101723;border-radius:8px}small{color:#a9b8cb}button:disabled{opacity:.5;cursor:wait}footer{margin-top:24px;font-size:13px;color:#a9b8cb}@media(max-width:800px){body{padding:16px}main{grid-template-columns:1fr}}
+</style>
+<header><small>NEOSPICE / BROWSER CIRCUIT LAB</small><h1>Simulate. Adjust. Explore.</h1><p>Edit a SPICE circuit and solve it locally in your browser. No netlist is uploaded.</p></header>
+<main>
+<section><label for="netlist">Circuit netlist</label><textarea id="netlist" spellcheck="false">RC low-pass filter
+V1 in 0 DC 1 AC 1 PULSE(0 1 0 1u 1u 20m 40m)
+R1 in out 1k
+R2 out 0 10k
+C1 out 0 1u
+.op
+.end
+</textarea>
+<div class="controls"><div><label for="mode">Analysis</label><select id="mode"><option value="dc">DC operating point</option><option value="ac">AC · 1 Hz to 100 kHz</option><option value="transient">Transient · 10 ms</option></select></div><button id="run">Run simulation</button><button id="cancel" class="secondary">Reset worker</button></div>
+<p id="state" role="status" aria-live="polite">Ready to run. The simulation runs in a background worker.</p>
+</section>
+<section><label for="signal">Output node</label><input id="signal" value="out" aria-label="Output node">
+<div id="reading">—</div><canvas id="plot" width="640" height="330" aria-label="Simulation result plot"></canvas>
+<div class="controls"><div><label for="parameter">Component to tune</label><input id="parameter" value="r1"></div><output id="parameter-value">1000 Ω</output></div>
+<label for="slider">Resistance · 10 Ω to 10 kΩ</label><input id="slider" type="range" min="10" max="10000" step="10" value="1000" disabled>
+<small>The slider updates one resistor on the current circuit. AC recomputes the full frequency grid.</small>
+</section></main>
+<footer>Inline model and subcircuit definitions are supported. External includes, parallel batches and pole-zero analysis are unavailable in this build.</footer>
+<script type="module" src="./demo.mjs"></script>
+</html>

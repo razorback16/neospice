@@ -20,6 +20,7 @@ from neospice._core import (  # noqa: F401
     PZResult,
     PZTransferType,
     PZType,
+    GradientResult, ACGradientResult, ReuseStatistics,
     SensEntry,
     SensResult,
     SimulatorOptions,
@@ -29,6 +30,9 @@ from neospice._core import (  # noqa: F401
     SinSpec,
     SourceSpec,
     StepResult,
+    SweepPoint, SweepOptions, SweepSample, SweepResult,
+    VariationDistribution, ParameterVariation, MonteCarloOptions,
+    SampleStatistics, summarize_samples,
     TFResult,
     TransientOptions,
     TransientResult,
@@ -142,3 +146,56 @@ def run(netlist: str, **opts: Any) -> SimulationResult:
     ckt = _load_or_parse(netlist)
     _apply_opts(ckt, opts)
     return sim.run(ckt)
+
+
+def sweep(netlist: str, points: list[dict[str, float] | SweepPoint], *,
+          workers: int = 0, seed: int = 0) -> SweepResult:
+    """Run ordered independent jobs. Dicts override declared top-level .param values.
+
+    Use SweepPoint for device values and Celsius temperature corners.
+    Each sample retains its error; callers must check errors before aggregation.
+    """
+    converted = []
+    for point in points:
+        if isinstance(point, SweepPoint):
+            converted.append(point)
+        else:
+            item = SweepPoint()
+            item.parameters = point
+            converted.append(item)
+    options = SweepOptions()
+    options.workers, options.seed = workers, seed
+    return Simulator().run_sweep(netlist, converted, options, os.path.isfile(netlist))
+
+
+def monte_carlo(netlist: str, params: list[ParameterVariation], *, n: int = 100,
+                seed: int = 0, workers: int = 0,
+                correlation: list[list[float]] | None = None) -> SweepResult:
+    """Seeded Gaussian/uniform top-level parameter variations.
+
+    Spread is absolute sigma for Gaussian, half-width for uniform. Correlation
+    requires Gaussian variations. Sampling is stable across worker counts on
+    the same C++ standard-library implementation.
+    """
+    options = MonteCarloOptions()
+    options.samples = n
+    options.execution.seed, options.execution.workers = seed, workers
+    if correlation is not None:
+        options.correlation = correlation
+    return Simulator().monte_carlo(netlist, params, options, os.path.isfile(netlist))
+
+
+def sensitivity(netlist: str, outputs: list[str], parameters: list[str] | None = None,
+                **opts: Any) -> GradientResult:
+    """DC adjoint Jacobian [output][parameter] for R/C/L and source DC values."""
+    circuit = _load_or_parse(netlist)
+    _apply_opts(circuit, opts)
+    return Simulator().sensitivity(circuit, outputs, parameters or [])
+
+
+def sensitivity_ac(netlist: str, outputs: list[str], parameters: list[str],
+                   frequencies: list[float], **opts: Any) -> ACGradientResult:
+    """Complex adjoint Jacobian [frequency][output][parameter], linear circuits only."""
+    circuit = _load_or_parse(netlist)
+    _apply_opts(circuit, opts)
+    return Simulator().sensitivity_ac(circuit, outputs, parameters, frequencies)

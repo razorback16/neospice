@@ -73,6 +73,8 @@ NON_DEVICE_FILES = {
     'tests/unit/test_kicad_opa1632.cpp': CIRCUIT,
     'tests/unit/test_ngspice_compare.cpp': CIRCUIT,
     'tests/unit/test_paired_measurement.cpp': CIRCUIT,
+    'tests/unit/test_parallel_sweep.cpp': CIRCUIT,
+    'tests/unit/test_gradient.cpp': CIRCUIT,
     'tests/unit/test_rff70n06.cpp': CIRCUIT,
     'tests/framework/ngspice_runner.cpp': CIRCUIT,
 }

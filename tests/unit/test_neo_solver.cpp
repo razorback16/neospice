@@ -164,6 +164,29 @@ TEST(NeoSolver, ComplexSolve1x1) {
     EXPECT_NEAR(rhs[1], -1.52, 1e-10);
 }
 
+TEST(NeoSolver, FailedComplexFactorizationInvalidatesPreviousFactors) {
+    auto pat = make_dense_pattern(1);
+    NumericMatrix mat(pat);
+    mat.add(pat.offset(0, 0), 3.0);
+    NeoSolver solver;
+    solver.symbolic(pat);
+    ASSERT_FALSE(solver.numeric(pat, mat));
+
+    EXPECT_THROW(solver.numeric_complex(pat, {0.0, 0.0}), std::runtime_error);
+    std::vector<double> rhs = {9.0};
+    std::vector<double> complex_rhs = {9.0, 0.0};
+    EXPECT_THROW(solver.solve(rhs), std::logic_error);
+    EXPECT_THROW(solver.solve_transposed(rhs), std::logic_error);
+    EXPECT_THROW(solver.solve_complex(complex_rhs), std::logic_error);
+
+    solver.numeric_complex(pat, {3.0, 0.0});
+    solver.solve_complex(complex_rhs);
+    EXPECT_NEAR(complex_rhs[0], 3.0, 1e-12);
+    EXPECT_NEAR(complex_rhs[1], 0.0, 1e-12);
+    EXPECT_THROW(solver.numeric_complex(pat, {0.0, 0.0}), std::runtime_error);
+    EXPECT_THROW(solver.solve_complex(complex_rhs), std::logic_error);
+}
+
 TEST(NeoSolver, ComplexSolve2x2) {
     // [(2+1i) (1+0i)] [x0]   [(5+3i)]
     // [(0+0i) (3+2i)] [x1] = [(6+4i)]

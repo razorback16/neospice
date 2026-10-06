@@ -148,7 +148,7 @@ using namespace Shim;
 #define C_gidl_delta 0.5
 
 /* local variables used in macro functions */
-static double TMF0 , TMF1 , TMF2 , TMF3 , TMF4 ;
+static thread_local double TMF0 , TMF1 , TMF2 , TMF3 , TMF4 ;
 
 /*===========================================================*
 * Exp() for PGD.

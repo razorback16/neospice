@@ -47,7 +47,7 @@ double tm0 , tm1 ;
 #ifdef PARAMOS_TIME
 #include <time.h>
 double vsum ;
-static double vsum0 = 1.0e5 ;
+static thread_local double vsum0 = 1.0e5 ;
 #endif
 #endif
 
@@ -728,7 +728,7 @@ tm0 = gtodsecld() ;
       /* print all outputs ------------AA */
 
       if ( model->HSM2_info >= 3 ) { /* physical valiables vs bias */
-	static int isFirst = 1;
+	static thread_local int isFirst = 1;
 	if (isFirst) {
 	  printf("# vbs vds vgs cggb cgdb cgsb cbgb cbdb cbsb cdgb cddb cdsb\n");
 #ifndef USE_OMP
@@ -796,7 +796,7 @@ tm0 = gtodsecld() ;
 	!(ckt->CKTmode & MODEINITFIX) && !(ckt->CKTmode & MODEINITJCT)) 
       showPhysVal = 1;
     if (model->HSM2_show_Given && showPhysVal && isConv) {
-      static int isFirst = 1;
+      static thread_local int isFirst = 1;
       if (vds != vds_pre) 
 	ShowPhysVals(here, model, isFirst, vds_pre, vgs, vbs, vgd, vbd, vgb);
       else 

@@ -1,5 +1,6 @@
 #pragma once
 #include "core/types.hpp"
+#include "core/reuse_statistics.hpp"
 #include "core/matrix.hpp"
 #include "core/pz.hpp"
 #include "devices/device.hpp"
@@ -16,6 +17,8 @@ namespace neospice {
 
 // Forward declaration for DefinitionSet (defined in parser/parse_state.hpp)
 struct DefinitionSet;
+struct AnalysisCache;
+struct ReuseStatistics;
 
 struct DCSweepParam {
     std::string source_name;
@@ -330,6 +333,12 @@ public:
     Device* find_device_ptr(const std::string& name);
     const Device* find_device_ptr(const std::string& name) const;
     bool set_param(const std::string& device_name, double value);
+    // Checked primary-value update; retains topology and reusable solvers.
+    void update_param(const std::string& device_name, double value);
+    void clear_reuse_cache();
+    ReuseStatistics reuse_statistics() const;
+    AnalysisCache& analysis_cache(); // analysis-engine workspace, not shared across threads
+
 
     // Handle-based introspection
     NodeId find_node(std::string_view name) const;
@@ -400,6 +409,7 @@ public:
                                std::string name, std::string model_type);
 
 private:
+    std::unique_ptr<AnalysisCache> analysis_cache_;
     std::optional<std::pair<double, double>> prepared_temperature_;
     std::optional<std::pair<double, double>> operating_point_temperature_;
     void rebind_device_states();  // re-invoke set_state_ptrs on every device

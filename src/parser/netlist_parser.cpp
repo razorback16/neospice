@@ -1,4 +1,5 @@
 #include "parser/netlist_parser.hpp"
+#include <charconv>
 #include "parser/tokenizer.hpp"
 #include "parser/subcircuit.hpp"
 #include "parser/subcircuit_expand.hpp"
@@ -377,6 +378,12 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
                                    const std::unordered_map<std::string, double>* params = nullptr) {
     ParsedSourceSpec spec;
     size_t i = start_idx;
+    const auto source_value = [&](const std::string& token) {
+        if (params && (token.starts_with("{") || token.starts_with("'") ||
+                       params->contains(to_lower(token))))
+            return eval_expression(token, *params, true);
+        return parse_spice_number(token);
+    };
 
     while (i < tokens.size()) {
         std::string lower = to_lower(tokens[i]);
@@ -384,7 +391,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
         if (lower == "dc") {
             ++i;
             if (i < tokens.size()) {
-                try { spec.dc_val = parse_spice_number(tokens[i]); }
+                try { spec.dc_val = source_value(tokens[i]); }
                 catch (...) { spec.dc_val = 0; }
                 spec.dc_given = true;
                 ++i;
@@ -392,7 +399,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
         } else if (lower == "ac") {
             ++i;
             if (i < tokens.size()) {
-                try { spec.ac_mag = parse_spice_number(tokens[i]); }
+                try { spec.ac_mag = source_value(tokens[i]); }
                 catch (...) { spec.ac_mag = 0; }
                 ++i;
             }
@@ -404,7 +411,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
                     next_lower != "am" &&
                     next_lower.find('(') == std::string::npos) {
                     try {
-                        spec.ac_phase = parse_spice_number(tokens[i]);
+                        spec.ac_phase = source_value(tokens[i]);
                         ++i;
                     } catch (...) {
                         // Not a number, leave it for next iteration
@@ -470,7 +477,7 @@ ParsedSourceSpec parse_source_spec(const std::vector<std::string>& tokens, size_
             // Try to parse as a bare DC value (no "DC" keyword).
             // ngspice treats a bare leading numeric value as VSRCdcGiven=TRUE.
             try {
-                spec.dc_val = parse_spice_number(tokens[i]);
+                spec.dc_val = source_value(tokens[i]);
                 spec.dc_given = true;
                 ++i;
             } catch (...) {
@@ -651,6 +658,7 @@ void parse_func_def(const std::vector<std::string>& tokens,
 Circuit NetlistParser::parse(const std::string& netlist) {
     Circuit ckt;
     ParseState state(ckt, subcircuit_defs_);
+    state.parameter_overrides = parameter_overrides_;
 
     // Strip leading whitespace so the tokenizer's title-line detection works
     // correctly even when the netlist starts with newlines.
@@ -881,6 +889,28 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
 // ---------------------------------------------------------------------------
 // Pass 0.25: Resolve .func and .param definitions
 // ---------------------------------------------------------------------------
+static void apply_parameter_overrides(
+    std::vector<std::pair<std::string, std::string>>& raw,
+    const std::map<std::string, double>& overrides) {
+    std::set<std::string> seen;
+    for (const auto& [name, value] : overrides) {
+        if (!seen.insert(to_lower(name)).second)
+            throw std::invalid_argument("Duplicate parameter override: " + name);
+        if (!std::isfinite(value)) throw std::invalid_argument("Nonfinite parameter: " + name);
+        char buffer[64];
+        auto converted = std::to_chars(buffer, buffer + sizeof(buffer), value);
+        if (converted.ec != std::errc{}) throw std::invalid_argument("Invalid parameter: " + name);
+        bool found = false;
+        for (auto& [key, expression] : raw) {
+            if (to_lower(key) == to_lower(name)) {
+                expression.assign(buffer, converted.ptr);
+                found = true;
+            }
+        }
+        if (!found) throw std::invalid_argument("Unknown top-level parameter: " + name);
+    }
+}
+
 void NetlistParser::pass025_resolve_funcs_params(ParseState& state) {
     // Pre-collect .func definitions, expand func calls in all
     // tokens, then collect top-level .param entries so that expansion
@@ -939,6 +969,7 @@ void NetlistParser::pass025_resolve_funcs_params(ParseState& state) {
                 }
             }
         }
+        apply_parameter_overrides(pre_raw_params, state.parameter_overrides);
         if (!pre_raw_params.empty()) {
             state.global_params = resolve_params(pre_raw_params);
         }
@@ -1060,6 +1091,7 @@ void NetlistParser::pass1_collect_models_params(ParseState& state) {
     // longer resolved eagerly here. They happen on demand in ensure_model(),
     // which is invoked the first time a model is referenced by an instance.
 
+    apply_parameter_overrides(raw_params, state.parameter_overrides);
     // Resolve all .param definitions in dependency order (handles forward references)
     if (!raw_params.empty()) {
         state.params = resolve_params(raw_params);

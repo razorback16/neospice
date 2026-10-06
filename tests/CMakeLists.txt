@@ -102,8 +102,11 @@ add_executable(neospice_tests
     unit/test_ths4131.cpp
     unit/test_tf.cpp
     unit/test_sens.cpp
+    unit/test_gradient.cpp
+    unit/test_incremental.cpp
     unit/test_pz.cpp
     unit/test_step.cpp
+    unit/test_parallel_sweep.cpp
     unit/test_ringing.cpp
     unit/test_introspection.cpp
     unit/test_handles.cpp

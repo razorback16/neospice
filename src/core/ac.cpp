@@ -10,6 +10,7 @@ See NOTICE and CREDITS.md for full attribution.
 **********/
 
 #include "core/ac.hpp"
+#include "core/analysis_cache.hpp"
 #include "core/dc.hpp"
 #include "core/freq_utils.hpp"
 #include "core/newton.hpp"
@@ -54,8 +55,8 @@ static bool can_use_zero_ac_operating_point(const Circuit& ckt) {
     return true;
 }
 
-ACResult solve_ac(Circuit& ckt, ACMode mode,
-                  int npoints, double fstart, double fstop) {
+static ACResult solve_ac_impl(Circuit& ckt, ACMode mode,
+                  int npoints, double fstart, double fstop, AnalysisCache* reuse) {
     auto t_start = std::chrono::steady_clock::now();
     const int32_t n = ckt.num_vars();
     const int32_t num_nodes = ckt.num_nodes();
@@ -68,7 +69,7 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
         dc_solution = *cached_op;
     } else {
         try {
-            auto dc = solve_dc(ckt);
+            auto dc = reuse ? re_solve_dc(ckt) : solve_dc(ckt);
             if (!dc.status.converged) {
                 ACResult fail_result;
                 fail_result.status = dc.status;
@@ -140,8 +141,22 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     }
 
     // 7. Symbolic factorization on n×n pattern (reuse DC pattern)
-    auto ac_solver = std::make_unique<NeoSolver>();
-    ac_solver->symbolic(pattern);
+    std::unique_ptr<NeoSolver> owned_solver;
+    NeoSolver* ac_solver;
+    if (reuse) {
+        if (!reuse->ac_solver) {
+            reuse->ac_solver=std::make_unique<NeoSolver>();
+            reuse->ac_solver->symbolic(pattern);
+            reuse->ac_ready=false;
+            ++reuse->statistics.ac_symbolic_analyses;
+        }
+        ac_solver=reuse->ac_solver.get();
+        ++reuse->statistics.ac_runs;
+    } else {
+        owned_solver=std::make_unique<NeoSolver>();
+        owned_solver->symbolic(pattern);
+        ac_solver=owned_solver.get();
+    }
 
     // 8. Pre-compute result extraction indices (outside frequency loop)
     struct VoltageSlot {
@@ -211,11 +226,12 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
             dev->ac_stamp_freq(omega, ax, nnz, ac_rhs);
         }
 
-        if (fi == 0) {
+        if (fi == 0 && (!reuse || !reuse->ac_ready)) {
             ac_solver->numeric_complex(pattern, ax);
-        } else {
-            ac_solver->refactorize_complex(ax);
+        } else if (ac_solver->refactorize_complex(ax)) {
+            ac_solver->numeric_complex(pattern, ax);
         }
+        if (reuse) reuse->ac_ready=true;
 
         rhs_z = rhs_z_template;
         ac_solver->solve_complex(rhs_z);
@@ -245,6 +261,31 @@ ACResult solve_ac(Circuit& ckt, ACMode mode,
     ac_result.status.elapsed_seconds = std::chrono::duration<double>(t_end - t_start).count();
 
     return ac_result;
+}
+
+ACResult solve_ac(Circuit& ckt, ACMode mode, int npoints, double fstart, double fstop) {
+    return solve_ac_impl(ckt,mode,npoints,fstart,fstop,nullptr);
+}
+
+ACResult re_solve_ac(Circuit& ckt, ACMode mode, int npoints, double fstart, double fstop) {
+    auto& cache=ckt.analysis_cache();
+    try {
+        auto result=solve_ac_impl(ckt,mode,npoints,fstart,fstop,&cache);
+        if (!result.status.converged) { cache.ac_solver.reset();cache.ac_ready=false; }
+        return result;
+    } catch (const std::runtime_error& error) {
+        cache.ac_solver.reset();cache.ac_ready=false;
+        ACResult failure;
+        if (const auto* simulation = dynamic_cast<const SimulationError*>(&error))
+            failure.status = simulation->status();
+        failure.status.converged = false;
+        failure.status.warnings.push_back(error.what());
+        if (!ckt.options.no_throw) throw SimulationError(error.what(),failure.status);
+        return failure;
+    } catch (...) {
+        cache.ac_solver.reset();cache.ac_ready=false;
+        throw;
+    }
 }
 
 ACResult solve_ac(Circuit& ckt, ACMode mode,

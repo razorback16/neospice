@@ -233,6 +233,27 @@ r = parse_value("4.7k")                  # 4700.0
 
 All result vectors are returned as NumPy arrays.
 
+## Browser simulation
+
+Build `neospice.wasm` and its JavaScript module with Emscripten. The included
+Worker demo supports netlist editing, DC/AC/transient simulation and resistor
+sliders. [Build instructions, JS/TypeScript API and limits](docs/webassembly.md).
+
+## Gradients and interactive updates
+
+Use `Simulator.sensitivity()` for DC adjoint Jacobians and `sensitivity_ac()`
+for linear-circuit complex AC gradients. [Supported parameters and examples](docs/adjoint-gradients.md).
+For repeated component changes, `Circuit.update_param()` with `re_solve()` or
+`re_solve_ac()` reuses per-circuit symbolic factorization. [Incremental workflow](docs/incremental-simulation.md).
+
+## Parallel parameter studies
+
+Run independent parameter corners with `neospice.sweep()` or seeded variations
+with `neospice.monte_carlo()`. The C++ API provides `Simulator::run_sweep()` and
+`Simulator::monte_carlo()`. Results preserve job order and report per-job errors.
+See [parallel studies](docs/parallel-studies.md) for examples, correlation,
+statistics, reproducibility and concurrency limits.
+
 ## Performance
 
 The paired benchmark covers 34 fixed workloads: small circuits, amplifier
@@ -311,10 +332,10 @@ See [docs/building.md](docs/building.md) for platform-specific setup instruction
 |---|---|---|
 | — | Handle-based API redesign (NodeId/DevId, typed methods, dense results, measurements) | **Done** |
 | 1 | Python bindings (nanobind, PyPI wheels, typed construction) | **Done** |
-| 2 | Parallel parameter sweeps / Monte Carlo | Planned |
-| 3 | WebAssembly build for browser simulation | Planned |
-| 4 | Adjoint sensitivity / gradient computation | Planned |
-| 5 | Incremental re-simulation | Planned |
+| 2 | Parallel parameter sweeps / Monte Carlo | **Implemented** — [API and limits](docs/parallel-studies.md) |
+| 3 | WebAssembly build for browser simulation | **Implemented** — [build and browser API](docs/webassembly.md) |
+| 4 | Adjoint sensitivity / gradient computation | **Initial API implemented** — [scope](docs/adjoint-gradients.md) |
+| 5 | Incremental re-simulation | **Initial API implemented** — [scope](docs/incremental-simulation.md) |
 | 6 | GPU-accelerated simulation (CUDA) | Planned |
 | 7 | Extended devices (BSIM-CMG, legacy MOS) | Ongoing |
 | 8 | PWL (piecewise-linear) simulation for switching converters | Planned |

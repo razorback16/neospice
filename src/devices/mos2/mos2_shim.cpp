@@ -32,7 +32,7 @@ int Ckt::add_internal_node(const char *name) {
     return CKTinternalNodeCounter++;
 }
 
-static CKTnode s_tmp_node_;
+static thread_local CKTnode s_tmp_node_;
 
 int CKTmkVolt(Ckt *ckt, CKTnode **node_out,
               const char * /*basename*/, const char *suffix) {

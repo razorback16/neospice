@@ -1,0 +1,30 @@
+name: WebAssembly
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Emscripten SDK
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.11
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.11
+      - name: Build and test the module
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-wasm -j2
+          node tests/wasm/smoke.mjs build-wasm/wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neospice-webassembly
+          path: |
+            build-wasm/wasm/*.mjs
+            build-wasm/wasm/*.wasm
+            build-wasm/wasm/*.d.mts
+            build-wasm/wasm/index.html

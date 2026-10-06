@@ -233,6 +233,16 @@ void NeoSolver::solve(std::vector<double>& rhs) {
     }
 }
 
+void NeoSolver::solve_transposed(std::vector<double>& rhs) {
+    if (!factored_ || static_cast<int32_t>(rhs.size()) != n_)
+        throw std::logic_error("NeoSolver::solve_transposed: factorization or RHS mismatch");
+    for (int32_t i = 0; i < n_; ++i)
+        rhs_1_[i + 1] = equilibrate_ ? dc_[i] * rhs[i] : rhs[i];
+    matrix_->solve_transposed(rhs_1_.data(), sol_1_.data());
+    for (int32_t i = 0; i < n_; ++i)
+        rhs[i] = equilibrate_ ? dr_[i] * sol_1_[i + 1] : sol_1_[i + 1];
+}
+
 void NeoSolver::numeric_complex(const SparsityPattern& /*pattern*/,
                                  const std::vector<double>& ax) {
     if (!symbolized_)
@@ -240,6 +250,9 @@ void NeoSolver::numeric_complex(const SparsityPattern& /*pattern*/,
     if (static_cast<int32_t>(ax.size()) != 2 * nnz_)
         throw std::invalid_argument("NeoSolver::numeric_complex: ax size mismatch");
 
+    // Loading new values invalidates both factorization modes, even on failure.
+    factored_ = false;
+    factored_complex_ = false;
     load_complex(ax.data());
     if (!preordered_) {
         matrix_->mna_preorder();
@@ -248,6 +261,9 @@ void NeoSolver::numeric_complex(const SparsityPattern& /*pattern*/,
     auto err = matrix_->order_and_factor(nullptr, 1e-3, 1e-13, true);
     if (err == solver::SparseError::NoMemory)
         throw std::runtime_error("NeoSolver::numeric_complex: out of memory");
+    if (solver::is_fatal(err)) {
+        throw std::runtime_error("NeoSolver::numeric_complex: singular matrix");
+    }
     factored_complex_ = true;
     factored_ = false;
 }

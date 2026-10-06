@@ -808,4 +808,11 @@ std::string subst_param_names(
     return result;
 }
 
+void seed_expression_rng(std::uint64_t seed) {
+    std::seed_seq words{static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+    tls_rng.seed(words);
+    tls_normal.reset();
+    tls_uniform.reset();
+}
+
 } // namespace neospice

@@ -181,3 +181,30 @@ as a complete gradient.
 Model-language support has additional boundaries: see the
 [temperature-expression parameter table](model-card-compatibility.md#candidate-36-expression-scope).
 A supported device family does not imply every model expression or option is supported.
+
+## Parallel parameter studies
+
+Independent netlist jobs can run in a bounded worker pool through
+`Simulator::run_sweep()` / Python `sweep()`. Seeded Monte Carlo supports Gaussian
+and uniform top-level parameters, Gaussian correlation, and explicit scalar
+statistics. Each deck needs one analysis; nested `.step` is rejected. See
+[parallel studies](parallel-studies.md) for the complete contract and limits.
+
+## Gradients and incremental re-simulation
+
+The [adjoint API](adjoint-gradients.md) returns DC Jacobians for nominal R/C/L
+and independent-source DC values, and linear-circuit complex AC derivatives.
+Nonlinear AC and semiconductor model-parameter differentiation are unsupported.
+The existing `.sens` finite-difference interface remains unchanged.
+
+[Incremental DC and AC](incremental-simulation.md) retain symbolic solver state
+within one circuit, with validated value updates and cache counters. All AC
+frequencies are recomputed. There is no incremental transient resume or measured
+sub-millisecond performance guarantee.
+
+## Browser build
+
+The [WebAssembly module](webassembly.md) exposes DC, AC, transient, supported
+gradients and incremental updates through JavaScript/TypeScript. Its Worker
+demo runs entirely locally. The initial browser interface excludes external
+includes, `.step`, parallel studies and pole-zero; see its documented scope.

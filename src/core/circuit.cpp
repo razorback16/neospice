@@ -10,6 +10,8 @@ See NOTICE and CREDITS.md for full attribution.
 **********/
 
 #include "core/circuit.hpp"
+#include "core/analysis_cache.hpp"
+#include <cmath>
 #include "core/circuit_defs.hpp"  // DefinitionStore must be complete for defaulted dtor/move
 #include <algorithm>
 #include <cassert>
@@ -465,11 +467,33 @@ std::vector<std::string> Circuit::devices_at_node(const std::string& node) const
     return result;
 }
 
+void Circuit::update_param(const std::string& name, double value) {
+    if (!std::isfinite(value)) throw std::invalid_argument("Parameter must be finite: " + name);
+    auto* device = find_device_ptr(name);
+    if (!device) throw std::invalid_argument("Unknown device: " + name);
+    const auto type = device->device_type();
+    if ((type == "R" && value == 0) || (type == "L" && value <= 0) || (type == "C" && value < 0))
+        throw std::invalid_argument("Invalid passive value: " + name);
+    if (!set_param(name,value)) throw std::invalid_argument("Unsupported primary-value update: " + name);
+}
+
+AnalysisCache& Circuit::analysis_cache() {
+    if (!analysis_cache_) analysis_cache_ = std::make_unique<AnalysisCache>();
+    return *analysis_cache_;
+}
+void Circuit::clear_reuse_cache() { analysis_cache_.reset(); }
+ReuseStatistics Circuit::reuse_statistics() const {
+    return analysis_cache_ ? analysis_cache_->statistics : ReuseStatistics{};
+}
+
 bool Circuit::set_param(const std::string& device_name, double value) {
     Device* dev = find_device_ptr(device_name);
     if (!dev) return false;
     bool changed = dev->set_value(value);
-    if (changed) clear_operating_point();
+    if (changed) {
+        clear_operating_point();
+        prepared_temperature_.reset();
+    }
     return changed;
 }
 

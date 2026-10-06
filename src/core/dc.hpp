@@ -142,6 +142,7 @@ struct DCSweepResult {
 };
 
 DCResult solve_dc(Circuit& ckt);
+DCResult re_solve_dc(Circuit& ckt);
 
 DCSweepResult solve_dc_sweep(Circuit& ckt, const std::vector<DCSweepParam>& params);
 

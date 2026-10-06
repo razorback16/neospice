@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(NOT EMSCRIPTEN)
 # OpenBLAS via pkg-config
 find_package(PkgConfig REQUIRED)
 if(APPLE)
@@ -22,9 +23,19 @@ if(APPLE)
 endif()
 pkg_check_modules(OPENBLAS REQUIRED IMPORTED_TARGET openblas)
 
+endif()
+
 # ngspice is only needed for comparison tests and benchmarks, not for the
 # library, CLI, or Python bindings. Only resolve it when building tests.
-option(NEOSPICE_BUILD_TESTS "Build tests" ON)
+if(EMSCRIPTEN)
+    set(_NATIVE_DEFAULT OFF)
+else()
+    set(_NATIVE_DEFAULT ON)
+endif()
+option(NEOSPICE_BUILD_TESTS "Build tests" ${_NATIVE_DEFAULT})
+if(EMSCRIPTEN AND NEOSPICE_BUILD_TESTS)
+    message(FATAL_ERROR "Native ngspice comparison tests cannot run in a WASM build; use the browser smoke tests.")
+endif()
 if(NEOSPICE_BUILD_TESTS)
     # Prefer locally-built libngspice from scripts/build-libngspice-mac.sh
     set(_LOCAL_NGSPICE "${PROJECT_SOURCE_DIR}/third_party/libngspice")
@@ -44,12 +55,17 @@ if(NEOSPICE_BUILD_TESTS)
     endif()
 endif()
 
+if(NOT EMSCRIPTEN)
 # SLEEF
 find_path(SLEEF_INCLUDE_DIR sleef.h REQUIRED)
 find_library(SLEEF_LIBRARY NAMES sleef REQUIRED)
 
+find_package(Threads REQUIRED)
+
 # Optional OpenMP
 find_package(OpenMP)
+
+endif()
 
 add_subdirectory(src)
 
@@ -58,7 +74,7 @@ if(NEOSPICE_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-option(NEOSPICE_BUILD_CLI "Build neospice CLI executable" ON)
+option(NEOSPICE_BUILD_CLI "Build neospice CLI executable" ${_NATIVE_DEFAULT})
 if(NEOSPICE_BUILD_CLI)
     add_executable(neospice cli/main.cpp)
     target_link_libraries(neospice PRIVATE neospice_lib)
@@ -75,4 +91,18 @@ if(NEOSPICE_BUILD_PYTHON)
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
     find_package(nanobind CONFIG REQUIRED)
     add_subdirectory(python)
+endif()
+
+option(NEOSPICE_BUILD_SWEEP_STRESS "Build standalone parallel sweep race-test harness" OFF)
+if(NEOSPICE_BUILD_SWEEP_STRESS)
+    add_executable(neospice_sweep_stress tests/stress/parallel_sweep.cpp)
+    target_link_libraries(neospice_sweep_stress PRIVATE neospice_lib)
+endif()
+
+option(NEOSPICE_BUILD_WASM "Build the WebAssembly JavaScript module" ${EMSCRIPTEN})
+if(NEOSPICE_BUILD_WASM)
+    if(NOT EMSCRIPTEN)
+        message(FATAL_ERROR "Configure the WASM target with emcmake cmake.")
+    endif()
+    add_subdirectory(wasm)
 endif()
