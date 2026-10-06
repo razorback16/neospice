@@ -117,13 +117,15 @@ The [Circuit Lab](circuit-lab.md) adds a visual schematic editor with explicit
 pin/junction wiring, an analog component palette, eight editable circuit
 examples, independent SPICE text mode, light/dark themes, interactive plots and
 local project saving. Production builds support repository subpaths for GitHub
-Pages; the workflow prepares manual deployment after browser and ngspice 47
-gallery checks. Local preview and temporary tunnel scripts are included.
+Pages; [the published app](https://razorback16.github.io/neospice/) is deployed
+manually after browser and ngspice 47 gallery checks. Local preview and temporary
+tunnel scripts are included.
 
 All eight default gallery analyses pass local ngspice 47 comparisons, with the
 existing CMOS edge and oscillator contracts retained; 32 slider endpoints
-converge. Node model tests and Chromium browser tests cover the app. Remote
-Actions execution and Pages publication remain unverified until run remotely.
+converge. Node model tests and Chromium browser tests cover the app. GitHub
+Actions passed the browser and ngspice 47 gallery/probe comparisons, and the
+published Pages app was verified with all 17 browser acceptance cases.
 
 See [WebAssembly](webassembly.md) for the underlying API and build commands.
 This is a single-threaded browser module; parallel batches and LAPACK pole-zero
@@ -512,7 +514,7 @@ r = parse_value("4.7k")    # 4700.0
 | —     | Generic set_param()        | Optimization    | Medium   | Done |
 | 1     | Python bindings            | Adoption        | Medium   | Done |
 | 2     | Parallel sweeps            | Performance     | Medium   | Planned |
-| 3     | WASM + Circuit Lab         | Accessibility   | Medium   | Implemented locally |
+| 3     | WASM + Circuit Lab         | Accessibility   | Medium   | Published on GitHub Pages |
 | 4     | Sensitivity/gradients      | Optimization    | High     | Planned |
 | 5     | Incremental re-simulation  | Interactivity   | Medium   | Planned |
 | 6     | GPU acceleration           | Large circuits  | High     | Planned |

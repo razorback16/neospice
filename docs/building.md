@@ -81,10 +81,13 @@ cmake -B build -DNEOSPICE_RFF70N06_LIBRARY=/absolute/path/to/harprmos.lib
 ```
 
 Acquisition or hash failures stop configuration; they do not skip the regression.
-`RFF70N06.OriginalCorpusOperatingPoint` uses the original corpus's three
+`RFF70N06.ReferenceIsInconclusive` uses the original corpus's three
 100 kOhm terminations, external observables and PSpice compatibility mode in a
-dedicated test process. It currently fails on neospice nonconvergence and remains
-a release blocker. This is one operating-point fixture, not model certification.
+dedicated test process. The pinned ngspice 47 reference does not produce a
+converged operating point, and neospice also fails explicitly. The regression
+asserts this reference-inconclusive classification; it does not count the
+fixture as a numerical match. See [checkpoint 39](joss-progress.md#milestone-3-triage-checkpoint-39-in-progress).
+This is one operating-point fixture, not model certification.
 The library is fetched separately; its header refers to its original vendor disk
 README for licensing terms. Redistribution review remains open for the paper's
 corpus archive.

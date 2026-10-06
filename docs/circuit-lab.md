@@ -150,6 +150,8 @@ To publish an update after pushing the changes:
 The project URL is **https://razorback16.github.io/neospice/**. The repository
 uses GitHub Actions as its Pages source. Merely building or pushing does not
 publish an update; run the workflow with **deploy** selected.
+The [initial deployment](https://github.com/razorback16/neospice/actions/runs/37537274689)
+passed the browser and ngspice 47 reference jobs before publishing.
 A custom domain/root deployment needs `BASE_PATH=/` in the workflow.
 
 All runtime assets use the configured base, including the worker, wrapper and
@@ -198,6 +200,9 @@ examples, analyses, project editing and persistence, exports, errors, cancellati
 timeouts, missing WASM assets, themes, mobile layout, touch wiring, probes,
 component pickup, drag-and-drop, grid snapping and canceled placement.
 All 17 acceptance cases were also verified at the `/neospice/` path.
+All 17 were exercised on the public GitHub Pages URL as well; one initial
+asset request hit Chromium's `ERR_NETWORK_CHANGED`, and that case passed on
+retry without changes.
 The current-probe numerical check compares both reference directions in DC, AC
 and transient analyses with ngspice 47 using the existing RC fixture tolerances;
 it also checks current against Ohm's law and exact netlist restoration on removal.
