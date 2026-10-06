@@ -4,6 +4,8 @@
 [![PyPI](https://img.shields.io/pypi/v/neospice.svg)](https://pypi.org/project/neospice/)
 [![Python versions](https://img.shields.io/pypi/pyversions/neospice.svg)](https://pypi.org/project/neospice/)
 
+**[Open Circuit Lab →](https://razorback16.github.io/neospice/)** — build and simulate circuits in your browser. No installation required.
+
 neospice is an independent C++20 reimplementation of the SPICE circuit simulator. Its solver, analysis flow, and device models derive from UC Berkeley SPICE3 (BSD-licensed) and ngspice -- re-architected around a clean Device interface, native Python bindings, and an embeddable C++ API. MIT licensed; see [NOTICE](NOTICE) for full third-party attribution.
 
 It reads SPICE netlists, writes ngspice-format raw results, and pairs a self-contained Sparse 1.3-compatible solver stack and differentiated behavioral sources with an embeddable API for EDA tools, optimization loops, and notebooks.
@@ -28,6 +30,8 @@ not a submission-ready release.
 - **Corpus harness** -- a historical cohort of **34,908 KiCad operating-point fixtures**; [input freezing](docs/kicad-experiment.md) now records declaration identities and separate planned rescues. Completed ngspice 47 audits are linked from the progress tracker; declaration binding and full-model scope still need interpretation. Minimal operating-point fixtures do not certify transient, AC, or noise behavior.
 
 ## Browser Circuit Lab
+
+**[Launch Circuit Lab](https://razorback16.github.io/neospice/)**
 
 Build and simulate circuits in a visual schematic editor, or use an editable
 SPICE netlist. [Circuit Lab](docs/circuit-lab.md) includes eight interactive

@@ -5,6 +5,8 @@ editable example gallery, separate SPICE editor, and interactive DC, AC and
 transient results. Simulation runs locally in a Web Worker using the existing
 WebAssembly API. There is no simulation service or account system.
 
+**[Open Circuit Lab](https://razorback16.github.io/neospice/)** on GitHub Pages.
+
 ## Build and run
 
 Use Node **22.22.0** (or a compatible newer Node) and the pinned Emscripten
@@ -138,16 +140,16 @@ path, and uploads the `neospice-circuit-lab` artifact. A second job compares the
 actual WASM gallery results against checksum-pinned **ngspice 47** using the
 repository's native comparison functions.
 
-To publish after pushing the changes:
+To publish an update after pushing the changes:
 
 1. Set the repository's **Settings → Pages → Source** to **GitHub Actions**.
 2. Run **Actions → WebAssembly → Run workflow** on `main`, selecting **deploy**.
 3. The deploy job waits for both browser and reference checks, then publishes
    the static artifact to the `github-pages` environment.
 
-For this repository, the expected project URL is
-`https://razorback16.github.io/neospice/`. Merely building or pushing does not
-publish it. The manual deployment has not been executed as part of local setup.
+The project URL is **https://razorback16.github.io/neospice/**. The repository
+uses GitHub Actions as its Pages source. Merely building or pushing does not
+publish an update; run the workflow with **deploy** selected.
 A custom domain/root deployment needs `BASE_PATH=/` in the workflow.
 
 All runtime assets use the configured base, including the worker, wrapper and
@@ -195,7 +197,7 @@ voltage-probe attachment and validation. Browser acceptance tests cover
 examples, analyses, project editing and persistence, exports, errors, cancellation,
 timeouts, missing WASM assets, themes, mobile layout, touch wiring, probes,
 component pickup, drag-and-drop, grid snapping and canceled placement.
-The original ten acceptance cases were also verified at the `/neospice/` path.
+All 17 acceptance cases were also verified at the `/neospice/` path.
 The current-probe numerical check compares both reference directions in DC, AC
 and transient analyses with ngspice 47 using the existing RC fixture tolerances;
 it also checks current against Ohm's law and exact netlist restoration on removal.
