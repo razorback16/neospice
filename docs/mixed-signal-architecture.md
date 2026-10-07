@@ -5,39 +5,34 @@
 
 ## 1. Executive Summary
 
-This document describes the architecture for adding mixed-signal and digital behavioral simulation to neospice. The design avoids building a separate event-driven digital engine (the ngspice/XSPICE approach) and instead extends the existing analog transient solver with three complementary techniques:
+This earlier proposal extends analog transient simulation with partitioning,
+PWL digital devices, and compiled finite-state machines (FSMs).
+The [unified architecture](unified-simulation-architecture.md) extends it with
+separate SPICE, PWL, and digital partition solvers plus OSDI device loading.
+Use that later proposal for cross-mode coordination.
 
-1. **Latency-based multi-rate partitioning** — partition the circuit into weakly-coupled clusters, each advancing at its own optimal timestep
-2. **PWL analog digital models** — small digital/mixed-signal blocks modeled as piecewise-linear voltage-mode elements in the KCL matrix
-3. **Compiled FSM evaluator** — large digital blocks (state machines, controllers) compiled to native lookup functions, triggered only on clock edges
+All interfaces, paths, options, and examples below describe proposed work.
+They do not establish current API support or numerical equivalence.
 
-The result is a unified solver architecture — no separate event engine, no bridge models, no rollback bookkeeping — that is faster and simpler than the XSPICE approach while matching or exceeding its accuracy for behavioral-level mixed-signal simulation.
-
----
+1. Partition weakly coupled circuit regions and give each a local timestep.
+2. Model small digital blocks as PWL voltage-level devices.
+3. Evaluate compiled FSMs at defined clock events.
 
 ## 2. Motivation
 
 ### 2.1 Why Mixed-Signal Matters
 
-Modern analog circuits rarely exist in isolation. A switched-mode power supply has a digital controller. A PLL has a phase-frequency detector. A sensor AFE has an ADC and a digital filter. Simulating these circuits today requires either:
-
-- Replacing digital blocks with ideal sources (loses timing, loading, and feedback effects)
-- Using ngspice XSPICE (complex, slow co-simulation overhead)
-- Using commercial tools like Spectre AMS ($$$)
-
-neospice can occupy a unique position: a fast, embeddable, open simulator that handles mixed-signal natively.
+Controllers, PLLs, and sensor interfaces combine analog dynamics and digital
+state. Ideal sources can omit timing, loading, and feedback effects.
+The proposal keeps voltage-level models near analog boundaries and uses
+compiled state transitions where transistor detail is unnecessary.
 
 ### 2.2 Why Not Clone XSPICE
 
-ngspice's XSPICE approach has fundamental limitations:
-
-| Problem | Consequence |
-|---------|-------------|
-| Separate event engine takes turns with analog solver | Serialized co-simulation; synchronization overhead at every boundary |
-| 3-state digital model (0/1/X) with strength resolution | Loses analog information (ringing, supply droop, crosstalk) inside digital blocks |
-| ADC/DAC bridge models force analog breakpoints | Shatters timestep efficiency in circuits with many crossings (PLLs, sigma-deltas) |
-| Time-stamped linked lists for rollback | Memory allocation and bookkeeping overhead on every event |
-| Per-gate event propagation | O(gates) work per clock edge; no batching |
+This proposal explores a different scheduler and digital representation from
+XSPICE. It must define synchronization, rollback, logic states, and boundary
+loading explicitly. Architectural differences alone do not establish an accuracy
+or runtime advantage over ngspice 47.
 
 ### 2.3 Design Principles
 
@@ -51,34 +46,11 @@ ngspice's XSPICE approach has fundamental limitations:
 
 ## 3. Architecture Overview
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    Transient Analysis Driver                      │
-│                   (src/core/transient.cpp)                        │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │              Multi-Rate Scheduler (new)                     │  │
-│  │                                                            │  │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │  │
-│  │  │Partition 0│  │Partition 1│  │Partition 2│  │Partition 3│  │  │
-│  │  │ Analog   │  │ Analog   │  │ Digital  │  │ Idle     │  │  │
-│  │  │ dt=1ps   │  │ dt=100ps │  │ clk-edge │  │ sleeping │  │  │
-│  │  │          │  │          │  │  only    │  │          │  │  │
-│  │  │ Newton   │  │ Newton   │  │ Compiled │  │ (skip)   │  │  │
-│  │  │ solve    │  │ solve    │  │ FSM eval │  │          │  │  │
-│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────────┘  │  │
-│  │       │              │              │                       │  │
-│  │       └──────────────┴──────────────┘                       │  │
-│  │              Boundary value exchange                         │  │
-│  │          (PWL interpolation between syncs)                  │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │ PWL Digital  │  │ Compiled FSM │  │ Existing Device      │  │
-│  │ Device Models│  │ Evaluator    │  │ Models (R,C,M,...)   │  │
-│  │ (new)        │  │ (new)        │  │ (unchanged)          │  │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
+```text
+Multi-rate scheduler
+  -> partition solvers (local state, timestep, matrix where needed)
+  -> boundary exchange (interpolation, error checks, wake-up)
+  -> common result collection
 ```
 
 The architecture has three layers:
@@ -136,7 +108,7 @@ Use multilevel graph partitioning (Metis-style, but simplified for circuit graph
 | Classification | Criteria | Timestep Strategy |
 |---------------|----------|-------------------|
 | `ANALOG_FAST` | Contains switching devices, oscillators, or high-frequency signals | Fine adaptive timestep (existing LTE control) |
-| `ANALOG_SLOW` | Contains only bias networks, slow filters, or DC paths | Coarse timestep (10-100× larger) |
+| `ANALOG_SLOW` | Contains only bias networks, slow filters, or DC paths | Coarse timestep, subject to error checks |
 | `DIGITAL` | Contains only PWL digital models or compiled FSM blocks | Event-triggered (clock edges only) |
 | `IDLE` | No input changes above threshold since last evaluation | Sleeping — skip entirely |
 
@@ -388,7 +360,9 @@ if sync_interval < dt_min:
 
 ### 5.1 PWL Analog Digital Models
 
-For small digital blocks (< ~50 gates) or mixed-signal-critical elements (comparators, level shifters, sense amplifiers), we model digital behavior using analog voltage-mode elements with PWL transfer characteristics.
+Use PWL voltage-level models for small digital blocks and analog interfaces.
+Candidate interfaces include comparators, level shifters, and sense amplifiers.
+Choose abstraction limits from accuracy and runtime measurements.
 
 #### 5.1.1 PWL Inverter Model
 
@@ -620,7 +594,8 @@ When the FSM device is placed in a `DIGITAL` partition, the multi-rate scheduler
 4. Output boundary values updated
 5. Partition goes back to sleep until next clock edge
 
-Total cost per clock cycle: one table lookup + boundary value exchange. Compare to XSPICE: dequeue events + iterate to quiescence + load each code model + queue output events + resolve wired logic. Orders of magnitude faster for complex FSMs.
+A clock event evaluates the transition table and exchanges boundary values.
+Measure event, delay, synchronization, and output costs before comparing runtime.
 
 ### 5.3 Real-Number Behavioral Blocks
 
@@ -740,7 +715,7 @@ for each boundary value BV:
 - `src/core/circuit.hpp/.cpp` — add `partition()` call in `finalize()`, store partition metadata
 - `src/core/transient.hpp/.cpp` — add partition-aware path (initially just iterating partitions sequentially at the same dt)
 
-**Validation**: All existing 1,109 tests pass with partitioning enabled. Partition boundaries produce identical results to monolithic solve.
+**Validation**: Existing regressions must pass with partitioning enabled. Compare boundary results with the monolithic solve at the original tolerances.
 
 ### 7.2 Phase 2: Multi-Rate Scheduler
 
@@ -754,7 +729,7 @@ for each boundary value BV:
 - `src/core/transient.cpp` — replace monolithic loop with scheduler dispatch
 - `src/core/timestep.hpp/.cpp` — per-partition `TimeStepController` instances
 
-**Validation**: Benchmark on circuits with widely disparate time constants (e.g., slow bias + fast oscillator). Verify speedup proportional to time-constant ratio. Verify accuracy within tolerances.
+**Validation**: Benchmark on circuits with widely disparate time constants (e.g., slow bias + fast oscillator). Measure runtime across the declared time-constant ratios. Verify accuracy within tolerances.
 
 ### 7.3 Phase 3: PWL Digital Device Models
 
@@ -795,7 +770,7 @@ for each boundary value BV:
 - `src/core/multirate_scheduler.cpp` — idle detection, wake-up logic, adaptive sync interval
 - `src/core/boundary.cpp` — retrospective error estimation, sync interval adaptation
 
-**Validation**: Benchmark on large mixed-signal circuits. Verify that idle partitions produce zero computational cost. Verify that adaptive sync interval converges to appropriate values.
+**Validation**: Benchmark on large mixed-signal circuits. Measure idle-partition overhead and check wake-up behavior. Verify that adaptive sync interval converges to appropriate values.
 
 ### 7.6 Phase 6: Python API and Documentation
 
@@ -836,51 +811,12 @@ result = ns.transient(ckt, tstep=1e-9, tstop=1e-3)
 
 ---
 
-## 8. Performance Analysis
+## 8. Performance evaluation
 
-### 8.1 Expected Speedup from Multi-Rate
-
-Consider a typical mixed-signal circuit: a 10MHz digital controller driving a 100kHz switching power supply with a slow (1kHz bandwidth) output filter.
-
-| Partition | Activity | Timestep | Steps for 1ms sim |
-|-----------|----------|----------|-------------------|
-| Digital controller | 10MHz clock edges | 100ns (event-triggered) | 10,000 |
-| Power stage | 100kHz switching | 1ns adaptive | 1,000,000 |
-| Output filter | 1kHz bandwidth | 100ns | 10,000 |
-
-**Monolithic** (current): 1,000,000 steps × full matrix size = baseline
-
-**Multi-rate**: 
-- Digital: 10,000 evals × O(1) table lookup ≈ negligible
-- Power stage: 1,000,000 steps × small sub-matrix (just the switching stage)
-- Output filter: 10,000 steps × small sub-matrix
-
-**Estimated speedup**: 5-20× depending on circuit proportions, because:
-1. Sub-matrices are smaller → LU factorization is O(n³) cheaper
-2. Slow partitions take far fewer steps
-3. Digital partitions are O(1) per clock edge instead of O(n) Newton iterations
-4. Idle partitions have zero cost
-
-### 8.2 Comparison with XSPICE
-
-| Metric | XSPICE (ngspice) | neospice Multi-Rate |
-|--------|-------------------|---------------------|
-| Digital evaluation | Per-gate event propagation | Compiled table lookup |
-| A/D boundary | Bridge model + breakpoint | Threshold detection in scheduler |
-| D/A boundary | Bridge model + ramp source | PWL injection + breakpoint |
-| Rollback | Time-stamped linked list splice | Per-partition solution restore |
-| Memory overhead | Event queues + state lists per node | Boundary cache per shared node |
-| Analog accuracy in digital domain | None (3-state model) | Full (PWL models in KCL matrix) |
-| Large FSM (1000 states) | 1000 event propagations/cycle | 1 table lookup/cycle |
-
-### 8.3 Memory Overhead
-
-Per partition:
-- Sub-matrix values: `O(nnz_partition)` doubles
-- Solver workspace: `O(n_partition²)` in worst case, typically `O(n_partition * fill_in)`
-- Boundary cache: `O(n_boundary)` × 5 doubles = negligible
-
-Total overhead: roughly 2× the monolithic matrix storage (original matrix + partition sub-matrices). The original monolithic matrix can be freed after partitioning, making the overhead closer to 1×.
+Benchmark the implemented partition scheduler with circuits that span different
+time constants and coupling strengths. Include synchronization, event handling,
+rollback, and output costs. Measure memory use as well as runtime. Validate
+waveforms and switching events before accepting timing samples.
 
 ---
 
@@ -888,11 +824,11 @@ Total overhead: roughly 2× the monolithic matrix storage (original matrix + par
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Partitioning produces poor cuts | No speedup; overhead of partition management | Fallback to monolithic; tunable partition parameters; user override via `.partition` |
-| Boundary PWL approximation error too large | Inaccurate results at partition boundaries | Adaptive sync interval; retrospective error monitoring; automatic fallback to tighter sync |
-| Newton convergence affected by partition boundary injection | More rejected timesteps, slower simulation | Boundary values injected as smooth PWL ramps (not discontinuous jumps); Norton equivalent at boundaries |
-| FSM compilation blowup for large input spaces | Memory explosion for `2^N` input combinations | Don't-care compression; sparse transition table; fall back to interpreted evaluation for >20 inputs |
-| PWL digital models don't converge in feedback loops | Ring oscillator diverges or oscillates | PWL gain tuned to < 1 at DC; output resistance provides natural damping; existing ringing detection handles edge cases |
+| Partitioning produces poor cuts | No speedup. overhead of partition management | Fallback to monolithic. tunable partition parameters. user override via `.partition` |
+| Boundary PWL approximation error too large | Inaccurate results at partition boundaries | Adaptive sync interval. retrospective error monitoring. automatic fallback to tighter sync |
+| Newton convergence affected by partition boundary injection | More rejected timesteps, slower simulation | Boundary values injected as smooth PWL ramps (not discontinuous jumps). Norton equivalent at boundaries |
+| FSM compilation blowup for large input spaces | Memory explosion for `2^N` input combinations | Don't-care compression. sparse transition table. fall back to interpreted evaluation for >20 inputs |
+| PWL digital models don't converge in feedback loops | Ring oscillator diverges or oscillates | PWL gain tuned to < 1 at DC. output resistance provides natural damping. existing ringing detection handles edge cases |
 
 ---
 
@@ -942,10 +878,9 @@ Default is `multirate=0` (monolithic, matching current behavior).
 
 ### 11.1 Verilog-A Behavioral Models
 
-The compiled FSM evaluator framework can be extended to support Verilog-A:
-- Parse Verilog-A `analog begin ... end` blocks
-- Compile to native evaluation functions (like FSM tables but with continuous math)
-- Place in appropriate partition based on activity analysis
+The [unified OSDI proposal](unified-simulation-architecture.md#6-verilog-a-integration-via-openvafosdi)
+replaces this earlier compiler sketch. It would load compiled Verilog-A devices
+into SPICE partitions.
 
 ### 11.2 SystemVerilog Real Number Modeling
 

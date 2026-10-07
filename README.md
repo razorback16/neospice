@@ -2,126 +2,117 @@
 
 [![CI](https://github.com/razorback16/neospice/actions/workflows/ci.yml/badge.svg)](https://github.com/razorback16/neospice/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/neospice.svg)](https://pypi.org/project/neospice/)
-[![Python versions](https://img.shields.io/pypi/pyversions/neospice.svg)](https://pypi.org/project/neospice/)
 
-SPICE circuit simulation in your browser, Python, and C++.
+**A programmable SPICE engine for C++, Python, and your browser.**
 
-**[Open Circuit Lab →](https://razorback16.github.io/neospice/)** · [Install from PyPI](https://pypi.org/project/neospice/) · [0.2.0 release notes](docs/release-0.2.md)
+[Open Circuit Lab](https://razorback16.github.io/neospice/) · [Documentation](docs/README.md) · [Roadmap](docs/ROADMAP.md)
 
-neospice is an independent C++20 reimplementation of SPICE, derived from
-UC Berkeley SPICE3 and ngspice. It reads SPICE netlists and provides an
-embeddable simulation engine with Python bindings and a WebAssembly build.
-**0.2.0 is a beta release**; 1.0 is reserved for further stability work.
+neospice is an open-source C++20 circuit simulator based on Berkeley SPICE3 and
+ngspice. Build circuits through simple APIs, run parallel studies, and use the
+results in your design tools.
 
-## Circuit Lab
+[Try Circuit Lab](https://razorback16.github.io/neospice/) to draw and simulate
+circuits locally in your browser without installation.
 
-Build and simulate circuits directly in your browser. No installation or
-account is required; simulation runs locally using WebAssembly.
+## Project goals
 
-- Nine editable examples spanning filters, amplifiers, rectifiers and oscillators.
-- A schematic editor with component placement, wiring, voltage/current probes,
-  parameter controls, and undo/redo.
-- DC, AC and transient results, interactive waveforms, light/dark themes,
-  saved projects and CSV export.
+Make circuit simulation easy to embed, automate, and extend.
+The long-term goal is **one unified simulator for analog, digital, and
+mixed-signal circuits**, with shared APIs and circuit data.
 
-See the [Circuit Lab guide](docs/circuit-lab.md) for editing, local hosting,
-project files and GitHub Pages deployment. The [WebAssembly guide](docs/webassembly.md)
-covers the JavaScript API and build instructions.
+The SPICE engine provides the foundation for additional simulation methods,
+device models, and interactive design tools.
 
-## Python
+## Current support
+
+- **Analyses:** DC operating point and sweeps, transient, AC, noise, transfer
+  function, sensitivity, pole-zero, Fourier/THD, and measurements.
+- **Devices:** passives, sources, switches, transmission lines, diodes, BJTs,
+  JFETs, MES/HFET models, MOS1/2/3/9, BSIM, HiSIM, and VDMOS DC models.
+- **Netlists:** parameters, expressions, functions, subcircuits, model libraries,
+  waveforms, `.step`, `.measure`, and SPICE raw output.
+- **Automation:** parallel sweeps, seeded Monte Carlo, DC adjoint gradients,
+  linear AC gradients, and incremental DC/AC simulation.
+- **Circuit Lab:** schematic editing, nine example circuits, waveform plots,
+  voltage/current probes, parameter controls, saved projects, and CSV export.
+
+See the [capabilities guide](docs/capabilities.md) for model and API details.
+
+## Why choose neospice over ngspice?
+
+neospice combines typed APIs, parallel studies, and browser simulation in one project.
+
+| Area | neospice | ngspice |
+|---|---|---|
+| C++ and Python | Typed circuit objects, NumPy results, and gradient APIs | [Shared-library API](https://ngspice.sourceforge.io/shared.html) with callbacks and wrappers such as PySpice |
+| Parallel studies | Built-in sweeps and seeded Monte Carlo through one API | [Multiple library instances](https://ngspice.sourceforge.io/parallel.html) managed by a host application |
+| Interactive design | Circuit Lab runs locally in your browser | [CLI and control scripts](https://ngspice.sourceforge.io/ngspice-control-language-tutorial.html), plus external GUIs such as KiCad |
+| Device extensions | Modular C++20 device interface | [Compiled Verilog-A models through OSDI](https://ngspice.sourceforge.io/osdi.html) |
+| [Recorded benchmark](docs/performance-analysis.md) | **1.89× geometric-mean speedup** across 34 workloads | ngspice 47 reference timing |
+
+## Performance
+
+The October 3, 2026 development benchmark measured a **1.89× geometric-mean speedup**
+over ngspice 47 across 34 workloads. neospice had the lower median time in
+**30 of 34 cases**.
+
+See [benchmark results and methods](docs/performance-analysis.md)
+for the recorded code, timings, and test conditions.
+
+## Verification
+
+Our verification harness compares neospice with **ngspice 47** at several levels:
+
+- **Devices and circuits:** DC, sweeps, AC, transient waveforms, and noise.
+- **Model libraries:** 34,908 generated KiCad cases, with results and diagnostics for each case.
+- **Browser:** Circuit Lab examples at their default settings and current probes.
+- **Performance:** numerical checks for every measured pair.
+
+Analytical tests provide independent checks. Regression tests preserve reproduced
+failures and check fixes. See the [harness guide](docs/validation-methods.md#verification-harness)
+and [support matrix](docs/support-matrix.md).
+
+In the [recorded sanitizer run](docs/validation-methods.md#memory-checks),
+all reported leaks came from ngspice library paths. The report attributed none to neospice.
+
+## Use from Python
 
 ```sh
 python -m pip install neospice
 ```
 
-Wheels are available for **CPython 3.10–3.14** on Linux x86_64/ARM64 and
-macOS 14+ Apple Silicon. Source builds need a C++20 compiler, OpenBLAS and
-SLEEF; see the [build guide](docs/building.md).
-
-Run an inline netlist:
-
 ```python
 import neospice as ns
 
-result = ns.dc("""Resistor divider
-V1 in 0 DC 10
-R1 in out 1k
-R2 out 0 1k
-.op
-.end
-""")
+circuit = ns.Circuit()
+circuit.V("V1", "in", "0", 10.0)
+circuit.R("R1", "in", "out", 1000.0)
+circuit.R("R2", "out", "0", 1000.0)
 
+result = ns.Simulator().run_dc(circuit)
 print(result.voltage("out"))  # 5.0
 ```
 
-You can also build circuits with `ns.Circuit()` and run individual analyses
-through `ns.Simulator()`. Waveform results are NumPy arrays. See the
-[Python examples](docs/ROADMAP.md#phase-1-python-bindings--done) and
-[example notebooks](examples/).
+The APIs also accept SPICE netlists. See the [API guide](docs/programmatic-hierarchy-api.md)
+or the [C++ and CLI build guide](docs/building.md).
 
-## C++ and command line
+## Roadmap
 
-Install the prerequisites in the [build guide](docs/building.md), then build
-the library and CLI without the reference-test dependencies:
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNEOSPICE_BUILD_TESTS=OFF
-cmake --build build --parallel
-./build/neospice tests/circuits/resistor_divider.cir -o result.raw
-```
-
-The C++ API exposes `Simulator`, `Circuit`, typed results, component builders,
-node/device handles and measurement utilities. Start with the
-[public API header](include/neospice/neospice.hpp) and
-[programmatic circuit examples](docs/programmatic-hierarchy-api.md).
-
-## Capabilities
-
-- **Analyses:** DC operating point and sweeps, transient, AC and noise, plus
-  transfer function, sensitivity, pole-zero, Fourier and measurement utilities.
-- **Devices:** passives, independent/dependent/behavioral sources, switches,
-  transmission lines, diodes, BJTs and several FET model families.
-- **Parameter studies:** parallel sweeps, seeded Monte Carlo and per-job results.
-- **Optimization workflows:** adjoint gradients and incremental re-simulation.
-- **Netlists:** parameter expressions, subcircuits, source waveforms and
-  ngspice-format raw output.
-
-The [capabilities guide](docs/capabilities.md) describes implemented features;
-the [support matrix](docs/support-matrix.md) identifies verified device/analysis
-combinations. Browser support is a subset of the native engine.
-
-## Validation and known limits
-
-**ngspice 47 is the sole reference implementation.** Validation combines
-analytical tests, numerical comparisons, Python API tests and browser tests.
-Known model limitations and corpus mismatches remain; passing tests do not
-certify every model, parameter or circuit topology. See the
-[validation methods](docs/validation-methods.md) and
-[current findings](docs/joss-progress.md).
-
-Benchmarks require accuracy-qualified results from both engines. The
-[benchmark methods](docs/benchmark-methods.md) document the protocol; historical
-timings are not current performance claims. The [paper draft](paper/README.md)
-and research validation remain work in progress, not submission-ready evidence.
+Near-term work expands model coverage, improves speed, and develops the APIs
+and Circuit Lab. The path toward a unified simulator adds piecewise-linear
+simulation, digital events, mixed-signal coordination, and Verilog-A models.
+Further plans include streaming results, GPU support, and learned convergence
+hints. See the [roadmap](docs/ROADMAP.md).
 
 ## Documentation and contributing
 
-| Topic | Guide |
-|---|---|
-| Build, test and contribute | [Development setup](docs/building.md) |
-| Sweeps and Monte Carlo | [Parallel studies](docs/parallel-studies.md) |
-| Gradients and repeated solves | [Adjoint gradients](docs/adjoint-gradients.md) · [Incremental simulation](docs/incremental-simulation.md) |
-| Netlist compatibility | [ngspice 47 reference](docs/ngspice47-reference.md) · [Source compatibility](docs/source-compatibility.md) |
-| Internals and future work | [Architecture](docs/neospice-design.md) · [Roadmap](docs/ROADMAP.md) |
-
-Bug reports should include a minimal netlist, analysis settings, neospice version
-and expected behavior. Contributions should preserve the ngspice 47 reference
-checks and document changes to supported behavior.
+Read the [documentation](docs/README.md) and [contribution guide](CONTRIBUTING.md).
+Contributions to models, APIs, tests, examples, and documentation are welcome.
+Include a minimal netlist and reproduction steps with bug reports.
 
 ## License and credits
 
-Original contributions use the [MIT license](LICENSE). Derived SPICE code and
-device models retain their upstream notices and terms. The simulator builds on
-Berkeley SPICE3, ngspice and Sparse 1.3, with ordering references from SuiteSparse.
-See [NOTICE](NOTICE), [credits and lineage](CREDITS.md), and the
-[attribution audit](docs/joss-attribution-audit.md).
+Original contributions use the [MIT license](LICENSE). Derived code retains
+its upstream notices and terms. Credits include Berkeley SPICE3, ngspice,
+Sparse 1.3, SuiteSparse, OpenBLAS, and SLEEF.
+See [CREDITS.md](CREDITS.md) and [NOTICE](NOTICE).

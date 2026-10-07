@@ -5,7 +5,7 @@ and a dense Jacobian indexed `[output][parameter]`. It solves one operating
 point, assembles and factors its Jacobian, and performs one transpose solve per
 output. The number of extra linear solves does not grow with the number of
 selected parameters. `adjoint_solves` records the actual transpose solve count.
-Parameter derivatives are analytical stamps; the existing `.sens` /
+Parameter derivatives are analytical stamps. The existing `.sens` /
 `run_sens()` finite-difference interface remains available unchanged.
 
 ```python
@@ -26,13 +26,13 @@ Names are case-insensitive. Result axes contain canonical names such as
 
 DC parameters are nominal resistance, capacitance and inductance and independent
 source DC values. Empty parameter lists select all these device types.
-R/C/L accept `:resistance`, `:capacitance`, `:inductance`; source parameters
+R/C/L accept `:resistance`, `:capacitance`, `:inductance`. Source parameters
 accept `:dc`. DC capacitance/inductance derivatives are zero. A waveform source
 without an explicit DC value does not use its stored DC parameter, so that
 parameter's derivative is zero. Resistance derivatives include temperature,
 scale and instance-multiplier factors.
 
-DC circuits may include nonlinear devices; their existing voltage Jacobians
+DC circuits may include nonlinear devices. Their existing voltage Jacobians
 supply the operating-point linearization. This API does not differentiate
 semiconductor model parameters. Derivatives are local to the selected operating
 point and implemented expression branch. No derivative is promised across a
@@ -59,7 +59,7 @@ The adjoint equation uses the plain transpose, without complex conjugation.
 
 AC gradients currently require a **linear circuit**. Supported parameters are
 R/C/uncoupled-L nominal values and independent sources' `:ac_mag`, `:ac_phase`
-(in degrees) and `:dc`. An unsuffixed source name selects `:ac_mag`; source DC
+(in degrees) and `:dc`. An unsuffixed source name selects `:ac_mag`. Source DC
 derivatives are zero in this linear scope. A fixed `RAC` overrides the nominal
 resistance for AC, so its nominal-resistance derivative is zero. Coupled-inductor
 value derivatives and nonlinear bias-dependent AC gradients are explicitly
@@ -69,10 +69,10 @@ rejected. Full model-parameter differentiation remains future work.
 
 Unknown/duplicate/unsupported parameters and outputs raise input errors.
 Requested passive values that need a scale ratio must have finite, nonzero
-nominal values. Nonconvergence and singular factorization raise `SimulationError`;
-with `circuit.options.no_throw=true`, results have `status.converged=false` and
+nominal values. Nonconvergence and singular factorization raise `SimulationError`.
+With `circuit.options.no_throw=true`, results have `status.converged=false` and
 empty values/Jacobians. Check status before using a gradient in an optimizer.
-The baseline solve and device linearization update circuit state; the operating
+The baseline solve and device linearization update circuit state. The operating
 point cache is cleared on exit so a subsequent analysis recomputes valid state.
 No parameter perturbations or value changes are made by the gradient methods.
 

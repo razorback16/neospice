@@ -34,8 +34,8 @@ changes. Changing `options.temp` / `options.tnom` also triggers preparation.
 
 A finalized circuit's topology is immutable: adding nodes/devices raises an
 error. Build a new circuit for topology changes. Circuit moves transfer cache
-ownership. `clear_reuse_cache()` releases cached solvers and resets counters;
-it does not change component values. The DC cache rebuilds automatically if
+ownership. `clear_reuse_cache()` releases cached solvers and resets counters.
+It does not change component values. The DC cache rebuilds automatically if
 the `NEOSPICE_SOLVER` / `NEOSPICE_FORCE_AMDLU` selection changes between calls.
 Do not mutate process environment while other simulation threads are running.
 
@@ -46,13 +46,10 @@ Calling `re_solve_ac` initializes AC and, when a fresh operating point is needed
 DC workspaces. Each retains its symbolic pattern for subsequent calls.
 
 Linear DC circuits reuse the numeric pivot path. Nonlinear circuits retain the
-normal Newton initialization and convergence fallbacks to preserve operating-
-point selection; they reuse the symbolic structure but can reorder numerically.
+normal Newton initialization and convergence fallbacks to preserve operating-point selection. They reuse the symbolic structure but can reorder numerically.
 AC reuses the symbolic pattern and numeric refactorization, with a full numeric
 factorization retry if a pivot becomes singular. Failed solves discard the
 corresponding cached solver before reuse.
 
-All affected analyses restamp the matrix and solve all requested frequencies.
-There is no approximation based on frequency significance, no partial-device
-restamping, and no incremental transient resume. These are possible extensions.
-No sub-millisecond latency or speedup claim is made without a measured workload.
+Each solve restamps the full matrix. AC recomputes all requested frequencies.
+Incremental transient resume is unavailable.

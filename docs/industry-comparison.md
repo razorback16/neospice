@@ -39,9 +39,8 @@ status](joss-progress.md) define the available evidence and unresolved scope.
 - ngspice has device convergence checks; these are not a neospice invention.
   Its post-solve convergence checks materially affect the
   reference interpretation. [Source investigation](rff70n06-investigation.md).
-- ngspice reuses factors for its adjoint noise solve. neospice currently factors
-  separate gain and transposed systems. This implementation choice is not proof
-  of a speed benefit. Both use a minimum squared gain for input noise referral.
+- Both engines reuse complex factors for the gain and plain-transpose adjoint
+  noise solves. Both engines use a minimum squared gain for input noise referral.
   [Noise implementation](../src/core/noise.cpp) and
   [reference evidence](ngspice47-reference.md).
 - neospice assembles AC from frequency-independent stamps plus per-frequency
@@ -49,7 +48,7 @@ status](joss-progress.md) define the available evidence and unresolved scope.
   internals or a demonstrated causal optimization benefit. [AC source](../src/core/ac.cpp).
 - Adaptive output, timestep error control and source breakpoints are separate
   behaviors. Requested integration methods and supported source semantics are
-  documented with reference regressions. [Transient evidence](transient-readiness.md)
+  documented with reference regressions. [Transient evidence](capabilities.md#transient-behavior)
   and [source compatibility](source-compatibility.md).
 
 ## Performance evidence

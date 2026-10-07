@@ -3,12 +3,12 @@
 `Simulator::run_sweep` executes independent netlist jobs in a bounded C++ worker
 pool. Each job parses and owns its circuit, models, state and results. Results
 stay in input order. `workers=0` uses hardware concurrency capped at the number
-of jobs; this is a default, not an empirically optimal worker count. `workers=1`
+of jobs. `workers=1`
 executes jobs serially on one isolated worker.
 
 Each netlist must contain exactly one analysis directive. Use separate batches
 for different analyses. Nested `.step` is rejected. Text input uses `parse`
-semantics; file input (`from_file=true`) resolves includes relative to the file.
+semantics. File input (`from_file=true`) resolves includes relative to the file.
 Keep source/include files unchanged during a batch.
 
 ## C++
@@ -70,36 +70,36 @@ Sample/result references keep their owning batch alive.
 
 ## Randomness and statistics
 
-Gaussian spread is absolute standard deviation; uniform spread is absolute
+Gaussian spread is absolute standard deviation. Uniform spread is absolute
 half-width around nominal. No clipping is applied: an invalid sampled circuit
 is a failed job, not a replacement draw. Optional correlation matrices are
 symmetric positive semidefinite with unit diagonal and apply to Gaussian
-parameters only; perfect correlation and anticorrelation are supported.
+parameters only. Perfect correlation and anticorrelation are supported.
 
 Sampling and netlist expression random generators are seeded per job. Samples
-and results are reproducible across worker counts for the same build and input;
+and results are reproducible across worker counts for the same build and input.
 C++ distribution implementations can differ between standard libraries, so
 cross-platform bitwise identity is not promised. Input job order is part of the
 seed mapping. The caller's expression RNG is not modified.
 
 `summarize_samples` accepts explicit finite scalar values. Standard deviation
-uses `n-1` (zero for one sample); yield counts values within inclusive limits.
+uses `n-1` (zero for one sample). Yield counts values within inclusive limits.
 Histograms span the data minimum/maximum, with the final bin including the
 maximum. Constant data occupies the first bin with coincident bin edges.
-Failed jobs must be handled explicitly before aggregation; dropping failures
+Failed jobs must be handled explicitly before aggregation. Dropping failures
 can bias yield estimates. Aggregate a chosen voltage, measurement or other
 scalar from any supported analysis.
 
 ## Concurrency scope
 
 Built-in migrated node scratch storage and HiSIM scratch variables are isolated
-per thread. The BSIM4 legacy `bsim4.out` model-check log is serialized; it records
+per thread. The BSIM4 legacy `bsim4.out` model-check log is serialized. It records
 the last model check, not a per-job history. Console diagnostics may interleave.
 Do not mutate the global device registry, process environment, simulator
 configuration or a shared circuit while other threads use them. This API owns
-its job circuits; it does not make concurrent operations on one circuit safe.
-Nested parallelism in external math libraries can oversubscribe a machine;
-measure worker counts appropriate for the workload. No scaling claim is made.
+its job circuits. It does not make concurrent operations on one circuit safe.
+External math libraries can oversubscribe the machine with nested parallelism.
+Measure suitable worker counts for your workload.
 
 ## Race-test harness
 
@@ -116,9 +116,9 @@ cmake --build build-tsan -j8
 TSAN_OPTIONS=halt_on_error=1 ./build-tsan/neospice_sweep_stress tests/circuits
 ```
 
-`-no-pie` is a Linux-specific workaround for this host's sanitizer mappings;
-other platforms may need different sanitizer flags. On the development host,
-ThreadSanitizer intermittently failed before execution with `unexpected memory
-mapping` (and once with no output and SIGSEGV). A subsequent initialized run
-completed all 19 fixtures with exit 0 and no race report. Runtime initialization
-failures are not passing tests. This scope does not certify every model option.
+`-no-pie` addresses sanitizer mapping conflicts on the development Linux host.
+Other platforms may need different flags.
+ThreadSanitizer can fail before execution with `unexpected memory mapping`.
+An initialization failure is not a passing test.
+A completed development run reported no races across these 19 fixtures.
+This result does not certify every model option.

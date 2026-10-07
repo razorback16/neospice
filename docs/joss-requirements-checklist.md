@@ -52,8 +52,8 @@ Explain why building this package was appropriate given existing alternatives.
 Keep API instructions in the software documentation. Compile and inspect the PDF.
 [Source: paper format](https://joss.readthedocs.io/en/latest/paper.html).
 
-An initial [working manuscript and bibliography](../paper/README.md) now compile
-to an inspected three-page draft PDF with a pinned official Inara image.
+The [paper guide](../paper/README.md) provides a pinned Inara build command
+for the working manuscript and bibliography. Regenerate the PDF from current sources.
 Actual research evidence, final measurements/figures, completed disclosures,
 final rendering and author approval remain pending. Every quantitative claim
 must trace to the final candidate's saved experiment evidence; a compiled draft

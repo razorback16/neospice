@@ -14,7 +14,7 @@ matrix](support-matrix.md) is involved.
 
 **This classification is against checkpoint 36 and is not a current-state
 report.** Checkpoint 36 predates every phase-3 change. Classification by device
-family and root cause carries forward; any claim that a cluster is *fixed*
+family and root cause carries forward. Any claim that a cluster is *fixed*
 requires a fresh corpus run and is not made here.
 
 ## The scope rule used
@@ -36,14 +36,14 @@ rather than a derivation:
   analog**: outside the claim, and counted separately rather than silently
   folded into either side.
 
-The matrix is used to classify corpus outcomes and is never derived from them;
-deriving it from corpus agreement would make the classification circular.
+The matrix is used to classify corpus outcomes and is never derived from them.
+Deriving it from corpus agreement would make the classification circular.
 
 ## Primary-variant mismatches by class
 
-Each corpus case is run twice: `primary` (the declaration wrapped in a bare
+Subcircuit cases have two planned variants: `primary` (the declaration wrapped in a bare
 fixture) and `isolated_driven` (the same declaration with a stimulus source).
-1,273 primary and 1,272 driven cases mismatch; 743 cases mismatch in both, so
+1,273 primary and 1,272 driven cases mismatch. 743 cases mismatch in both, so
 1,802 distinct cases are involved.
 
 | Class | Primary mismatches | Same case, driven variant | Reading |
@@ -70,7 +70,7 @@ with `gmin`:
 `NP80N055ELE` and its siblings are NEC power-MOSFET macromodels whose nonlinear
 `Cgd` network contains node 8, connected to nothing but two `DD1` diodes
 (`CJO=0`) that are both reverse biased. On the undriven fixture neospice puts
-that node at **-100 kV** where ngspice 47 puts it at 4e-16 V; the 100 nA that
+that node at **-100 kV** where ngspice 47 puts it at 4e-16 V. The 100 nA that
 `gmin` then leaks through the reverse-biased `DCRR` diode is fed back to the
 external terminals by the `FGD` current source, giving 10 mV across the 100 k
 test resistors where ngspice gives 1e-22 V.
@@ -107,7 +107,7 @@ tens of microvolts on nets that carry no source. Here the disagreement scales
 is the signature of the `gmin` floor itself rather than of a model error: the
 value of an undriven node is set by where each simulator places its `gmin`
 conductances, which is not a defined quantity. 65 of the 69 match once the
-subcircuit is driven; the remaining four (`diode_ST` and `ph_diode`, two each)
+subcircuit is driven. The remaining four (`diode_ST` and `ph_diode`, two each)
 have no driven variant in the run, so nothing is claimed about them. These are
 recorded as ill-posed fixtures. The comparison tolerance is not changed to
 accommodate them.
@@ -133,35 +133,14 @@ legitimate scope boundary. What is not legitimate is how it declines: neospice
 successful analog result for a circuit that is missing its devices. On
 `74ALS13` that produces `v(out_net) = 0` against the reference's 3.3 V.
 
-This was general, not specific to the primitives: every unrecognized device
-letter -- `U`, `N`, `A`, `Y` and any other -- was dropped with a return code of
-0, and the digital *interface* devices were worse. An `N` card vanished with no
-message at all. An `O` card collides with the LTRA device letter: neospice
-resolved its model, saw a `UIO` rather than an `LTRA`, printed
-`Warning: O element references non-LTRA model 'IO_STD' -- skipping`, and solved
-the rest of the deck, where ngspice 47 calls that a model type mismatch and
-stops. This is the "silent unsupported behavior" in this milestone's title, and
-the one corpus cluster that violated the project's own standing rule that
-unsupported models may remain only if they *fail explicitly*, are documented,
-and stay in the corpus accounting.
+The parser now rejects documented PSpice U primitives, N cards with `DGTLNET`,
+and O cards referencing non-LTRA models. Rejection uses primitive keywords and
+interface attributes. It does not reject vendor prose merely because a line
+starts with a device letter.
 
-This has been fixed. `U` cards naming a documented PSpice primitive, `N` cards
-carrying the `DGTLNET` interface attribute, and `O` cards whose model is not an
-LTRA (the PSpice digital *output* interface collides with the LTRA device
-letter, and neospice was skipping the card with a warning where ngspice 47
-reports a model type mismatch and stops) are now parse errors.
-
-The rejection keys on the primitive keyword and the interface attribute, not on
-the leading letter. A first attempt keyed on the letter plus an instance-name
-shape, and its own regression test caught it rejecting the line "Use of this
-model is subject to the terms below": vendor libraries carry uncommented prose,
-and there are 27,011 non-comment lines in this corpus beginning with `a` alone,
-nearly all of them hex data. The keywords accept all 35 primitive types that
-occur in the corpus and reject the three `u` lines there that are prose, and the
-`DGTLNET` attribute appears on 89 lines, every one of them an interface card.
-Four regression tests in `tests/unit/test_parser.cpp` pin the rejection, its
-survival through subcircuit expansion, the requirement that prose not trigger
-it, and that a real LTRA card still parses.
+Four parser regressions check rejection, subcircuit expansion, vendor prose and
+valid LTRA cards. These repairs do not update checkpoint 36 outcome totals.
+A fresh corpus run must establish their effect on the retained population.
 
 ## Unrowed analog
 
@@ -170,7 +149,7 @@ group is the metal-oxide varistor libraries -- `siov.lib` (281), `zaseries.lib`
 (82) and `laseries.lib` (71), 434 together -- where the undriven fixture leaves
 neospice at 0 V and ngspice 47 at ±23 V and ±19 V. A prior investigation
 adjudicated this cluster as an ngspice self-bias artifact, but that adjudication
-was made against ngspice 42 and **has not been re-verified against 47**; it is
+was made against ngspice 42 and **has not been re-verified against 47**. It is
 recorded here as unadjudicated. The remainder are behavioral op-amp and logic
 macromodels (`54ALS.lib`, `54hcxx.lib`, `OpAmp_AD.lib`). All are outside the
 claim because E, G, F, H, S, W and T have no matrix row.
@@ -181,7 +160,7 @@ claim because E, G, F, H, S, W and T have no matrix row.
 cell for: JFET level 1 (53 cases) and the PSpice `VSWITCH` switch model (51),
 overlapping in 42. JFET level 1 is implemented and exercised but, as the support
 matrix records, has no reference-verified operating point -- only JFET2 does.
-These are outside the claim as it currently stands; closing them means adding a
+These are outside the claim as it currently stands. Closing them means adding a
 reference-verified JFET level 1 `dc_op` cell, not changing a tolerance.
 
 ## What this changes

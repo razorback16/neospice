@@ -1,15 +1,27 @@
 # PWL Simulation Engine Design
 
 **Date:** 2026-05-20
-**Status:** Proposed — Phase 1 (transient engine) targeted first
+**Status:** Proposed. No PWL engine or SIMPLIS parser is implemented.
+
+Interfaces, paths, syntax, and defaults below are design inputs.
+The [unified architecture](unified-simulation-architecture.md) describes later
+cross-mode coordination. Reconcile its device interfaces and syntax with this
+pure-mode proposal before implementation.
 
 ## Overview
 
-neospice gains a SIMPLIS-compatible piecewise-linear (PWL) simulation engine for switching power supply design. The PWL engine runs alongside the existing SPICE engine within a unified architecture designed to eventually support digital and mixed-signal simulation as well.
+The proposed piecewise-linear (PWL) engine targets switching power circuits.
+It would share circuit data, results, and C++/Python access with the SPICE engine.
+SIMPLIS-style syntax is a parser target, not a compatibility claim.
 
-PWL simulation replaces Newton-Raphson iteration with event-driven linear solves. Every nonlinear device is approximated by straight-line segments — within each segment the circuit is linear and solvable in one shot. The simulator steps from one linear topology to the next when devices cross segment boundaries. This eliminates convergence failures and delivers 10-50x speedups over SPICE for switching converters.
+PWL models approximate nonlinear devices with linear segments. Within one segment
+combination, transient steps solve a linear system. Crossing a segment boundary
+changes the active topology. Event detection, timestep error, and model error
+require separate validation.
 
 ### What ships
+
+These phases describe proposed scope, not delivered features.
 
 | Phase | Capability | Depends on |
 |-------|-----------|------------|
@@ -43,7 +55,8 @@ The existing `Device` class gains one new virtual method:
 virtual SimDomain sim_domain() const { return SimDomain::ANALOG_NR; }
 ```
 
-All 32 existing devices return `ANALOG_NR` by default — zero changes needed. New PWL devices return `ANALOG_PWL`. Future digital gates will return `DIGITAL`.
+Existing devices would default to `ANALOG_NR`. Proposed PWL devices return
+`ANALOG_PWL`. Future digital devices return `DIGITAL`.
 
 During `finalize()`, the circuit scans all devices and determines the simulation mode:
 
@@ -52,11 +65,14 @@ During `finalize()`, the circuit scans all devices and determines the simulation
 - **Pure DIGITAL** — digital event engine (future)
 - **Mixed** — co-simulation coordinator (future)
 
-For now only pure-mode circuits are supported. The user declares `.SIMULATOR SIMPLIS` in the netlist to activate PWL mode. The parser routes to the SIMPLIS deck parser and `finalize()` validates that all devices are `ANALOG_PWL`.
+Phase 1 would accept only pure-mode circuits. The proposed `.SIMULATOR SIMPLIS`
+directive selects the new parser. Finalization checks that all devices use
+`ANALOG_PWL`.
 
 ### Shared infrastructure
 
-The PWL engine reuses core neospice infrastructure without modification:
+The proposal would reuse these components. Check integration changes before
+implementation:
 
 | Component | Role in PWL engine |
 |-----------|-------------------|
@@ -104,7 +120,7 @@ src/
 - `circuit.cpp` — `finalize()` gains domain classification logic
 - `CMakeLists.txt` — adds `src/pwl/` sources
 
-All 32 existing SPICE devices, the SPICE transient/DC/AC/noise engines, the existing netlist parser, NeoSolver, and result types remain untouched.
+Preserve existing SPICE behavior and API contracts during integration.
 
 ## PWL Device Interface
 
@@ -131,13 +147,17 @@ virtual int32_t pwl_segment_id() const { return 0; }
 
 ### Method responsibilities
 
-**`pwl_stamp()`** — Stamps the device's linear MNA contribution for its current segment. Called once per topology change (not per timestep within the same topology).
+**`pwl_stamp()`** stamps the active segment. Restamp when segment or companion
+coefficients change.
 
-**`pwl_check_event()`** — Tests whether any internal variable has crossed a segment breakpoint during the last timestep. Returns the estimated crossing time for bisection, or `INFINITY` if no event occurred.
+**`pwl_check_event()`** checks for a segment crossing in the trial step. It returns
+an estimated crossing time or `INFINITY`.
 
-**`pwl_update_topology()`** — Called after an event is confirmed. Updates the device's internal segment index. Returns `true` if the topology actually changed (triggering a matrix re-stamp and re-factorization).
+**`pwl_update_topology()`** updates the segment index after an accepted event.
+A `true` result requests matrix preparation for the new topology.
 
-**`pwl_segment_id()`** — Returns the device's current segment index. The engine concatenates all devices' segment IDs into a topology hash for matrix factorization caching.
+**`pwl_segment_id()`** returns the active segment index. The combined indices
+identify a topology for cache lookup.
 
 ### PWL device primitives
 
@@ -156,16 +176,21 @@ Each PWL device stores a `std::vector<PwlSegment>` table and a `current_segment_
 
 ### Charge and flux continuity
 
-PWL capacitors are defined in Q-V space (charge vs voltage) and PWL inductors in lambda-I space (flux linkage vs current). The slope of each segment gives a constant capacitance or inductance within that region. This formulation guarantees:
+Capacitor tables use charge versus voltage. Inductor tables use flux linkage
+versus current. Segment slopes define capacitance or inductance. Continuous
+offsets are required to preserve:
 
 - **Charge continuity** at capacitor segment boundaries — no spurious charge injection when capacitance changes with voltage
-- **Flux continuity** at inductor segment boundaries — no spurious energy gain/loss when inductance changes with current (saturation)
+- **Flux continuity** at inductor segment boundaries when inductance changes with current (saturation)
 
-This is a deliberate choice matching SIMPLIS's design. Defining capacitors as C(V) directly can cause charge discontinuities; the Q-V formulation prevents this by construction.
+The Q-V and flux-current tables make continuity an explicit model constraint.
+Check stored energy and history updates separately.
 
 ### Segment table auto-extension
 
-SIMPLIS automatically extends the outermost PWL segments to positive and negative infinity. neospice does the same: the leftmost and rightmost segments are extrapolated linearly, ensuring the model is defined for all possible voltages/currents with no undefined regions.
+The proposal extrapolates the outermost segments to positive and negative
+infinity. Check whether that extrapolation remains physically useful outside
+the declared model range.
 
 ## PWL Transient Engine (Phase 1)
 
@@ -205,26 +230,38 @@ pwl_transient(circuit, tstop):
 
 ### Key properties
 
-**No Newton iteration.** Between topology changes the circuit is linear — each timestep requires exactly one linear solve. There are no convergence failures, no iteration limits, no damping heuristics.
+**Linear solve within a topology.** Newton iteration is unnecessary for a fixed
+segment combination. Singular matrices, inconsistent switching states, event
+cascades, and timestep rejection still need explicit failure handling.
 
-**Reactive companion models.** PWL capacitors and inductors use standard trapezoidal companion models:
+**Reactive companion models.** Capacitors and inductors use the active segment's
+constant slope. Their trapezoidal companions depend on the timestep and accepted
+charge or flux history. Preserve segment offsets and continuity when changing state.
 
-- Capacitor: `i = (2C/dt) * v - i_prev`, equivalent conductance `Geq = 2C/dt`
-- Inductor: `v = (2L/dt) * i - v_prev`, equivalent resistance `Req = 2L/dt`
+**Topology caching.** Segment IDs identify the active device configuration.
+Factor reuse also requires the same matrix values, including timestep-dependent
+companions. A topology hash alone cannot validate numeric factors.
 
-C and L are the slope of the current PWL segment (constant within that segment), so the companion is truly linear — no NR iteration needed to resolve it.
-
-**Topology caching.** The engine maintains a hash map of `topology_id -> factored_matrix`. The topology ID is formed by concatenating all devices' `pwl_segment_id()` values. For a typical buck converter with ~5 distinct switching states, only 5 LU factorizations are performed for the entire simulation — every subsequent visit to a known topology is a cache hit (only forward/back substitution).
-
-**Event bisection.** When a breakpoint crossing is detected, the engine bisects the time interval to locate the exact crossing time within tolerance (e.g., `1e-12 * dt`). Bisection interpolates the solution between pre-step and post-step values — efficient because interpolating a linear system is cheap.
+**Event bisection.** Bracket crossings and refine them to a declared time tolerance.
+Interpolation estimates a crossing, but transient state must remain consistent
+at the accepted event time. Test multiple and near-simultaneous crossings.
 
 ### Adaptive time stepping
 
-The initial timestep is `dt = tstop / 1000` (or the user-specified `.TRAN` step if smaller). Within a topology (no events), the timestep grows up to a configurable maximum (`tstop / 50`). On topology change the timestep is reset to `dt_min` (initial dt / 100) near the event and allowed to grow again. The growth factor is capped at 2x per accepted step. Source breakpoints (pulse edges, PWL waveform corners) are scheduled in advance and the timestep is shortened to land exactly on them, reusing the same breakpoint scheduling logic as the SPICE transient engine.
+Candidate timestep defaults are:
+
+- Start at `min(tstop / 1000, user_step)` when a user step exists.
+- Allow growth up to `tstop / 50` and at most twice the last accepted step.
+- After a topology change, reduce toward `initial_dt / 100`.
+- Land on scheduled source breakpoints.
+
+These rules still need LTE control, minimum-step failure handling, and validation.
+Reuse the SPICE breakpoint machinery where its semantics match.
 
 ## POP Analysis (Phase 2)
 
-POP finds the periodic steady-state of a switching converter without simulating thousands of startup cycles. It wraps the PWL transient engine in a shooting method that iteratively refines initial conditions until the state repeats within tolerance.
+POP uses a shooting method to find a periodic state. It repeats transient
+simulation while updating initial conditions until the state repeats within tolerance.
 
 ### Algorithm
 
@@ -267,7 +304,8 @@ The trigger detects the start of each switching cycle — the Poincare section w
 
 ### State vector
 
-POP samples all capacitor voltages and inductor currents at each trigger event. The state vector dimension equals `num_capacitors + num_inductors`. These are the slow variables that define the periodic orbit.
+The proposed state vector samples capacitor voltages and inductor currents.
+Include additional device memory when needed to define the periodic orbit.
 
 ### Initial condition update strategies
 
@@ -275,9 +313,11 @@ The engine tries progressively more aggressive methods:
 
 1. **Simple fixed-point iteration:** `x0_next = x1`. Use the end-of-cycle state as the next starting state. Works when the Poincare map is contractive (most well-designed converters).
 
-2. **Accelerated fixed-point (Aitken delta-squared):** When simple iteration converges slowly (relative error not decreasing after 3 consecutive passes), apply Aitken acceleration using three successive iterates to extrapolate toward the fixed point.
+2. **Accelerated fixed-point (Aitken delta-squared):** If relative error does not
+   decrease for three consecutive passes, apply Aitken acceleration using three iterates.
 
-3. **Quasi-Newton (Broyden):** For stubborn circuits, estimate the Jacobian of the periodicity residual from successive passes and apply a Newton-like update. Most robust but requires storing and updating the Jacobian approximation.
+3. **Quasi-Newton (Broyden):** Estimate the periodicity-residual Jacobian from
+   successive passes. Apply an update and retain the approximation for later passes.
 
 ### Convergence reporting
 
@@ -290,7 +330,9 @@ POP Pass 7: Vcap1=12.0000V (err=2.5e-13), IL1=1.500A (err=1.8e-14) -- converged
 
 ## Time-Domain AC Analysis (Phase 3)
 
-SIMPLIS-style AC analysis works entirely in the time domain on the full switching model. Unlike SPICE's AC (linearize at DC operating point, solve frequency-domain matrix), this approach captures effects that averaged models miss: subharmonic oscillations, sampling effects, slope compensation interactions, and switching harmonic coupling.
+This proposed analysis perturbs the periodic switching solution in the time
+domain. SPICE AC instead linearizes at a DC operating point. Define which
+frequency-response components the result reports and how switching harmonics affect them.
 
 ### Algorithm
 
@@ -321,11 +363,14 @@ Every source is classified before the AC sweep. This classification determines i
 | Aperiodic large-signal (load step, startup ramp) | Active | Frozen at DC value from POP |
 | Small-signal AC (perturbation injection) | Inactive (zero) | Active — sinusoidal at sweep frequency |
 
-Periodic sources continue switching during AC so the Bode plot reflects the actual periodically time-varying system. Aperiodic sources are frozen because AC analysis assumes linearization around a steady operating point. Small-signal AC sources are zero during POP (they don't affect the operating point) and activate during the AC sweep.
+Periodic sources preserve the switching orbit. Aperiodic sources retain their
+settled values. Perturbation sources activate only during the frequency sweep.
 
 ### Frequency response extraction
 
-At each frequency point the engine computes a single-bin DFT over the measurement window (last 1-2 perturbation periods). This is a simple dot product — no FFT required:
+Estimate the phasor over the final one or two perturbation periods. The sketch
+below assumes uniform samples. Adaptive steps require uniform resampling or
+time-weighted integration. Check window length, settling, and spectral leakage:
 
 ```cpp
 complex<double> dft_at_freq(span<double> waveform, span<double> time,
@@ -340,13 +385,17 @@ complex<double> dft_at_freq(span<double> waveform, span<double> time,
 }
 ```
 
-### Performance
+### Performance evaluation
 
-AC analysis requires one transient simulation per frequency point. For a 100-point Bode plot that is 100 transient runs. Each run starts from the cached POP state and the PWL engine is fast (no NR iteration), so this is typically much faster than the manual alternative: creating an averaged model by hand and running SPICE AC on it. The topology cache from Phase 1 benefits AC as well — the same switching topologies repeat across all frequency sweeps.
+Each AC frequency needs a transient run from the periodic operating point.
+Measure the cost of those runs, topology-cache behavior, and response accuracy
+across the full frequency sweep before making a performance claim.
 
 ### Result format
 
-Reuses the existing `ACResult` structure — vectors of frequency, magnitude, and phase. Compatible with the `.raw` file writer and Python bindings. Users access results identically to SPICE AC analysis.
+Reuse `ACResult`, the raw-file writer, and Python access where their semantics
+fit. Label the operating point as periodic so users can distinguish this analysis
+from SPICE AC.
 
 ## SIMPLIS Deck Parser
 
@@ -360,7 +409,8 @@ A new parser reads SIMPLIS `.deck` files and produces a `Circuit` populated with
 .deck file -> Preprocessor -> Netlist parser -> Circuit with PWL devices
 ```
 
-The top-level `Simulator::load()` or `neospice::run()` detects `.SIMULATOR SIMPLIS` in the input and routes to the SIMPLIS parser instead of the SPICE parser. Both parsers produce the same `Circuit` object.
+The proposed load path detects `.SIMULATOR SIMPLIS` and selects the new parser.
+Both parsers would produce a `Circuit`.
 
 ### Preprocessor directives
 
@@ -373,7 +423,8 @@ The top-level `Simulator::load()` or `neospice::run()` detects `.SIMULATOR SIMPL
 | `.SIMULATOR SIMPLIS` | Marks file as SIMPLIS model | Required in model libraries |
 | `{expr}` | Inline expression evaluation | `R1 1 2 {RLoad * 0.5}` |
 
-The preprocessor resolves all variables, evaluates expressions, and expands conditionals before device parsing. Expression evaluation reuses neospice's existing `.param` expression evaluator — the syntax differs slightly (curly braces instead of single quotes) but the math engine is the same.
+Resolve variables and conditionals before device parsing. Reuse the expression
+evaluator where precedence, scope, and function semantics match the source dialect.
 
 ### Device line syntax
 
@@ -433,24 +484,27 @@ The `vars:` keyword introduces parameter assignments, parsed into the same param
 ### Phase 1 validation
 
 - **Unit tests:** Each PWL device type tested in isolation — verify segment switching, MNA stamps, event detection
-- **Integration tests:** Complete switching converter circuits (buck, boost, forward) — compare transient waveforms against SIMPLIS reference data
+- **Integration tests:** Complete switching converter circuits (buck, boost, forward) — compare transient waveforms against qualified analytical solutions and ngspice 47 where comparable
 - **Topology caching tests:** Verify cache hits, factorization reuse, hash correctness
 - **Event bisection accuracy:** Verify crossing times within tolerance on circuits with known exact solutions (e.g., LC oscillator has analytic solution)
 - **Parser tests:** Round-trip SIMPLIS .deck files through parser, verify correct device instantiation and parameter values
 
 ### Phase 2 validation
 
-- **POP convergence:** Verify convergence to steady-state on buck/boost converters, check that ripple waveforms match SIMPLIS reference
+- **POP convergence:** Verify convergence to steady-state on buck/boost converters, check ripple against qualified periodic solutions
 - **POP trigger accuracy:** Test rising/falling edge detection on various gate drive signals
 - **Convergence escalation:** Verify that Aitken/Broyden methods activate when simple iteration stalls
 
 ### Phase 3 validation
 
-- **Bode plot accuracy:** Voltage-mode buck control loop — compare gain/phase against SIMPLIS reference across frequency
+- **Bode plot accuracy:** Voltage-mode buck control loop — compare gain/phase against qualified periodic-response data across frequency
 - **Source classification:** Verify periodic sources keep switching, aperiodic sources freeze, AC sources inject correctly
 - **DFT extraction accuracy:** Test on circuits with known analytic transfer functions
 
 ## Comparison with SIMPLIS
+
+This table records intended scope. It does not certify SIMPLIS compatibility.
+ngspice 47 is the sole behavioral reference for comparable SPICE analyses.
 
 | Capability | SIMPLIS | neospice PWL |
 |-----------|---------|-------------|
@@ -463,7 +517,7 @@ The `vars:` keyword introduces parameter assignments, parsed into the same param
 | SPICE-to-PWL auto-extraction | Yes (from SIMetrix SPICE models) | Future |
 | Multi-level lossy inductor | Yes | Future (extend PwlInductor) |
 | DVM test plans | Yes | Not planned (use neospice .measure instead) |
-| Schematic GUI | SIMetrix | Not planned (neospice is an engine/library) |
+| Schematic GUI | SIMetrix | Circuit Lab exists. PWL UI support is not implemented. |
 
 ## References
 

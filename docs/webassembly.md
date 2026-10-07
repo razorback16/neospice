@@ -7,12 +7,9 @@ service. Emscripten **6.0.11** was used for validation.
 
 ## Circuit Lab application
 
-The [Circuit Lab](circuit-lab.md) application builds on this API with a visual
-schematic editor, nine editable examples, light/dark themes, interactive plots,
-a separate netlist workspace, and project/CSV exports. It has a static production
-build suitable for GitHub Pages and a local preview on port **48173** with optional
-Cloudflare tunneling. See its guide for frontend build and hosting instructions.
-The commands below still build the minimal API demo independently.
+[Circuit Lab](circuit-lab.md) provides a schematic editor, nine examples,
+interactive plots and project/CSV exports. Its guide covers frontend builds
+and hosting. The commands below build the minimal API demo.
 
 ## Build
 
@@ -43,7 +40,7 @@ single-threaded build. Deployment is not performed by building the target.
 The WASM configuration defaults native reference tests and CLI off, skips
 OpenBLAS/SLEEF/OpenMP/host-thread linkage, and preserves C++ exception handling.
 It uses the same core and device sources as the native build. Pole-zero analysis
-has an explicit unsupported stub because it requires LAPACK; the browser-facing
+has an explicit unsupported stub because it requires LAPACK. The browser-facing
 API does not expose that analysis. Native defaults are unchanged.
 
 ## JavaScript
@@ -71,14 +68,14 @@ try {
 }
 ```
 
-`createNeospice` is asynchronous; subsequent circuit calls are synchronous.
+`createNeospice` is asynchronous. Subsequent circuit calls are synchronous.
 Run them in a Worker for responsive interfaces. `wasm/worker.mjs` shows this
-pattern; terminating the Worker cancels an in-flight simulation. The demo keeps
+pattern. Terminating the Worker cancels an in-flight simulation. The demo keeps
 one circuit for slider updates and rebuilds it when the netlist changes.
 
-Result arrays and signal maps are copied into JavaScript-owned data and remain
-valid after disposal. Always dispose circuits to free their C++ resources;
-repeated disposal is harmless and further use raises a JavaScript `Error`.
+The wrapper copies results into JavaScript-owned arrays and signal maps.
+They remain valid after disposal. Always dispose circuits to free their C++ resources.
+Repeated disposal is harmless and further use raises a JavaScript `Error`.
 Parse/simulation failures also become JavaScript errors with readable messages.
 TypeScript resolves `neospice-api.d.mts` beside the module.
 
@@ -90,20 +87,16 @@ updates simulation temperature. `dc()` and `ac()` use the
 
 ## Scope and validation
 
-- Inline SPICE netlists and built-in device models; inline subcircuits and model
-  cards. External `.include` / `.lib` and nested `.step` are rejected by the JS
+- Inline SPICE netlists, built-in devices, subcircuits and model cards. External `.include` / `.lib` and nested `.step` are rejected by the JS
   interface. Analysis methods select what runs rather than executing directives.
 - DC, AC, transient, supported adjoint derivatives and value updates are exposed.
   No browser parallel sweeps, Monte Carlo wrapper, pole-zero, noise or raw-file
   interface is exposed. The full native API remains available separately.
-- The WASM binary was about **2.9 MiB** uncompressed in the verified release
-  build; the generated loader was about **108 KiB**. This is not a load-time or
-  simulation-performance claim. Browser memory and long-run resource limits
-  depend on the workload.
+
 - Node smoke tests cover analytical values, DC/AC/transient, gradients, update
   validation, ownership, failure handling and capability reporting.
   `tests/wasm/native_reference.py output.json` produces six native device
-  comparisons; pass that JSON as the third argument to `smoke.mjs`. These are
+  comparisons. Pass that JSON as the third argument to `smoke.mjs`. These are
   native/WASM checks, not a replacement ngspice compatibility baseline.
 - `tests/wasm/browser-smoke.mjs` uses Playwright to check worker loading, three
   analyses, the slider, errors and reset. Install Playwright and its Chromium
@@ -114,7 +107,7 @@ updates simulation temperature. `dc()` and `ac()` use the
   ```
 
   It imports `playwright` by default. `PLAYWRIGHT_MODULE` can point to an existing
-  installation's `index.mjs`; `CHROME_BINARY` can select an installed Chrome.
+  installation's `index.mjs`. `CHROME_BINARY` can select an installed Chrome.
   This checkout was exercised in headless Chrome, not Safari or Firefox.
 
 The [Emscripten Embind documentation](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html)

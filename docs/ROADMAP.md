@@ -1,526 +1,92 @@
-# neospice Roadmap
-
-## Current State
-
-neospice is a C++ SPICE simulator with C++ and Python APIs. See
-[capabilities](capabilities.md) for implemented analyses and their limitations,
-and [JOSS progress](joss-progress.md) for current test evidence. Numerical,
-validation, reproducibility and publication-readiness work in the
-[JOSS goal](joss-readiness-goal.md) takes priority over the future features below.
-ngspice 47 is the sole compatibility target for this work; see the
-[reference setup](ngspice47-reference.md).
-
-### Analyses
-DC operating point, DC sweep (nested 2-parameter), transient (adaptive Trap/Gear-2/BE),
-AC small-signal, noise (adjoint method), transfer function, finite-difference DC
-sensitivity for resistors and independent-source DC values, pole-zero,
-Fourier/THD, parameter sweep (.step), and .measure post-processing.
-
-### Device Models
-| Category | Devices |
-|----------|---------|
-| Passives | R (TC, RAC, flicker noise), C, L, K (mutual) |
-| Sources | V, I (DC/PULSE/SIN/PWL/EXP/SFFM/AM) |
-| Dependent | E, G, F, H (linear + POLY + TABLE) |
-| Behavioral | B (auto-diff Jacobian, DDT, IDT, PWL, TABLE, TEMP) |
-| Switches | S (voltage), W (current) — hysteresis |
-| T-Line | T (lossless Branin), O (LTRA lossy) |
-| Diode/BJT | Diode, BJT (Gummel-Poon), VBIC (level 4/9/12/13) |
-| JFET/MESFET/HFET | JFET, JFET2, MES, HFET1, HFET2 |
-| MOSFET | MOS1, MOS3, MOS9, BSIM3v32, BSIM3, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV |
-
-### Netlist Features
-`.param` expressions, `.subckt`/`.ends`, `.include`/`.lib`, `.global`, `.ic`, `.nodeset`,
-`.options`, `.func`, `.measure`, `.save`, `.step`, SPICE suffixes (k/m/u/n/p/f/T).
-
-### Implemented interfaces and measurement work
-- **Performance evidence**: accuracy-qualified paired measurements are in progress; library calls avoid launching a simulator subprocess. No general speedup is established.
-- **Embeddable C++ API**: handle-based `Simulator`/`Circuit`/`Result` interface with typed device methods and O(1) result access
-- **Expression derivatives**: B-source expression evaluation supplies derivatives for supported operations; piecewise boundaries follow the implemented branch conventions.
-- **Modern codebase**: C++20, modular DeviceRegistry factory pattern (add a device without touching central files), auto-migration tooling for ngspice models
-- **Python bindings**: documented analysis interfaces, NumPy arrays, typed circuit construction and SPICE notation parsing
-- **Output**: SPICE raw files and structured results; compatibility with a downstream tool requires an actual workflow check
-
----
-
-## Phase 1: Python Bindings — Done
-
-Exposes the full neospice API to Python via nanobind + scikit-build-core.
-
-### What shipped
-- **nanobind C++ bindings** (`python/bindings.cpp`): all enums, options structs, Circuit (with typed device methods), Simulator, and every result type (DC, transient, AC, noise, DC sweep, TF, sensitivity, PZ, SimulationResult, MeasureResult, StepResult)
-- **NumPy integration**: all vector results (time, frequency, voltage, current, noise density) returned as `numpy.ndarray`
-- **Convenience API** (`python/neospice/__init__.py`): `dc()`, `ac()`, `transient()`, `noise()`, `dc_sweep()`, `tf()`, `sens()`, `run()` — one-liner functions that accept a file path or netlist string
-- **Typed Circuit construction**: `ckt.R()`, `ckt.C()`, `ckt.L()`, `ckt.V()`, `ckt.I()`, `ckt.E()`, `ckt.G()` with string node names (auto-converted to handles internally)
-- **SPICE notation parser**: `parse_value("4.7k")` → `4700.0`
-- **Circuit introspection**: `node_names()`, `device_names()`, `device_info()`, `devices_at_node()`
-- **CI/CD** (`.github/workflows/wheels.yml`): cibuildwheel building for Python 3.10–3.13, Linux (x86_64 + aarch64 via QEMU), macOS (x86_64 + arm64), with automatic PyPI publishing on tag push via trusted publishing
-- **Python tests** (`tests/python/`, `python/tests/`): enums, options, source specs, load/parse, typed methods, all result types, convenience functions, SPICE notation parsing
-- **py.typed** marker for PEP 561 type checker support
-
-### Usage
-```python
-import neospice as ns
-
-# Convenience: one-liner from file or inline netlist
-dc = ns.dc("amplifier.cir")
-ac = ns.ac("filter.cir", mode="dec", npoints=100, fstart=1, fstop=1e9)
-
-# Full API
-sim = ns.Simulator()
-ckt = sim.load("amplifier.cir")
-result = sim.run_ac(ckt, ns.ACMode.DEC, 100, 1, 1e9)
-gain_db = result.magnitude_db("out")   # numpy.ndarray
-
-# Programmatic circuit building with typed methods
-ckt = ns.Circuit()
-ckt.V("V1", "in", "0", 0.0, 1.0)      # DC=0, AC=1
-ckt.R("R1", "in", "out", 1e3)
-ckt.C("C1", "out", "0", 100e-12)
-
-# SPICE engineering notation
-from neospice import parse_value
-r = parse_value("4.7k")                # 4700.0
-
-# Custom simulator options
-result = ns.dc("amp.cir", reltol=1e-4, gmin=1e-14)
-```
-
----
-
-## Phase 2: Parallel Parameter Sweeps — Implemented
-
-`Simulator::run_sweep()` uses independent circuits in a bounded worker pool with
-ordered results and per-job errors. `Simulator::monte_carlo()` adds seeded
-Gaussian/uniform variations and Gaussian correlation. Top-level parameter
-and primitive-value overrides plus temperature corners support parameter/PVT
-studies. Python exposes `sweep()` and `monte_carlo()`; `summarize_samples()`
-provides mean, sample sigma, inclusive-limit yield and histograms.
-
-See [parallel studies](parallel-studies.md) for APIs, reproducibility scope,
-thread ownership, race-test commands and limits. Worker-count selection uses
-hardware concurrency, not an optimization measurement. No scaling claim is made.
-
-The completed [simulation workflows goal](simulation-workflows-goal.md) covered
-parallel studies, adjoint sensitivity, incremental re-simulation and WebAssembly,
-in that order; historical phase numbers below are retained for reference.
-
----
-
-## Phase 3: WebAssembly (WASM) — Browser API and Circuit Lab implemented
-
-An Emscripten 6.0.11 CMake target produces a WASM module, ES-module wrapper,
-TypeScript declarations and a minimal Worker-based demo. DC/AC/transient,
-supported adjoint gradients and incremental solves are exposed.
-
-The [Circuit Lab](circuit-lab.md) adds a visual schematic editor with explicit
-pin/junction wiring, an analog component palette, nine editable circuit
-examples, independent SPICE text mode, light/dark themes, interactive plots and
-local project saving. Production builds support repository subpaths for GitHub
-Pages; [the published app](https://razorback16.github.io/neospice/) is deployed
-manually after browser and ngspice 47 gallery checks. Local preview and temporary
-tunnel scripts are included.
-
-All nine default gallery analyses pass local ngspice 47 comparisons, with the
-existing CMOS edge and oscillator contracts retained; 36 slider endpoints
-converge. Node model tests and Chromium browser tests cover the app. GitHub
-Actions passed the browser and ngspice 47 gallery/probe comparisons, and the
-published Pages app was verified with all 17 browser acceptance cases.
-
-See [WebAssembly](webassembly.md) for the underlying API and build commands.
-This is a single-threaded browser module; parallel batches and LAPACK pole-zero
-analysis are excluded. Latency remains workload-dependent, and arbitrary
-SPICE-to-schematic import is outside the first editor release.
-
----
-
-## Phase 4: Sensitivity & Gradient Computation — Initial API implemented
-
-`Simulator::sensitivity()` computes DC adjoint Jacobians for nominal R/C/L and
-independent-source DC values, including nonlinear-circuit operating-point
-linearization. `sensitivity_ac()` supplies complex AC gradients for linear
-circuits, including R/C/uncoupled-L and independent-source magnitude/phase.
-One transpose solve is required per output (per frequency for AC).
-
-[Adjoint gradients](adjoint-gradients.md) documents shapes, supported parameters,
-failure handling and Python optimization use. Semiconductor model-parameter
-AD, nonlinear bias-dependent AC gradients and coupled-inductor AC derivatives
-remain future work and are explicitly rejected. Existing `.sens` is unchanged.
-
----
-
-## Phase 5: Incremental Re-simulation — Initial API implemented
-
-`Circuit::update_param()` validates primary-value updates and invalidates bias
-and temperature preparation. `Simulator::re_solve()` and `re_solve_ac()` retain
-per-circuit symbolic factorization and workspaces. Linear DC and AC reuse
-numeric refactorization; nonlinear DC preserves normal convergence startup and
-fallbacks. Cache ownership, resets and counters are public and tested.
-
-[Incremental simulation](incremental-simulation.md) documents the workflow.
-All requested AC frequencies are recomputed. Partial restamping, approximate
-frequency skipping and incremental transient resume remain future work.
-Sub-millisecond latency and speedup targets are not yet measured claims.
-
----
-
-## Phase 6: GPU-Accelerated Simulation
-
-**Priority: Lower**
-
-For very large circuits (10k+ nodes) or massively parallel sweeps, offload
-matrix operations to GPU.
-
-### Goals
-- CUDA-accelerated sparse matrix factorization and solve
-- Batch simulation: thousands of parameter variations in a single GPU launch
-- Device evaluation on GPU (BSIM4v7 is embarrassingly parallel across instances)
-
-### Deliverables
-- Optional CUDA build target
-- Automatic CPU/GPU selection based on circuit size
-- Benchmark suite demonstrating crossover point
-
----
-
-## Phase 7: Extended Device & Analysis Support
-
-**Priority: Ongoing**
-
-### Devices — Remaining Gaps
-- BSIM-CMG (FinFET) model — next-gen compact model, industry demand
-- Priority 3 legacy devices (MOS2, MOS6, etc.) — low demand, available via migration tool
-- Verilog-A user-defined models — tracked separately as Phase 11 (syntax not currently supported)
-
-### Devices — Completed
-MOS1, MOS3, MOS9, BSIM3v32, BSIM3, BSIM4v7, BSIMSOI, HiSIM2, HiSIM_HV, BJT,
-VBIC, JFET, JFET2, MES, HFET1, HFET2, Diode, LTRA, ASRC, and all passives/sources/switches.
-
-### Analyses — Remaining Gaps
-- Distortion analysis (`.disto`)
-
-### Netlist Features — Remaining Gaps
-- XSPICE digital/mixed-signal code models
-- Full `.param` function library (most common functions done)
-
----
-
-## Phase 8: Piecewise-Linear (PWL) Simulation
-
-**Priority: High**
-
-A SIMPLIS-compatible piecewise-linear engine for switching power supplies, running
-alongside the SPICE engine in a unified architecture. Each nonlinear device is
-approximated by straight-line segments; within a segment the circuit is linear and
-solves in one shot, and the simulator steps between linear topologies as devices
-cross segment boundaries. This replaces Newton-Raphson iteration with event-driven
-linear solves. This is a proposed research direction; its event handling,
-accuracy, convergence behavior and performance have not been implemented or
-established by the current simulator.
-
-### Goals
-- PWL transient engine with topology caching and a SIMPLIS deck parser (`.SIMULATOR SIMPLIS`)
-- POP (Periodic Operating Point) — shooting-method steady state for switching circuits
-- Time-domain AC — Bode plots extracted from the full switching model
-- Reuse of existing NeoSolver, netlist, and result infrastructure (no engine fork)
-
-### Deliverables
-- PWL device primitives and the segment model
-- Per-circuit simulation-domain detection (`ANALOG_NR` vs `ANALOG_PWL`)
-- POP and time-domain AC analyses on the PWL engine
-
----
-
-## Phase 9: Digital Event Simulation
-
-**Priority: Medium**
-
-A discrete-event digital engine built on the same simulation-domain architecture as
-the PWL engine. Logic is evaluated by event propagation rather than matrix solves.
-
-### Goals
-- Verilog-style gate primitives, flip-flops, and registers
-- Event queue with per-gate delay models
-- Discrete-event scheduler sharing the circuit/netlist infrastructure
-
-### Deliverables
-- `DIGITAL` simulation domain and digital device primitives
-- Event-driven scheduler and digital waveform output
-
----
-
-## Phase 10: Mixed-Signal Co-Simulation
-
-**Priority: Medium**
-
-Couple the analog (SPICE/PWL) and digital engines so a single netlist can contain
-both, with a coordinator managing the analog/digital boundary and time
-synchronization. Supersedes the XSPICE-style code-model gap noted in Phase 7.
-
-### Goals
-- Analog/digital boundary elements (A2D / D2A) with threshold and slew models
-- Time-synchronization coordinator across analog timesteps and digital events
-- SPICE-to-PWL model extraction (auto-convert SPICE MOSFET/diode to PWL segments)
-
-### Deliverables
-- Co-simulation coordinator for mixed-domain circuits
-- Boundary device primitives and the synchronization scheme
-
----
-
-## Phase 11: Verilog-A Device Models
-
-**Priority: Lower**
-
-Verilog-A syntax is **not currently supported**. This phase adds a Verilog-A front
-end so users can define their own compact models without modifying neospice,
-compiling Verilog-A modules into the device-evaluation chain. The auto-differentiated
-Jacobians already used for behavioral B-sources extend naturally to compiled models.
-
-### Goals
-- Verilog-A parser and compiler targeting neospice device primitives
-- Auto-differentiated Jacobians for user-defined models
-- Coexistence with the built-in C++ device library
-
-### Deliverables
-- Verilog-A front end and code generator
-- Worked example: a user-supplied compact model loaded from a `.va` file
-
----
-
-## Phase 12: ML-Guided DC Convergence
-
-**Priority: Research**
-
-Replace neospice's all-zeros Newton starting point with a learned operating-point
-predictor, cutting DC convergence failures and Newton iteration counts. A circuit
-is a graph, so the model is a heterogeneous GNN over a bipartite node/component
-graph, trained on the ~34K converged KiCad solutions and refined toward the true
-objective — actual Newton convergence — rather than just voltage MSE. It stays
-**purely additive**: a bad guess only costs a few extra Newton iterations, and the
-existing gmin / source-stepping / OPtran fallbacks still fire. Gated behind
-`.options mlguess` and a CMake flag, off by default. Full design and prior-art
-survey: [ml-initial-guess.md](ml-initial-guess.md).
-
-### Progression
-- Rule-based heuristic guess (BFS rail propagation) — **done** (`compute_initial_guess()` in `src/core/node_classify.cpp`)
-- Supervised MLP / GNN voltage predictor exported to ONNX, seeding Newton
-- Physics-informed (KCL) residual fine-tuning
-- REINFORCE fine-tuning with Newton convergence as the reward signal
-- Synthetic hard-case generation (latches, Schmitt triggers, bandgaps) for the failure tail
-
----
-
-## API Vision
-
-The API evolves through layers — each builds on the previous. The current API
-is netlist-in, struct-out. The target is a fully programmatic, composable,
-streaming-capable simulation engine.
-
-### Typed Result Access (done)
-
-All result types provide both string-based and handle-based access. String
-accessors work with any circuit; handle-based access provides O(1) dense array
-lookup via `NodeId`/`DevId`. DC, transient, AC, DC sweep, and noise results
-have `.voltage()`, `.current()` helpers. AC adds `.magnitude_db()`,
-`.phase_deg()`, `.magnitude()`, `.diff()`, `.diff_magnitude_db()`, and
-current-based variants. Measurement free functions in `neospice::measure`
-namespace provide `bandwidth_3db`, `rise_time`, `settling_time`, `overshoot`,
-`rms`, `phase_margin`, `gain_margin`, `spot_noise`.
-
-```cpp
-// String-based access (works with any circuit):
-auto ac = sim.run_ac(ckt, ACMode::DEC, 10, 1, 100e6);
-auto gain_db = ac.magnitude_db("out");       // vector<double>
-auto phase   = ac.phase_deg("out");          // vector<double>
-auto vdiff   = ac.diff("out_p", "out_n");    // vector<complex>
-double vout  = dc.voltage("out");            // scalar
-double ibias = dc.current("v1");             // scalar
-
-// Handle-based access (O(1) dense array lookup):
-NodeId out_id = ckt.find_node("out");
-auto gain_h   = ac.magnitude_db(out_id);     // vector<double>
-double vout_h = dc.voltage(out_id);          // scalar
-
-// Measurement utilities:
-double bw = measure::bandwidth_3db(ac, out_id);
-double rt = measure::rise_time(tran, out_id, 0.5, 4.5);
-
-// SimStatus with convergence diagnostics:
-auto status = dc.status;                     // converged, iterations, residual, worst_node
-```
-
-### Programmatic Circuit Construction (done)
-
-Build circuits in code with typed device methods. Each method returns a `DevId`
-handle for the created device.
-
-```cpp
-using namespace neospice;
-
-Circuit ckt;
-auto in  = ckt.node("in");
-auto out = ckt.node("out");
-
-auto v1 = ckt.V("V1", in, GND, 0.0, 1.0);    // DC=0, AC=1
-ckt.R("R1", in, out, 1e3);
-ckt.C("C1", out, GND, 100e-12);
-ckt.E("E1", out2, gnd, in, gnd, 2.0);         // VCVS gain=2
-ckt.F("F1", np, nn, v1, 0.5);                 // CCCS
-```
-
-### Live Parameter Mutation
-
-Change component values without re-parsing. Triggers NeoSolver refactorize, not full
-symbolic re-analysis.
-
-```cpp
-auto ckt = sim.load("amp.cir");
-auto baseline = sim.re_solve_ac(ckt, DEC, 10, 1, 100e6);
-
-ckt.set_param("r1", 2.2e3);
-ckt.set_param("c1", 47e-12);
-auto tweaked = sim.re_solve_ac(ckt, DEC, 10, 1, 100e6);
-```
-
-### Streaming / Callback Results
-
-For long transient simulations — get data as it's produced, not all at the end.
-
-```cpp
-sim.run_transient(ckt, 1e-9, 1e-3, {
-    .signals = {"v(out)", "i(v1)"},
-    .on_step = [](double t, std::span<const double> values) {
-        // stream to file, update plot, etc.
-    },
-    .stop_when = [](double t, std::span<const double> values) {
-        return values[0] > 3.3;  // early termination
-    }
-});
-```
-
-### Circuit Introspection (done)
-
-Query topology and connectivity for validation, visualization, and automation.
-Both string-based and handle-based introspection.
-
-```cpp
-auto nodes   = ckt.node_names();              // {"in", "out", "vcc", ...}
-auto devices = ckt.device_names();            // {"r1", "c1", "x1.q1", ...}
-auto info    = ckt.device_info("r1");         // {type, nodes, value}
-auto conn    = ckt.devices_at_node("out");    // {"r1", "c1", "x1.ehf"}
-
-// Handle-based introspection
-NodeId nid   = ckt.find_node("out");
-DevId  did   = ckt.find_device("R1");
-auto   name  = ckt.name(nid);                // "out"
-auto   dinfo = ckt.device_info(did);         // DeviceInfo struct
-```
-
-### Analysis Chaining
-
-Use one analysis result as input to the next — the way analog designers
-actually work.
-
-```cpp
-auto dc   = sim.run_dc(ckt);
-auto tran = sim.run_transient(ckt, 1e-9, 1e-6, {.ic_from = dc});
-
-ckt.set_param("vin", 2.5);
-auto dc2 = sim.run_dc(ckt);
-auto ac  = sim.run_ac(ckt, DEC, 10, 1, 1e9, {.op_from = dc2});
-```
-
-### Batch / Sweep API
-
-First-class support for parameter sweeps and Monte Carlo analysis.
-
-```cpp
-auto sweep = sim.sweep(ckt, {
-    .param = "r1",
-    .values = linspace(100, 10e3, 50),
-    .analysis = ACSweep{DEC, 10, 1, 100e6},
-    .parallel = true
-});
-
-auto mc = sim.monte_carlo(ckt, {
-    .variations = {{"r1", Gaussian{1e3, 0.05}},
-                   {"c1", Gaussian{100e-12, 0.10}}},
-    .n_runs = 10000,
-    .analysis = Transient{1e-9, 1e-6},
-    .measure = [](const TransientResult& r) {
-        return r.voltage("out").back();
-    }
-});
-// mc.mean(), mc.sigma(), mc.yield(spec_min, spec_max)
-```
-
-### Python Mirror (implemented)
-
-The C++ API is exposed 1:1 to Python via nanobind, with NumPy arrays for all
-vector results. Convenience functions provide one-liner access to every analysis.
-Circuit construction uses typed methods with string node names.
-
-```python
-import neospice as ns
-
-# Convenience one-liners (file path or inline netlist)
-dc = ns.dc("amplifier.cir")
-ac = ns.ac("filter.cir", mode="dec", npoints=100, fstart=1, fstop=1e9)
-tran = ns.transient("osc.cir", tstep=1e-9, tstop=1e-6)
-
-# Full API with Simulator + Circuit objects
-sim = ns.Simulator()
-ckt = sim.load("amp.cir")
-result = sim.run_ac(ckt, ns.ACMode.DEC, 10, 1, 100e6)
-plt.semilogx(result.frequency, result.magnitude_db("out"))
-
-# Programmatic circuit building with typed methods
-ckt = ns.Circuit()
-ckt.V("V1", "in", "0", 0.0, 1.0)
-ckt.R("R1", "in", "out", 1e3)
-ckt.C("C1", "out", "0", 100e-12)
-
-# SPICE engineering notation
-from neospice import parse_value
-r = parse_value("4.7k")    # 4700.0
-```
-
-### API Implementation Priority
-
-1. ~~Typed result access~~ — **Done** (string + handle-based access on all result types)
-2. **`set_param()` on Circuit** — unlocks sweeps, optimization, interactive use (basic version done)
-3. ~~Programmatic circuit construction~~ — **Done** (typed device methods replace CircuitBuilder)
-4. **Streaming transient** — essential for long simulations and real-time use
-5. **Batch/sweep API** — builds on set_param + threading
-
----
-
-## Summary
-
-| Phase | Feature                    | Impact          | Effort   | Status |
-|-------|----------------------------|-----------------|----------|--------|
-| —     | Handle types (NodeId/DevId/ModelId) | Type safety | Low  | Done |
-| —     | Typed result access (string + handle) | Usability | Low  | Done |
-| —     | Dense array result storage | Performance     | Medium   | Done |
-| —     | SimStatus error model + SimulationError | Reliability | Low | Done |
-| —     | Measurement utilities (8 functions) | Usability | Medium | Done |
-| —     | Typed device methods (R/C/L/V/I/E/G/F/H/K) | Usability | Medium | Done |
-| —     | Circuit state machine      | Safety          | Low      | Done |
-| —     | Handle-based introspection | Usability       | Medium   | Done |
-| —     | Noise per-device accessor  | Usability       | Low      | Done |
-| —     | Analysis chaining          | Usability       | Low      | Done |
-| —     | Circuit introspection      | Usability       | Medium   | Done |
-| —     | Generic set_param()        | Optimization    | Medium   | Done |
-| 1     | Python bindings            | Adoption        | Medium   | Done |
-| 2     | Parallel sweeps            | Performance     | Medium   | Planned |
-| 3     | WASM + Circuit Lab         | Accessibility   | Medium   | Published on GitHub Pages |
-| 4     | Sensitivity/gradients      | Optimization    | High     | Planned |
-| 5     | Incremental re-simulation  | Interactivity   | Medium   | Planned |
-| 6     | GPU acceleration           | Large circuits  | High     | Planned |
-| 7     | Extended devices/analyses  | Completeness    | Ongoing  | Active  |
-| 8     | PWL simulation engine      | Switching power | High     | Planned |
-| 9     | Digital event simulation   | Mixed-signal    | High     | Planned |
-| 10    | Mixed-signal co-simulation | Mixed-signal    | High     | Planned |
-| 11    | Verilog-A device models    | Extensibility   | High     | Planned |
-| 12    | ML-guided DC convergence   | Robustness      | High     | Research |
+# Roadmap
+
+Updated October 6, 2026. This roadmap separates delivered APIs from planned
+extensions and research proposals. The [capabilities guide](capabilities.md)
+describes supported behavior; the [support matrix](support-matrix.md) records
+reference coverage. Release details are in [0.2.0 notes](release-0.2.md).
+
+## Direction: one unified simulator
+
+The long-term goal is one extensible engine for analog, digital, and mixed-signal
+simulation. Easy C++ and Python APIs and parallel studies are central to that
+goal. New simulation methods should share circuit data, device interfaces, and
+results where their semantics permit. The current SPICE engine is the foundation.
+PWL, digital events, and mixed-signal coordination are the next simulation domains
+in the design proposals below.
+
+## Delivered
+
+| Area | Current implementation | Guide |
+|---|---|---|
+| Native simulation | C++20 library and CLI; DC, transient, AC, noise, TF, sensitivity, pole-zero, Fourier, and measurements | [Capabilities](capabilities.md) |
+| Python | nanobind bindings, NumPy results, convenience functions, typed circuit construction; release wheel targets for CPython 3.10–3.14 on Linux x86_64/ARM64 and macOS 14+ ARM64 | [Build and install](building.md) |
+| Circuit API | Node/device handles, typed builders, introspection, file-based library inclusion and subcircuit instantiation | [Programmatic circuits](programmatic-hierarchy-api.md) |
+| Parallel studies | Bounded worker pool, parameter/device/temperature overrides, seeded Gaussian/uniform Monte Carlo, correlation, and scalar statistics | [Parallel studies](parallel-studies.md) |
+| Gradients | DC adjoint Jacobians for R/C/L and independent-source values; linear AC complex derivatives | [Adjoint gradients](adjoint-gradients.md) |
+| Incremental simulation | Checked component-value updates, per-circuit symbolic caches, DC/AC re-solves, and reuse counters | [Incremental simulation](incremental-simulation.md) |
+| Browser engine | Emscripten build, JavaScript API, TypeScript declarations, and Worker execution | [WebAssembly](webassembly.md) |
+| Circuit Lab | Schematic and SPICE editors, nine examples, DC/AC/transient plots, probes, saved projects, and CSV export | [Circuit Lab](circuit-lab.md) |
+
+## Near-term priorities
+
+### Numerical reliability and model coverage
+
+- Extend the device/analysis/parameter coverage against ngspice 47, retaining
+  original failing fixtures and comparison tolerances.
+- Resolve the remaining model and corpus findings, then repeat the frozen
+  corpus with the final candidate and report every outcome.
+- Extend regression coverage for temperature, geometry, model options, noise,
+  and transient behavior. Keep unsupported requests explicit.
+- Prepare stable 1.0 APIs and reproducible release validation.
+
+The [compatibility triage](corpus-mismatch-triage.md) and
+[JOSS progress](joss-progress.md) retain the detailed findings. Publication
+readiness additionally requires research-use evidence, attribution review,
+final measurements, and author review; it is separate from shipping 0.2.0.
+
+### Measured performance
+
+- Measure the final candidate across the complete 34-workload population on
+  an idle machine, keeping raw samples and numerical checks.
+- Profile remaining expensive workloads and use controlled ablations to
+  attribute improvements to individual changes.
+- Measure parallel-study throughput and incremental-solve latency on declared
+  circuit populations before publishing speedup claims.
+
+See [performance comparison](performance-analysis.md) and
+[benchmark methods](benchmark-methods.md).
+
+### Application and automation workflows
+
+- Grow Circuit Lab's example library, schematic editing, and model-library
+  workflows; expand browser and platform acceptance testing.
+- Add streaming transient results, callbacks, and explicit stop/resume semantics.
+- Extend circuit hierarchy construction with reusable in-memory subcircuit
+  definitions and typed ports.
+- Extend derivatives to nonlinear AC bias dependence, coupled inductors, and
+  semiconductor model parameters with independent verification.
+- Investigate partial restamping and transient state reuse for incremental
+  simulation, with explicit invalidation and recovery contracts.
+
+## Longer-term engineering and research
+
+| Direction | Intended outcome | Status / design |
+|---|---|---|
+| More devices and analyses | Additional compact models such as BSIM-CMG and distortion analysis | Planned; [device integration](device-migration-status.md) |
+| Piecewise-linear simulation | Switching-power transient engine, periodic operating point, and time-domain AC | Proposed; [PWL design](pwl-simulation-design.md) |
+| Digital event simulation | Logic primitives, delayed events, and digital waveforms | Proposed; [mixed-signal design](mixed-signal-architecture.md) |
+| Mixed-signal coordination | Analog/digital boundary devices and synchronized simulation domains | Proposed; [unified architecture](unified-simulation-architecture.md) |
+| Verilog-A | User-defined device models integrated with the device evaluation API | Proposed in the unified architecture |
+| GPU acceleration | Device evaluation and sparse/batched solves for suitable large workloads | Research; crossover points must be measured |
+| Learned convergence hints | Optional operating-point predictions with normal convergence checks and fallbacks | Research; [initial-guess proposal](ml-initial-guess.md) |
+
+These proposals are design inputs, not shipped features or release commitments.
+Priorities follow reproducible use cases and measured results. The existing
+node-classification heuristic is implemented; the learned predictor is not.
+
+## Contributing
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md). Changes should include a concrete
+circuit or workflow, the applicable regression checks, and documentation of
+public behavior. Keep the support matrix generated from tests and performance
+claims linked to their experiment records.

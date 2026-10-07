@@ -197,6 +197,6 @@ int main() {
     std::printf("  - us/iter: median run_dc time divided by the final sample iteration count.\n");
     std::printf("    This is not a measured individual Newton iteration or factorization.\n");
     std::printf("  - Finer factor/solve/device-eval split needs solver instrumentation\n");
-    std::printf("    hooks (not exposed by the public API). See performance-analysis.md.\n");
+    std::printf("    hooks (not exposed by the public API). See docs/benchmark-methods.md.\n");
     return failed ? 1 : 0;
 }

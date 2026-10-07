@@ -16,7 +16,7 @@ final scholarly argument and actual workflow are established.
 | Draft material | Evidence / work remaining |
 |---|---|
 | Author identity and AI tools | [Author-supplied information](../docs/joss-author-information.md); historical scope and human confirmation pending. |
-| Architecture and trade-offs | [Source-based comparison](../docs/neospice-vs-ngspice.md); attribution and full documentation audit still open. |
+| Architecture and trade-offs | [Source-based comparison](../docs/neospice-design.md); attribution and full documentation audit still open. |
 | Frozen fixture counts | [Experiment definition](../docs/kicad-experiment.md), checkpoint-11 manifest. These are input counts, not final accuracy results. |
 | Current ngspice47 compatibility defects | [Progress](../docs/joss-progress.md), [reference 47](../docs/ngspice47-reference.md); supported correctness blockers remain. |
 | Scope of the correctness claim | [Support matrix](../docs/support-matrix.md), generated from the test suite; [declared scope](../docs/capabilities.md#declared-scope). |
@@ -24,7 +24,7 @@ final scholarly argument and actual workflow are established.
 | Actual research workflow and impact | Required author evidence pending. Demonstrations must not be described as adoption. |
 | Benchmarks, figures and final compatibility tables | Pending accuracy-qualified measurements and final candidate evidence. No speedup claim is included. |
 | Eligibility and installation | [JOSS requirements](../docs/joss-requirements-checklist.md); public-history and independent human checks remain. |
-| Rendering and release | Updated ngspice47-only three-page draft with five references compiled and visually inspected in checkpoint30; final candidate evidence, release manifest and author approval remain. |
+| Rendering and release | Generate and inspect the current PDF after final candidate evidence, release metadata, and author review. |
 
 The impact section currently explains limitations of the working candidate.
 It needs actual research evidence before it can support submission. Removing
@@ -32,13 +32,8 @@ the pending markers alone cannot close the readiness goal.
 
 ## Rendering
 
-The [paper.pdf](paper.pdf) is rendered from the current ngspice47-only source with the official
-Inara image pinned below. All three pages of the ngspice47-only rendering were visually inspected;
-author details, required sections, pending markers and five references render.
-The manuscript remains a working draft with pending research evidence. YAML metadata, required headings
-and citation-key resolution were checked. The prior checkpoint13 rendering is
-preserved in historical evidence. This is a format check, not author approval
-or substantive readiness.
+Generate `paper.pdf` from the current manuscript before review. Inspect the
+rendered pages, metadata, and references after every manuscript change.
 
 From the repository root, with Docker available:
 
@@ -59,17 +54,3 @@ pipeline for the final candidate. Intermediate JATS output is ignored.
 The final release still needs an updated, inspected PDF whose substantive
 claims trace to final measurements and confirmed human facts. The current
 draft deliberately exposes missing evidence instead of filling it in.
-
-## September 11 source and rendering update
-
-The state-of-the-field text and bibliography now include ngspice's shared API
-and Sandia's documented Xyce C/Python interface. Existing C++ modularity and
-embedding capabilities must not be presented as unique to neospice. The current PDF includes this edit and was compiled and inspected after
-benchmark sampling finished. The complete 34-workload timing report is linked
-from [benchmark methods](../docs/benchmark-methods.md); final research-use and
-performance discussion in the manuscript remain unfinished.
-Public-history bounds are recorded in [the history audit](../docs/joss-public-history.md);
-first-public date and research-use evidence remain pending.
-
-The current source targets ngspice47 exclusively. Previous draft renderings and
-documentation are preserved in the pre-cleanup evidence archive.

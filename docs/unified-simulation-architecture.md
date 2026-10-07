@@ -2,25 +2,29 @@
 
 **Date:** 2026-05-22
 **Status:** Design — not yet implemented
-**Supersedes:** Section 11.1 (Verilog-A Behavioral Models) of `mixed-signal-architecture.md` — that section was a brief future-extension sketch; this document provides the full design.
-**Builds on:** `mixed-signal-architecture.md` (multi-rate partitioning, digital models, boundary management)
+**Builds on:** [Mixed-signal proposal](mixed-signal-architecture.md). The OSDI
+design replaces its Verilog-A compiler sketch.
+
+All interfaces, file paths, syntax, and API examples below are proposed.
+The existing SPICE engine is implemented. PWL, digital partitions, OSDI loading,
+and cross-mode coordination are not implemented.
 
 ## 1. Executive Summary
 
-This document describes the architecture for extending neospice into a unified multi-mode circuit simulator supporting four simulation paradigms within a single transient run:
+The proposal combines SPICE, PWL, and digital partition solvers in one run.
+Verilog-A devices compiled through OpenVAF/OSDI would run inside SPICE partitions.
+Each engine retains its numerical method and local state. Shared circuit data,
+MNA storage, scheduling, and results connect the engines.
 
-1. **SPICE mode** — the existing Newton-Raphson nonlinear solver (unchanged)
-2. **PWL mode** — a new piecewise-linear topology-switching engine inspired by SIMPLIs, where nonlinear devices are modeled as explicit PWL segments with event-driven topology changes and direct linear solves (no Newton iteration)
-3. **Verilog-A mode** — industry-standard behavioral device models compiled by OpenVAF into shared libraries, loaded at runtime via the OSDI (Open Source Device Interface)
-4. **Digital mode** — PWL gates, compiled FSM evaluator, and real-number behavioral blocks (as designed in `mixed-signal-architecture.md`)
-
-The key architectural decision is **multi-engine with shared MNA infrastructure** (Approach A). Each simulation mode has its own partition solver, but all solvers share the same `SparsityPattern`, `NumericMatrix`, and `NeoSolver` linear algebra stack. The multi-rate scheduler from the mixed-signal architecture orchestrates all partition types, managing per-partition timesteps and cross-mode boundary exchange.
-
-Users control mode assignment via per-subcircuit annotations (`mode=spice|pwl|digital`). Devices within the same subcircuit are guaranteed to land in the same partition. Cross-mode connections become partition boundaries with PWL interpolation.
+Subcircuit annotations (`mode=spice|pwl|digital`) select partition modes.
+Cross-mode connections become boundaries with interpolation and error checks.
+The earlier PWL proposal starts with pure-mode circuits. This document describes
+its intended extension to mixed runs. Device interfaces and parser syntax must
+be reconciled before implementation.
 
 ### What This Enables
 
-- **Power supply designers** can simulate a buck converter's power stage with the PWL engine (10-100x faster than SPICE for switching circuits) while keeping the analog error amplifier in SPICE mode for accuracy
+- **Power supply designers** can simulate a buck converter's power stage with the PWL engine while keeping the analog error amplifier in SPICE mode for accuracy
 - **IC designers** can load BSIM-CMG or PSP compact models as pre-compiled Verilog-A shared libraries without recompiling neospice
 - **Mixed-signal designers** can combine all four modes: a digital controller (FSM), driving a PWL power stage, feeding an analog filter (SPICE), with Verilog-A behavioral models for ADC/DAC interfaces
 
@@ -30,33 +34,11 @@ Users control mode assignment via per-subcircuit annotations (`mode=spice|pwl|di
 
 ### 2.1 Multi-Engine Design
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                     Multi-Rate Scheduler (orchestrator)               │
-│                    (src/core/multirate_scheduler.hpp)                 │
-│                                                                      │
-│  Priority queue of partition events. Manages global sync,            │
-│  boundary exchange, idle detection, adaptive sync interval.          │
-│                                                                      │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐ │
-│  │SpicePartition │ │ PwlPartition │ │DigitalPartition│ │IdlePartition│
-│  │              │ │              │ │              │ │            │ │
-│  │ Newton-      │ │ Direct solve │ │ FSM table    │ │ Sleeping   │ │
-│  │ Raphson loop │ │ + zero-cross │ │ lookup +     │ │ (skip)     │ │
-│  │ (existing)   │ │ event detect │ │ PWL gates    │ │            │ │
-│  │              │ │              │ │              │ │            │ │
-│  │ Verilog-A    │ │ PWL device   │ │ (no matrix)  │ │            │ │
-│  │ devices via  │ │ library      │ │              │ │            │ │
-│  │ OSDI live    │ │              │ │              │ │            │ │
-│  │ here too     │ │              │ │              │ │            │ │
-│  │              │ │              │ │              │ │            │ │
-│  │ NeoSolver    │ │ NeoSolver    │ │              │ │            │ │
-│  │ NumericMatrix│ │ NumericMatrix│ │              │ │            │ │
-│  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └─────┬──────┘ │
-│         └────────────────┴────────────────┴───────────────┘        │
-│                     Boundary Value Exchange                         │
-│               (PWL interpolation between syncs)                     │
-└──────────────────────────────────────────────────────────────────────┘
+```text
+Multi-rate scheduler
+  -> partition solvers (local state, timestep, matrix where needed)
+  -> boundary exchange (interpolation, error checks, wake-up)
+  -> common result collection
 ```
 
 ### 2.2 Shared Infrastructure
@@ -75,12 +57,12 @@ All partition types share:
 
 ### 2.3 What Each Mode Is Good For
 
-| Mode | Best For | Mechanism | Typical Speedup vs Monolithic SPICE |
-|------|----------|-----------|--------------------------------------|
-| SPICE | Analog precision (amplifiers, filters, bias networks) | Newton-Raphson iteration | 1x (baseline) |
-| PWL | Switching circuits (power supplies, motor drives, Class-D) | Direct linear solve + topology switching | 10-100x |
-| Digital | Controllers, state machines, digital logic | Compiled FSM lookup / PWL gate evaluation | 100-1000x |
-| Idle | Stable bias networks, unused blocks | Skip entirely | ∞ |
+| Mode | Intended use | Mechanism |
+|---|---|---|
+| SPICE | Amplifiers, filters, and bias networks | Newton-Raphson iteration |
+| PWL | Switching circuits | Linear solves and topology events |
+| Digital | Controllers and state machines | FSM evaluation and logic events |
+| Idle | Stable blocks | Activity detection and wake-up events |
 
 ---
 
@@ -162,9 +144,13 @@ class DigitalPartitionSolver : public PartitionSolver {
 
 ### 4.1 Core Concept
 
-In traditional SPICE, nonlinear devices stamp operating-point-dependent conductances and currents into the MNA matrix, and Newton-Raphson iterates until the stamps converge. In PWL mode, every device defines a finite set of **linear topologies** — each topology is a fixed set of MNA stamps (conductances + current sources) that are exact within a region of the device's operating space. The circuit is always linear within the current topology combination, so a single LU factorize + solve produces the exact solution. No iteration required.
+SPICE updates nonlinear MNA stamps through Newton iteration. PWL devices define
+linear stamps for each operating region. A fixed topology requires a linear
+solve, subject to matrix conditioning and transient integration error.
 
-Topology switches occur when a device's terminal voltage or current crosses a boundary between PWL segments. A zero-crossing detector locates these events precisely, the engine switches the affected device to its new topology, re-stamps the matrix, and continues.
+Segment crossings change the active topology. Locate those events, prepare the
+new matrix, and retain consistent charge, flux, and accepted state. Linear solves
+do not remove singularity, event-cascade, or consistency failures.
 
 ### 4.2 PwlDevice Interface
 
@@ -301,13 +287,13 @@ procedure pwl_advance(partition, t_target):
         .t_reached = partition.t_local,
         .t_next_suggested = partition.t_local + partition.dt_local,
         .topology_changed = any_topology_changed,
-        .converged = true   // PWL always converges (direct solve)
+        .converged = true   // only after solve and topology checks succeed
     }
 ```
 
 ### 4.4 Zero-Crossing Detection
 
-The zero-crossing detector locates the precise time when a switching condition function crosses zero, using Brent's method for robust root finding:
+The zero-crossing detector locates the precise time when a switching condition function crosses zero, using Brent's method on a bracketed crossing:
 
 ```
 procedure find_earliest_crossing(events, t_local, dt, sol_prev, sol_new):
@@ -624,7 +610,8 @@ Because `PwlDevice` extends `Device`, the standard `DeviceRegistry` dispatch wor
 
 1. Look up model card by name
 2. Match device builder by prefix + priority (PWL builders at priority 50)
-3. PWL builder checks if the model card type starts with `pwl_`; if so, returns a `PwlDevice` subclass as `unique_ptr<Device>`; otherwise returns `nullptr` (falls through to built-in builder at priority 0)
+3. For a `pwl_` model, return a `PwlDevice` as `unique_ptr<Device>`.
+   Otherwise return `nullptr` and try the built-in builder at priority 0.
 
 ---
 
@@ -918,7 +905,7 @@ M1 e f g g BSIM4_NMOS         ; → spice (standard MOSFET model)
 **Partition assignment for top-level devices:**
 
 1. Each device gets a mode tag: `pwl` if its model is a `pwl_*` type, `spice` otherwise. Passive elements (R, C, L) without a model card default to `spice`.
-2. The partitioner performs a connected-component traversal: starting from each PWL device, it floods through shared nodes, collecting all directly-connected devices. If a shared node connects a PWL device and a SPICE device (e.g., `D1` and `R1` sharing node `b`), the **shared node becomes a boundary node**. The SPICE device stays in the SPICE partition; the PWL device goes in the PWL partition.
+2. The partitioner performs a connected-component traversal: starting from each PWL device, it floods through shared nodes, collecting all directly-connected devices. If a shared node connects a PWL device and a SPICE device (e.g., `D1` and `R1` sharing node `b`), the **shared node becomes a boundary node**. The SPICE device stays in the SPICE partition. the PWL device goes in the PWL partition.
 3. Passive elements connected *only* to PWL devices (no SPICE neighbors) are absorbed into the PWL partition and use companion models.
 4. Single-device PWL partitions are permitted but generate a diagnostic note suggesting the user wrap them in a subcircuit for clarity.
 
@@ -1524,44 +1511,12 @@ In this circuit:
 
 ---
 
-## 13. Performance Analysis
+## 13. Performance evaluation
 
-### 13.1 Expected Speedup: Buck Converter Example
-
-Consider the circuit from Section 12 with a 100kHz switching frequency, simulated for 1ms:
-
-| Partition | Mode | Matrix Size | Steps | Cost per Step | Total Cost |
-|-----------|------|-------------|-------|---------------|------------|
-| Power stage | PWL | ~10 nodes | ~100k (switching events) | 1 LU solve | 100k × O(10³) |
-| Error amp | SPICE | ~20 nodes | ~10k (slow dynamics) | 5 Newton × LU | 50k × O(20³) |
-| PWM controller | Digital | 0 (no matrix) | ~100 (clock edges) | 1 table lookup | 100 × O(1) |
-
-**Monolithic SPICE** (current): 100k steps × 5 Newton iterations × full ~30-node LU = baseline
-
-**Multi-rate with PWL**: Power stage does 1 solve per step (not 5 Newton), error amp takes 10x fewer steps, digital is essentially free. **Estimated speedup: 10-30x**.
-
-### 13.2 Where Each Mode Wins
-
-| Circuit Type | Best Mode | Why |
-|-------------|-----------|-----|
-| Buck/boost/flyback converters | PWL | Switching events dominate; PWL avoids Newton convergence at transitions |
-| Class-D audio amplifiers | PWL | High switching frequency, simple device behavior |
-| LDO regulators | SPICE | Continuous analog behavior, no switching |
-| PLL/DLL | SPICE + Digital | VCO/charge pump need SPICE accuracy; PFD is digital |
-| Sigma-delta ADC | PWL + SPICE | Comparator and switches in PWL; integrator in SPICE |
-| Motor drive inverters | PWL | 6-switch inverter with simple gate drive logic |
-
-### 13.3 Comparison with Existing Tools
-
-| Feature | ngspice | SIMPLIs | neospice (this design) |
-|---------|---------|---------|----------------------|
-| SPICE NR solver | Yes | No | Yes |
-| PWL topology switching | No | Yes | Yes |
-| Verilog-A models | Yes (OSDI) | No | Yes (OSDI) |
-| Digital simulation | XSPICE (event-driven) | Basic gates | Compiled FSM + PWL gates |
-| Mixed-mode in one run | Co-simulation (slow) | Single mode only | Per-subcircuit mode selection |
-| Per-subcircuit solver choice | No | No | Yes |
-| Multi-rate timestepping | No | No | Yes (partition-level) |
+Measure the implemented domains on declared circuits after numerical validation.
+Include event handling, synchronization, rollback, model evaluation, and output
+costs. Compare against the corresponding SPICE circuit at stated tolerances.
+Report all workloads and separate throughput from single-circuit latency.
 
 ---
 
@@ -1580,7 +1535,7 @@ Consider the circuit from Section 12 with a 100kHz switching frequency, simulate
 - `src/core/transient.hpp/.cpp` — add partition-aware path (iterate partitions sequentially at same dt)
 - `src/parser/netlist_parser.cpp` — parse `mode=` annotation on `.subckt`
 
-**Validation**: All existing tests pass. Partitioned simulation produces identical results to monolithic.
+**Validation**: All existing tests pass. Compare partitioned and monolithic results at the original tolerances.
 
 ### Phase 2: Multi-Rate Scheduler
 
@@ -1594,7 +1549,7 @@ Consider the circuit from Section 12 with a 100kHz switching frequency, simulate
 - `src/core/transient.cpp` — new entry point `solve_transient_multirate()` dispatching through scheduler
 - `src/core/timestep.hpp/.cpp` — per-partition `TimeStepController` instances
 
-**Validation**: Benchmark on circuits with disparate time constants. Verify speedup proportional to time-constant ratio.
+**Validation**: Benchmark on circuits with disparate time constants. Measure runtime across the declared time-constant ratios.
 
 ### Phase 3: PWL Engine
 
@@ -1665,7 +1620,7 @@ Consider the circuit from Section 12 with a 100kHz switching frequency, simulate
 - `src/core/multirate_scheduler.cpp` — idle detection heuristics, wake-up conditions
 - `src/core/boundary.cpp` — retrospective error estimation, adaptive sync
 
-**Validation**: Large mixed-signal circuits. Verify idle partitions have zero cost. Verify fallback to monolithic under tight coupling.
+**Validation**: Large mixed-signal circuits. Measure idle-partition overhead and check wake-up behavior. Verify fallback to monolithic under tight coupling.
 
 ### Phase 8: Python API and Documentation
 
@@ -1684,14 +1639,14 @@ Consider the circuit from Section 12 with a 100kHz switching frequency, simulate
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| PWL models too coarse for some circuits | Inaccurate switching waveforms | Multi-segment `pwl_custom` allows arbitrary segmentation; users can fall back to SPICE mode |
-| OSDI spec version mismatch with OpenVAF | Models fail to load | Target OSDI v0.4 (current version); check `OSDI_DESCRIPTOR_SIZE` for forward-compatible traversal; version check at load time with clear error message |
-| Cross-mode boundary error accumulates | Solution drift between partitions | Adaptive sync with retrospective error monitoring; automatic fallback to monolithic |
-| PWL zero-crossing detection misses events | Topology stuck in wrong state | Configurable `max_step` within PWL partitions to limit step size; post-step validation that current topology is consistent with solution |
-| Cascading topology switches (Zeno behavior) | Simulation hangs | `max_cascading_switches` limit (default 100); fallback to SPICE mode for the affected partition |
-| `dlopen` portability (OSDI loading) | Doesn't work on all platforms | Abstract behind platform layer; WASM build disables OSDI (compile-time flag) |
-| PWL reactive companion accuracy | LTE errors at topology boundaries | Reduce dt at topology switches (similar to SPICE breakpoint handling); backward Euler for first step after switch |
-| DC operating point with mixed PWL/SPICE devices | Convergence issues during monolithic DC | PWL devices participate in DC as linear stamps (their current topology); re-stamp on topology change during Newton iteration |
+| PWL models too coarse for some circuits | Inaccurate switching waveforms | Multi-segment `pwl_custom` allows arbitrary segmentation. users can fall back to SPICE mode |
+| OSDI spec version mismatch with OpenVAF | Models fail to load | Choose and pin an OSDI ABI version. check `OSDI_DESCRIPTOR_SIZE` for forward-compatible traversal. version check at load time with clear error message |
+| Cross-mode boundary error accumulates | Solution drift between partitions | Adaptive sync with retrospective error monitoring. automatic fallback to monolithic |
+| PWL zero-crossing detection misses events | Topology stuck in wrong state | Configurable `max_step` within PWL partitions to limit step size. post-step validation that current topology is consistent with solution |
+| Cascading topology switches (Zeno behavior) | Simulation hangs | `max_cascading_switches` limit (default 100). fallback to SPICE mode for the affected partition |
+| `dlopen` portability (OSDI loading) | Doesn't work on all platforms | Abstract behind platform layer. WASM build disables OSDI (compile-time flag) |
+| PWL reactive companion accuracy | LTE errors at topology boundaries | Reduce dt at topology switches (similar to SPICE breakpoint handling). backward Euler for first step after switch |
+| DC operating point with mixed PWL/SPICE devices | Convergence issues during monolithic DC | PWL devices participate in DC as linear stamps (their current topology). re-stamp on topology change during Newton iteration |
 
 ---
 
@@ -1700,7 +1655,7 @@ Consider the circuit from Section 12 with a 100kHz switching frequency, simulate
 | Document | Relationship |
 |----------|-------------|
 | `mixed-signal-architecture.md` | This document **builds on** its multi-rate scheduler, boundary management, PWL digital gates, and FSM evaluator. Those designs are incorporated by reference and extended with SPICE/PWL/OSDI partition types. |
-| `ROADMAP.md` Phase 7 | "Verilog-A device model compilation" is realized here as OSDI host integration (Section 6). "BSIM-CMG (FinFET) model" becomes available through OSDI loading without native implementation. |
+| [Roadmap](ROADMAP.md#longer-term-engineering-and-research) | OSDI loading is one proposed path for Verilog-A and additional compact models. It requires model-specific qualification. |
 | `neospice-design.md` | The `Device` interface, `DeviceRegistry`, `NeoSolver`, `SparsityPattern`, `NumericMatrix`, `IntegratorCtx`, and Newton-Raphson solver described there are reused unchanged. |
 
 ---
@@ -1721,7 +1676,8 @@ A native neospice Verilog-A compiler (long-term) could generate both `Device` su
 
 ### 17.4 GPU-Accelerated Multi-Rate
 
-Independent partitions can be evaluated on different GPU streams. SPICE partitions with large matrices benefit most from GPU-accelerated LU factorization. PWL and digital partitions stay on CPU (small, fast, event-driven).
+Independent partitions can be evaluated on different GPU streams. Measure workload sizes, transfer cost, and solver support before assigning
+partitions to CPU or GPU.
 
 ### 17.5 Partition Visualization
 

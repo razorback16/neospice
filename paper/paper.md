@@ -100,11 +100,11 @@ algorithm or general speed advantage is claimed here.
 
 AC analysis caches frequency-independent conductance and capacitance stamps,
 then assembles the frequency-dependent system and applies device-specific
-corrections at each frequency. Noise analysis uses separate gain and adjoint
-systems. These are implementation choices with costs as well as benefits:
-ngspice can reuse existing factors for a transpose solve, whereas neospice's
-current noise path factors separate systems. Paired, validated measurements are
-needed before attributing a performance benefit to either arrangement.
+corrections at each frequency. Noise analysis now factors one complex system
+per frequency and reuses its factors for the gain and plain-transpose adjoint
+solves, following ngspice's sequence. Final-candidate
+paired measurements and controlled ablations remain necessary for performance
+claims in this manuscript.
 
 The scope of the correctness claim is declared per device and analysis rather
 than per device. A generated support matrix records, for every pair, whether a
@@ -112,8 +112,10 @@ test compares it against ngspice 47 and asserts the result, merely runs it,
 asserts that it fails, or never exercises it; the claim covers only the first
 category, at each cell's stated tolerance. Four analysis types -- transfer
 function, sensitivity, pole-zero and Fourier -- fall outside it entirely,
-because the differential harness cannot obtain a reference result for them, and
-they are checked against analytic expectations alone.
+because the matrix has no per-device reference coverage for them. Analytical
+tests cover these entry points. A separate circuit-level test compares the
+adjoint API with ngspice 47 sensitivity results through the shared library.
+It does not verify the finite-difference sensitivity API or fill these cells.
 
 Validation combines analytic checks, API and tooling tests, and differential
 comparisons against the checksum-pinned ngspice 47 release. Comparisons reject empty,
@@ -129,14 +131,15 @@ and the experiment records source, binary, dependency and runtime hashes.
 The present evidence demonstrates a substantial implementation and a reusable
 validation process, but does not yet establish a submission-ready research
 result. The frozen operating-point experiment contains 34,908 primary cases
-and 32,451 separately planned variants. These are generated cases rather than
+and 32,451 separately executed driven variants. These are generated cases rather than
 independently certified model definitions: duplicate names, lexical scope and
 isolation dependencies still require interpretation. Minimal operating-point
 fixtures also cannot establish transient, AC or noise correctness.
 
 The working candidate targets ngspice 47 exclusively, including its MES
-multiplier, AM-source and frequency-grid semantics. An operating-point
-regression failure and corpus mismatches remain. VDMOS AC and noise are
+multiplier, AM-source and frequency-grid semantics. The RFF70N06 operating-point
+fixture remains reference-inconclusive because neither engine converges.
+Corpus mismatches remain. VDMOS AC and noise are
 explicitly unsupported. These boundaries must be resolved or
 justified within a declared support scope before final claims are made.
 

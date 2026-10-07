@@ -25,8 +25,8 @@ python tools/kicad_experiment.py verify \
 `freeze` requires the pinned, clean Git checkout and a new output directory.
 It does not invoke either simulator. It writes `manifest.json` and content-hashed
 files under `assets/`, verifies their bytes, and rejects corpus or generator
-changes during generation. A failed freeze may leave a partial directory;
-use a new directory for a new attempt. A partial directory without a successfully
+changes during generation. A failed freeze may leave a partial directory.
+Use a new directory for a new attempt. A partial directory without a successfully
 verified manifest is not an experiment input package.
 
 The manifest contains all source-file hashes under Models, generator hashes,
@@ -48,11 +48,11 @@ outside Models or capture simulator startup files. Those remain preflight work.
 A case ID hashes the corpus-relative file, declaration kind, lexical scope,
 case-insensitive declared name and occurrence within that namespace. Scope
 includes repeated enclosing subcircuits and named `.lib` sections. Source line
-numbers are retained as provenance; inserting blank lines does not change the
+numbers are retained as provenance. Inserting blank lines does not change the
 identity. Paths and simulator results are not used to choose a case ID.
 
 Scope is a lexical annotation from exact `.subckt`/`.ends` and `.lib`/`.endl`
-directive tokens. It is not ngspice's resolved namespace; malformed terminators,
+directive tokens. It is not ngspice's resolved namespace. Malformed terminators,
 concatenated decks and vendor dialects require further interpretation. Some
 recorded scopes are deeply nested and must be audited before making binding
 or per-definition coverage claims.
@@ -68,8 +68,8 @@ A generated case includes the whole library and instantiates a name. Its origin
 at a specific declaration does **not** prove that the simulator resolves that
 particular declaration when names repeat, declarations are nested, or library
 sections require selection. The manifest records lexical scope and the number
-of generated cases sharing a file/kind/name. These cases must remain visible;
-do not count them as independently validated model definitions without resolving
+of generated cases sharing a file/kind/name. These cases must remain visible.
+Do not count them as independently validated model definitions without resolving
 and checking those semantics. Distinct case IDs may share identical fixture
 bytes, which must also be disclosed in the eventual coverage report.
 
@@ -81,7 +81,7 @@ instead of silently overwriting rows. Historical JSON remains unchanged.
 
 Every generated case has one `primary` fixture. For every subcircuit, the freeze
 also attempts the existing isolation/driving transformation before any outcome
-is known. Successful generation produces an `isolated_driven` variant; failed
+is known. Successful generation produces an `isolated_driven` variant. Failed
 extraction is recorded. Dependency block ordering is deterministic across Python
 hash seeds. Selection cannot depend on neospice succeeding.
 
@@ -101,7 +101,7 @@ are not benchmark evidence.
 The local freeze contains source-derived isolated libraries. It is not published
 or committed as a redistributable vendor-model archive. Preserve upstream notices
 and resolve the actual vendor redistribution terms before preparing an archive.
-The compact checkpoint evidence records hashes and generation results; a reviewer
+The compact checkpoint evidence records hashes and generation results. A reviewer
 will still need the pinned source checkout or a suitably licensed input archive.
 Runtime provenance, current ngspice baseline, full outcome retention, evaluation
 splits and clean-checkout reproduction remain part of the active JOSS goal.
@@ -110,7 +110,7 @@ splits and clean-checkout reproduction remain part of the active JOSS goal.
 
 Use the checksum-pinned ngspice47 CLI and its stock startup file from the
 [reference build](building.md). Preflight rejects other versions before corpus
-fixtures execute. The stock startup requests eight simulator threads; preserve
+fixtures execute. The stock startup requests eight simulator threads. Preserve
 this runtime setting in the manifest. Concurrent corpus timings are not
 controlled performance measurements.
 
@@ -119,7 +119,7 @@ controlled performance measurements.
 The first verified manifest preserves the historical cohort exactly as a multiset
 of file/kind/name/info: **34,908 cases**, with no additions or omissions relative
 to the audited JSON. It records **34,908 primary** and **32,451 isolated/driven**
-fixtures; six subcircuits could not be isolated by the existing helper.
+fixtures. Six subcircuits could not be isolated by the existing helper.
 
 There are **34,764 distinct primary fixture byte sequences**, **169 excess
 occurrences under the old file/name key**, and **652 cases with a recorded lexical
@@ -130,7 +130,7 @@ These are generator/lexical inventory counts, not simulator outcome categories.
 
 The compressed manifest is retained in checkpoint 11 evidence. The local complete
 input package is `/tmp/neospice-joss-corpus-freeze-11-final`. All current cases
-were already exposed through the historical experiment; freezing them now does
+were already exposed through the historical experiment. Freezing them now does
 not make them untouched hold-outs. A later evaluation split must disclose that
 history and identify any newly designed, previously untested validation inputs.
 
@@ -153,14 +153,14 @@ python tools/run_kicad_experiment.py \
 Use the actual startup file for the selected reference installation. Output must
 be new and outside the input/corpus directories. `--case-id case-v1-...` selects
 an exact declaration for development checks and always runs all its planned
-variants; omit selectors to run the complete frozen cohort. The chosen case and
+variants. Omit selectors to run the complete frozen cohort. The chosen case and
 fixture list is saved before preflight. Unknown/empty selections fail.
 
 Preflight hashes both binaries, resolved ELF libraries, the explicit system
 `spinit` and its static code-model paths. It records reference version output,
 runner source hashes, OS/Python information and the selected environment values.
 The reference uses `SPICE_SCRIPTS` to locate that startup file and `-n` to disable
-personal/local startup files; the system startup still loads. Both simulators use
+personal/local startup files. The system startup still loads. Both simulators use
 `ngbehavior=psa`, matching the historical corpus mode. The checked workstation has
 no local or user `.spiceinit`/`spice.rc` files. These are declared configuration
 choices, not options selected to improve numerical agreement.
@@ -168,7 +168,7 @@ choices, not options selected to improve numerical agreement.
 Analytical divider and POLY probes must succeed in both engines before any corpus
 fixture runs. A real negative control with code models omitted passes the divider
 but fails the reference POLY check, correctly rejecting the installation. Static
-code-model paths are inventoried; this is not a trace proving every module loaded.
+code-model paths are inventoried. This is not a trace proving every module loaded.
 Recursive/dynamic startup dependencies are rejected pending explicit support.
 The OSDI branch is not certified by these probes. Full build provenance and any
 additional runtime dependency audit still belong in the final release evidence.
@@ -177,7 +177,7 @@ The runner derives required public nodes and voltage-source currents from the
 limited generated-fixture grammar before execution. All 67,359 frozen fixture
 runs (34,908 declaration cases: 34,908 primary runs plus 32,451 isolated driven
 variants) pass this grammar check. Matching requires these signals in both
-results, plus all non-internal reference outputs; a public name resembling an
+results, plus all non-internal reference outputs. A public name resembling an
 internal node still receives a value comparison. The existing symmetric additive
 corpus formula is retained: `abs(neo-ng) <= 1e-3*max(abs(neo),abs(ng)) + floor`,
 with floor 1e-6 V for voltages and 1e-9 A for currents. This is distinct from
@@ -211,9 +211,8 @@ The thermal names are deliberately **not** excluded. Exclusion is only valid
 where neospice models the same node and merely keeps it private, which
 `ucb_declare_internal_nodes` does for the gate and body-diode nodes
 (`__<inst>_gate`, `__<inst>_body diode`, both marked internal and therefore not
-exported). neospice has no thermal network: the self-heating form returns
-`v(tj) = v(tc) = 0` against 36.48/36.17 in ngspice 47, so there is nothing to
-compare like-for-like and the case must keep failing on its public terminals.
+exported). neospice has no thermal network and explicitly rejects active self-heating.
+See the [VDMOS boundary](vdmos-compatibility.md#thermal-vdmos-self-heating-is-rejected-explicitly).
 No corpus model declares `Rthjc`/`Rthca`, so this affects no frozen fixture.
 
 Two properties keep the exclusion honest on the paper execution path,
@@ -221,8 +220,8 @@ Two properties keep the exclusion honest on the paper execution path,
 always compared even when its name matches the pattern, so the filter can never
 remove a signal the fixture declares. And every excluded reference signal is
 listed per fixture in `excluded_reference_signals`, so the comparison set is
-auditable rather than implicit. Only names the reference emits are affected;
-neospice never produces these names.
+auditable rather than implicit. Only names the reference emits are affected.
+Neospice never produces these names.
 
 `compare_kicad_models.compare_values(external_only=True)` shares the same
 `is_internal_var` classifier but has no required-port override: it drops every
@@ -246,11 +245,11 @@ Each `cases/<case-id>/<variant>/` directory retains the materialized deck,
 commands, process statuses, stdout/stderr, raw output when produced, parsed
 operating-point values and comparisons. Process/analysis failures, timeouts and
 invalid results remain failures even if partial raw data exists. A fixture result
-is never replaced by its rescue. Failure labels are diagnostic classifications;
-raw evidence remains available to refine them during triage.
+is never replaced by its rescue. Failure labels are diagnostic classifications.
+Raw evidence remains available to refine them during triage.
 
 Work submission and result retention are bounded in memory. `progress.json`
-reports live counts every 100 fixtures; `run.json` is the authoritative plan and
+reports live counts every 100 fixtures. `run.json` is the authoritative plan and
 completion record. It starts with `complete: false` and becomes complete only
 after all planned fixtures finish and input/runtime/source integrity checks pass.
 Partial runs keep their evidence and must not be summarized as full experiments.
@@ -265,40 +264,14 @@ rescues, nontrivial excitation, duplicate/scoped binding limitations and all
 outcome categories. A MATCH is not independent physical-model validation.
 
 
-All current compatibility experiments use the ngspice 47 source archive, with published
-SHA-256 `894e649651f1838a14095e5a5439e7d3aa63e87ede14d283173fda4fcdef675f`
-verified against the [official release download](https://sourceforge.net/projects/ngspice/files/ng-spice-rework/47/ngspice-47.tar.gz).
-The local archive is `/tmp/neospice-joss-ngspice-47.tar.gz`, with extracted source
-at `/tmp/neospice-joss-ng47-source/ngspice-47`. Acquisition/source hashes are in
-checkpoint 12 evidence. Checkpoint 13 adds successful CLI/shared-library builds,
-runtime preflight and a complete C++ suite with ten retained failures; see
-[the reference checkpoint](ngspice47-reference.md).
+Reference acquisition and source hashes are documented in the
+[reference setup](ngspice47-reference.md).
 
+## Recorded experiments
 
-## Current completed ngspice47 experiment
-
-Checkpoint29 stage2 preserves all 67,359 frozen fixture runs over 34,908 cases.
-Results are separate for the 34,908 primary runs and 32,451 isolated/driven
-variant runs:
-
-| Outcome | Primary | Isolated/driven |
-|---|---:|---:|
-| MATCH | 20228 | 22850 |
-| MISMATCH | 1274 | 1312 |
-| NG_ONLY | 22 | 50 |
-| NEO_ONLY | 4716 | 6939 |
-| NEO_TRIVIAL | 5364 | 0 |
-| BOTH_FAIL | 3304 | 1300 |
-
-The [summary](evidence/joss/2026-09-11-checkpoint29-stage2-corpus-run47-summary.json),
-[artifact ledger](evidence/joss/2026-09-11-checkpoint29-stage2-corpus-run47-records.json.gz)
-and [transitions](evidence/joss/2026-09-11-checkpoint29-stage2-candidate47-transitions.json)
-retain failures and exact provenance. Primary and isolated/driven results must
-not be pooled into a single matched-model percentage. Minimal OP fixtures do
-not certify full device models or transient/AC/noise behavior.
-
-The stage2 diode correction repairs ten outcome mismatches. Seven earlier
-MATCH-to-MISMATCH changes introduced during stage1 remain for investigation.
-Model binding, grouping, supported option coverage and final research
-interpretation remain open. New runner version checks do not change these
-recorded simulation results; their original runner hashes remain in the ledger.
+[Checkpoint 29 summary](evidence/joss/2026-09-11-checkpoint29-stage2-corpus-run47-summary.json)
+and its [ledger](evidence/joss/2026-09-11-checkpoint29-stage2-corpus-run47-records.json.gz)
+retain the dated run. The [corpus triage](corpus-mismatch-triage.md) classifies
+checkpoint 36 mismatches. [JOSS progress](joss-progress.md) tracks final-candidate
+validation. Do not pool primary and driven outcomes into one matched-model
+percentage. Minimal OP fixtures do not certify transient, AC or noise behavior.

@@ -1,32 +1,46 @@
 # PSpice Model Language Specification
 
+**Language design reference.** This document mixes implemented syntax with
+proposed extensions. It is not a current support checklist or an instruction
+to implement every construct. See [capabilities](capabilities.md) and
+[model-card compatibility](model-card-compatibility.md) for current behavior.
+ngspice 47 remains the behavioral reference.
+
 ## Purpose and implementation target
 
-This document describes PSpice model-language constructs that a coding agent should add on top of an existing SPICE parser. PSpice remains SPICE-family syntax, but real vendor macro-models commonly depend on PSpice-specific parameter, expression, tolerance, and analog behavioral modeling forms. Cadence describes PSpice models as either model parameter sets using `.MODEL` syntax or subcircuit netlists using `.SUBCKT` syntax, with both forms saved in model libraries ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526/192)). The PSpice A/D Reference Guide defines extensions such as `AKO:` model inheritance, tolerance specifications, `OPTIONAL:`, `PARAMS:`, `TEXT:`, `.FUNC`, and `VALUE` or `TABLE` ABM device syntax ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)).
+This reference describes syntax for importing PSpice manufacturer models.
+Models use `.MODEL` parameter sets or `.SUBCKT` netlists stored in libraries.
+The parser should preserve unsupported constructs, report useful diagnostics,
+and lower qualified syntax to the existing SPICE backend.
 
-The goal is not to implement all PSpice simulator behavior immediately. The goal is to parse and represent enough PSpice model-library syntax to import manufacturer libraries, emit high-quality diagnostics, and lower supported constructs to the existing SPICE backend where possible.
+The grammar and device entries below describe the source dialect. They do not
+certify neospice support. Priority labels identify proposed import needs.
+Implementation must follow current [model-card behavior](model-card-compatibility.md)
+and ngspice 47 qualification.
 
-*Source: PSpice Reference Guide, Product Version 16.5, May 2011*
+Sources: [PSpice A/D Reference Guide, version 16.5 (May 2011)](https://www.montana.edu/aolson/ee503/pspcref.pdf)
+and [Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526/192).
 
 ## PSpice constructs to add first
 
 | Priority | Construct | Why it matters |
 | --- | --- | --- |
-| P0 | Curly-brace expressions `{...}` | Cadence documents braces as the syntax for replacing component values, model parameter values, and other properties with evaluated expressions ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526-pspice-user-guide/165)). |
-| P0 | `.SUBCKT ... PARAMS:` | PSpice macro-models commonly expose tunable parameters through `PARAMS:`, and the PSpice reference syntax includes `PARAMS:` on `.SUBCKT` definitions ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)). |
-| P0 | `X... PARAMS:` call overrides | PSpice-compatible subcircuit calls use call-site parameters to override defaults, and third-party examples show `Xamp ... PARAMS: Cin=20n Rbias=2.7K` for PSpice-compatible syntax ([YouSpice](https://youspice.com/creating-a-spice-subcircuit-subckt-manually/)). |
-| P0 | `.FUNC` | PSpice functions are used inside expressions and may be stored in `.INC` include files ([FlowCAD .FUNC application note](https://www.flowcad.de/AN/FlowCAD-AN-PSpice-Func-Command.pdf)). |
-| P0 | `VALUE={...}` and `TABLE {...}` on `E` and `G` | PSpice ABM uses `VALUE` and `TABLE` extensions to `E` and `G` devices for instantaneous behavioral relationships ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526-pspice-user-guide/363)). |
-| P1 | `.MODEL ... AKO:` and tolerance syntax | The PSpice reference `.MODEL` form includes optional `AKO:` inheritance plus `DEV` and `LOT` tolerance specifications ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)). |
-| P1 | `OPTIONAL:` and `TEXT:` on `.SUBCKT` | The PSpice reference `.SUBCKT` form includes optional interface nodes and text parameters ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)). |
-| P1 | PSpice numeric functions | Vendor models use PSpice functions such as `IF`, `LIMIT`, `STP`, `TABLE`, `DDT`, and `SDT` ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)). |
-| P2 | Capture `PSpiceTemplate` | Capture symbols generate PSpice netlists from `PSpiceTemplate` properties, which matters if importing schematic libraries rather than plain netlists ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526-pspice-user-guide/199)). |
+| P0 | Curly-brace expressions `{...}` | Expressions in component values, model parameters, and properties |
+| P0 | `.SUBCKT ... PARAMS:` | Named defaults for macro-model parameters |
+| P0 | `X... PARAMS:` call overrides | Overrides for subcircuit defaults |
+| P0 | `.FUNC` | Scoped functions in expressions and include files |
+| P0 | `VALUE={...}` and `TABLE {...}` on `E` and `G` | Instantaneous analog behavioral relationships |
+| P1 | `.MODEL ... AKO:` and tolerance syntax | Model inheritance and `DEV`/`LOT` specifications |
+| P1 | `OPTIONAL:` and `TEXT:` on `.SUBCKT` | Optional interface nodes and text parameters |
+| P1 | PSpice numeric functions | `IF`, `LIMIT`, `STP`, `TABLE`, `DDT`, and `SDT` |
+| P2 | Capture `PSpiceTemplate` | Schematic-library import and netlist generation |
 
 ---
 
 ## Numeric values and scale suffixes
 
-PSpice literal numeric values use standard floating-point notation and may be scaled by suffixes such as `F`, `P`, `N`, `U`, `MIL`, `M`, `K`, `MEG`, `G`, and `T` ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)). PSpice's `M` suffix means milli, while `MEG` means mega, so the lexer must use longest-match suffix recognition and must not interpret bare `M` as mega ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)).
+Numeric literals use floating-point notation and scale suffixes.
+Use longest-match suffix recognition. `M` means milli and `MEG` means mega.
 
 Alphabetic characters are **not case sensitive**.
 
@@ -43,7 +57,8 @@ Alphabetic characters are **not case sensitive**.
 | `G` | giga, `1e9` |
 | `T` | tera, `1e12` |
 
-The reference also lists `C` as a clock-cycle scale whose value varies and must be set where applicable, so most analog model importers should preserve it as a symbolic scale unless they implement the relevant digital timing context ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)).
+`C` is a clock-cycle scale with a context-dependent value. Preserve it as a
+symbolic scale unless the importer implements the required digital timing context.
 
 ## Command syntax notation
 
@@ -60,9 +75,13 @@ The reference also lists `C` as a clock-cycle scale whose value varies and must 
 
 ## Comments, continuations, and includes
 
-PSpice uses `*` in column 1 for full-line comments, `;` for inline comments, and `+` in column 1 for continuation lines ([PSpice A/D Reference Guide](https://www.montana.edu/aolson/ee503/pspcref.pdf)). The parser should assemble continuation lines before parsing statements and should strip inline semicolon comments only when not inside quoted text or brace expressions.
+PSpice uses `*` in column 1 for comments, `;` for inline comments, and `+`
+in column 1 for continuations. Assemble continuations before parsing statements.
+Remove inline comments only outside quoted text and brace expressions.
 
-Cadence describes include files as user-defined files that contain PSpice A/D commands or supplemental comments, and it notes that include files typically use the `.INC` extension ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526-pspice-user-guide/50)). Cadence also states that PSpice searches model libraries, stimulus files, and include files according to configured files, scopes, and search order, with files scoped to profile, design, or global use ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526-pspice-user-guide/50)).
+Include files contain commands or comments and commonly use `.INC` filenames.
+Library and include search order depends on configuration and profile, design,
+or global scope.
 
 Implementation guidance:
 
@@ -77,15 +96,16 @@ Implementation guidance:
 
 ### Curly-brace expression syntax
 
-Cadence defines a PSpice expression as a mathematical relationship that defines a numeric or boolean value, and it documents `{ expression }` as the syntax used to replace component values, model parameter values, other property values, or IF-test logic ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526-pspice-user-guide/165)). PSpice evaluates expressions when it reads a new circuit and when a parameter used by an expression changes during an analysis, such as a DC sweep or parametric analysis ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526-pspice-user-guide/165)).
+A PSpice expression defines a numeric or boolean value. Braces insert an
+expression into component values, model parameters, properties, or conditional tests.
+PSpice evaluates expressions when reading a circuit and when referenced parameters
+change during analysis.
 
 ```spice
 .PARAM VSUPPLY=14v
 VCC vcc 0 DC {VSUPPLY}
 RBIAS in out {RBASE*1.05}
 ```
-
-Cadence's global-parameter workflow also uses `{ global_parameter_name }` to tell PSpice A/D to evaluate a named parameter and use its value in component values, model parameter values, or other properties ([Cadence PSpice User Guide](https://resources.pcb.cadence.com/i/1180526-pspice-user-guide/163)).
 
 ### Arithmetic operators
 

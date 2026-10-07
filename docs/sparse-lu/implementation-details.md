@@ -1,49 +1,45 @@
-# In-tree sparse solver implementation details
+# Sparse solver implementation
 
-Checked against source September 11, 2026. The previous speculative design and
-performance discussion is [archived](../evidence/joss/2026-09-11-historical-sparse-lu-implementation-details.md).
-It does not certify an implemented ISLU, BTF-AMD, GPU or right-looking block path.
+## Solver selection
+
+The [solver factory](../../src/core/make_solver.cpp) uses Sparse-derived
+`NeoSolver` for nonlinear circuits and linear circuits below 256 unknowns.
+Larger linear circuits use `AmdLuSolver`, with a first-factorization fallback
+to `NeoSolver`. Complex operations use `NeoSolver`.
+
+Record environment overrides from the [solver interface](../../src/core/solver_iface.hpp)
+in any experiment. The legacy `klu` name selects the in-tree implementation,
+not the external SuiteSparse KLU library.
 
 ## Ordering and symbolic setup
 
-`AmdLuSolver::symbolic` converts the matrix pattern to compressed sparse columns
-and passes it to `amd_ordering`, which symmetrizes the graph internally. The
-ordering removes dense vertices, repeatedly selects the lowest-degree live
-vertex, explicitly adds fill edges among its neighbors, and appends the dense
-vertices. It uses the historic AMD name but not SuiteSparse AMD's quotient-graph
-representation, supervariable handling or postordering.
+`AmdLuSolver::symbolic` converts the pattern to compressed sparse columns.
+`amd_ordering` symmetrizes the graph, defers dense vertices, and selects the
+lowest-degree live vertex from a set keyed by degree and vertex index.
+It explicitly adds fill edges among neighbors and appends dense vertices.
+This is an explicit elimination graph, not SuiteSparse's quotient-graph AMD.
 
-The numeric solver retains the original matrix column structure, the column
-permutation, working vectors and factor storage. Its depth-first search visits
-the graph of previously constructed lower-factor columns. Symbolic setup also
-initializes the separate `NeoSolver` used for complex operations.
-Source: [amd.cpp](../../src/core/amd.cpp) and
-[amd_lu_solver.cpp](../../src/core/amd_lu_solver.cpp).
+The solver retains the column structure, permutation, workspaces, and factor
+storage. A depth-first search visits existing lower-factor columns. Symbolic
+setup also initializes the separate solver for complex operations.
+See [ordering](../../src/core/amd.cpp) and [LU](../../src/core/amd_lu_solver.cpp).
 
 ## Refactorization and fallback
 
-`numeric` calls the full factorization path. `refactorize` first attempts to
-replay the previous factor structure and pivot order when replay data exists.
-A successful replay updates its diagnostic counter; a failed replay falls back
-to full factorization and records new replay data. This is an implementation
-mechanism, not proof of a performance advantage for a circuit population.
+`numeric` performs full factorization. `refactorize` first attempts to reuse
+factor structure and pivot order. If that attempt fails, it performs full
+factorization and records new reuse data. Diagnostic counters distinguish the
+paths.
 
-The automatic solver wrapper has a separate first-factorization fallback to
-`NeoSolver`. It reacts to reported singularity; it does not detect or correct
-all rounding differences between successful solutions. Later internal replay
-fallback and this initial solver switch are different operations.
-Source: [make_solver.cpp](../../src/core/make_solver.cpp).
+The automatic wrapper's first-factorization fallback is separate from this
+internal retry. It reacts to reported singularity. Different successful
+orderings can still produce different floating-point results.
 
-## Unused helpers and experimental programs
+## Other helpers
 
-`btf_decompose` computes strongly connected components and `maximum_transversal`
-provides a matching helper. They are not called by the production solver paths.
-Do not infer an integrated BTF pipeline from those source files or their tests.
+`btf_decompose` computes strongly connected components. `maximum_transversal`
+provides matching. Production solver paths do not call these helpers.
 
-The matrix microbenchmarks and the manually reconstructed Newton profiler are
-separate from production circuit runs. Before retaining a causal claim, verify
-matrix residuals and failure status, isolate the intended mechanism, and use
-paired samples with equal boundaries and recorded dispersion. No threshold
-or reference setting may be adjusted to conceal a discrepancy. See the
-[benchmark audit](../benchmark-harness-audit.md) and
-[current experiment](../benchmark-methods.md).
+Use [benchmark methods](../benchmark-methods.md) for numerical qualification
+and timing. The [performance guide](../performance-analysis.md)
+contains measured circuit results. [NOTICE](../../NOTICE) records attribution.

@@ -6,7 +6,20 @@
 - CMake 3.20+
 - OpenBLAS
 - SLEEF (vectorized math library)
-- libngspice 47 and ngspice 47 CLI (required JOSS comparison reference)
+- libngspice 47 and ngspice 47 CLI for comparison tests and benchmarks
+
+## Library and CLI only
+
+The engine and Python bindings do not need ngspice at runtime. After installing
+the compiler, CMake, OpenBLAS, SLEEF, and pkg-config:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNEOSPICE_BUILD_TESTS=OFF
+cmake --build build --parallel
+./build/neospice tests/circuits/resistor_divider.cir -o result.raw
+```
+
+Tests require the reference setup below.
 
 ## Ubuntu/Debian
 
@@ -20,10 +33,9 @@ export SPICE_SCRIPTS="$PWD/third_party/ngspice47-reference/shared/share/ngspice/
 ```
 
 The script checks the ngspice 47 release archive SHA-256 before extracting or
-building it. For offline acquisition, supply the archive as a second argument;
-the checksum requirement is identical. Use a new prefix for each build. Build
-logs are retained in that prefix. Both interfaces preserve release defaults,
-including XSPICE and Sparse as the selected solver; tests do not request KLU.
+building it. For offline setup, supply the archive as the second argument.
+The same checksum applies. Use a new prefix for each build. The prefix retains build logs. Both interfaces preserve release defaults,
+including XSPICE and Sparse as the selected solver. Tests do not request KLU.
 The stock startup file controls code-model loading and its own thread setting.
 See [reference runtime details](ngspice47-reference.md).
 
@@ -38,15 +50,16 @@ unpinned ngspice package.
 brew install cmake openblas sleef ngspice
 ```
 
-> **Note:** `brew install ngspice` also installs the Homebrew `libngspice` bottle as a dependency. That bottle may have version mismatches or missing features compared to CI. Use the build script below to get a known-good libngspice for the comparison tests.
+The Homebrew library may differ from CI. Use the source script below for
+comparison tests.
 
 ### Building libngspice from source
 
 A macOS convenience script defaults to ngspice 47 as a shared library with XSPICE
 and installs it into `third_party/libngspice` (gitignored). CMake automatically
 prefers this local copy over the Homebrew bottle. This tag-based convenience
-build is separate from the checksum-pinned Linux CI build; its new default has
-not yet been exercised on macOS, and the CLI version must also be checked.
+build differs from the checksum-pinned Linux CI build. Its ngspice 47 default
+remains untested on macOS. Check the CLI version separately.
 
 ```bash
 ./scripts/build-libngspice-mac.sh     # ngspice 47
@@ -60,12 +73,17 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(sysctl -n hw.ncpu)
 ```
 
-## Build
+## Build with tests
 
-```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
+After configuring the reference paths above:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNEOSPICE_BUILD_TESTS=ON
+cmake --build build --parallel
 ```
+
+The explicit test option also enables tests in a directory previously configured
+for a library-only build.
 
 ## Test
 
@@ -80,39 +98,30 @@ directory. For an offline build, provide an already acquired copy:
 cmake -B build -DNEOSPICE_RFF70N06_LIBRARY=/absolute/path/to/harprmos.lib
 ```
 
-Acquisition or hash failures stop configuration; they do not skip the regression.
-`RFF70N06.ReferenceIsInconclusive` uses the original corpus's three
-100 kOhm terminations, external observables and PSpice compatibility mode in a
-dedicated test process. The pinned ngspice 47 reference does not produce a
-converged operating point, and neospice also fails explicitly. The regression
-asserts this reference-inconclusive classification; it does not count the
-fixture as a numerical match. See [checkpoint 39](joss-progress.md#milestone-3-triage-checkpoint-39-in-progress).
-This is one operating-point fixture, not model certification.
-The library is fetched separately; its header refers to its original vendor disk
-README for licensing terms. Redistribution review remains open for the paper's
-corpus archive.
+Acquisition or checksum failures stop configuration rather than skip the regression.
+`RFF70N06.ReferenceIsInconclusive` asserts that both engines fail the original
+operating-point fixture. This classification is not a numerical match.
+See [open findings](joss-progress.md#open-numerical-findings).
+
+The library header refers to its vendor disk README for licensing terms.
+Redistribution review remains open for the paper's corpus archive.
 
 ```bash
-cd build && ctest -j$(nproc) --output-on-failure
+ctest --test-dir build --parallel --output-on-failure
 ```
 
 ## Python and tooling development
 
 ### Continuous integration
 
-The native CI workflow requires the generated support matrix to match the
-tests. New reference-calling helpers must be classified in
-`tools/support_matrix.py`; the browser gallery bridge is circuit-level
-coverage. Test-report validation runs only after the test step has executed,
-so an earlier setup failure does not produce misleading missing-report errors.
+Native CI checks that the generated support matrix matches the tests.
+Classify new reference helpers in `tools/support_matrix.py`.
+The browser gallery bridge supplies circuit-level coverage.
 
-Changes to native sources, bindings or packaging run Python 3.12 wheel builds
-and API tests on Linux x86_64, Linux ARM64 and macOS 14 ARM64 before release.
-Release tags and manually requested wheel builds still cover Python 3.10–3.14;
-only release tags publish to PyPI. This catches Apple Clang and standard-library
-portability issues before tagging. The 0.2.0 fixes provide explicit template
-deduction for the sensitivity helper and automatically joined `std::thread`
-workers where macOS 14 lacks `std::jthread`.
+Native, binding and packaging changes trigger Python 3.12 wheel builds and API
+tests on Linux x86_64/ARM64 and macOS 14 ARM64.
+Release tags and manual wheel builds cover Python 3.10–3.14.
+Only release tags publish to PyPI.
 
 ### Local environment
 
@@ -125,11 +134,10 @@ python3 -m venv .venv-dev
 .venv-dev/bin/python -m pip install '.[dev,benchmarks]'
 ```
 
-The `dev` extra declares pytest, PyYAML, scikit-build-core, and nanobind; NumPy is
+The `dev` extra declares pytest, PyYAML, scikit-build-core, and nanobind. NumPy is
 a runtime dependency. The `benchmarks` extra supplies Matplotlib, required by
-the report-generation tests included in the full tooling suite. The system
-prerequisites above are still required. The
-wheel build disables C++ tests; build and run them separately with CMake.
+the full tooling suite. Install the system prerequisites above.
+The wheel build disables C++ tests. Run them separately with CMake.
 
 Migration tests use the same checksum-verified ngspice 47 source extracted by
 the reference-build script. No separate source checkout is required:
@@ -139,25 +147,19 @@ NGSPICE_DIR="$PWD/third_party/ngspice47-reference/source" .venv-dev/bin/python -
   tests/python python/tests tools/tests --import-mode=importlib -q
 ```
 
-Run these commands from the repository root. If the source is already available,
-set `NGSPICE_DIR` to that checkout; record its revision when reporting results.
-Without the source the migration roundtrip tests fail, naming this setup step,
-rather than disappearing from the run. Set
-`NEOSPICE_ALLOW_MISSING_NGSPICE_SOURCE=1` to record a deliberate opt-out and skip
-them explicitly; that is the only legitimate skip in these suites. CI supplies
-the pinned source and rejects any skipped required test. Wheel-platform tests run both
-Python test directories; migration and C++ reference checks run in the Linux CI
-job. An unexecuted platform workflow is not evidence that platform passed.
+Run commands from the repository root. `NGSPICE_DIR` must identify ngspice 47
+source. Record its revision when reporting results.
+Missing source fails migration tests with a setup message.
+For a deliberate local opt-out, set `NEOSPICE_ALLOW_MISSING_NGSPICE_SOURCE=1`.
+CI supplies pinned source and rejects skipped required tests.
 
-The YAML files for ASRC and LTRA describe manual implementations and explicitly
-reject automatic generation. JFET level 1 is a native implementation without a
-`jfet.yaml` migration descriptor; `jfet2.yaml` covers the migrated level 2 device.
-The descriptor suite checks all 18 automatic migration descriptors and both
-manual metadata files.
+Wheel jobs run both Python test directories. Linux CI also runs migration and
+C++ reference checks. The descriptor suite checks 18 automatic migration
+files plus manual ASRC/LTRA metadata. JFET level 1 uses a native implementation.
 
 ## Browser / WebAssembly
 
 The [Emscripten build](webassembly.md) uses a separate build directory and does
 not require native OpenBLAS, SLEEF, libngspice or OpenMP. Build with Emscripten
 6.0.11 using `emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release`.
-The JS/TypeScript API, demo and validation commands are documented there.
+That guide documents the JS/TypeScript API, demo and validation commands.

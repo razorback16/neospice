@@ -67,17 +67,17 @@ claim and so contribute to no cell:
 So "of N cells" below counts only the rows present. It is not a
 coverage figure for the simulator as a whole.
 
-`MOS2` has a row here but is **absent from `docs/capabilities.md`**,
-which lists MOS1, MOS3 and MOS9. One of the two documents is wrong.
-
 ### What the empty columns mean
 
 `tf`, `sens`, `pz` and `four` are `-` for every device, and that is
 not an oversight in the test suite alone: `NgspiceRunner`
 (`tests/framework/ngspice_runner.hpp`) exposes only `run_dc`,
-`run_dc_sweep`, `run_transient`, `run_ac` and `run_noise`. There is
-**no path by which any `.tf`, `.sens`, `.pz` or `.four` result has
-ever been compared against ngspice 47.** `tests/unit/test_pz.cpp` and
+`run_dc_sweep`, `run_transient`, `run_ac` and `run_noise`. These
+columns therefore have no per-device reference coverage.
+Separately, `Gradient.MatchesNgspice47Sensitivity` compares the
+adjoint API with ngspice 47 `.sens` through `NgspiceLib`. That
+circuit-level test does not verify `run_sens()` or fill these cells.
+`tests/unit/test_pz.cpp` and
 `tests/unit/test_fourier.cpp` exist and pass, but assert against
 analytically derived values, not the reference. `docs/capabilities.md`
 lists all four as analysis entry points; that is a statement about

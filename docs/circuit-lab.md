@@ -22,9 +22,9 @@ npm --prefix web run build
 npm --prefix web run preview
 ```
 
-Open **http://127.0.0.1:48173/**. `preview` serves only `web/dist` on loopback;
-it does not expose the checkout, directory listings, or a development server.
-WASM is served as `application/wasm`. Stop this foreground preview with Ctrl+C.
+Open **http://127.0.0.1:48173/**. `preview` serves only `web/dist` on loopback.
+It does not expose the checkout, directory listings, or a development server.
+WASM is served as `application/wasm`. End this foreground preview with Ctrl+C.
 
 `WASM_DIR` can select another CMake artifact directory. Relative paths are
 resolved from `web/`:
@@ -40,7 +40,7 @@ artifacts are ignored by Git.
 
 ## External preview
 
-With `cloudflared` installed, stop any foreground preview and run:
+With `cloudflared` installed, end any foreground preview and run:
 
 ```sh
 npm --prefix web run preview:start
@@ -55,7 +55,7 @@ Cloudflare allocates it. Logs and process IDs are in `web/.preview/`:
 - `tunnel.log`, `tunnel.pid`: external tunnel and its URL.
 
 Anyone with the URL can access the static app. The URL changes when the tunnel
-restarts. Both processes and the host machine must remain running; Quick Tunnels
+restarts. Both processes and the host machine must remain running. Quick Tunnels
 provide no uptime guarantee. No router port forwarding is required.
 
 ```sh
@@ -69,87 +69,69 @@ The uncommon local port is a convenience, not authentication. See
 
 ## Using the workspace
 
-- **Examples**: RC low-pass, RLC resonator, bridge rectifier, diode clipper,
-  common-emitter amplifier, Sallen–Key filter, CMOS inverter and a five-stage
-  CMOS ring oscillator, plus a comparator relaxation oscillator. Each opens as a local editable copy. Slider controls
-  rerun the selected analysis after a short debounce.
-- **Components**: click a library part to pick it up. Its symbol follows the
-  mouse and previews the snapped position on the canvas; click to place one copy.
-  You can also drag a library component onto the canvas. Dropping elsewhere or
-  pressing **Esc** cancels placement. On touch screens, tap a library part and
-  then the canvas. Existing placed components can be dragged to move them. The palette
-  includes R/C/L, voltage/current sources, ground, diodes, NPN/PNP, NMOS/PMOS,
-  a finite-gain ideal VCVS op-amp, and a simplified comparator with supply pins
-  and adjustable output response. The op-amp has no rails, saturation or
-  bandwidth model. CMOS gallery circuits use inline BSIM4 models.
-- **Wires**: click a terminal, optionally click bends, then another terminal.
-  Click an existing wire while wiring to create a branch junction. Double-click
-  a wire in Select mode to insert a junction. Crossings alone do not connect.
-  Selected wire bends can be dragged; the inspector can add a routing handle.
-  All ground symbols connect to node `0`. Matching net labels connect globally.
-- **Properties**: select a component to edit its values or model. Select a
-  junction to set its net label or initial voltage. Moving or rotating a symbol
-  preserves its electrical connections; deleting it removes attached wires.
-- **Simulation**: the analysis panel selects DC operating point, AC frequency
-  grid, or transient step/stop. Run settings control the browser analysis;
-  textual analysis directives do not execute automatically. Parsing and
-  convergence errors are shown without replacing them with example data.
-- **Probes**: click a wire to plot its voltage, or hover over it to choose
-  the compact voltage/current icon buttons (tooltips: **Plot voltage** /
-  **Insert current probe**). On touch screens, tap a wire to show these choices. Voltage probes appear as labeled tags; current probes are
-  inserted in the wire with an arrow showing positive current direction. Hover
-  over a probe for its red trash icon at the top-right. Current probes also show
-  a reverse-direction icon at the top-left. Tap a probe to reveal these controls
-  on touch screens. Removing a current probe automatically rejoins the wire.
-  Press and drag a voltage probe along its net, or a current probe along its
-  measured wire; release to save the position, or press Esc to cancel. Moving
-  markers preserves the measurement and supports undo. Existing probe types
-  disappear from the wire's add menu; if both types are present, no menu appears.
-  Voltages already plotted are greyed out in the Add signal list. Matching colors connect schematic
-  markers to trace chips and waveforms; hovering a trace highlights its probe.
-  The **Add signal** button offers a searchable list, including before a run.
-  Trace chips have an **×** action to remove measurements. Existing voltage
-  results display immediately; inserting/removing/reversing a current sensor
-  reruns the analysis if results already exist. Undo, saving and project export
-  retain sensors and their direction. Markers grow on small screens for legibility.
-- **Results**: drag over a plot to zoom; use Reset
-  plot zoom to restore it. AC magnitude is **dBV/dBA**, not an automatically
-  calculated transfer gain. Phase is in degrees. CSV exports retain the full
-  returned data, including real/imaginary AC values. Displayed solve time is
-  engine time, excluding loading, parsing, and rendering.
-- **Netlists**: the schematic's Netlist tab is generated and read-only. Edit a
-  copy opens an independent SPICE document and preserves the original schematic.
-  Imported `.cir`, `.ckt`, `.sp` and `.txt` files open in text mode. Models and
-  subcircuits must be inline; external includes, `.step`, and `.control` blocks
-  are unavailable. This release does not import arbitrary SPICE as a drawing.
-- **Saving**: edits and themes are saved in browser local storage. Project menu
-  exports/imports a version 1 `.neospice.json` project, including geometry,
-  topology, models, analysis, initial voltages, and probes. It also downloads
-  generated SPICE. Export projects to move between devices or origins: localhost,
-  each tunnel hostname, and GitHub Pages have separate browser storage. Storage
-  failures are reported; keep exported backups for work you want to retain.
+- **Examples:** open one of nine circuits as an editable local copy. Sliders
+  rerun the selected analysis after a short delay.
+- **Components:** select a library part, then click or tap the canvas to place it.
+  Dragging from the library also works. **Esc** cancels placement.
+  Drag placed components to move them. The palette includes passives, sources,
+  ground, diodes, bipolar/MOS transistors, an ideal VCVS op-amp and a simplified comparator.
+  The op-amp has no supply rails, saturation or bandwidth model.
+- **Wires:** click a terminal, optional bends, then another terminal.
+  Click a wire while wiring to create a branch. Double-click a wire in Select
+  mode to insert a junction. Crossings alone do not connect.
+  Drag selected bends or add a routing handle in the inspector.
+  Ground symbols share node `0`. Matching labels connect globally.
+- **Properties:** select a component to edit values or models.
+  Select a junction to edit its label or initial voltage.
+  Moving or rotating a component preserves connections. Deleting it removes attached wires.
+- **Simulation:** select DC, AC or transient settings in the analysis panel.
+  These settings control execution. Textual directives do not run automatically.
+  Errors appear directly, without substitute example results.
+- **Results:** drag across a plot to zoom. **Reset plot zoom** restores it.
+  AC magnitude uses dBV/dBA, and phase uses degrees. Magnitude is not transfer gain.
+  CSV exports include all returned samples and complex AC values.
+  Solve time excludes loading, parsing and rendering.
+- **Netlists:** the schematic Netlist tab is read-only.
+  **Edit a copy** creates an independent text document.
+  Imported `.cir`, `.ckt`, `.sp` and `.txt` files open as text.
+  Models and subcircuits must be inline. External includes, `.step` and `.control`
+  blocks are unavailable. Arbitrary SPICE-to-schematic import is unavailable.
+- **Saving:** browser storage retains edits and themes.
+  Export/import version 1 `.neospice.json` projects through the Project menu.
+  Projects retain topology, geometry, models, analysis, initial voltages and probes.
+  The menu also exports generated SPICE. Export backups to preserve work or move
+  between devices and origins. Each localhost, tunnel and Pages origin has separate storage.
+
+To add measurements, click a wire or use its **Plot voltage** and
+**Insert current probe** controls. Tap a wire to reveal them on touch screens.
+**Add signal** provides a searchable list before or after simulation.
+Probe colors match traces. Hovering a trace highlights its probe.
+
+Hover over a probe, or tap it, to reveal removal and current-direction controls.
+Drag a marker along its net or measured wire. **Esc** cancels the move.
+Moving markers preserves measurements and supports undo.
+Removing a current probe rejoins the wire.
+Current sensor insertion, removal or reversal reruns existing results.
+Undo, saving and export preserve sensors and their direction.
+Trace chips also provide an **×** removal control.
+Existing measurements disappear from the wire menu and disable their Add signal entry.
 
 Keyboard: **V** select, **W** wire, **R** rotate, **Delete** remove,
 **Ctrl/Cmd+D** duplicate, **Ctrl/Cmd+Z** undo, **Ctrl/Cmd+Shift+Z** redo,
-**Ctrl/Cmd+Enter** run, **Esc** cancel placement/wiring/selection. Scroll or use buttons to
-zoom; Pan moves the canvas. Phone layouts expose Library/Circuit/Settings tabs.
+**Ctrl/Cmd+Enter** run, **Esc** cancel. Scroll or use buttons to zoom.
+Pan moves the canvas. Phone layouts expose Library/Circuit/Settings tabs.
 
 ## Comparator relaxation oscillator
 
-The ninth example adapts the [Python notebook](../examples/rc_relaxation_oscillator/rc_relaxation_oscillator.ipynb)
-with a 5 V supply, three 20 kΩ threshold/feedback resistors, a 6.8 kΩ timing
-resistor and a 100 pF timing capacitor. Output, capacitor voltage and switching
-threshold have distinct probe colors. The timing resistance and capacitance
-are adjustable; the comparator is also available in the component library.
+The ninth example adapts the [Python notebook](../examples/rc_relaxation_oscillator/rc_relaxation_oscillator.ipynb).
+It uses a 5 V supply, three 20 kΩ threshold/feedback resistors, a 6.8 kΩ timing
+resistor and a 100 pF capacitor. Timing resistance and capacitance are adjustable.
 
-This is a simplified behavioral comparator, not TI's TLV3201 model. A `tanh`
-transfer drives a 10 Ω output resistance and an output capacitor, with a
-default response time of 5 ns. Both ngspice 47 and neospice abort the
-instantaneous-output version within a 10 µs run at default solver settings. The
-finite response represents output dynamics without relaxing solver tolerances.
-The default step is 0.25 ns over 10 µs, checked against ngspice 47 with the
-existing oscillator contract. A 0.5 ns step missed its 0.02% period bound;
-refinement to 0.25, 0.1 and 0.05 ns passed without changing that bound.
+The behavioral comparator uses a `tanh` transfer, 10 Ω output resistance and
+an output capacitor. Its default response time is 5 ns.
+This is a simplified comparator, not TI's TLV3201 model.
+The default transient step is 0.25 ns over 10 µs.
+Reference checks use the existing oscillator contract with ngspice 47.
 
 ## GitHub Pages
 
@@ -167,9 +149,7 @@ To publish an update after pushing the changes:
 
 The project URL is **https://razorback16.github.io/neospice/**. The repository
 uses GitHub Actions as its Pages source. Merely building or pushing does not
-publish an update; run the workflow with **deploy** selected.
-The [initial deployment](https://github.com/razorback16/neospice/actions/runs/37537274689)
-passed the browser and ngspice 47 reference jobs before publishing.
+publish an update. Run the workflow with **deploy** selected.
 A custom domain/root deployment needs `BASE_PATH=/` in the workflow.
 
 All runtime assets use the configured base, including the worker, wrapper and
@@ -202,52 +182,37 @@ GALLERY_REFERENCE=../build/tests/neospice_gallery_reference \
   npm --prefix web run test:probes -- --reference
 ```
 
-The comparison executable reads the WASM result arrays and applies existing
-native comparators to the **same generated netlists** run by ngspice 47. There
-is no second hand-maintained netlist copy or alternate reference version. RC,
-RLC, CMOS edge and oscillator checks retain the existing comparison contracts.
-New analog checks use fixed tolerances defined in `gallery_reference.cpp`;
-failures retain per-signal error diagnostics. All nine default gallery analyses
-passed locally. The 36 slider endpoints were additionally checked for
-convergence; they are not separate ngspice parity claims.
+The reference executable compares actual WASM arrays with ngspice 47 using
+the same generated netlists and native comparison functions.
+RC, RLC, CMOS edge and oscillator checks retain their existing contracts.
+Other analog tolerances are fixed in `tests/wasm/gallery_reference.cpp`.
+Failures report per-signal errors.
+Reference comparisons use the default gallery analyses. The 36 slider endpoints
+receive convergence checks only, without ngspice comparisons.
 
-The model tests cover connectivity, crossing/junction behavior, SPICE suffixes,
-pin order, startup conditions, imports, sensor insertion/removal/reversal,
-voltage-probe attachment and validation. Browser acceptance tests cover
-examples, analyses, project editing and persistence, exports, errors, cancellation,
-timeouts, missing WASM assets, themes, mobile layout, touch wiring, probes,
-component pickup, drag-and-drop, grid snapping, canceled placement and comparator response persistence.
-The original 17 acceptance cases were also verified at the `/neospice/` path.
-All 17 were exercised on the public GitHub Pages URL as well; one initial
-asset request hit Chromium's `ERR_NETWORK_CHANGED`, and that case passed on
-retry without changes.
-The current-probe numerical check compares both reference directions in DC, AC
-and transient analyses with ngspice 47 using the existing RC fixture tolerances;
-it also checks current against Ohm's law and exact netlist restoration on removal.
-The public preview was also exercised through its HTTPS tunnel. Initial validation uses
-headless Chromium; Safari and Firefox are not yet verified.
+Model tests check connectivity, serialization, initial conditions, imports and sensors.
+Browser tests check editing, persistence, exports, error handling, cancellation,
+asset loading, themes, touch interactions and probes.
+Current-probe checks compare both directions in DC, AC and transient with
+ngspice 47. They also check Ohm's law and netlist restoration after removal.
+Headless Chromium is the tested browser. Safari and Firefox remain unverified.
 
 ## Implementation
 
-`web/src/model.ts` defines `CircuitDocument` version 1. Connectivity uses explicit
-terminal/junction identities, never coordinate intersection. The deterministic
-serializer emits model definitions and node initial conditions along with SPICE
-components. A document revision identifies stale plots independently of its
-saved identity. Probe-only display changes do not invalidate simulation results.
+`web/src/model.ts` defines `CircuitDocument` version 1.
+Connectivity uses terminal and junction identities, never coordinate crossings.
+The serializer includes models and node initial conditions.
+Document revisions prevent stale plots. Display-only probe changes preserve results.
 
-A wire's optional `currentProbe` metadata separates its endpoint nets during
-connectivity analysis. The serializer reconnects them with a zero-volt voltage
-source (`V_PROBE…`), whose measured branch current supplies the trace. This is
-ngspice's documented ideal ammeter method; the sensor adds no voltage drop ([ngspice source documentation](https://nmg.gitlab.io/ngspice-manual/voltageandcurrentsources/independentsourcesforvoltageorcurrent.html)).
-The marker arrow follows the source's positive-to-negative terminal order.
-A sensor bypassed by another wire or matching net labels is rejected rather than
-creating a singular ideal-source loop. Voltage-probe anchors follow terminal
-identities when sensor insertion or net renaming changes generated node names.
-Optional metadata is validated on import; existing version 1 files still load.
+Current probes split endpoint nets and reconnect them with a zero-volt source.
+Its branch current supplies the trace. The arrow follows positive-to-negative
+terminal order. The sensor adds no voltage drop.
+The serializer rejects sensors bypassed by wires or matching labels, preventing
+singular ideal-source loops. Voltage anchors follow terminal identities through
+sensor insertion and net renaming. Import checks metadata and accepts existing version 1 files.
 
-`web/public/simulation-worker.mjs` loads the existing wrapper and owns native
-circuit lifetimes. Every run disposes its circuit in a `finally` block. Messages
-carry request IDs and document revisions. Only the latest pending slider request
-is retained. Cancel and the 30-second watchdog terminate and replace the worker;
-obsolete results cannot update the active document. The C++/WASM public API and
-minimal WASM smoke demo remain available independently of the application.
+`web/public/simulation-worker.mjs` owns circuit lifetimes and disposes them after each run.
+Messages carry request IDs and document revisions. Only the latest pending slider
+request remains queued. Cancellation and the 30-second watchdog replace the worker.
+Obsolete results cannot update the active document.
+The public WASM API and minimal demo remain available separately.

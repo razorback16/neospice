@@ -7,7 +7,7 @@ MODE / INITF state machine and LTE timestep control), AC, noise, transfer
 function, pole-zero, sensitivity, and the Newton-Raphson convergence aids — and
 many of its device models are translated from Berkeley SPICE3F5 and ngspice.
 
-ngspice is used as the reference implementation. neospice aims to match
+ngspice 47 is used as the reference implementation. neospice aims to match
 ngspice's behavior; where results differ, neospice is assumed wrong until
 proven otherwise.
 
