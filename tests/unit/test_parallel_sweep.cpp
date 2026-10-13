@@ -1,5 +1,6 @@
 #include "api/neospice.hpp"
 #include "framework/ngspice_runner.hpp"
+#include "parser/netlist_parser.hpp"
 #include <gtest/gtest.h>
 #include <cmath>
 #include <filesystem>
@@ -202,4 +203,43 @@ TEST(ParallelSweep, ParameterizedDCAndACSources) {
     ASSERT_EQ(output.size(),1);
     EXPECT_NEAR(output[0].real(),4,1e-12);
     EXPECT_NEAR(output[0].imag(),0,1e-12);
+}
+
+TEST(ParallelSweep, SharedFrontEndMatchesIndependentParse) {
+    // Every sample reuses one prepared include/subcircuit front end; each must
+    // still build exactly the circuit an independent parse_file() builds.
+    const auto dir = std::filesystem::temp_directory_path() / "neospice_shared_front_end";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "cells.lib") << "* cells\n.subckt stage in out gain=2\nR1 in mid {1k*gain}\n"
+        << "R2 mid out 1k\nD1 out 0 dm\n.ends\n.subckt unused a b\nR1 a b 1\n.ends\n"
+        << ".model dm D(IS=1e-14 RS=10)\n";
+    const auto path = dir / "top.cir";
+    std::ofstream(path) << "Shared front end\n.include cells.lib\n.param supply=1 g=2\n"
+        << "V1 in 0 {supply}\nX1 in a stage gain={g}\nX2 a b stage\nR3 b 0 2k\n.op\n.end\n";
+    std::vector<SweepPoint> points(24);
+    for (std::size_t i = 0; i < points.size(); ++i)
+        points[i].parameters = {{"supply", 0.5 + 0.25 * i}, {"g", 1 + 0.5 * (i % 5)}};
+    auto batch = Simulator().run_sweep(path.string(), points, {.workers=4}, true);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        NetlistParser parser;
+        parser.set_parameter_overrides(points[i].parameters);
+        auto circuit = parser.parse_file(path.string());
+        auto expected = std::get<DCResult>(Simulator().run(circuit).analysis);
+        ASSERT_TRUE(batch.samples[i].error.empty()) << batch.samples[i].error;
+        const auto& actual = std::get<DCResult>(batch.samples[i].result->analysis);
+        for (auto node : {"in", "a", "b", "x1.mid", "x2.mid"})
+            EXPECT_EQ(actual.voltage(node), expected.voltage(node)) << i << " " << node;
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST(ParallelSweep, UnreadableNetlistFailsEverySample) {
+    const auto path = std::filesystem::temp_directory_path() / "neospice_missing_sweep_netlist.cir";
+    std::filesystem::remove(path);
+    auto batch = Simulator().run_sweep(path.string(), std::vector<SweepPoint>(3), {.workers=2}, true);
+    ASSERT_EQ(batch.samples.size(), 3);
+    for (const auto& sample : batch.samples) {
+        EXPECT_FALSE(sample.result);
+        EXPECT_NE(sample.error.find("Cannot open file"), std::string::npos) << sample.error;
+    }
 }

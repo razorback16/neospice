@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "api/neospice.hpp"
 #include "parser/netlist_parser.hpp"
 #include "parser/subcircuit.hpp"
 #include "devices/coupled_inductor.hpp"
@@ -445,4 +446,26 @@ R2 sec 0 1k
     double v_sec_mag = std::abs(it_sec->second[0]);
     EXPECT_NEAR(v_sec_mag, 2.0, 0.3)
         << "Transformer gain is " << v_sec_mag << "; expected ~2 (sqrt(L2/L1))";
+}
+
+TEST(NetlistParserPrepare, PreparedFrontEndIsReusable) {
+    const std::string text = "Prepared\n.param r=1k\n.subckt half in out\nR1 in out {r}\nR2 out 0 {r}\n.ends\n"
+                             "V1 in 0 4\nX1 in out half\nRload out 0 1k\n.op\n.end\n";
+    NetlistParser front;
+    const auto prepared = front.prepare(text);
+    const auto lines = prepared.lines.size();
+    for (double r : {1000.0, 3000.0}) {
+        NetlistParser parser;
+        parser.set_parameter_overrides({{"r", r}});
+        auto from_prepared = parser.parse_prepared(prepared);
+        NetlistParser reference;
+        reference.set_parameter_overrides({{"r", r}});
+        auto from_text = reference.parse(text);
+        auto a = std::get<DCResult>(Simulator().run(from_prepared).analysis);
+        auto b = std::get<DCResult>(Simulator().run(from_text).analysis);
+        EXPECT_EQ(a.voltage("out"), b.voltage("out"));
+        EXPECT_EQ(from_prepared.title, from_text.title);
+    }
+    EXPECT_EQ(prepared.lines.size(), lines);
+    EXPECT_EQ(prepared.subcircuit_defs.count("half"), 1u);
 }

@@ -37,8 +37,8 @@ struct ParseState {
     // Tokenized lines (mutated across passes)
     std::vector<TokenizedLine> lines;
 
-    // Subcircuit definitions (reference to parser's map)
-    std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs;
+    // Subcircuit definitions, read-only after pass 0 (may be shared)
+    const std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs;
 
     std::map<std::string, double> parameter_overrides;
 
@@ -210,7 +210,7 @@ struct ParseState {
     // node_raw helper
     std::function<int32_t(const std::string&)> node_raw;
 
-    explicit ParseState(Circuit& c, std::unordered_map<std::string, SubcircuitDef>& defs)
+    explicit ParseState(Circuit& c, const std::unordered_map<std::string, SubcircuitDef>& defs)
         : ckt(c), subcircuit_defs(defs) {
         node_raw = [this](const std::string& s) -> int32_t {
             return static_cast<int32_t>(ckt.node(s));

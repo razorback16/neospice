@@ -9,10 +9,27 @@
 
 namespace neospice {
 
+/// Parameter-independent front end of a parse: include resolution,
+/// tokenization and subcircuit extraction. It is immutable once built and may
+/// be shared by concurrent parse_prepared() calls.
+struct PreparedNetlist {
+    std::string title;
+    SpiceDialect dialect = SpiceDialect::AUTO;
+    std::vector<TokenizedLine> lines;  // top-level lines after subcircuit extraction
+    std::unordered_map<std::string, SubcircuitDef> subcircuit_defs;
+};
+
 class NetlistParser {
 public:
     Circuit parse(const std::string& netlist);
     Circuit parse_file(const std::string& filepath);
+
+    /// Split parse() into a reusable front end and a per-circuit back end.
+    /// parse_prepared(prepare(text)) builds the same circuit as parse(text);
+    /// parameter overrides apply only in parse_prepared().
+    PreparedNetlist prepare(const std::string& netlist);
+    PreparedNetlist prepare_file(const std::string& filepath);
+    Circuit parse_prepared(const PreparedNetlist& prepared);
 
     void set_parameter_overrides(const std::map<std::string, double>& values) {
         parameter_overrides_ = values;
@@ -61,8 +78,20 @@ private:
 
     SpiceDialect detect_dialect(const std::string& content) const;
 
-    // Parser pass functions (share state via ParseState struct)
-    static void pass0_extract_subcircuits(ParseState& state);
+    // Shared by parse_file() and prepare_file().
+    std::string read_and_resolve_includes(const std::string& filepath);
+
+    // Back end shared by parse() and parse_prepared(): passes 0.25 through 3.
+    Circuit build_circuit(
+        std::vector<TokenizedLine> lines,
+        const std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs,
+        const std::string& title, SpiceDialect dialect);
+
+    // Parser pass functions (share state via ParseState struct). Pass 0 runs
+    // before a ParseState exists, so prepared definitions remain read-only.
+    static void pass0_extract_subcircuits(
+        std::vector<TokenizedLine>& lines,
+        std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs);
     static void pass025_resolve_funcs_params(ParseState& state);
     static void pass04_collect_globals(ParseState& state);
     static void pass05_expand_subcircuits(ParseState& state);

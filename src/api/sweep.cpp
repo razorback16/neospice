@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <random>
 #include <set>
 #ifndef __EMSCRIPTEN__
@@ -44,6 +45,16 @@ SweepResult Simulator::run_sweep(const std::string& netlist,
     unsigned workers = options.workers ? options.workers : std::thread::hardware_concurrency();
     workers = static_cast<unsigned>(std::min<std::size_t>(std::max(1u, workers), points.size()));
     batch.workers_used = workers;
+    // Include resolution, tokenization and subcircuit extraction do not depend
+    // on sample values, so every sample shares one read-only front end.
+    std::optional<PreparedNetlist> prepared;
+    std::string prepare_error;
+    try {
+        NetlistParser parser;
+        prepared = from_file ? parser.prepare_file(netlist) : parser.prepare(netlist);
+    } catch (const std::exception& error) {
+        prepare_error = error.what();
+    }
     std::atomic<std::size_t> next{0};
     auto work = [&] {
         for (;;) {
@@ -52,11 +63,12 @@ SweepResult Simulator::run_sweep(const std::string& netlist,
             auto& sample = batch.samples[index];
             try {
                 sample.point = points[index];
+                if (!prepared) throw std::runtime_error(prepare_error);
                 seed_expression_rng(job_seed(options.seed, index));
                 NetlistParser parser;
                 parser.set_force_pspice_compat(pspice_compat_override_);
                 parser.set_parameter_overrides(sample.point.parameters);
-                auto circuit = from_file ? parser.parse_file(netlist) : parser.parse(netlist);
+                auto circuit = parser.parse_prepared(*prepared);
                 if (!circuit.step_commands.empty())
                     throw std::invalid_argument("Batch jobs cannot contain .step; supply sweep points instead");
                 // run() retains only the last analysis. Reject ambiguous decks

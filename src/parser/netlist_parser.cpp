@@ -656,9 +656,15 @@ void parse_func_def(const std::vector<std::string>& tokens,
 }
 
 Circuit NetlistParser::parse(const std::string& netlist) {
-    Circuit ckt;
-    ParseState state(ckt, subcircuit_defs_);
-    state.parameter_overrides = parameter_overrides_;
+    auto prepared = prepare(netlist);
+    // Keep the extracted definitions inspectable through subcircuit_defs().
+    subcircuit_defs_ = std::move(prepared.subcircuit_defs);
+    return build_circuit(std::move(prepared.lines), subcircuit_defs_,
+                         prepared.title, prepared.dialect);
+}
+
+PreparedNetlist NetlistParser::prepare(const std::string& netlist) {
+    PreparedNetlist prepared;
 
     // Strip leading whitespace so the tokenizer's title-line detection works
     // correctly even when the netlist starts with newlines.
@@ -670,6 +676,7 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 
     if (dialect_ == SpiceDialect::AUTO)
         dialect_ = detect_dialect(trimmed);
+    prepared.dialect = dialect_;
 
     // Extract the title (first non-empty line) before tokenization discards it.
     {
@@ -679,11 +686,29 @@ Circuit NetlistParser::parse(const std::string& netlist) {
             first_line.pop_back();
         std::transform(first_line.begin(), first_line.end(), first_line.begin(),
                        [](unsigned char c) { return std::tolower(c); });
-        ckt.title = first_line;
+        prepared.title = first_line;
     }
 
-    state.lines = tokenize(trimmed);
-    state.dialect = dialect_;
+    prepared.lines = tokenize(trimmed);
+    pass0_extract_subcircuits(prepared.lines, prepared.subcircuit_defs);
+    return prepared;
+}
+
+Circuit NetlistParser::parse_prepared(const PreparedNetlist& prepared) {
+    return build_circuit(prepared.lines, prepared.subcircuit_defs,
+                         prepared.title, prepared.dialect);
+}
+
+Circuit NetlistParser::build_circuit(
+    std::vector<TokenizedLine> lines,
+    const std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs,
+    const std::string& title, SpiceDialect dialect) {
+    Circuit ckt;
+    ParseState state(ckt, subcircuit_defs);
+    state.parameter_overrides = parameter_overrides_;
+    state.lines = std::move(lines);
+    state.dialect = dialect;
+    ckt.title = title;
 
     // Surface PSpice/LTspice compatibility mode to the device layer. ngspice
     // applies several compat-only tweaks under -D ngbehavior=ps/lt/psa (e.g. the
@@ -691,9 +716,8 @@ Circuit NetlistParser::parse(const std::string& netlist) {
     // auto-detected dialect; an explicit override (CLI `-D ngbehavior=...`)
     // wins, since the keyword heuristic cannot classify keyword-free vendor libs.
     ckt.options.pspice_compat =
-        force_pspice_compat_.value_or(dialect_ == SpiceDialect::PSPICE);
+        force_pspice_compat_.value_or(dialect == SpiceDialect::PSPICE);
 
-    pass0_extract_subcircuits(state);
     pass025_resolve_funcs_params(state);
     pass04_collect_globals(state);
     pass05_expand_subcircuits(state);
@@ -706,20 +730,22 @@ Circuit NetlistParser::parse(const std::string& netlist) {
 }
 
 // ---------------------------------------------------------------------------
-// Pass 0: Extract .subckt/.ends blocks into subcircuit_defs_
+// Pass 0: Extract .subckt/.ends blocks into subcircuit definitions
 // ---------------------------------------------------------------------------
-void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
+void NetlistParser::pass0_extract_subcircuits(
+    std::vector<TokenizedLine>& lines,
+    std::unordered_map<std::string, SubcircuitDef>& subcircuit_defs) {
     {
-        state.subcircuit_defs.clear();
+        subcircuit_defs.clear();
         std::vector<TokenizedLine> remaining_lines;
-        remaining_lines.reserve(state.lines.size());
+        remaining_lines.reserve(lines.size());
 
         int depth = 0;
         SubcircuitDef current_def;
         // Stack of outer defs when nesting deeper than 1
         std::vector<SubcircuitDef> def_stack;
 
-        for (const auto& line : state.lines) {
+        for (const auto& line : lines) {
             if (line.tokens.empty()) {
                 if (depth > 0) {
                     current_def.body.push_back(line);
@@ -825,7 +851,7 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
 
                 if (depth == 0) {
                     // Finished the outermost subcircuit definition
-                    state.subcircuit_defs[current_def.name] = std::move(current_def);
+                    subcircuit_defs[current_def.name] = std::move(current_def);
                     current_def = SubcircuitDef{};
                 } else {
                     // End of a nested subcircuit. Collect the inner def, pop the
@@ -873,7 +899,7 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
             fprintf(stderr, "Warning: implicitly closing unterminated .subckt '%s'\n",
                     current_def.name.c_str());
             if (depth == 1) {
-                state.subcircuit_defs[current_def.name] = std::move(current_def);
+                subcircuit_defs[current_def.name] = std::move(current_def);
                 current_def = SubcircuitDef{};
             } else if (!def_stack.empty()) {
                 current_def = std::move(def_stack.back());
@@ -882,7 +908,7 @@ void NetlistParser::pass0_extract_subcircuits(ParseState& state) {
             depth--;
         }
 
-        state.lines = std::move(remaining_lines);
+        lines = std::move(remaining_lines);
     }
 }
 
@@ -4497,7 +4523,7 @@ SpiceDialect NetlistParser::detect_dialect(const std::string& content) const {
     return SpiceDialect::NGSPICE;
 }
 
-Circuit NetlistParser::parse_file(const std::string& filepath) {
+std::string NetlistParser::read_and_resolve_includes(const std::string& filepath) {
     std::ifstream ifs(filepath);
     if (!ifs.is_open()) {
         throw ParseError("Cannot open file: " + filepath);
@@ -4518,9 +4544,15 @@ Circuit NetlistParser::parse_file(const std::string& filepath) {
         // If canonical fails (shouldn't happen since we already opened the file), just proceed
         include_stack.insert(std::filesystem::absolute(filepath).string());
     }
-    std::string expanded = resolve_includes(oss.str(), base_dir, include_stack);
+    return resolve_includes(oss.str(), base_dir, include_stack);
+}
 
-    return parse(expanded);
+Circuit NetlistParser::parse_file(const std::string& filepath) {
+    return parse(read_and_resolve_includes(filepath));
+}
+
+PreparedNetlist NetlistParser::prepare_file(const std::string& filepath) {
+    return prepare(read_and_resolve_includes(filepath));
 }
 
 // ---------------------------------------------------------------------------
@@ -4560,7 +4592,7 @@ DefinitionSet NetlistParser::load_definitions(const std::string& filepath) {
     state.dialect = d;
 
     // Run only the definition-extraction passes
-    pass0_extract_subcircuits(state);      // extracts .subckt/.ends
+    pass0_extract_subcircuits(state.lines, tmp_subdefs);  // extracts .subckt/.ends
     pass025_resolve_funcs_params(state);   // .func + .param resolution
     pass1_collect_models_params(state);    // collect raw .model cards (lazy)
     // The API path must hand back a fully-populated model map, so force every
@@ -4569,7 +4601,7 @@ DefinitionSet NetlistParser::load_definitions(const std::string& filepath) {
 
     // Package results
     DefinitionSet defs;
-    defs.subcircuit_defs = std::move(state.subcircuit_defs);
+    defs.subcircuit_defs = std::move(tmp_subdefs);
     defs.models = std::move(state.models);
     defs.func_defs = std::move(state.func_defs);
     defs.params = std::move(state.params);
@@ -4603,15 +4635,12 @@ void NetlistParser::expand_subcircuit_into(
     for (const auto& [k, v] : instance_params)
         xline.tokens.push_back(k + "=" + v);
 
-    // Local copy of subcircuit_defs for ParseState reference
-    std::unordered_map<std::string, SubcircuitDef> local_subdefs = defs.subcircuit_defs;
-
     // Expand the X-line into primitive element lines
     auto expanded_lines = expand_all_instances(
-        {xline}, local_subdefs, defs.params, {});
+        {xline}, defs.subcircuit_defs, defs.params, {});
 
-    // Create ParseState targeting caller's circuit
-    ParseState state(ckt, local_subdefs);
+    // Create ParseState targeting caller's circuit; definitions stay read-only.
+    ParseState state(ckt, defs.subcircuit_defs);
     state.lines = std::move(expanded_lines);
     state.dialect = dialect_;
 

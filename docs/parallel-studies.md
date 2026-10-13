@@ -1,15 +1,18 @@
 # Parallel sweeps and Monte Carlo
 
 `Simulator::run_sweep` executes independent netlist jobs in a bounded C++ worker
-pool. Each job parses and owns its circuit, models, state and results. Results
-stay in input order. `workers=0` uses hardware concurrency capped at the number
+pool. The batch reads the netlist, resolves includes, tokenizes and extracts
+subcircuit definitions once, because none of these steps depends on sample
+values. Each job then applies its overrides, expands instances and owns its
+circuit, models, state and results. Results stay in input order. `workers=0` uses hardware concurrency capped at the number
 of jobs. `workers=1`
 executes jobs serially on one isolated worker.
 
 Each netlist must contain exactly one analysis directive. Use separate batches
 for different analyses. Nested `.step` is rejected. Text input uses `parse`
 semantics. File input (`from_file=true`) resolves includes relative to the file.
-Keep source/include files unchanged during a batch.
+Source and include files are read once when the batch starts. If they cannot
+be read, every sample reports the same error.
 
 ## C++
 

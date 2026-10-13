@@ -817,11 +817,17 @@ std::vector<TokenizedLine> expand_instance(
             t3.erase(0, 1);
     }
 
-    // Merge nested defs with all_defs (nested take precedence locally)
-    auto merged_defs = all_defs;
-    for (auto& [name, ndef] : nested_defs) {
-        merged_defs[name] = ndef;
+    // Merge nested defs with all_defs (nested take precedence locally). Copy
+    // the definitions only when a nested scope exists: libraries can hold
+    // hundreds of subcircuits, and every instance expansion passes through here.
+    std::unordered_map<std::string, SubcircuitDef> scoped_defs;
+    if (!nested_defs.empty()) {
+        scoped_defs = all_defs;
+        for (auto& [name, ndef] : nested_defs) {
+            scoped_defs[name] = ndef;
+        }
     }
+    const auto& merged_defs = nested_defs.empty() ? all_defs : scoped_defs;
 
     // Build port set for internal node detection
     std::unordered_set<std::string> port_set(def.ports.begin(), def.ports.end());
