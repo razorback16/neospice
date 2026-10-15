@@ -55,6 +55,15 @@ static bool can_use_zero_ac_operating_point(const Circuit& ckt) {
     return true;
 }
 
+// ngspice factors AC on the circuit matrix the operating point already
+// ordered: spOrderAndFactor keeps each pivot that passes the threshold test
+// and reorders only from the first one that fails. Start the fresh AC solver
+// from the same order instead of a full Markowitz ordering.
+static void adopt_operating_point_pivots(const Circuit& ckt, NeoSolver& solver) {
+    if (const auto* pivots = ckt.operating_point_pivots())
+        solver.adopt_pivot_order(pivots->first, pivots->second);
+}
+
 static ACResult solve_ac_impl(Circuit& ckt, ACMode mode,
                   int npoints, double fstart, double fstop, AnalysisCache* reuse) {
     auto t_start = std::chrono::steady_clock::now();
@@ -147,6 +156,7 @@ static ACResult solve_ac_impl(Circuit& ckt, ACMode mode,
         if (!reuse->ac_solver) {
             reuse->ac_solver=std::make_unique<NeoSolver>();
             reuse->ac_solver->symbolic(pattern);
+            adopt_operating_point_pivots(ckt, *reuse->ac_solver);
             reuse->ac_ready=false;
             ++reuse->statistics.ac_symbolic_analyses;
         }
@@ -155,6 +165,7 @@ static ACResult solve_ac_impl(Circuit& ckt, ACMode mode,
     } else {
         owned_solver=std::make_unique<NeoSolver>();
         owned_solver->symbolic(pattern);
+        adopt_operating_point_pivots(ckt, *owned_solver);
         ac_solver=owned_solver.get();
     }
 

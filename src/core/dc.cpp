@@ -441,7 +441,13 @@ static DCResult solve_dc_impl(Circuit& ckt, AnalysisCache* reuse) {
 
     // A partial failed solution is useful diagnostic output, but cannot be
     // reused as a valid small-signal bias by AC or another analysis.
-    if (sim_status.converged) ckt.set_operating_point(solution);
+    if (sim_status.converged) {
+        ckt.set_operating_point(solution);
+        std::vector<int32_t> rows, cols;
+        if (auto* neo = dynamic_cast<NeoSolver*>(solver);
+            neo && neo->pivot_order(rows, cols))
+            ckt.set_operating_point_pivots(std::move(rows), std::move(cols));
+    }
 
     // 7. Build DCResult
     DCResult dc_result;

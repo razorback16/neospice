@@ -34,6 +34,15 @@ public:
     void solve_complex_transposed(std::vector<double>& rhs);
     const char* name() const override { return "markowitz"; }
 
+    // Pivot order of the current ordering as internal-to-external row and
+    // column maps. Returns false before the matrix has been ordered.
+    bool pivot_order(std::vector<int32_t>& rows, std::vector<int32_t>& cols) const;
+    // Before the first factorization, start from another solver's pivot
+    // order instead of a fresh Markowitz ordering. Returns false, changing
+    // nothing, if the order does not fit this matrix.
+    bool adopt_pivot_order(const std::vector<int32_t>& rows,
+                           const std::vector<int32_t>& cols);
+
     // [3D] Row/column equilibration toggle. Default OFF: when off, behavior is
     // bit-for-bit identical to the pre-equilibration solver (the certified
     // baseline). Only ever enabled as a late convergence fallback in dc.cpp.

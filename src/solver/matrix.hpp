@@ -32,6 +32,18 @@ public:
     [[nodiscard]] SparseError factor();
     void partition(int mode);
     void mna_preorder();
+
+    // Pivot order as internal-to-external row/column maps (1-indexed).
+    bool ordered() const { return !needs_ordering_; }
+    const std::vector<int32_t>& int_to_ext_rows() const { return int_to_ext_row_; }
+    const std::vector<int32_t>& int_to_ext_cols() const { return int_to_ext_col_; }
+    // Permute a matrix that has not been ordered into another matrix's pivot
+    // order. The next order_and_factor() then tries those pivots first and
+    // reorders only from a step whose pivot fails the threshold test, like
+    // spOrderAndFactor on ngspice's already-ordered circuit matrix. Returns
+    // false, leaving the matrix unchanged, when the maps do not fit.
+    bool adopt_ordering(const std::vector<int32_t>& rows,
+                        const std::vector<int32_t>& cols);
     void add_diag_gmin(double gmin);
 
     // --- Solve ---

@@ -310,6 +310,11 @@ public:
     void set_operating_point(const std::vector<double>& solution);
     const std::vector<double>* operating_point() const;
     void clear_operating_point();
+    /// Pivot order of the matrix that produced the cached operating point, so
+    /// AC can start from it as ngspice reuses its ordered circuit matrix.
+    /// Null when there is no cached operating point or no recorded order.
+    void set_operating_point_pivots(std::vector<int32_t> rows, std::vector<int32_t> cols);
+    const std::pair<std::vector<int32_t>, std::vector<int32_t>>* operating_point_pivots() const;
 
     std::string node_name(int32_t idx) const;
     int32_t     node_index(const std::string& name) const;
@@ -433,6 +438,7 @@ private:
     int32_t num_states_ = 0;
     std::vector<double> state0_, state1_, state2_, state3_;
     std::vector<double> operating_point_;
+    std::pair<std::vector<int32_t>, std::vector<int32_t>> operating_point_pivots_;
     std::unique_ptr<SparsityPattern> pattern_;
     bool finalized_ = false;
     std::string source_text_;

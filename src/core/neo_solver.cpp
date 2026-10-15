@@ -184,6 +184,23 @@ bool NeoSolver::numeric(const SparsityPattern& /*pattern*/,
     return err == solver::SparseError::Singular;
 }
 
+bool NeoSolver::pivot_order(std::vector<int32_t>& rows,
+                            std::vector<int32_t>& cols) const {
+    if (!symbolized_ || !matrix_->ordered()) return false;
+    rows = matrix_->int_to_ext_rows();
+    cols = matrix_->int_to_ext_cols();
+    return true;
+}
+
+bool NeoSolver::adopt_pivot_order(const std::vector<int32_t>& rows,
+                                  const std::vector<int32_t>& cols) {
+    if (!symbolized_ || factored_ || factored_complex_) return false;
+    // The adopted order already includes the donor's MNA preorder.
+    if (!matrix_->adopt_ordering(rows, cols)) return false;
+    preordered_ = true;
+    return true;
+}
+
 bool NeoSolver::refactorize(const NumericMatrix& mat, double diag_gmin) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::refactorize: symbolic() not called");

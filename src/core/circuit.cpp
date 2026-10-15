@@ -352,6 +352,7 @@ void Circuit::reset_state() {
 
 void Circuit::set_operating_point(const std::vector<double>& solution) {
     operating_point_ = solution;
+    operating_point_pivots_ = {};
     operating_point_temperature_ = std::pair{options.temp, options.tnom};
 }
 
@@ -363,6 +364,18 @@ const std::vector<double>* Circuit::operating_point() const {
 void Circuit::clear_operating_point() {
     operating_point_.clear();
     operating_point_temperature_.reset();
+    operating_point_pivots_ = {};
+}
+
+void Circuit::set_operating_point_pivots(std::vector<int32_t> rows,
+                                         std::vector<int32_t> cols) {
+    operating_point_pivots_ = {std::move(rows), std::move(cols)};
+}
+
+const std::pair<std::vector<int32_t>, std::vector<int32_t>>*
+Circuit::operating_point_pivots() const {
+    return operating_point() && !operating_point_pivots_.first.empty()
+        ? &operating_point_pivots_ : nullptr;
 }
 
 void Circuit::prepare_temperature(double temperature, double nominal) {

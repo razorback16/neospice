@@ -639,6 +639,43 @@ void SparseMatrix::col_exchange(int32_t col1, int32_t col2) {
     }
 }
 
+bool SparseMatrix::adopt_ordering(const std::vector<int32_t>& rows,
+                                  const std::vector<int32_t>& cols) {
+    if (!needs_ordering_ || factored_) return false;
+    const auto n = static_cast<size_t>(size_) + 1;
+    if (rows.size() < n || cols.size() < n) return false;
+    std::vector<bool> seen_row(n), seen_col(n);
+    for (int32_t i = 1; i <= size_; ++i) {
+        const int32_t r = rows[i], c = cols[i];
+        if (r < 1 || r > ext_size_ || c < 1 || c > ext_size_) return false;
+        const int32_t ir = ext_to_int_row_[r], ic = ext_to_int_col_[c];
+        if (ir < 1 || ir > size_ || ic < 1 || ic > size_ ||
+            seen_row[ir] || seen_col[ic])
+            return false;
+        seen_row[ir] = seen_col[ic] = true;
+    }
+
+    if (!rows_linked_) link_rows();
+    if (!internal_vectors_allocated_) create_internal_vectors();
+    for (int32_t step = 1; step <= size_; ++step) {
+        const int32_t r = ext_to_int_row_[rows[step]];
+        if (r != step) {
+            row_exchange(step, r);
+            interchanges_odd_ = !interchanges_odd_;
+        }
+        const int32_t c = ext_to_int_col_[cols[step]];
+        if (c != step) {
+            col_exchange(step, c);
+            interchanges_odd_ = !interchanges_odd_;
+        }
+    }
+    for (int32_t step = 1; step <= size_; ++step)
+        diag_[step] = find_element_in_col(&first_in_col_[step], step, step, false);
+    reordered_ = true;
+    needs_ordering_ = false;
+    return true;
+}
+
 void SparseMatrix::exchange_rows_and_cols(MatrixElement* pivot, int32_t step) {
     int32_t row = pivot->Row;
     int32_t col = pivot->Col;
