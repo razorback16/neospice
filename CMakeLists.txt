@@ -99,6 +99,20 @@ if(NEOSPICE_BUILD_SWEEP_STRESS)
     target_link_libraries(neospice_sweep_stress PRIVATE neospice_lib)
 endif()
 
+# libFuzzer targets (opt-in, Clang only). Instrument the library too, e.g.
+# -DCMAKE_CXX_FLAGS="-fsanitize=fuzzer-no-link,address,undefined". See docs/fuzzing.md.
+option(NEOSPICE_BUILD_FUZZERS "Build libFuzzer parser/simulator targets" OFF)
+if(NEOSPICE_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "NEOSPICE_BUILD_FUZZERS requires Clang (libFuzzer).")
+    endif()
+    foreach(_fuzzer fuzz_parse fuzz_op)
+        add_executable(${_fuzzer} tests/fuzz/${_fuzzer}.cpp)
+        target_link_libraries(${_fuzzer} PRIVATE neospice_lib)
+        target_link_options(${_fuzzer} PRIVATE -fsanitize=fuzzer)
+    endforeach()
+endif()
+
 option(NEOSPICE_BUILD_WASM "Build the WebAssembly JavaScript module" ${EMSCRIPTEN})
 if(NEOSPICE_BUILD_WASM)
     if(NOT EMSCRIPTEN)

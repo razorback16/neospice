@@ -227,6 +227,12 @@ target_compile_definitions(debug_tlv3201 PRIVATE
     TEST_CIRCUITS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/circuits"
 )
 
+# Many-sample study throughput (neospice side of tools/run_study_benchmark.py).
+add_executable(bench_study
+    bench/bench_study.cpp
+)
+target_link_libraries(bench_study PRIVATE neospice_lib)
+
 add_executable(bench_neo_solver
     bench/bench_neo_solver.cpp
 )
