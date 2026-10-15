@@ -46,9 +46,10 @@ final measurements, and author review; it is separate from shipping 0.2.0.
 
 ### Measured performance
 
-- Done October 14, 2026: a 30-sample run on the 34-workload population
-  measured 1.93× (30 wins) and kept the raw-sample hash and numerical checks.
-  Repeat it for the final release candidate.
+- Done October 15, 2026: a 30-sample run on the 34-workload population at
+  `b540d30` measured 1.95× (30 wins) and kept the raw-sample hash and numerical
+  checks. The October 14 run at `906930c` gave 1.93×. Repeat it for the final
+  release candidate.
 - Close the four remaining losses: diode truncation-error cost in mid-size
   transients and complex refactorization in diode AC grids. Use controlled
   ablations to attribute improvements to individual changes.

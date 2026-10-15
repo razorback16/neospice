@@ -1,6 +1,8 @@
-# October 14 release benchmark
+# October 14 benchmark
 
-This directory contains the October 14 release measurement. The harness
+This directory contains the October 14 measurement. The
+[October 15 release run](../2026-10-15-release/README.md) supersedes it as the
+cited result; this run is retained as a replicate. The harness
 recorded ngspice 47 (default Sparse, one simulator thread), 34 qualified
 workloads, three warmups, and **30 measured pairs per workload**. The measured
 source is commit `906930c` with a clean worktree. The harness verified that the
