@@ -27,7 +27,7 @@ do, not by what the prose claims. The reference is ngspice 47 only.
 | HFET1                 | V     | -        | -         | V   | -     | -   | -    | -   | -    |
 | HFET2                 | V     | V        | V*        | V   | -     | -   | -    | -   | -    |
 | HiSIM2                | V     | V        | -         | V   | -     | -   | -    | -   | -    |
-| HiSIM_HV              | V     | -        | -         | V   | V     | -   | -    | -   | -    |
+| HiSIM_HV              | V     | -        | V         | V   | V     | -   | -    | -   | -    |
 | JFET                  | -     | -        | -         | -   | V     | -   | -    | -   | -    |
 | JFET2                 | V     | -        | V*        | V   | -     | -   | -    | -   | -    |
 | K (mutual inductance) | V     | -        | V*        | V   | -     | -   | -    | -   | -    |
@@ -91,7 +91,7 @@ combination that no test has ever run against the reference, so
 nothing establishes whether it agrees, fails loudly, or returns a
 plausible wrong answer. Enumerating them is the point of this table.
 
-Of 198 cells: **65 reference-verified**, 3 exercised only, 2 explicitly rejected, **128 with no coverage**.
+Of 198 cells: **66 reference-verified**, 3 exercised only, 2 explicitly rejected, **127 with no coverage**.
 
 ### Tolerances wider than the corpus comparison
 
@@ -257,6 +257,7 @@ device does not appear as one. Known restrictions:
 | --- | --- | --- | --- |
 | dc_op | `V` | `HiSIMHVValidation.NmosOperatingPoint` | `tests/devices/hisimhv/test_hisimhv_compare.cpp` |
 | dc_op | `V` | `HiSIMHVValidation.PmosOperatingPoint` | `tests/devices/hisimhv/test_hisimhv_compare.cpp` |
+| transient | `V` | `HiSIMHVValidation.NmosTransient` | `tests/devices/hisimhv/test_hisimhv_compare.cpp` |
 | ac | `V` | `HiSIMHVValidation.NmosAcResponse` | `tests/devices/hisimhv/test_hisimhv_compare.cpp` |
 | noise | `V` | `HiSIMHVValidation.NmosNoise` | `tests/devices/hisimhv/test_hisimhv_compare.cpp` |
 
