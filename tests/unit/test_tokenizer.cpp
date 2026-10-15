@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "parser/tokenizer.hpp"
+#include "parser/model_cards.hpp"
 #include <cmath>
 
 using namespace neospice;
@@ -24,6 +25,13 @@ TEST(Tokenizer, NumericSuffixes) {
     EXPECT_DOUBLE_EQ(parse_spice_number("115.8"), 1158.0 * std::pow(10.0, -1.0));
 }
 
+// Found by fuzzing: a huge exponent overflowed the int accumulator.
+TEST(Tokenizer, HugeExponentSaturates) {
+    EXPECT_TRUE(std::isinf(parse_spice_number("1e99999999999")));
+    EXPECT_EQ(parse_spice_number("1e-99999999999"), 0.0);
+    EXPECT_DOUBLE_EQ(parse_spice_number("2.5e300"), 2.5e300);
+}
+
 TEST(Tokenizer, LineContinuation) {
     auto lines = tokenize("R1 net1\n+ 0 1k\n");
     ASSERT_EQ(lines.size(), 1u);
@@ -44,6 +52,15 @@ TEST(Tokenizer, IndentedComment) {
     auto lines = tokenize("    * indented comment\nR1 net1 0 1k\n");
     ASSERT_EQ(lines.size(), 1u);
     EXPECT_EQ(lines[0].tokens.size(), 4u);
+}
+
+// A .control ... .endc block is an ngspice script, never circuit elements:
+// "let out 0 1" must not become an inductor.
+TEST(Tokenizer, ControlBlockSkipped) {
+    auto lines = tokenize("title\nR1 in out 1k\n  .CONTROL\nlet out 0 1\n+ 2\nrun\n.endc\nR2 out 0 1k\n");
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_EQ(lines[0].tokens[0], "R1");
+    EXPECT_EQ(lines[1].tokens[0], "R2");
 }
 
 TEST(Tokenizer, Comments) {
@@ -90,4 +107,12 @@ TEST(Tokenizer, TitleLine) {
 TEST(Tokenizer, CaseInsensitive) {
     auto lines = tokenize("r1 NET1 GND 1K\n");
     ASSERT_EQ(lines.size(), 1u);
+}
+
+// Found by fuzzing: LEVEL=1e12 was cast to int (undefined behavior).
+TEST(ModelCards, OutOfRangeLevelIsInvalid) {
+    EXPECT_EQ(model_level_value(49.0), 49);
+    EXPECT_EQ(model_level_value(1e12), -1);
+    EXPECT_EQ(model_level_value(-1e12), -1);
+    EXPECT_EQ(model_level_value(std::nan("")), -1);
 }

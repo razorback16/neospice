@@ -156,6 +156,20 @@ C1 out 0 1n
     EXPECT_EQ(std::get<ACCmd>(ckt.analyses[0]).npoints, 10);
 }
 
+// Found by fuzzing: an incomplete second .dc group read past the token list,
+// and an out-of-range AC point count was cast to int.
+TEST(Parser, MalformedSweepCountsAreRejectedSafely) {
+    NetlistParser parser;
+    auto dc = parser.parse("t\nV1 a 0 1\nV2 b 0 1\nR1 a b 1k\n.dc V1 0 1 0.1 V2 0 1\n.end\n");
+    ASSERT_EQ(dc.analyses.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<DCSweepCmd>(dc.analyses[0]));
+    EXPECT_EQ(std::get<DCSweepCmd>(dc.analyses[0]).params.size(), 1u);
+
+    NetlistParser parser2;
+    auto ac = parser2.parse("t\nV1 a 0 AC 1\nR1 a 0 1k\n.ac dec 1e13 1 10\n.end\n");
+    EXPECT_TRUE(ac.analyses.empty());
+}
+
 TEST(Parser, DiodeWithModel) {
     std::string netlist = R"(
 Diode Test

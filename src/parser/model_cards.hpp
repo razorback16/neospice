@@ -54,6 +54,11 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens,
                           const std::unordered_map<std::string, double>& params = {},
                           bool pspice_temperature_alias = false);
 
+/// Convert a LEVEL model parameter to int, truncating like ngspice. Values
+/// that are not finite or do not fit in an int return -1, which no device
+/// family accepts, instead of invoking undefined behavior.
+int model_level_value(double value);
+
 /// Detect the MOSFET level from a parsed .model card.
 /// Returns 1 for MOS1, 14 (default) for BSIM4v7.
 /// Only valid for NMOS/PMOS type cards.

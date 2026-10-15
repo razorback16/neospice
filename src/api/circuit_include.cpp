@@ -22,7 +22,7 @@ std::string lower_copy(std::string_view s) {
 
 int model_level(const ModelCard& card, int default_level) {
     auto it = card.params.find("level");
-    return it == card.params.end() ? default_level : static_cast<int>(it->second);
+    return it == card.params.end() ? default_level : model_level_value(it->second);
 }
 
 } // namespace

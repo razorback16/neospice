@@ -107,7 +107,7 @@ void resolve_hfets(
         int level = 5; // default: HFET1
         auto lvl_it = it->second.params.find("level");
         if (lvl_it != it->second.params.end()) {
-            level = static_cast<int>(lvl_it->second);
+            level = model_level_value(lvl_it->second);
         }
         int32_t nd = z.nd;
         int32_t ng = z.ng;

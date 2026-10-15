@@ -37,7 +37,7 @@ int32_t raw(NodeId id) {
 
 int model_level(const ModelCard& card, int default_level) {
     auto it = card.params.find("level");
-    return it == card.params.end() ? default_level : static_cast<int>(it->second);
+    return it == card.params.end() ? default_level : model_level_value(it->second);
 }
 
 std::invalid_argument missing_model(std::string_view device,

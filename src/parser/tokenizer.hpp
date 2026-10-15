@@ -18,4 +18,8 @@ std::vector<TokenizedLine> tokenize(const std::string& netlist);
 // Parse a SPICE number with optional suffix (k, meg, u, n, p, f, etc.)
 double parse_spice_number(const std::string& str);
 
+/// parse_spice_number truncated to int, as ngspice does for integer fields.
+/// Throws ParseError when the value is not finite or does not fit in an int.
+int parse_spice_int(const std::string& str);
+
 } // namespace neospice

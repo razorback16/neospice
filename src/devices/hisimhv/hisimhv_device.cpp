@@ -626,17 +626,15 @@ double HSMHVDevice::compute_trunc(const IntegratorCtx& ctx,
 
     const double* states[] = {state0_, state1_, state2_, state3_};
     double dt_min = 1e30;
+    // Exactly the charges ngspice's HSMHVtrunc checks (hsmhvtrunc.c). The NQS
+    // charge states exist only in NQS mode, so they must not be read here.
     ckt_terr(inst_.HSMHVqb, states, ctx, opts, dt_min);
     ckt_terr(inst_.HSMHVqg, states, ctx, opts, dt_min);
     ckt_terr(inst_.HSMHVqd, states, ctx, opts, dt_min);
     ckt_terr(inst_.HSMHVqbs, states, ctx, opts, dt_min);
     ckt_terr(inst_.HSMHVqbd, states, ctx, opts, dt_min);
-    ckt_terr(inst_.HSMHVqth, states, ctx, opts, dt_min);
     ckt_terr(inst_.HSMHVqfd, states, ctx, opts, dt_min);
     ckt_terr(inst_.HSMHVqfs, states, ctx, opts, dt_min);
-    ckt_terr(inst_.HSMHVqdE, states, ctx, opts, dt_min);
-    ckt_terr(inst_.HSMHVqi_nqs, states, ctx, opts, dt_min);
-    ckt_terr(inst_.HSMHVqb_nqs, states, ctx, opts, dt_min);
     return dt_min;
 }
 

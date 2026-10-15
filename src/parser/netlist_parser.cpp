@@ -1409,7 +1409,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                     else if (mode == "oct") ac.mode = ACMode::OCT;
                     else if (mode == "lin") ac.mode = ACMode::LIN;
                     else { fprintf(stderr, "Warning: Line %d: Unknown AC mode '%s' — skipping\n", line.line_number, tokens[1].c_str()); continue; }
-                    ac.npoints = static_cast<int>(parse_spice_number(tokens[2]));
+                    ac.npoints = parse_spice_int(tokens[2]);
                     ac.fstart = parse_spice_number(tokens[3]);
                     ac.fstop = parse_spice_number(tokens[4]);
                     ckt.analyses.push_back(ac);
@@ -1440,7 +1440,7 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 else if (mode == "oct") ncmd.mode = ACMode::OCT;
                 else if (mode == "lin") ncmd.mode = ACMode::LIN;
                 else { fprintf(stderr, "Warning: Line %d: Unknown noise sweep mode '%s' — skipping\n", line.line_number, tokens[3].c_str()); continue; }
-                ncmd.npoints = static_cast<int>(parse_spice_number(tokens[4]));
+                ncmd.npoints = parse_spice_int(tokens[4]);
                 ncmd.fstart = parse_spice_number(tokens[5]);
                 ncmd.fstop = parse_spice_number(tokens[6]);
                 ckt.analyses.push_back(ncmd);
@@ -1453,10 +1453,8 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                 }
                 DCSweepCmd dcmd;
                 size_t i = 1;
-                while (i + 3 < tokens.size() + 1 && i < tokens.size()) {
-                    // Need 4 tokens: name start stop step
-                    if (i + 3 >= tokens.size() + 1) break;
-                    if (i + 3 > tokens.size()) break;
+                // Each sweep group needs 4 tokens: name start stop step.
+                while (i + 3 < tokens.size()) {
                     DCSweepParam sp;
                     sp.source_name = tokens[i];
                     try {
@@ -1646,9 +1644,9 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                         std::string key = lower.substr(0, eq_pos);
                         std::string valstr = tokens[i].substr(eq_pos + 1);
                         if (key == "val") mcmd.trig_val = parse_spice_number(valstr);
-                        else if (key == "rise") { mcmd.trig_direction = "rise"; mcmd.trig_td_count = static_cast<int>(parse_spice_number(valstr)); }
-                        else if (key == "fall") { mcmd.trig_direction = "fall"; mcmd.trig_td_count = static_cast<int>(parse_spice_number(valstr)); }
-                        else if (key == "cross") { mcmd.trig_direction = "cross"; mcmd.trig_td_count = static_cast<int>(parse_spice_number(valstr)); }
+                        else if (key == "rise") { mcmd.trig_direction = "rise"; mcmd.trig_td_count = parse_spice_int(valstr); }
+                        else if (key == "fall") { mcmd.trig_direction = "fall"; mcmd.trig_td_count = parse_spice_int(valstr); }
+                        else if (key == "cross") { mcmd.trig_direction = "cross"; mcmd.trig_td_count = parse_spice_int(valstr); }
                     }
                     // Parse TARG section
                     if (i < tokens.size() && to_lower(tokens[i]) == "targ") {
@@ -1666,9 +1664,9 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                             std::string key = lower.substr(0, eq_pos);
                             std::string valstr = tokens[i].substr(eq_pos + 1);
                             if (key == "val") mcmd.targ_val = parse_spice_number(valstr);
-                            else if (key == "rise") { mcmd.targ_direction = "rise"; mcmd.targ_td_count = static_cast<int>(parse_spice_number(valstr)); }
-                            else if (key == "fall") { mcmd.targ_direction = "fall"; mcmd.targ_td_count = static_cast<int>(parse_spice_number(valstr)); }
-                            else if (key == "cross") { mcmd.targ_direction = "cross"; mcmd.targ_td_count = static_cast<int>(parse_spice_number(valstr)); }
+                            else if (key == "rise") { mcmd.targ_direction = "rise"; mcmd.targ_td_count = parse_spice_int(valstr); }
+                            else if (key == "fall") { mcmd.targ_direction = "fall"; mcmd.targ_td_count = parse_spice_int(valstr); }
+                            else if (key == "cross") { mcmd.targ_direction = "cross"; mcmd.targ_td_count = parse_spice_int(valstr); }
                         }
                     } else {
                         throw ParseError("Line " + std::to_string(line.line_number) +
@@ -1696,13 +1694,13 @@ void NetlistParser::pass2_parse_elements(ParseState& state) {
                                 mcmd.at_val = parse_spice_number(valstr);
                             } else if (key == "rise") {
                                 mcmd.when_direction = "rise";
-                                mcmd.when_td_count = static_cast<int>(parse_spice_number(valstr));
+                                mcmd.when_td_count = parse_spice_int(valstr);
                             } else if (key == "fall") {
                                 mcmd.when_direction = "fall";
-                                mcmd.when_td_count = static_cast<int>(parse_spice_number(valstr));
+                                mcmd.when_td_count = parse_spice_int(valstr);
                             } else if (key == "cross") {
                                 mcmd.when_direction = "cross";
-                                mcmd.when_td_count = static_cast<int>(parse_spice_number(valstr));
+                                mcmd.when_td_count = parse_spice_int(valstr);
                             }
                         } else if (lower == "when") {
                             // WHEN signal2=val

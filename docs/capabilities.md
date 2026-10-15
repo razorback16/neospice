@@ -71,6 +71,11 @@ AC, noise and self-heating requests fail explicitly.
 
 `.param` expressions, `.subckt`/`.ends`, `.include`/`.lib`, `.global`, `.ic`, `.nodeset`, `.options`, `.func`, `.measure`, `.save`, `.step`, SPICE suffixes (k/m/u/n/p/f/T)
 
+neospice does not execute ngspice `.control` … `.endc` scripts. It ignores
+these blocks, as ngspice does when it builds the circuit, so script lines never
+become circuit elements. An analysis that appears only inside a control block
+is not run. Put it on a dot line, such as `.tran`, instead.
+
 ### Implementation features
 
 - **Expression derivatives** in B-source expressions. Stateful functions such as DDT have separate history and derivative rules.

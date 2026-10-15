@@ -146,7 +146,7 @@ void resolve_bjts(
         // Determine level: default=1 (BJT), 4 or 9 = VBIC
         auto level_it = it->second.params.find("level");
         int level = (level_it == it->second.params.end()) ? 1
-                    : static_cast<int>(level_it->second);
+                    : model_level_value(level_it->second);
 
         if (level != 0 && level != 1 && level != 2 && level != 4 && level != 9) {
             throw ParseError("Line " + std::to_string(q.line_number) +

@@ -111,6 +111,9 @@ void convert_model_card_params(
         if (dtype & ucb_if::REAL) {
             v.rValue = val;
         } else if (dtype & ucb_if::INTEGER) {
+            if (!(val >= std::numeric_limits<int>::min() && val <= std::numeric_limits<int>::max()))
+                throw ParseError("Model '" + card.name + "': integer parameter out of range for '" +
+                                 lkey + "'");
             v.iValue = static_cast<int>(val);
         } else if (dtype & ucb_if::FLAG) {
             v.iValue = (val != 0.0) ? 1 : 0;

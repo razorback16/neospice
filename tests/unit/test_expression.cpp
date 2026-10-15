@@ -422,6 +422,30 @@ TEST(ExpandFuncs, BasicExpansion) {
     EXPECT_DOUBLE_EQ(eval(expand_funcs("square(3)", fdefs)), 9.0);
 }
 
+// Found by fuzzing: a self-referential or mutually recursive .FUNC made
+// expansion run forever. It is now a parse error.
+TEST(ExpandFuncs, RecursionIsRejected) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["f"] = FuncDef{{"x"}, "1+f(x)"};
+    EXPECT_THROW(expand_funcs("f(2)", fdefs), ParseError);
+
+    std::unordered_map<std::string, FuncDef> mutual;
+    mutual["a"] = FuncDef{{"x"}, "b(x)+1"};
+    mutual["b"] = FuncDef{{"x"}, "2*a(x)"};
+    EXPECT_THROW(expand_funcs("a(2)", mutual), ParseError);
+}
+
+TEST(ExpandFuncs, ExponentialExpansionIsBounded) {
+    std::unordered_map<std::string, FuncDef> fdefs;
+    fdefs["f0"] = FuncDef{{"x"}, "x+x"};
+    for (int k = 1; k < 40; ++k)
+        fdefs["f" + std::to_string(k)] =
+            FuncDef{{"x"}, "f" + std::to_string(k - 1) + "(x)*f" + std::to_string(k - 1) + "(x)"};
+    EXPECT_THROW(expand_funcs("f39(1)", fdefs), ParseError);
+    // A modest chain still expands normally.
+    EXPECT_DOUBLE_EQ(eval(expand_funcs("f3(1)", fdefs)), 256.0);
+}
+
 TEST(ExpandFuncs, TwoArgFunction) {
     std::unordered_map<std::string, FuncDef> fdefs;
     fdefs["myfunc"] = FuncDef{{"x", "y"}, "x*y+1"};

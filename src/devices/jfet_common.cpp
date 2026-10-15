@@ -113,7 +113,7 @@ void resolve_jfets(
         // Determine level: default=1 (JFET), 2 = JFET2 (Parker-Skellern)
         auto level_it = it->second.params.find("level");
         int level = (level_it == it->second.params.end()) ? 1
-                    : static_cast<int>(level_it->second);
+                    : model_level_value(level_it->second);
 
         if (level == 2) {
             // JFET2 (Parker-Skellern) model

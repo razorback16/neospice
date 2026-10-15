@@ -148,6 +148,16 @@ std::vector<TokenizedLine> tokenize(const std::string& netlist) {
 
     TokenizedLine current;
     current.line_number = 0;
+    // Lines from .control through .endc are an ngspice control script, not
+    // circuit elements (ngspice inpcom.c removes them before parsing).
+    bool in_control = false;
+    auto starts_with_ci = [](const std::string& line, size_t pos, const char* word) {
+        for (; *word; ++word, ++pos)
+            if (pos >= line.size() ||
+                std::tolower(static_cast<unsigned char>(line[pos])) != *word)
+                return false;
+        return true;
+    };
 
     while (std::getline(stream, raw_line)) {
         line_num++;
@@ -178,6 +188,15 @@ std::vector<TokenizedLine> tokenize(const std::string& netlist) {
         char first_ch = raw_line[fnw];
 
         if (first_ch == '*') continue;
+
+        if (in_control) {
+            if (starts_with_ci(raw_line, fnw, ".endc")) in_control = false;
+            continue;
+        }
+        if (starts_with_ci(raw_line, fnw, ".control")) {
+            in_control = true;
+            continue;
+        }
 
         // Check for .end directive (case-insensitive) without lowercasing the
         // whole line: only lines starting with '.' can be ".end".
@@ -259,7 +278,10 @@ double parse_spice_number(const std::string& str) {
             ++p;
         }
         while (std::isdigit(static_cast<unsigned char>(*p))) {
-            explicit_exponent = 10 * explicit_exponent + (*p - '0');
+            // Saturate: any exponent this large already gives inf or 0, and
+            // ngspice's unchecked int accumulation would overflow.
+            if (explicit_exponent < 100000)
+                explicit_exponent = 10 * explicit_exponent + (*p - '0');
             ++p;
         }
     }
@@ -290,6 +312,13 @@ double parse_spice_number(const std::string& str) {
 
     return static_cast<double>(sign) * mantissa *
            std::pow(10.0, static_cast<double>(decimal_exponent + exponent_sign * explicit_exponent));
+}
+
+int parse_spice_int(const std::string& str) {
+    double value = parse_spice_number(str);
+    if (!(value > -2147483649.0 && value < 2147483648.0))
+        throw ParseError("Integer out of range: " + str);
+    return static_cast<int>(value);
 }
 
 } // namespace neospice

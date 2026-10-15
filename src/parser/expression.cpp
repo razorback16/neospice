@@ -481,9 +481,77 @@ std::unordered_set<std::string> scan_dependencies(const std::string& expr) {
 // Public API
 // ---------------------------------------------------------------------------
 
+namespace {
+
+// .FUNC names that can reach themselves through calls in their bodies.
+// Expanding such a function never terminates (ngspice recurses without
+// bound on the same input), so expansion rejects it instead.
+std::unordered_set<std::string> recursive_funcs(
+        const std::unordered_map<std::string, FuncDef>& func_defs) {
+    std::unordered_map<std::string, std::vector<std::string>> calls;
+    for (const auto& [name, def] : func_defs) {
+        auto& out = calls[name];
+        const std::string& b = def.body;
+        for (size_t i = 0; i < b.size();) {
+            const auto c = static_cast<unsigned char>(b[i]);
+            if (!(std::isalpha(c) || c == '_')) { ++i; continue; }
+            size_t start = i;
+            while (i < b.size() && (std::isalnum(static_cast<unsigned char>(b[i])) || b[i] == '_')) ++i;
+            size_t j = i;
+            while (j < b.size() && std::isspace(static_cast<unsigned char>(b[j]))) ++j;
+            if (j >= b.size() || b[j] != '(') continue;
+            std::string id = b.substr(start, i - start);
+            std::transform(id.begin(), id.end(), id.begin(), ::tolower);
+            if (func_defs.count(id)) out.push_back(std::move(id));
+        }
+    }
+    // Iterative DFS with colors; every function on a cycle is recursive.
+    std::unordered_map<std::string, int> color;  // 0 new, 1 on stack, 2 done
+    std::unordered_set<std::string> recursive;
+    for (const auto& [root, unused] : func_defs) {
+        if (color[root]) continue;
+        std::vector<std::pair<std::string, size_t>> stack{{root, 0}};
+        color[root] = 1;
+        while (!stack.empty()) {
+            auto& [node, next] = stack.back();
+            const auto& edges = calls[node];
+            if (next == edges.size()) {
+                color[node] = 2;
+                stack.pop_back();
+                continue;
+            }
+            const std::string callee = edges[next++];
+            if (color[callee] == 1) {
+                for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+                    recursive.insert(it->first);
+                    if (it->first == callee) break;
+                }
+            } else if (color[callee] == 0) {
+                color[callee] = 1;
+                stack.emplace_back(callee, 0);
+            }
+        }
+    }
+    return recursive;
+}
+
+// Inlining stops with an error beyond this size, or once the characters
+// moved by replacements exceed the work budget (each replacement shifts the
+// rest of the string). Real vendor libraries stay far below both; exponential
+// or recursive definitions reach them quickly.
+constexpr size_t kMaxExpandedFuncChars = 16u << 20;
+constexpr size_t kMaxExpansionWork = size_t(1) << 31;
+// Replacements in one expression before recursion is checked.
+constexpr size_t kRecursionCheckAfter = 256;
+
+} // namespace
+
 std::string expand_funcs(const std::string& expr,
                          const std::unordered_map<std::string, FuncDef>& func_defs) {
     if (func_defs.empty()) return expr;
+    size_t replacements = 0, work = 0;
+    bool recursion_checked = false;
+    std::unordered_set<std::string> recursive;
 
     // Work on a lowercase copy for matching, but substitute in the original
     std::string result = expr;
@@ -594,7 +662,20 @@ std::string expand_funcs(const std::string& expr,
 
                 // Replace the function call in result with parenthesized expanded body
                 size_t call_len = (p + 1) - pos;
+                if (++replacements > kRecursionCheckAfter) {
+                    if (!recursion_checked) {
+                        recursive = recursive_funcs(func_defs);
+                        recursion_checked = true;
+                    }
+                    if (recursive.count(fname))
+                        throw ParseError("Recursive .FUNC definition: " + fname);
+                }
                 std::string expanded_str = "(" + sub_body + ")";
+                if (result.size() - call_len + expanded_str.size() > kMaxExpandedFuncChars)
+                    throw ParseError(".FUNC expansion exceeds 16 MiB: " + fname);
+                work += result.size();
+                if (work > kMaxExpansionWork)
+                    throw ParseError(".FUNC expansion too large: " + fname);
                 result.replace(pos, call_len, expanded_str);
                 expanded = true;
                 // Rebuild the lowercase view (result changed) and continue
@@ -608,13 +689,19 @@ std::string expand_funcs(const std::string& expr,
                 // total work proportional to the (large but finite) fully
                 // expanded string. pos is left unchanged so nested calls
                 // introduced by this body are expanded too.
-                result_lower.resize(result.size());
-                std::transform(result.begin(), result.end(),
-                               result_lower.begin(), ::tolower);
+                std::string expanded_lower = expanded_str;
+                std::transform(expanded_lower.begin(), expanded_lower.end(),
+                               expanded_lower.begin(), ::tolower);
+                result_lower.replace(pos, call_len, expanded_lower);
             }
         }
-        if (!expanded) break;
+        if (!expanded) return result;
     }
+    // Still expanding after every pass: report recursion as an error rather
+    // than return a partially expanded expression.
+    if (!recursion_checked) recursive = recursive_funcs(func_defs);
+    if (!recursive.empty())
+        throw ParseError("Recursive .FUNC definition: " + *recursive.begin());
     return result;
 }
 

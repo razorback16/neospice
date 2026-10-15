@@ -229,10 +229,15 @@ ModelCard parse_model_card(const std::vector<std::string>& tokens,
 // ---------------------------------------------------------------------------
 // detect_mosfet_level — return the LEVEL from a NMOS/PMOS .model card.
 // ---------------------------------------------------------------------------
+int model_level_value(double value) {
+    if (!(value > -2147483649.0 && value < 2147483648.0)) return -1;
+    return static_cast<int>(value);
+}
+
 int detect_mosfet_level(const ModelCard& card) {
     auto it = card.params.find("level");
     if (it == card.params.end()) return 1;  // default MOS1 (matches ngspice)
-    return static_cast<int>(it->second);
+    return model_level_value(it->second);
 }
 
 // ---------------------------------------------------------------------------

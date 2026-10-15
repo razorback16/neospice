@@ -994,10 +994,14 @@ SparseError SparseMatrix::factor() {
         return (error_ = SparseError::OK);
     }
 
-    if (diag_[1]->Real == 0.0) return zero_pivot(1);
+    // A pivot can be structurally missing when an earlier ordering stopped
+    // at a singular step after reusing the previous pivots. Report it as a
+    // zero pivot (singular) so the caller reorders, instead of dereferencing it.
+    if (!diag_[1] || diag_[1]->Real == 0.0) return zero_pivot(1);
     diag_[1]->Real = 1.0 / diag_[1]->Real;
 
     for (int32_t step = 2; step <= size; step++) {
+        if (!diag_[step]) return zero_pivot(step);
         if (do_real_direct_[step]) {
             double* dest = intermediate_.data();
 
@@ -1062,11 +1066,12 @@ SparseError SparseMatrix::factor_complex() {
     }
 
     auto* pivot1 = diag_[1];
-    if (element_mag(pivot1) == 0.0) return zero_pivot(1);
+    if (!pivot1 || element_mag(pivot1) == 0.0) return zero_pivot(1);
     complex_ops::reciprocal(pivot1->Real, pivot1->Imag,
                             pivot1->Real, pivot1->Imag);
 
     for (int32_t step = 2; step <= size; step++) {
+        if (!diag_[step]) return zero_pivot(step);
         if (do_cmplx_direct_[step]) {
             double* dest = intermediate_.data();
 

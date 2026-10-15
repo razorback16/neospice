@@ -822,8 +822,9 @@ void HSM2Device::ac_stamp(const std::vector<double>& /*voltages*/,
 //   qb  at offset 8  (cqb at 9)
 //   qg  at offset 10 (cqg at 11)
 //   qd  at offset 12 (cqd at 13)
-//   qbs at offset 14 (cqbs at 15)
-//   qbd at offset 16 (cqbd at 17)
+//
+// ngspice's HSM2trunc (hsm2trunc.c) checks only qb, qg and qd; the junction
+// charges qbs/qbd do not limit the timestep.
 // ---------------------------------------------------------------------------
 double HSM2Device::compute_trunc(const IntegratorCtx& ctx,
                                    const SimOptions& opts) const {
@@ -834,7 +835,7 @@ double HSM2Device::compute_trunc(const IntegratorCtx& ctx,
 
     const double* states[] = {state0_, state1_, state2_, state3_};
     double dt_min = 1e30;
-    static const int charge_offsets[] = {8, 10, 12, 14, 16};  // qb, qg, qd, qbs, qbd
+    static const int charge_offsets[] = {8, 10, 12};  // qb, qg, qd
     for (int rel : charge_offsets)
         ckt_terr(state_base_ + rel, states, ctx, opts, dt_min);
     return dt_min;
