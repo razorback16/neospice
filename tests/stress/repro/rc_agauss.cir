@@ -1,0 +1,9 @@
+RC low-pass with netlist-level random tolerances
+.param rnom=1k
+.param rr={agauss(rnom, 0.05, 1)}
+.param cc={agauss(1n, 0.1, 1)}
+V1 in 0 PULSE(0 1 0 1n 1n 5u 10u)
+R1 in out {rr}
+C1 out 0 {cc}
+.tran 10n 20u
+.end

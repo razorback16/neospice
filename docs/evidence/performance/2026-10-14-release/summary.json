@@ -1,0 +1,2331 @@
+{
+  "metadata": {
+    "type": "metadata",
+    "schema": 1,
+    "verify_only": false,
+    "samples": 30,
+    "warmup": 3,
+    "reference_version": "stdout ******\nstdout ** ngspice-47 : Circuit level simulation program\nstdout ** Compiled with KLU Direct Linear Solver\nstdout ** The U. C. Berkeley CAD Group\nstdout ** Copyright 1985-1994, Regents of the University of California.\nstdout ** Copyright 2001-2026, The ngspice team.\nstdout ** Please get your ngspice manual from https://ngspice.sourceforge.io/docs.html\nstdout ** Please file your bug-reports at http://ngspice.sourceforge.net/bugrep.html\nstdout ** Creation Date: Sat Oct  3 21:32:08 UTC 2026\nstdout ******\n",
+    "reference_settings": "stdout brief\nstdout * curplot\tconst\nstdout * curplotdate\tSat Oct  3 21:32:08 UTC 2026\nstdout * curplotname\tconstants\nstdout * curplottitle\tConstant values\nstdout history\t10000\nstdout inputdir\t/home/subhagato/Codes/neospice/third_party/ngspice47-reference/shared/share/ngspice/scripts\nstdout num_threads\t1\nstdout oscompiled\t6\nstdout * plots\t( const )\nstdout program\tngspice\nstdout prompt\tngspice ! -> \nstdout rndseed\t1\nstdout sharedmode\nstdout sourcepath\t( . /home/subhagato/Codes/neospice/third_party/ngspice47-reference/shared/share/ngspice/scripts )\nstdout x11lineararcs\nstdout xspice_enabled\n",
+    "population": [
+      "dc_ths4131",
+      "dc_divider",
+      "ac_ths4131_10",
+      "ac_ths4131_1000",
+      "ac_rc",
+      "tran_rc",
+      "tran_rlc",
+      "tran_pulse",
+      "noise_divider",
+      "sweep_divider",
+      "op_ac_ths4131",
+      "op_ac_opa1632",
+      "dc_mesh_10",
+      "dc_mesh_32",
+      "dc_mesh_71",
+      "dc_mesh_141",
+      "dc_diode_ladder_100",
+      "dc_diode_ladder_1000",
+      "dc_diode_ladder_5000",
+      "dc_diode_ladder_20000",
+      "ac_rc_grid_8",
+      "tran_rc_grid_8",
+      "ac_rc_grid_24",
+      "tran_rc_grid_24",
+      "ac_rc_grid_48",
+      "tran_rc_grid_48",
+      "noise_rc_grid_24",
+      "ac_diode_rc_grid_8",
+      "tran_diode_rc_grid_8",
+      "ac_diode_rc_grid_24",
+      "tran_diode_rc_grid_24",
+      "ac_diode_rc_grid_48",
+      "tran_diode_rc_grid_48",
+      "noise_diode_rc_grid_24"
+    ],
+    "relative_tolerance": 0.001,
+    "denominator_floor": 1e-09,
+    "validation_policy": null,
+    "clock": "steady_clock"
+  },
+  "cases": [
+    {
+      "id": "dc_ths4131",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 326.07349999999997,
+            "min_us": 300.26,
+            "max_us": 343.728
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 351.26,
+            "min_us": 342.778,
+            "max_us": 362.907
+          },
+          "reference_over_neo": 1.077241787511098
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 162.902,
+            "min_us": 157.724,
+            "max_us": 188.395
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 202.92000000000002,
+            "min_us": 196.273,
+            "max_us": 210.147
+          },
+          "reference_over_neo": 1.2456568980123022
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3.6615,
+            "min_us": 3.342,
+            "max_us": 8.147
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 23.2035,
+            "min_us": 22.443,
+            "max_us": 28.671
+          },
+          "reference_over_neo": 6.337156902908643
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 492.97400000000005,
+            "min_us": 463.604,
+            "max_us": 524.932
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 574.796,
+            "min_us": 562.794,
+            "max_us": 593.608
+          },
+          "reference_over_neo": 1.165976298952886
+        }
+      }
+    },
+    {
+      "id": "dc_divider",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 11.714,
+            "min_us": 8.161,
+            "max_us": 27.98
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 29.259,
+            "min_us": 24.585,
+            "max_us": 141.156
+          },
+          "reference_over_neo": 2.4977804336691136
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3.9175,
+            "min_us": 2.779,
+            "max_us": 12.372
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 17.217,
+            "min_us": 13.915,
+            "max_us": 60.183
+          },
+          "reference_over_neo": 4.394894703254626
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 0.2445,
+            "min_us": 0.189,
+            "max_us": 0.617
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3.2975,
+            "min_us": 2.83,
+            "max_us": 7.88
+          },
+          "reference_over_neo": 13.486707566462167
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 16.640500000000003,
+            "min_us": 11.267,
+            "max_us": 40.969
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 49.6235,
+            "min_us": 41.386,
+            "max_us": 209.219
+          },
+          "reference_over_neo": 2.982091884258285
+        }
+      }
+    },
+    {
+      "id": "ac_ths4131_10",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 266.081,
+            "min_us": 245.73,
+            "max_us": 286.83
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 265.875,
+            "min_us": 251.571,
+            "max_us": 272.391
+          },
+          "reference_over_neo": 0.9992257996625087
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 374.307,
+            "min_us": 362.859,
+            "max_us": 390.664
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 515.5425,
+            "min_us": 449.777,
+            "max_us": 612.67
+          },
+          "reference_over_neo": 1.3773252971491317
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3.2185,
+            "min_us": 2.917,
+            "max_us": 3.489
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 19.789,
+            "min_us": 17.145,
+            "max_us": 152.168
+          },
+          "reference_over_neo": 6.148516389622495
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 648.7395,
+            "min_us": 611.669,
+            "max_us": 676.122
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 837.002,
+            "min_us": 729.491,
+            "max_us": 902.865
+          },
+          "reference_over_neo": 1.2901973750634883
+        }
+      }
+    },
+    {
+      "id": "ac_ths4131_1000",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 325.252,
+            "min_us": 300.338,
+            "max_us": 353.692
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 328.121,
+            "min_us": 287.072,
+            "max_us": 386.239
+          },
+          "reference_over_neo": 1.008820852754172
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 18544.483,
+            "min_us": 17326.57,
+            "max_us": 20556.477
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 21622.589500000002,
+            "min_us": 19448.685,
+            "max_us": 23399.225
+          },
+          "reference_over_neo": 1.16598502638224
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 12.9905,
+            "min_us": 8.415,
+            "max_us": 19.699
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 42.994,
+            "min_us": 26.926,
+            "max_us": 63.925
+          },
+          "reference_over_neo": 3.309649359147069
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 18881.5245,
+            "min_us": 17641.457,
+            "max_us": 20893.57
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 22011.1135,
+            "min_us": 19799.354,
+            "max_us": 23801.053
+          },
+          "reference_over_neo": 1.1657487455528286
+        }
+      }
+    },
+    {
+      "id": "ac_rc",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 11.5645,
+            "min_us": 9.463,
+            "max_us": 14.232
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 28.225,
+            "min_us": 26.466,
+            "max_us": 31.369
+          },
+          "reference_over_neo": 2.4406589130528773
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 12.636,
+            "min_us": 10.898,
+            "max_us": 14.402
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 57.679,
+            "min_us": 54.385,
+            "max_us": 64.507
+          },
+          "reference_over_neo": 4.5646565368787595
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 0.34450000000000003,
+            "min_us": 0.248,
+            "max_us": 0.446
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3.6035,
+            "min_us": 3.151,
+            "max_us": 4.118
+          },
+          "reference_over_neo": 10.460087082728592
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 24.548000000000002,
+            "min_us": 20.657,
+            "max_us": 29.056
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 89.527,
+            "min_us": 85.201,
+            "max_us": 99.364
+          },
+          "reference_over_neo": 3.6470180870131985
+        }
+      }
+    },
+    {
+      "id": "tran_rc",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 15.083,
+            "min_us": 13.127,
+            "max_us": 17.729
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 35.269999999999996,
+            "min_us": 33.037,
+            "max_us": 37.551
+          },
+          "reference_over_neo": 2.3383942186567657
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 250.605,
+            "min_us": 246.7,
+            "max_us": 262.026
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 1194.1795000000002,
+            "min_us": 1176.73,
+            "max_us": 1220.475
+          },
+          "reference_over_neo": 4.765186249276751
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 0.409,
+            "min_us": 0.345,
+            "max_us": 0.501
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 4.1850000000000005,
+            "min_us": 3.691,
+            "max_us": 4.887
+          },
+          "reference_over_neo": 10.232273838630809
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 266.243,
+            "min_us": 260.643,
+            "max_us": 276.009
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 1233.8745,
+            "min_us": 1214.428,
+            "max_us": 1262.913
+          },
+          "reference_over_neo": 4.63439226571215
+        }
+      }
+    },
+    {
+      "id": "tran_rlc",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 17.9745,
+            "min_us": 15.505,
+            "max_us": 21.194
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 39.548,
+            "min_us": 35.532,
+            "max_us": 41.662
+          },
+          "reference_over_neo": 2.200228100920749
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 324.526,
+            "min_us": 314.997,
+            "max_us": 334.575
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 1442.5394999999999,
+            "min_us": 1407.973,
+            "max_us": 1482.018
+          },
+          "reference_over_neo": 4.445066034770711
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 0.5765,
+            "min_us": 0.46,
+            "max_us": 2.269
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 4.6845,
+            "min_us": 4.29,
+            "max_us": 5.307
+          },
+          "reference_over_neo": 8.125758889852559
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 343.67150000000004,
+            "min_us": 331.503,
+            "max_us": 354.853
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 1485.205,
+            "min_us": 1452.155,
+            "max_us": 1527.86
+          },
+          "reference_over_neo": 4.321583256103575
+        }
+      }
+    },
+    {
+      "id": "tran_pulse",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 13.382,
+            "min_us": 11.583,
+            "max_us": 16.105
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 31.968,
+            "min_us": 29.818,
+            "max_us": 36.559
+          },
+          "reference_over_neo": 2.3888805858616053
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 109.499,
+            "min_us": 107.008,
+            "max_us": 123.525
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 836.2049999999999,
+            "min_us": 806.717,
+            "max_us": 866.813
+          },
+          "reference_over_neo": 7.636645083516744
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 0.3145,
+            "min_us": 0.254,
+            "max_us": 0.38
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3.7045,
+            "min_us": 3.469,
+            "max_us": 4.311
+          },
+          "reference_over_neo": 11.779014308426072
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 124.0865,
+            "min_us": 119.364,
+            "max_us": 135.873
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 872.6005,
+            "min_us": 840.782,
+            "max_us": 902.638
+          },
+          "reference_over_neo": 7.0321952831291075
+        }
+      }
+    },
+    {
+      "id": "noise_divider",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 12.327,
+            "min_us": 9.722,
+            "max_us": 15.409
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 29.4495,
+            "min_us": 27.759,
+            "max_us": 32.478
+          },
+          "reference_over_neo": 2.389024093453395
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 14.4205,
+            "min_us": 13.155,
+            "max_us": 16.472
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 70.8635,
+            "min_us": 68.526,
+            "max_us": 75.592
+          },
+          "reference_over_neo": 4.914080649075968
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 0.2495,
+            "min_us": 0.17,
+            "max_us": 0.36
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3.542,
+            "min_us": 3.225,
+            "max_us": 3.811
+          },
+          "reference_over_neo": 14.196392785571142
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 27.0205,
+            "min_us": 23.293,
+            "max_us": 32.203
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 103.7065,
+            "min_us": 100.101,
+            "max_us": 111.769
+          },
+          "reference_over_neo": 3.8380673932754763
+        }
+      }
+    },
+    {
+      "id": "sweep_divider",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 12.181000000000001,
+            "min_us": 9.584,
+            "max_us": 14.277
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 29.009999999999998,
+            "min_us": 27.528,
+            "max_us": 31.616
+          },
+          "reference_over_neo": 2.381577867170183
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 214.5735,
+            "min_us": 209.829,
+            "max_us": 223.925
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 696.2345,
+            "min_us": 676.139,
+            "max_us": 720.337
+          },
+          "reference_over_neo": 3.2447366520096845
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 0.3175,
+            "min_us": 0.235,
+            "max_us": 0.429
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3.748,
+            "min_us": 3.449,
+            "max_us": 4.093
+          },
+          "reference_over_neo": 11.80472440944882
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 227.109,
+            "min_us": 220.534,
+            "max_us": 238.555
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 728.596,
+            "min_us": 708.056,
+            "max_us": 753.343
+          },
+          "reference_over_neo": 3.208133539401785
+        }
+      }
+    },
+    {
+      "id": "op_ac_ths4131",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 264.996,
+            "min_us": 246.332,
+            "max_us": 283.271
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 261.394,
+            "min_us": 251.86,
+            "max_us": 269.072
+          },
+          "reference_over_neo": 0.9864073419976152
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 371.3875,
+            "min_us": 358.752,
+            "max_us": 389.346
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 513.6485,
+            "min_us": 489.704,
+            "max_us": 541.206
+          },
+          "reference_over_neo": 1.3830527414089058
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3.348,
+            "min_us": 3.034,
+            "max_us": 3.696
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 19.079,
+            "min_us": 18.138,
+            "max_us": 22.78
+          },
+          "reference_over_neo": 5.698626045400239
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 642.5565,
+            "min_us": 612.671,
+            "max_us": 667.788
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 797.1545,
+            "min_us": 764.499,
+            "max_us": 824.612
+          },
+          "reference_over_neo": 1.2405982975816134
+        }
+      }
+    },
+    {
+      "id": "op_ac_opa1632",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 761.217,
+            "min_us": 709.511,
+            "max_us": 859.468
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 955.7719999999999,
+            "min_us": 934.443,
+            "max_us": 977.849
+          },
+          "reference_over_neo": 1.2555841501175091
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3249.8419999999996,
+            "min_us": 3175.718,
+            "max_us": 3433.929
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 4855.1115,
+            "min_us": 4758.176,
+            "max_us": 5182.644
+          },
+          "reference_over_neo": 1.4939530906425607
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 12.408,
+            "min_us": 11.529,
+            "max_us": 14.712
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 73.4065,
+            "min_us": 69.343,
+            "max_us": 93.432
+          },
+          "reference_over_neo": 5.91606221792392
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 4021.5029999999997,
+            "min_us": 3915.591,
+            "max_us": 4307.764
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 5884.7615000000005,
+            "min_us": 5776.65,
+            "max_us": 6235.685
+          },
+          "reference_over_neo": 1.4633239114828462
+        }
+      }
+    },
+    {
+      "id": "dc_mesh_10",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 152.096,
+            "min_us": 138.081,
+            "max_us": 167.056
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 257.17499999999995,
+            "min_us": 249.589,
+            "max_us": 265.043
+          },
+          "reference_over_neo": 1.690872869766463
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 170.9145,
+            "min_us": 163.933,
+            "max_us": 178.233
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 194.69650000000001,
+            "min_us": 186.014,
+            "max_us": 202.764
+          },
+          "reference_over_neo": 1.139145596189908
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 2.7405,
+            "min_us": 2.608,
+            "max_us": 2.856
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 21.79,
+            "min_us": 20.53,
+            "max_us": 24.313
+          },
+          "reference_over_neo": 7.951103813172779
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 325.7765,
+            "min_us": 305.094,
+            "max_us": 346.731
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 472.95849999999996,
+            "min_us": 459.83,
+            "max_us": 486.06
+          },
+          "reference_over_neo": 1.4517882658816703
+        }
+      }
+    },
+    {
+      "id": "dc_mesh_32",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1439.9099999999999,
+            "min_us": 1345.678,
+            "max_us": 1556.894
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 2597.523,
+            "min_us": 2542.109,
+            "max_us": 2680.21
+          },
+          "reference_over_neo": 1.803948163426881
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3805.9444999999996,
+            "min_us": 3751.925,
+            "max_us": 3901.441
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 9259.175500000001,
+            "min_us": 9160.441,
+            "max_us": 9411.576
+          },
+          "reference_over_neo": 2.4328193698042635
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 21.4465,
+            "min_us": 19.606,
+            "max_us": 28.909
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 247.111,
+            "min_us": 230.514,
+            "max_us": 312.119
+          },
+          "reference_over_neo": 11.522206420628073
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 5293.6455000000005,
+            "min_us": 5125.37,
+            "max_us": 5429.152
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 12094.213,
+            "min_us": 11982.08,
+            "max_us": 12383.395
+          },
+          "reference_over_neo": 2.2846662097036905
+        }
+      }
+    },
+    {
+      "id": "dc_mesh_71",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 6953.0485,
+            "min_us": 6773.353,
+            "max_us": 7611.04
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 12298.2245,
+            "min_us": 11964.21,
+            "max_us": 12915.703
+          },
+          "reference_over_neo": 1.7687528714922671
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 41225.595,
+            "min_us": 40556.933,
+            "max_us": 42472.245
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 232197.867,
+            "min_us": 229122.972,
+            "max_us": 241275.527
+          },
+          "reference_over_neo": 5.632371515802258
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 182.64600000000002,
+            "min_us": 166.139,
+            "max_us": 229.746
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 2442.5055,
+            "min_us": 2071.189,
+            "max_us": 3523.218
+          },
+          "reference_over_neo": 13.372893466049078
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 48386.0455,
+            "min_us": 47817.04,
+            "max_us": 49880.311
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 246854.018,
+            "min_us": 243213.017,
+            "max_us": 257182.982
+          },
+          "reference_over_neo": 5.1017605478835835
+        }
+      }
+    },
+    {
+      "id": "dc_mesh_141",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 29637.654000000002,
+            "min_us": 28248.854,
+            "max_us": 34033.754
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 54121.53,
+            "min_us": 51727.04,
+            "max_us": 58293.891
+          },
+          "reference_over_neo": 1.8261070866135354
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 354460.0125,
+            "min_us": 347187.077,
+            "max_us": 370708.339
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 5187688.93,
+            "min_us": 4889674.99,
+            "max_us": 5552157.684
+          },
+          "reference_over_neo": 14.635470143476338
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1697.6239999999998,
+            "min_us": 1240.237,
+            "max_us": 2710.62
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 13806.2415,
+            "min_us": 11472.326,
+            "max_us": 17949.508
+          },
+          "reference_over_neo": 8.132685152896048
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 385687.33,
+            "min_us": 378009.266,
+            "max_us": 406986.321
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 5260108.204,
+            "min_us": 4960316.24,
+            "max_us": 5620377.331
+          },
+          "reference_over_neo": 13.638270678997932
+        }
+      }
+    },
+    {
+      "id": "dc_diode_ladder_100",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 177.001,
+            "min_us": 156.032,
+            "max_us": 197.703
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 344.865,
+            "min_us": 330.323,
+            "max_us": 411.514
+          },
+          "reference_over_neo": 1.9483788227185157
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 105.6105,
+            "min_us": 101.402,
+            "max_us": 113.446
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 124.043,
+            "min_us": 115.442,
+            "max_us": 135.531
+          },
+          "reference_over_neo": 1.1745328352767954
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3.746,
+            "min_us": 3.47,
+            "max_us": 4.064
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 23.284,
+            "min_us": 21.709,
+            "max_us": 27.636
+          },
+          "reference_over_neo": 6.215696743192739
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 288.52599999999995,
+            "min_us": 261.389,
+            "max_us": 312.778
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 492.3555,
+            "min_us": 469.725,
+            "max_us": 561.05
+          },
+          "reference_over_neo": 1.7064510650686595
+        }
+      }
+    },
+    {
+      "id": "dc_diode_ladder_1000",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1622.024,
+            "min_us": 1482.371,
+            "max_us": 1734.445
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3267.857,
+            "min_us": 3144.158,
+            "max_us": 3355.476
+          },
+          "reference_over_neo": 2.0146785744230664
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1036.32,
+            "min_us": 983.51,
+            "max_us": 1068.4
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 1017.2615000000001,
+            "min_us": 938.871,
+            "max_us": 1111.845
+          },
+          "reference_over_neo": 0.9816094449590861
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 34.337,
+            "min_us": 31.337,
+            "max_us": 42.295
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 274.9705,
+            "min_us": 256.583,
+            "max_us": 312.989
+          },
+          "reference_over_neo": 8.007994291871741
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 2682.2124999999996,
+            "min_us": 2497.218,
+            "max_us": 2819.417
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 4565.6035,
+            "min_us": 4393.022,
+            "max_us": 4746.932
+          },
+          "reference_over_neo": 1.7021781458404213
+        }
+      }
+    },
+    {
+      "id": "dc_diode_ladder_5000",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 7858.5779999999995,
+            "min_us": 7289.431,
+            "max_us": 8786.989
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 15523.1305,
+            "min_us": 14835.72,
+            "max_us": 16581.043
+          },
+          "reference_over_neo": 1.9753103551304065
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 5847.2675,
+            "min_us": 5736.821,
+            "max_us": 6151.061
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 7334.1625,
+            "min_us": 7082.808,
+            "max_us": 8448.75
+          },
+          "reference_over_neo": 1.2542888622762685
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 307.70349999999996,
+            "min_us": 285.249,
+            "max_us": 391.281
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 2027.6100000000001,
+            "min_us": 1899.532,
+            "max_us": 2485.148
+          },
+          "reference_over_neo": 6.589492807199139
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 13963.5205,
+            "min_us": 13361.535,
+            "max_us": 15325.355
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 24806.8315,
+            "min_us": 23908.462,
+            "max_us": 27007.744
+          },
+          "reference_over_neo": 1.776545642626442
+        }
+      }
+    },
+    {
+      "id": "dc_diode_ladder_20000",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 34449.65,
+            "min_us": 32682.581,
+            "max_us": 39186.451
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 69381.224,
+            "min_us": 65526.728,
+            "max_us": 77863.996
+          },
+          "reference_over_neo": 2.013989227757031
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 28167.3935,
+            "min_us": 27122.906,
+            "max_us": 30929.03
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 57075.231499999994,
+            "min_us": 53318.519,
+            "max_us": 67351.808
+          },
+          "reference_over_neo": 2.0262872920776287
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 2215.8235,
+            "min_us": 1980.464,
+            "max_us": 2836.833
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 17197.9095,
+            "min_us": 13328.682,
+            "max_us": 20073.743
+          },
+          "reference_over_neo": 7.761407666269449
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 64856.319,
+            "min_us": 62591.236,
+            "max_us": 71868.839
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 145280.68099999998,
+            "min_us": 135385.598,
+            "max_us": 164943.341
+          },
+          "reference_over_neo": 2.2400389544155286
+        }
+      }
+    },
+    {
+      "id": "ac_rc_grid_8",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 150.65,
+            "min_us": 135.496,
+            "max_us": 170.031
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 274.80899999999997,
+            "min_us": 260.6,
+            "max_us": 283.844
+          },
+          "reference_over_neo": 1.8241553269166941
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 403.17499999999995,
+            "min_us": 366.889,
+            "max_us": 419.379
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 431.671,
+            "min_us": 402.475,
+            "max_us": 459.811
+          },
+          "reference_over_neo": 1.0706789855521797
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3.0860000000000003,
+            "min_us": 2.848,
+            "max_us": 3.389
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 24.456,
+            "min_us": 22.508,
+            "max_us": 28.023
+          },
+          "reference_over_neo": 7.924821775761503
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 561.8,
+            "min_us": 509.728,
+            "max_us": 587.465
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 730.8225,
+            "min_us": 697.315,
+            "max_us": 763.535
+          },
+          "reference_over_neo": 1.3008588465646138
+        }
+      }
+    },
+    {
+      "id": "tran_rc_grid_8",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 163.363,
+            "min_us": 136.739,
+            "max_us": 196.968
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 286.721,
+            "min_us": 259.221,
+            "max_us": 316.811
+          },
+          "reference_over_neo": 1.7551159075188385
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3514.5825,
+            "min_us": 3364.069,
+            "max_us": 3754.221
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 5088.325,
+            "min_us": 4797.066,
+            "max_us": 5577.611
+          },
+          "reference_over_neo": 1.4477750913515333
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3.458,
+            "min_us": 3.221,
+            "max_us": 4.797
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 27.045,
+            "min_us": 22.961,
+            "max_us": 37.851
+          },
+          "reference_over_neo": 7.820994794679005
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3684.8630000000003,
+            "min_us": 3515.869,
+            "max_us": 3955.606
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 5411.6015,
+            "min_us": 5094.346,
+            "max_us": 5919.465
+          },
+          "reference_over_neo": 1.4686031746634811
+        }
+      }
+    },
+    {
+      "id": "ac_rc_grid_24",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1189.0605,
+            "min_us": 1045.341,
+            "max_us": 1561.065
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 2308.7435,
+            "min_us": 2232.299,
+            "max_us": 2483.783
+          },
+          "reference_over_neo": 1.9416535155275951
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 14652.2225,
+            "min_us": 14374.47,
+            "max_us": 15463.382
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 13833.762999999999,
+            "min_us": 13256.792,
+            "max_us": 14888.731
+          },
+          "reference_over_neo": 0.9441409315207983
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 29.3725,
+            "min_us": 24.949,
+            "max_us": 82.925
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 242.97899999999998,
+            "min_us": 200.117,
+            "max_us": 516.885
+          },
+          "reference_over_neo": 8.27232955996255
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 15783.395499999999,
+            "min_us": 15512.912,
+            "max_us": 17107.372
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 16486.211499999998,
+            "min_us": 15780.295,
+            "max_us": 17661.854
+          },
+          "reference_over_neo": 1.0445288214440296
+        }
+      }
+    },
+    {
+      "id": "tran_rc_grid_24",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1263.536,
+            "min_us": 1084.435,
+            "max_us": 1444.056
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 2427.678,
+            "min_us": 2267.903,
+            "max_us": 2629.253
+          },
+          "reference_over_neo": 1.9213366299021157
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 76048.9565,
+            "min_us": 73328.329,
+            "max_us": 81217.776
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 190610.1355,
+            "min_us": 184280.039,
+            "max_us": 224274.323
+          },
+          "reference_over_neo": 2.506413556115001
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 67.325,
+            "min_us": 51.022,
+            "max_us": 106.878
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 479.87,
+            "min_us": 399.432,
+            "max_us": 585.654
+          },
+          "reference_over_neo": 7.127664314890456
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 77257.568,
+            "min_us": 74655.976,
+            "max_us": 82732.99
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 193577.0645,
+            "min_us": 187064.617,
+            "max_us": 227120.235
+          },
+          "reference_over_neo": 2.5056064992881995
+        }
+      }
+    },
+    {
+      "id": "ac_rc_grid_48",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 4843.514499999999,
+            "min_us": 4203.899,
+            "max_us": 5457.665
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 8917.8045,
+            "min_us": 8670.648,
+            "max_us": 9594.429
+          },
+          "reference_over_neo": 1.841184639789971
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 203358.022,
+            "min_us": 201401.497,
+            "max_us": 211780.991
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 216394.269,
+            "min_us": 212228.556,
+            "max_us": 222342.99
+          },
+          "reference_over_neo": 1.064104906567197
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 279.18899999999996,
+            "min_us": 223.238,
+            "max_us": 382.855
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 1581.3339999999998,
+            "min_us": 1326.138,
+            "max_us": 2057.667
+          },
+          "reference_over_neo": 5.664026877849772
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 208287.461,
+            "min_us": 206589.405,
+            "max_us": 217621.511
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 227170.2415,
+            "min_us": 222713.275,
+            "max_us": 233491.171
+          },
+          "reference_over_neo": 1.0906573079788033
+        }
+      }
+    },
+    {
+      "id": "tran_rc_grid_48",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 4790.9105,
+            "min_us": 4262.716,
+            "max_us": 5341.505
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 9199.967499999999,
+            "min_us": 8803,
+            "max_us": 9789.501
+          },
+          "reference_over_neo": 1.9202962568388615
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 632621.2065000001,
+            "min_us": 613235.166,
+            "max_us": 664772.283
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3079448.091,
+            "min_us": 3007210.829,
+            "max_us": 3216204.125
+          },
+          "reference_over_neo": 4.8677598211371365
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 292.494,
+            "min_us": 247.29,
+            "max_us": 557.169
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 1771.8474999999999,
+            "min_us": 1348.955,
+            "max_us": 2460.244
+          },
+          "reference_over_neo": 6.057722551573707
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 638253.232,
+            "min_us": 617763.776,
+            "max_us": 669607.974
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3090044.4255,
+            "min_us": 3018366.29,
+            "max_us": 3227489.405
+          },
+          "reference_over_neo": 4.841408191255348
+        }
+      }
+    },
+    {
+      "id": "noise_rc_grid_24",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1193.5565000000001,
+            "min_us": 1071.623,
+            "max_us": 1368.213
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 2453.1965,
+            "min_us": 2313.38,
+            "max_us": 2531.705
+          },
+          "reference_over_neo": 2.05536688041161
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 16001.554,
+            "min_us": 15780.58,
+            "max_us": 16324.033
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 16605.638,
+            "min_us": 16225.23,
+            "max_us": 17633.997
+          },
+          "reference_over_neo": 1.0377515833774644
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 23.046999999999997,
+            "min_us": 21.368,
+            "max_us": 36.738
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 171.78300000000002,
+            "min_us": 153.812,
+            "max_us": 343.167
+          },
+          "reference_over_neo": 7.453594827960257
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 17204.407,
+            "min_us": 16922.457,
+            "max_us": 17583.259
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 19208.7465,
+            "min_us": 18743.05,
+            "max_us": 20508.869
+          },
+          "reference_over_neo": 1.1165015161522278
+        }
+      }
+    },
+    {
+      "id": "ac_diode_rc_grid_8",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 227.5855,
+            "min_us": 204.819,
+            "max_us": 291.402
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 413.38599999999997,
+            "min_us": 408.161,
+            "max_us": 427.381
+          },
+          "reference_over_neo": 1.8163986721473906
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 557.8195000000001,
+            "min_us": 537.268,
+            "max_us": 571.81
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 581.69,
+            "min_us": 554.653,
+            "max_us": 624.743
+          },
+          "reference_over_neo": 1.0427925162171634
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 5.343,
+            "min_us": 4.758,
+            "max_us": 5.985
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 33.8425,
+            "min_us": 32.092,
+            "max_us": 37.883
+          },
+          "reference_over_neo": 6.333988396032192
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 795.8385000000001,
+            "min_us": 749.727,
+            "max_us": 859.888
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 1030.2289999999998,
+            "min_us": 1009.458,
+            "max_us": 1068.89
+          },
+          "reference_over_neo": 1.2945201821726389
+        }
+      }
+    },
+    {
+      "id": "tran_diode_rc_grid_8",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 242.934,
+            "min_us": 216.479,
+            "max_us": 303.033
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 436.07050000000004,
+            "min_us": 405.599,
+            "max_us": 507.703
+          },
+          "reference_over_neo": 1.795016341887097
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 11052.7285,
+            "min_us": 10755.666,
+            "max_us": 11585.429
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 9426.1545,
+            "min_us": 9089.857,
+            "max_us": 9913.423
+          },
+          "reference_over_neo": 0.8528350714486473
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 8.1365,
+            "min_us": 7.638,
+            "max_us": 13.187
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 35.870999999999995,
+            "min_us": 32.538,
+            "max_us": 78.75
+          },
+          "reference_over_neo": 4.4086523689547095
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 11306.469000000001,
+            "min_us": 11008.951,
+            "max_us": 11830.678
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 9897.415,
+            "min_us": 9576.083,
+            "max_us": 10386.823
+          },
+          "reference_over_neo": 0.8753763000632647
+        }
+      }
+    },
+    {
+      "id": "ac_diode_rc_grid_24",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1910.031,
+            "min_us": 1693.751,
+            "max_us": 2251.977
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3700.7185,
+            "min_us": 3592.837,
+            "max_us": 3966.538
+          },
+          "reference_over_neo": 1.9375175062603696
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 22631.2905,
+            "min_us": 21949.229,
+            "max_us": 23965.867
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 19871.056,
+            "min_us": 19126.535,
+            "max_us": 20892.395
+          },
+          "reference_over_neo": 0.8780345955083737
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 138.9625,
+            "min_us": 94.256,
+            "max_us": 323.104
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 383.10450000000003,
+            "min_us": 317.24,
+            "max_us": 778.235
+          },
+          "reference_over_neo": 2.7568912476387517
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 24642.478499999997,
+            "min_us": 23756.439,
+            "max_us": 26453.225
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 23994.5815,
+            "min_us": 23043.421,
+            "max_us": 25494.511
+          },
+          "reference_over_neo": 0.9737081235558348
+        }
+      }
+    },
+    {
+      "id": "tran_diode_rc_grid_24",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 2027.8845000000001,
+            "min_us": 1798.215,
+            "max_us": 2273.491
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3944.3050000000003,
+            "min_us": 3690.629,
+            "max_us": 4205.098
+          },
+          "reference_over_neo": 1.9450343449047518
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 280551.3585,
+            "min_us": 271188.772,
+            "max_us": 287747.024
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 270523.502,
+            "min_us": 260100.779,
+            "max_us": 288275.494
+          },
+          "reference_over_neo": 0.9642566104344849
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 195.25400000000002,
+            "min_us": 161.363,
+            "max_us": 235.199
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 668.402,
+            "min_us": 618.233,
+            "max_us": 827.106
+          },
+          "reference_over_neo": 3.4232435699140606
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 282889.63100000005,
+            "min_us": 273291.968,
+            "max_us": 290014.779
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 275094.22,
+            "min_us": 264467.24,
+            "max_us": 292984.499
+          },
+          "reference_over_neo": 0.972443631205415
+        }
+      }
+    },
+    {
+      "id": "ac_diode_rc_grid_48",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 7654.985000000001,
+            "min_us": 7111.042,
+            "max_us": 8717.571
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 14751.327,
+            "min_us": 14271.776,
+            "max_us": 15101.794
+          },
+          "reference_over_neo": 1.9270223259745118
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 341904.36,
+            "min_us": 323898.576,
+            "max_us": 349672.462
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 296717.177,
+            "min_us": 290518.428,
+            "max_us": 315897.314
+          },
+          "reference_over_neo": 0.867836774588075
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1446.1264999999999,
+            "min_us": 1307.509,
+            "max_us": 1586.391
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3246.0510000000004,
+            "min_us": 2606.359,
+            "max_us": 4507.682
+          },
+          "reference_over_neo": 2.244652179460096
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 350645.93700000003,
+            "min_us": 333343.435,
+            "max_us": 359347.205
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 314494.47199999995,
+            "min_us": 307840.694,
+            "max_us": 334437.97
+          },
+          "reference_over_neo": 0.8969003738948212
+        }
+      }
+    },
+    {
+      "id": "tran_diode_rc_grid_48",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 7752.8155,
+            "min_us": 7423.858,
+            "max_us": 8936.327
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 14848.075499999999,
+            "min_us": 14535.229,
+            "max_us": 15431.901
+          },
+          "reference_over_neo": 1.9151849415222122
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3573438.8705,
+            "min_us": 3530452.79,
+            "max_us": 3623795.937
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3787418.387,
+            "min_us": 3703969.797,
+            "max_us": 3866415.498
+          },
+          "reference_over_neo": 1.059880558827094
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1071.98,
+            "min_us": 886.47,
+            "max_us": 1274.89
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3019.459,
+            "min_us": 2611.292,
+            "max_us": 3669.054
+          },
+          "reference_over_neo": 2.8167120655236104
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 3582379.4405,
+            "min_us": 3539518.964,
+            "max_us": 3632192.621
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3805308.5425,
+            "min_us": 3722403.524,
+            "max_us": 3883919.024
+          },
+          "reference_over_neo": 1.0622293382659893
+        }
+      }
+    },
+    {
+      "id": "noise_diode_rc_grid_24",
+      "accepted": true,
+      "failure": null,
+      "phases": {
+        "load_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 1996.397,
+            "min_us": 1769.325,
+            "max_us": 2254.384
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 3943.74,
+            "min_us": 3837.572,
+            "max_us": 4155.174
+          },
+          "reference_over_neo": 1.9754287348658608
+        },
+        "analysis_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 26291.9795,
+            "min_us": 25679.712,
+            "max_us": 26728.521
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 26659.1715,
+            "min_us": 26158.829,
+            "max_us": 27420.459
+          },
+          "reference_over_neo": 1.0139659320820633
+        },
+        "cleanup_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 213.01600000000002,
+            "min_us": 114.423,
+            "max_us": 330.376
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 608.784,
+            "min_us": 270.54,
+            "max_us": 729.308
+          },
+          "reference_over_neo": 2.8579261651706913
+        },
+        "total_us": {
+          "neo": {
+            "n": 30,
+            "median_us": 28551.057500000003,
+            "min_us": 27758.178,
+            "max_us": 29197.161
+          },
+          "reference": {
+            "n": 30,
+            "median_us": 31246.828999999998,
+            "min_us": 30275.786,
+            "max_us": 32107.4
+          },
+          "reference_over_neo": 1.0944193222965557
+        }
+      }
+    }
+  ]
+}

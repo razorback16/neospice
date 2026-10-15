@@ -20,12 +20,14 @@ Python, C++, the CLI, or JavaScript.
 - [Incremental DC and AC simulation](incremental-simulation.md)
 - [WebAssembly and JavaScript/TypeScript](webassembly.md)
 - [Optimization example](../examples/optimization/adjoint_divider.py)
+- [Filter design case study](../examples/filter_design/README.md): gradients, tuning and yield compared with ngspice 47
 
 ## Performance and compatibility
 
 - [Performance compared with ngspice](performance-analysis.md)
 - [Benchmark methods](benchmark-methods.md)
 - [ngspice 47 setup](ngspice47-reference.md) and [validation methods](validation-methods.md)
+- [Fuzzing the netlist front end](fuzzing.md)
 - [Model cards](model-card-compatibility.md) and [sources and frequency grids](source-compatibility.md)
 - [VBIC compatibility](vbic-compatibility.md) and [VDMOS compatibility](vdmos-compatibility.md)
 - [Frozen KiCad experiment](kicad-experiment.md) and [corpus mismatch triage](corpus-mismatch-triage.md)

@@ -46,12 +46,17 @@ final measurements, and author review; it is separate from shipping 0.2.0.
 
 ### Measured performance
 
-- Measure the final candidate across the complete 34-workload population on
-  an idle machine, keeping raw samples and numerical checks.
-- Profile remaining expensive workloads and use controlled ablations to
-  attribute improvements to individual changes.
-- Measure parallel-study throughput and incremental-solve latency on declared
-  circuit populations before publishing speedup claims.
+- Done October 14, 2026: a 30-sample run on the 34-workload population
+  measured 1.93× (30 wins) and kept the raw-sample hash and numerical checks.
+  Repeat it for the final release candidate.
+- Close the four remaining losses: diode truncation-error cost in mid-size
+  transients and complex refactorization in diode AC grids. Use controlled
+  ablations to attribute improvements to individual changes.
+- Done October 14, 2026: parallel-study throughput against ngspice's in-session
+  `alter` loop, with bit-identical reproducibility across worker counts.
+  [Results](parallel-studies.md#throughput-compared-with-ngspice-47) show a
+  per-sample re-setup cost that loses to `alter` on short op-amp solves.
+  Measure incremental-solve latency and add a resident-circuit study mode.
 
 See [performance comparison](performance-analysis.md) and
 [benchmark methods](benchmark-methods.md).

@@ -159,6 +159,11 @@ def main():
     ap.add_argument("--parallel", type=int, default=os.cpu_count())
     args = ap.parse_args()
     args.bench = str((args.build / "tests" / "bench_study").resolve())
+    # ngspice runs with cwd set to the work directory, so pin the binary now.
+    ng = shutil.which(args.ngspice)
+    if ng is None:
+        sys.exit(f"ngspice not found: {args.ngspice}")
+    args.ngspice = str(Path(ng).resolve())
     if args.output.exists():
         sys.exit(f"{args.output} exists; choose a new output directory")
     work = args.output.resolve()

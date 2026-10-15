@@ -1,0 +1,312 @@
+{
+ "samples": 10000,
+ "repetitions": 5,
+ "parallelism": 24,
+ "commit": "906930c80211436d3d3b8b9779e1b4785a96a58e",
+ "ngspice_version": [
+  "******",
+  "** ngspice-47 : Circuit level simulation program"
+ ],
+ "cpu_count": 24,
+ "platform": "Linux-6.17.0-35-generic-x86_64-with-glibc2.39",
+ "load_before": [
+  1.10888671875,
+  1.6376953125,
+  3.86328125
+ ],
+ "workloads": [
+  {
+   "id": "op_lt1001_vendor_lib",
+   "results": {
+    "ngspice_1_session": {
+     "median_s": 0.5510730959940702,
+     "walls_s": [
+      0.5632056379690766,
+      0.5437287229578942,
+      0.5510730959940702,
+      0.5396344820037484,
+      0.5519366459921002
+     ],
+     "samples_per_s": 18146.41301252639,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 0.0
+    },
+    "ngspice_24_sessions": {
+     "median_s": 0.08432644419372082,
+     "walls_s": [
+      0.11839433992281556,
+      0.08432644419372082,
+      0.09266777685843408,
+      0.08237048285081983,
+      0.08332928596064448
+     ],
+     "samples_per_s": 118586.76238057988,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 0.0
+    },
+    "ngspice_process_per_sample_x24": {
+     "median_s": 12.703824177151546,
+     "walls_s": [
+      12.913136001909152,
+      12.903570614056662,
+      12.675283459946513,
+      12.69829506194219,
+      12.703824177151546
+     ],
+     "samples_per_s": 787.1645467185773,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 1.2731637869011144e-13
+    },
+    "neospice_device_1_worker": {
+     "median_s": 0.81432,
+     "walls_s": [
+      0.8141090000000001,
+      0.801689,
+      0.819973,
+      0.81432,
+      0.8210109999999999
+     ],
+     "samples_per_s": 12280.184693977797,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 3.719306909548364e-13
+    },
+    "neospice_device_24_workers": {
+     "median_s": 0.05192,
+     "walls_s": [
+      0.052582000000000004,
+      0.05192,
+      0.051695,
+      0.051327,
+      0.052978000000000004
+     ],
+     "samples_per_s": 192604.0061633282,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 3.719306909548364e-13
+    },
+    "neospice_param_1_worker": {
+     "median_s": 0.816327,
+     "walls_s": [
+      0.811725,
+      0.816327,
+      0.832688,
+      0.857198,
+      0.811487
+     ],
+     "samples_per_s": 12249.99295625405,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 3.601297635063423e-13
+    },
+    "neospice_param_24_workers": {
+     "median_s": 0.051903,
+     "walls_s": [
+      0.052351999999999996,
+      0.051243000000000004,
+      0.051903,
+      0.052935,
+      0.051641
+     ],
+     "samples_per_s": 192667.09053426585,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 3.601297635063423e-13
+    }
+   }
+  },
+  {
+   "id": "ac_ths4131_81pt",
+   "results": {
+    "ngspice_1_session": {
+     "median_s": 5.256670673144981,
+     "walls_s": [
+      5.275502407923341,
+      5.230191616108641,
+      5.256670673144981,
+      5.233500917907804,
+      5.648826779797673
+     ],
+     "samples_per_s": 1902.3447771015035,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 0.0
+    },
+    "ngspice_24_sessions": {
+     "median_s": 0.3791379821486771,
+     "walls_s": [
+      0.3760338891297579,
+      0.38506599608808756,
+      0.3791379821486771,
+      0.37992914696224034,
+      0.30092547088861465
+     ],
+     "samples_per_s": 26375.62172834097,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 0.0
+    },
+    "ngspice_process_per_sample_x24": {
+     "median_s": 2.286191339837387,
+     "walls_s": [
+      2.2935503139160573,
+      2.286191339837387,
+      2.2263270269613713,
+      2.3775448170490563,
+      2.2113393899053335
+     ],
+     "samples_per_s": 4374.087079129292,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 1.300584181254867e-12
+    },
+    "neospice_device_1_worker": {
+     "median_s": 6.259646,
+     "walls_s": [
+      6.065422,
+      6.296145999999999,
+      6.259646,
+      6.2322299999999995,
+      6.316686
+     ],
+     "samples_per_s": 1597.5344292632522,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 2.170363786112525e-12
+    },
+    "neospice_device_24_workers": {
+     "median_s": 0.574229,
+     "walls_s": [
+      0.566396,
+      0.574229,
+      0.610643,
+      0.5698110000000001,
+      0.615518
+     ],
+     "samples_per_s": 17414.655128877155,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 2.170363786112525e-12
+    },
+    "neospice_param_1_worker": {
+     "median_s": 6.324702,
+     "walls_s": [
+      6.324702,
+      6.3000739999999995,
+      6.25707,
+      6.344049,
+      6.366601999999999
+     ],
+     "samples_per_s": 1581.1021610188116,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 2.1525307877603955e-12
+    },
+    "neospice_param_24_workers": {
+     "median_s": 0.600797,
+     "walls_s": [
+      0.60205,
+      0.5903390000000001,
+      0.600797,
+      0.626774,
+      0.592722
+     ],
+     "samples_per_s": 16644.55714659028,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 2.1525307877603955e-12
+    }
+   }
+  },
+  {
+   "id": "tran_rc_pulse",
+   "results": {
+    "ngspice_1_session": {
+     "median_s": 40.707725315121934,
+     "walls_s": [
+      41.085294692078605,
+      40.5059802250471,
+      40.707725315121934,
+      40.28269032295793,
+      40.861550658009946
+     ],
+     "samples_per_s": 245.65361789658246,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 0.0
+    },
+    "ngspice_24_sessions": {
+     "median_s": 2.5488675041124225,
+     "walls_s": [
+      2.632137528853491,
+      2.509524171007797,
+      2.480464857071638,
+      2.5488675041124225,
+      2.6356649370864034
+     ],
+     "samples_per_s": 3923.311032788361,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 0.0
+    },
+    "ngspice_process_per_sample_x24": {
+     "median_s": 3.743778949137777,
+     "walls_s": [
+      3.71720973495394,
+      3.676910868147388,
+      3.743778949137777,
+      3.770673434017226,
+      3.7891477609518915
+     ],
+     "samples_per_s": 2671.097876198882,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 2.1538497568833418e-13
+    },
+    "neospice_device_1_worker": {
+     "median_s": 9.363076,
+     "walls_s": [
+      9.273586,
+      9.363076,
+      9.943779000000001,
+      9.181792,
+      9.376887
+     ],
+     "samples_per_s": 1068.025080646574,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 5.191760268683413e-16
+    },
+    "neospice_device_24_workers": {
+     "median_s": 0.479402,
+     "walls_s": [
+      0.498016,
+      0.50293,
+      0.479402,
+      0.46239600000000003,
+      0.472385
+     ],
+     "samples_per_s": 20859.320570210388,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 5.191760268683413e-16
+    },
+    "neospice_param_1_worker": {
+     "median_s": 9.350467,
+     "walls_s": [
+      9.350467,
+      9.32575,
+      9.391855,
+      9.378164,
+      9.299248
+     ],
+     "samples_per_s": 1069.4653005031728,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 2.0598461267851176e-13
+    },
+    "neospice_param_24_workers": {
+     "median_s": 0.481907,
+     "walls_s": [
+      0.485481,
+      0.48285,
+      0.471194,
+      0.463676,
+      0.481907
+     ],
+     "samples_per_s": 20750.8917695738,
+     "failed": 0,
+     "max_rel_vs_ngspice_serial": 2.0598461267851176e-13
+    }
+   }
+  }
+ ],
+ "load_after": [
+  3.35791015625,
+  4.57373046875,
+  4.78955078125
+ ]
+}

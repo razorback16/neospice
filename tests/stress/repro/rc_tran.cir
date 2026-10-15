@@ -1,0 +1,7 @@
+RC pulse
+.param rval=1k
+V1 in 0 PULSE(0 1 0 1n 1n 5u 10u)
+R1 in out {rval}
+C1 out 0 1n
+.tran 10n 50u
+.end

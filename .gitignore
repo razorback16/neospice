@@ -48,3 +48,6 @@ docs/evidence/**/*.json.gz
 /web/*.tsbuildinfo
 /web/.preview/
 /web/public/licenses.txt
+
+# Generated netlists from examples/filter_design
+examples/filter_design/work/

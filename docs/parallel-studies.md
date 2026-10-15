@@ -93,6 +93,60 @@ Failed jobs must be handled explicitly before aggregation. Dropping failures
 can bias yield estimates. Aggregate a chosen voltage, measurement or other
 scalar from any supported analysis.
 
+## Throughput compared with ngspice 47
+
+`tools/run_study_benchmark.py` runs the same N-sample resistor sweep three
+ways in ngspice 47 and two ways in neospice:
+
+- ngspice, one session: a single batch process loops over `alter` and the
+  analysis. This is ngspice's fastest in-process path.
+- ngspice, 24 sessions: 24 such processes, each handling a disjoint chunk.
+- ngspice, one process per sample: run 24 at a time, which is typical
+  scripted use.
+- neospice: `run_sweep` with 1 and 24 workers. The param rows vary the
+  top-level `.param`. Device-value rows are within 5% of them.
+
+Samples per second at N = 10,000, median of five repetitions, on a 24-core Intel
+Core Ultra 9 285K:
+
+| Workload | ngspice 1 session | neospice 1 worker | ngspice 24 sessions | neospice 24 workers | ngspice process per sample |
+|---|---:|---:|---:|---:|---:|
+| LT1001 `.op`, 500 KB vendor library | 18,146 | 12,250 | 118,587 | **192,667** | 787 |
+| THS4131 `.ac`, 81 points | **1,902** | 1,581 | **26,376** | 16,645 | 4,374 |
+| RC pulse `.tran`, 50 µs | 246 | **1,069** | 3,923 | **20,751** | 2,671 |
+
+Every sample's probe value matches the serial ngspice session within
+4e-13 relative error. No sample failed.
+[Evidence](evidence/performance/2026-10-14-study/README.md) includes both the
+10,000- and 1,000-sample runs.
+
+How to read the table:
+
+- **Against ngspice's in-session `alter` loop, the result depends on the
+  workload.** neospice is 5.3× faster on the transient study and 1.6× faster on
+  the 24-way operating-point study. It is 0.63× on the 24-way THS4131 AC study.
+  It is also slower serially on the two op-amp workloads: 0.68× on the
+  operating point and 0.83× on AC.
+- **Why the serial op-amp rows lose.** `run_sweep` expands subcircuits and sets
+  up devices again for every sample. An `alter` loop changes one value in a
+  circuit that is already set up and solves it again. When each solve is short,
+  that per-sample setup is a large share of the time.
+- **Why AC scales worse.** neospice reaches 10.9× on 24 workers for AC, while
+  ngspice reaches 13.9×. This processor mixes performance and efficiency cores,
+  so neither engine scales linearly.
+- **Large speedups hold only against one process per sample.** The usual way to
+  script ngspice is one process per sample. neospice is 245× faster than that on
+  the operating-point study. Do not quote that ratio against ngspice's
+  in-session baseline.
+
+To reproduce:
+
+```sh
+python3 tools/run_study_benchmark.py --build build --ngspice /path/to/ngspice \
+  --kicad-models third_party/KiCad-Spice-Library/Models \
+  --output study-run --samples 10000
+```
+
 ## Concurrency scope
 
 Built-in migrated node scratch storage and HiSIM scratch variables are isolated
@@ -103,6 +157,40 @@ configuration or a shared circuit while other threads use them. This API owns
 its job circuits. It does not make concurrent operations on one circuit safe.
 External math libraries can oversubscribe the machine with nested parallelism.
 Measure suitable worker counts for your workload.
+
+## Reproducibility check
+
+`neospice_study_repro` hashes every sample's full result: all node voltages at
+every time or frequency point, plus the sample's parameter values or error. It
+runs each Monte Carlo batch twice at 1, 2, 4, 8, 16 and 24 workers and compares
+every batch with the first, bit for bit. With `standalone`, it also re-parses
+the netlist with each sample's parameter values on one thread, simulates it,
+and compares that result too.
+
+```sh
+cmake -S . -B build -DNEOSPICE_BUILD_SWEEP_STRESS=ON
+cmake --build build --target neospice_study_repro
+cd tests/stress/repro
+../../../build/neospice_study_repro ths_ac.cir rf 1000 10 1000 standalone
+../../../build/neospice_study_repro rc_agauss.cir - 0 0 1000
+```
+
+Results on October 14, 2026 (24-core x86-64 Linux, GCC 14), 1,000 samples per
+workload:
+
+| Netlist | Randomness | Distinct samples | Bit-identical batches | Standalone mismatches |
+|---|---|---:|---:|---:|
+| `lt1001_op.cir` (500 KB vendor library, `.op`) | sampled `.param` | 1,000 | 12 of 12 | 0 |
+| `ths_ac.cir` (THS4131, `.ac`) | sampled `.param` | 1,000 | 12 of 12 | 0 |
+| `rc_tran.cir` (`.tran`) | sampled `.param` | 1,000 | 12 of 12 | 0 |
+| `rc_agauss.cir` (`.tran`) | netlist `agauss()` only | 1,000 | 12 of 12 | not run |
+
+Results do not depend on worker count or scheduling. A sample run alone
+matches the same sample run inside a parallel batch. The standalone check is
+not run for `rc_agauss.cir`, because its random values come from per-job
+expression seeds that a standalone parse does not reproduce. This measurement
+covers one build and platform. As noted above, other standard libraries can
+draw different values.
 
 ## Race-test harness
 

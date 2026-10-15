@@ -97,6 +97,8 @@ option(NEOSPICE_BUILD_SWEEP_STRESS "Build standalone parallel sweep race-test ha
 if(NEOSPICE_BUILD_SWEEP_STRESS)
     add_executable(neospice_sweep_stress tests/stress/parallel_sweep.cpp)
     target_link_libraries(neospice_sweep_stress PRIVATE neospice_lib)
+    add_executable(neospice_study_repro tests/stress/study_reproducibility.cpp)
+    target_link_libraries(neospice_study_repro PRIVATE neospice_lib)
 endif()
 
 # libFuzzer targets (opt-in, Clang only). Instrument the library too, e.g.

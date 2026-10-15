@@ -1,0 +1,117 @@
+{
+ "frequencies": 21,
+ "workers": 24,
+ "A_gradient_scaling": [
+  {
+   "order": 5,
+   "parameters": 5,
+   "neospice_adjoint_s": 0.00014820904470980167,
+   "ngspice_fd_alter_s": 0.0037379530258476734,
+   "ngspice_sens_s": 0.004657312063500285,
+   "ngspice_startup_parse_s": 0.002347279107198119,
+   "ngspice_sens_c1_max_rel_err_vs_adjoint": 5.552152896108768e-11,
+   "value_max_rel_err": 8.996093306879983e-15,
+   "gradient_max_rel_err_vs_fd": 1.8510248831513295e-06
+  },
+  {
+   "order": 11,
+   "parameters": 11,
+   "neospice_adjoint_s": 0.0001827389933168888,
+   "ngspice_fd_alter_s": 0.0039902059361338615,
+   "ngspice_sens_s": 0.006463381927460432,
+   "ngspice_startup_parse_s": 0.0022703891154378653,
+   "ngspice_sens_c1_max_rel_err_vs_adjoint": 3.753263489491174e-11,
+   "value_max_rel_err": 1.9959622947408173e-14,
+   "gradient_max_rel_err_vs_fd": 2.7633431869660034e-06
+  },
+  {
+   "order": 21,
+   "parameters": 21,
+   "neospice_adjoint_s": 0.00018444005399942398,
+   "ngspice_fd_alter_s": 0.005846425890922546,
+   "ngspice_sens_s": 0.011269084876403213,
+   "ngspice_startup_parse_s": 0.0025365930050611496,
+   "ngspice_sens_c1_max_rel_err_vs_adjoint": 8.428356603928349e-11,
+   "value_max_rel_err": 3.553562771008287e-14,
+   "gradient_max_rel_err_vs_fd": 3.8226775961856615e-06
+  },
+  {
+   "order": 51,
+   "parameters": 51,
+   "neospice_adjoint_s": 0.00041695497930049896,
+   "ngspice_fd_alter_s": 0.012668694136664271,
+   "ngspice_sens_s": 0.031628696946427226,
+   "ngspice_startup_parse_s": 0.0026157500687986612,
+   "ngspice_sens_c1_max_rel_err_vs_adjoint": 5.855866491465537e-11,
+   "value_max_rel_err": 8.67262930425149e-14,
+   "gradient_max_rel_err_vs_fd": 5.959186388795788e-06
+  },
+  {
+   "order": 101,
+   "parameters": 101,
+   "neospice_adjoint_s": 0.0007412109989672899,
+   "ngspice_fd_alter_s": 0.0318646440282464,
+   "ngspice_sens_s": 0.0736433498095721,
+   "ngspice_startup_parse_s": 0.0028897621668875217,
+   "ngspice_sens_c1_max_rel_err_vs_adjoint": 9.472957205869938e-11,
+   "value_max_rel_err": 1.7500840162612025e-13,
+   "gradient_max_rel_err_vs_fd": 8.386123606540855e-06
+  },
+  {
+   "order": 201,
+   "parameters": 201,
+   "neospice_adjoint_s": 0.001450147945433855,
+   "ngspice_fd_alter_s": 0.09014576580375433,
+   "ngspice_sens_s": 0.2373473250772804,
+   "ngspice_startup_parse_s": 0.0032023251987993717,
+   "ngspice_sens_c1_max_rel_err_vs_adjoint": 8.557083214565373e-11,
+   "value_max_rel_err": 2.6590362938168494e-13,
+   "gradient_max_rel_err_vs_fd": 1.183037394780791e-05
+  }
+ ],
+ "B_tuning": {
+  "order": 7,
+  "iterations": 8,
+  "rms_db_error_history_neospice": [
+   0.3632330214051127,
+   0.07732263358029899,
+   0.07727899609235475,
+   0.07727899062970389,
+   0.0772789906290075,
+   0.07727899062900825,
+   0.07727899062900803,
+   0.07727899062900716,
+   0.07727899062900886
+  ],
+  "rms_db_error_history_ngspice_fd": [
+   0.36323302140507935,
+   0.07732262047500735,
+   0.07727899605156185,
+   0.07727899062933993,
+   0.07727899062907591,
+   0.07727899062908143,
+   0.0772789906290812,
+   0.07727899062907864,
+   0.07727899062908043
+  ],
+  "neospice_s": 0.0019072601571679115,
+  "ngspice_fd_s": 0.0335939300712198,
+  "max_rel_value_difference": 1.3561804437503346e-08
+ },
+ "C_yield": {
+  "order": 7,
+  "samples": 10000,
+  "tolerance_sigma": 0.05,
+  "spec": "gain >= -1 dB at 0.9 fc and <= -40 dB at 2 fc",
+  "neospice_1_worker_s": 0.32304384489543736,
+  "neospice_24_workers_s": 0.0510075930505991,
+  "ngspice_1_session_s": 0.9659195428248495,
+  "ngspice_24_sessions_s": 0.09978700405918062,
+  "failed_samples_neospice": 0,
+  "yield_neospice": 0.7056,
+  "yield_neospice_1_worker": 0.7056,
+  "yield_ngspice_same_draws": 0.7056,
+  "per_sample_pass_fail_agreement": 1.0,
+  "serial_vs_parallel_identical": true
+ }
+}

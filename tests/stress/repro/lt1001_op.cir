@@ -1,0 +1,12 @@
+LT1001 inverting amp from 500 KB vendor lib
+.include "../../../third_party/KiCad-Spice-Library/Models/Manufacturer/Linear Technology Corporation/LinearTech.lib"
+.param rf=10k
+VCC vcc 0 15
+VEE vee 0 -15
+Vin in 0 0.1
+R1 in inm 1k
+R2 out inm {rf}
+X1 0 inm vcc vee out LT1001
+RL out 0 10k
+.op
+.end
