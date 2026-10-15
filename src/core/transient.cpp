@@ -627,6 +627,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     auto solver = make_solver(ckt.num_vars(), ckt.is_linear());
     solver->symbolic(ckt.pattern());
     NewtonWorkspace newton_workspace(ckt.pattern());
+    newton_workspace.track_residual = false;
 
     // Cache typed device pointers (one-time cost, eliminates per-step dynamic_cast)
     CachedDevicePtrs cached;

@@ -18,11 +18,13 @@ struct NewtonWorkspace {
     std::vector<double> rhs;
     std::vector<double> old_solution;
     std::vector<double> old_state0;
-    std::vector<double> proposed;
     std::vector<double> one_based_solution;
     std::vector<double> one_based_rhs;
     int32_t matrix_size = 0;
     int32_t matrix_nnz = 0;
+    // Fill NewtonResult::residual and worst_node_idx. Transient time steps
+    // never read them and turn this off to skip a pass per iteration.
+    bool track_residual = true;
 };
 
 struct NewtonResult {

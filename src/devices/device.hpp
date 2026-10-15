@@ -102,8 +102,6 @@ public:
     virtual void assign_offsets(const SparsityPattern& pattern) = 0;
     virtual void evaluate(const std::vector<double>& voltages,
                           NumericMatrix& mat, std::span<double> rhs) = 0;
-    virtual void limit_voltages(const std::vector<double>& /*old_v*/,
-                                std::vector<double>& /*new_v*/) {}
     virtual void ac_stamp(const std::vector<double>& /*voltages*/,
                           NumericMatrix& /*G*/, NumericMatrix& /*C*/) {}
 

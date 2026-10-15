@@ -127,11 +127,8 @@ int main() {
             solver.solve(rhs);
             auto ts1 = Clock::now();
 
-            // Limit + update
+            // Update
             auto tl0 = Clock::now();
-            for (auto& dev : c.devices()) {
-                dev->limit_voltages(old_solution, rhs);
-            }
             solution = rhs;
             auto tl1 = Clock::now();
 

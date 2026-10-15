@@ -73,8 +73,6 @@ void NewtonWorkspace::ensure_size(int32_t n) {
         rhs.resize(n);
     if (static_cast<int32_t>(old_solution.size()) != n)
         old_solution.resize(n);
-    if (static_cast<int32_t>(proposed.size()) != n)
-        proposed.resize(n);
     if (static_cast<int32_t>(one_based_solution.size()) != n + 1)
         one_based_solution.resize(n + 1);
     if (static_cast<int32_t>(one_based_rhs.size()) != n + 1)
@@ -126,7 +124,6 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
     std::vector<double>& rhs = workspace.rhs;
     std::vector<double>& old_solution = workspace.old_solution;
     std::vector<double>& old_state0 = workspace.old_state0;
-    std::vector<double>& proposed = workspace.proposed;
     std::vector<double>& one_based_solution = workspace.one_based_solution;
     std::vector<double>& one_based_rhs = workspace.one_based_rhs;
 
@@ -165,6 +162,10 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
     // Track residual norm and worst node across iterations.
     double max_residual = 0.0;
     int32_t worst_idx = -1;
+
+    // Node damping (below) applies only to operating-point solves.
+    const bool may_damp = opts.node_damping &&
+        (saved_mode & (MODEDCOP_BIT | MODETRANOP_BIT));
 
     // NIiter checks its iteration limit only after loading and solving.  Thus
     // maxIter=N performs N normal iterations plus one final load/solve whose
@@ -249,11 +250,13 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         // Compute residual norm from the RHS before the solve overwrites it.
         max_residual = 0.0;
         worst_idx = -1;
-        for (int32_t i = 0; i < num_nodes; ++i) {
-            double r = std::abs(rhs[i]);
-            if (r > max_residual) {
-                max_residual = r;
-                worst_idx = i;
+        if (workspace.track_residual) {
+            for (int32_t i = 0; i < num_nodes; ++i) {
+                double r = std::abs(rhs[i]);
+                if (r > max_residual) {
+                    max_residual = r;
+                    worst_idx = i;
+                }
             }
         }
 
@@ -295,24 +298,19 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         }
 
 
+        // Only node damping reads the pre-solve state.
         const int32_t num_states = ckt.num_states();
-        if (static_cast<int32_t>(old_state0.size()) != num_states)
-            old_state0.resize(num_states);
-        if (num_states > 0)
-            std::copy_n(ckt.state0(), num_states, old_state0.begin());
-
-        // Solve: rhs is overwritten with the new solution
-        solver.solve(rhs);
-
-        // rhs now contains the proposed new solution from the linear solve
-        std::copy(rhs.begin(), rhs.end(), proposed.begin());
-
-        // Apply per-device voltage limiting
-        for (Device* dev : load_order) {
-            dev->limit_voltages(old_solution, proposed);
+        if (may_damp) {
+            if (static_cast<int32_t>(old_state0.size()) != num_states)
+                old_state0.resize(num_states);
+            if (num_states > 0)
+                std::copy_n(ckt.state0(), num_states, old_state0.begin());
         }
 
-        std::copy(proposed.begin(), proposed.end(), solution.begin());
+        // Solve: rhs is overwritten with the new solution.  Devices limit
+        // their junction voltages inside their own loads, as in ngspice.
+        solver.solve(rhs);
+        std::copy(rhs.begin(), rhs.end(), solution.begin());
 
         // ngspice niiter.c tests `iterno > maxIter` immediately after the
         // solve and before convergence testing, damping, or the RHS-buffer
@@ -408,8 +406,7 @@ NewtonResult newton_solve(Circuit& ckt, ISolver& solver,
         // iteration has already been found non-converged.  This keeps the
         // convergence test on the raw Newton proposal and damps only the value
         // carried into the next load.
-        if (!converged && opts.node_damping &&
-            (saved_mode & (MODEDCOP_BIT | MODETRANOP_BIT)) && iter > 0) {
+        if (!converged && may_damp && iter > 0) {
             double max_diff = 0.0;
             for (int32_t i = 0; i < num_nodes; ++i) {
                 if (!ckt.is_voltage_variable(i)) continue;
