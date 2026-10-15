@@ -22,7 +22,7 @@ final scholarly argument and actual workflow are established.
 | Scope of the correctness claim | [Support matrix](../docs/support-matrix.md), generated from the test suite; [declared scope](../docs/capabilities.md#declared-scope). |
 | What the corpus mismatches are | [Corpus mismatch triage](../docs/corpus-mismatch-triage.md); classified against checkpoint 36, which predates the current tree. Fix work is open. |
 | Actual research workflow and impact | Required author evidence pending. Demonstrations must not be described as adoption. |
-| Benchmarks, figures and final compatibility tables | Pending accuracy-qualified measurements and final candidate evidence. No speedup claim is included. |
+| Benchmarks, figures and final compatibility tables | Accuracy-qualified release benchmark recorded: 2.03× ngspice 47, 34 of 34 workloads ([performance](../docs/performance-analysis.md)). Not yet in the manuscript; final candidate evidence and compatibility tables pending. |
 | Eligibility and installation | [JOSS requirements](../docs/joss-requirements-checklist.md); public-history and independent human checks remain. |
 | Rendering and release | Generate and inspect the current PDF after final candidate evidence, release metadata, and author review. |
 

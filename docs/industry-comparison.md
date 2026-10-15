@@ -57,7 +57,9 @@ The canonical paired harness covers 34 declared workloads. Every accepted timing
 requires matching analyses, valid outputs and the documented error thresholds.
 Its phases include public loading, analysis/result materialization, circuit
 cleanup and total elapsed time. These are not isolated sparse-solver timings.
-[Method and reproduction](benchmark-methods.md).
+[Method and reproduction](benchmark-methods.md). The October 15, 2026 release
+run measured neospice at 2.03× ngspice 47 (geometric mean), faster on all 34
+workloads; see [performance compared with ngspice](performance-analysis.md).
 
 No measured comparison with Xyce, PySpice, LTspice, HSPICE, Spectre or PSpice has
 been performed in this preparation. The former unsupported numerical speed

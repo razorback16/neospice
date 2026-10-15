@@ -11,6 +11,10 @@ neospice is an open-source C++20 circuit simulator based on Berkeley SPICE3 and
 ngspice. Build circuits through simple APIs, run parallel studies, and use the
 results in your design tools.
 
+It runs **about 2× faster than ngspice 47** on our 34-workload paired benchmark
+(2.03× geometric mean; faster on all 34 in the release run), with every timed result
+checked against ngspice's output. [Benchmark details](docs/performance-analysis.md).
+
 [Try Circuit Lab](https://razorback16.github.io/neospice/) to draw and simulate
 circuits locally in your browser without installation.
 
@@ -48,13 +52,16 @@ neospice combines typed APIs, parallel studies, and browser simulation in one pr
 | Parallel studies | Built-in sweeps and seeded Monte Carlo through one API | [Multiple library instances](https://ngspice.sourceforge.io/parallel.html) managed by a host application |
 | Interactive design | Circuit Lab runs locally in your browser | [CLI and control scripts](https://ngspice.sourceforge.io/ngspice-control-language-tutorial.html), plus external GUIs such as KiCad |
 | Device extensions | Modular C++20 device interface | [Compiled Verilog-A models through OSDI](https://ngspice.sourceforge.io/osdi.html) |
-| [Recorded benchmark](docs/performance-analysis.md) | **2.03× geometric-mean speedup** across 34 workloads | ngspice 47 reference timing |
+| [Recorded benchmark](docs/performance-analysis.md) | **About 2× faster** (2.03× geometric mean across 34 workloads) | ngspice 47 reference timing |
 
 ## Performance
 
-The October 15, 2026 release benchmark (30 paired samples per workload) measured
-a **2.03× geometric-mean speedup** over ngspice 47 across 34 workloads. neospice had the lower median time in
-**all 34 cases**.
+neospice is **about 2× faster than ngspice 47**. The October 15, 2026 release
+benchmark (30 paired samples per workload) measured a **2.03× geometric-mean
+speedup** across 34 workloads, and neospice had the lower median time in **all
+34 cases**. Every timed run must match ngspice's output within the documented
+error thresholds. Speedups range from 1.01× on a mid-size AC grid to 13.9× on
+the largest DC mesh.
 
 See [benchmark results and methods](docs/performance-analysis.md)
 for the recorded code, timings, and test conditions.

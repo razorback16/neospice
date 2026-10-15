@@ -2,9 +2,13 @@
 
 ## Release benchmark: October 15, 2026
 
-The release run measured a **2.03× geometric-mean speedup** across 34
-accuracy-qualified workloads. neospice had the lower median total time in all
-34 cases.
+neospice is **about 2× faster than ngspice 47**. The release run measured a
+**2.03× geometric-mean speedup** across 34 accuracy-qualified workloads, and
+neospice had the lower median total time in all 34 cases. Per-workload ratios
+range from 1.01× (`ac_rc_grid_24`) to 13.9× (`dc_mesh_141`). Four workloads
+win by less than 5%, within the run-to-run variation noted below, so "faster on
+every workload" describes this run, not a guarantee; each release-protocol run
+has had at least 30 wins.
 
 The run used 30 measured pairs and three warmups per workload, alternating
 engine order, on a 24-core Intel Core Ultra 9 285K with no other benchmark
