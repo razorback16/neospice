@@ -230,3 +230,32 @@ TEST_F(HiSIMHVValidation, NmosNoise) {
         EXPECT_GE(n, 0.0) << "Noise spectral density should be non-negative";
     }
 }
+
+// ============================================================================
+// Switching transient. HSMHV compute_trunc used to read the NQS charge
+// states, which exist only in NQS mode (out-of-bounds), and every HiSIM_HV
+// transient failed to converge at t=0. It now checks exactly the charges
+// ngspice's HSMHVtrunc checks, so the time grid and waveform match ngspice.
+// ============================================================================
+
+TEST_F(HiSIMHVValidation, NmosTransient) {
+    std::string cir_path = std::string(TEST_CIRCUITS_DIR) + "/hisimhv_nmos_tran.cir";
+
+    TransientResult ng_result;
+    try {
+        ng_result = ngspice_->run_transient(cir_path);
+    } catch (const std::exception& e) {
+        FAIL() << "required ngspice not available or failed: " << e.what();
+    }
+
+    auto ckt = sim_.load(cir_path);
+    auto result = sim_.run(ckt);
+    ASSERT_TRUE(std::holds_alternative<TransientResult>(result.analysis));
+    const auto& tran = std::get<TransientResult>(result.analysis);
+
+    EXPECT_EQ(tran.time.size(), ng_result.time.size());
+    auto cmp = compare_transient(ng_result, tran, {1e-9, 1e-9});
+    EXPECT_TRUE(cmp.passed)
+        << "Transient comparison failed. Worst: " << cmp.worst_signal
+        << " error: " << cmp.worst_error;
+}

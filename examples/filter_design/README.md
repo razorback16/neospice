@@ -11,8 +11,8 @@ NGSPICE=/path/to/ngspice47 python filter_design.py 5   # 5 repetitions
 
 `ladder.py` generates the netlists. `filter_design.py` writes generated
 netlists to `work/` and the results to `results.json`. The retained
-[results.json](results.json) is from commit `906930c` plus the `.control`
-tokenizer fix, run on a 24-core Intel Core Ultra 9 285K. Times are medians of
+[results.json](results.json) is from commit `906930c`, run on a 24-core Intel
+Core Ultra 9 285K. Times are medians of
 five repetitions. Background load was present (one-minute load average about 6),
 so treat the times as indicative.
 

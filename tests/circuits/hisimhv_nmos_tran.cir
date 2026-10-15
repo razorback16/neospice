@@ -1,0 +1,9 @@
+HiSIM_HV NMOS switching transient (LTE uses only the charges ngspice checks)
+Vdd vdd 0 3.3
+Vgs gate 0 PULSE(0 3.3 10n 2n 2n 40n 100n)
+Rd vdd drain 1k
+CL drain 0 1p
+M1 drain gate 0 0 NMOD W=10u L=5u
+.model NMOD NMOS LEVEL=73
+.tran 0.1n 200n
+.end

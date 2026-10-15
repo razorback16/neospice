@@ -62,8 +62,9 @@ inlined, came from the test circuits and the KiCad corpus.
 | 3 | `f33a3e5` | 30 min | 205,109 | 68,311 | 0 | 0 | 98 |
 
 The 35 crash inputs and the OOM input reduce to eight defects. Commit `f33a3e5`
-fixes all of them, and each has a regression test. All 36 inputs pass on the
-fixed build. The same commit fixes one more defect, found while writing the
+fixes all of them. Unit or ngspice-comparison tests cover every fix except
+the sparse refactorization guard, which only its replayed fuzz input covers.
+All 36 inputs pass on the fixed build. The same commit fixes one more defect, found while writing the
 filter-design example: `.control` … `.endc` blocks were not skipped, so script
 lines such as `let out 0 1` became devices.
 

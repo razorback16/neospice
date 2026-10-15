@@ -757,3 +757,11 @@ TEST(Parser, LossyLineStillParsesAgainstItsOwnModel) {
         ".op\n.end\n");
     EXPECT_GT(ckt.devices().size(), 2u);
 }
+
+// Found by fuzzing: an out-of-range integer model parameter was cast to int.
+TEST(Parser, OutOfRangeIntegerModelParameterIsRejected) {
+    NetlistParser parser;
+    EXPECT_THROW(parser.parse("t\nV1 d 0 1\nM1 d d 0 0 NMOD W=1u L=100n\n"
+                              ".model NMOD NMOS LEVEL=14 MOBMOD=1e12\n.op\n.end\n"),
+                 ParseError);
+}
