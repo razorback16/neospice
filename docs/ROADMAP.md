@@ -47,13 +47,14 @@ final measurements, and author review; it is separate from shipping 0.2.0.
 ### Measured performance
 
 - Done October 15, 2026: a 30-sample run on the 34-workload population at
-  `b540d30` measured 1.95× (30 wins) and kept the raw-sample hash and numerical
-  checks. The October 14 run at `906930c` gave 1.93×. Repeat it for the final
-  release candidate.
-- Close the four remaining losses. Done: the truncation-error estimate no
-  longer stalls on vectorized stack stores. Open: reuse the operating-point
-  pivot order in AC instead of reordering a fresh complex matrix, and trim
-  per-iteration Newton bookkeeping. Re-measure with the release harness.
+  `368e4eb` measured 2.03× with neospice faster on all 34 workloads, keeping
+  the raw-sample hash and numerical checks. Earlier runs: 1.95× at `b540d30`
+  and 1.93× at `906930c`, each with 30 wins. Repeat it for the final release
+  candidate.
+- Done October 15, 2026: closed the four losses on diode RC grids
+  (truncation-error store-forwarding stall, AC reuse of the operating-point
+  pivot order, Newton bookkeeping). Next candidate: stamp devices directly
+  into the sparse matrix instead of an intermediate matrix.
 - Done October 14, 2026: parallel-study throughput against ngspice's in-session
   `alter` loop, with bit-identical reproducibility across worker counts.
   [Results](parallel-studies.md#throughput-compared-with-ngspice-47) show a

@@ -48,13 +48,13 @@ neospice combines typed APIs, parallel studies, and browser simulation in one pr
 | Parallel studies | Built-in sweeps and seeded Monte Carlo through one API | [Multiple library instances](https://ngspice.sourceforge.io/parallel.html) managed by a host application |
 | Interactive design | Circuit Lab runs locally in your browser | [CLI and control scripts](https://ngspice.sourceforge.io/ngspice-control-language-tutorial.html), plus external GUIs such as KiCad |
 | Device extensions | Modular C++20 device interface | [Compiled Verilog-A models through OSDI](https://ngspice.sourceforge.io/osdi.html) |
-| [Recorded benchmark](docs/performance-analysis.md) | **1.95× geometric-mean speedup** across 34 workloads | ngspice 47 reference timing |
+| [Recorded benchmark](docs/performance-analysis.md) | **2.03× geometric-mean speedup** across 34 workloads | ngspice 47 reference timing |
 
 ## Performance
 
 The October 15, 2026 release benchmark (30 paired samples per workload) measured
-a **1.95× geometric-mean speedup** over ngspice 47 across 34 workloads. neospice had the lower median time in
-**30 of 34 cases**.
+a **2.03× geometric-mean speedup** over ngspice 47 across 34 workloads. neospice had the lower median time in
+**all 34 cases**.
 
 See [benchmark results and methods](docs/performance-analysis.md)
 for the recorded code, timings, and test conditions.
