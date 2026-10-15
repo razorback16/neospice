@@ -13,6 +13,7 @@ namespace neospice {
 class ISource : public Device {
 public:
     ISource(std::string name, int32_t node_pos, int32_t node_neg, double dc_value);
+    bool has_trunc() const override { return false; }
 
     /// AC analysis parameters.
     void set_ac(double mag, double phase_deg = 0.0);

@@ -139,9 +139,12 @@ int amdlu_auto_threshold() { return kAmdLuAutoThreshold; }
 
 std::unique_ptr<ISolver> make_solver(int num_vars, bool is_linear) {
     switch (read_choice()) {
-        case SolverChoice::kForceMarkowitz:
+        case SolverChoice::kForceMarkowitz: {
             maybe_print_nvars(num_vars, "markowitz");
-            return std::make_unique<NeoSolver>();
+            auto neo = std::make_unique<NeoSolver>();
+            neo->set_reuse_identical(is_linear);
+            return neo;
+        }
         case SolverChoice::kForceAmdLu:
             // Forced amdlu/klu always uses AMD-LU regardless of size/linearity
             // (testing/benchmark override).
@@ -155,7 +158,9 @@ std::unique_ptr<ISolver> make_solver(int num_vars, bool is_linear) {
                 return std::make_unique<AutoFallbackSolver>();
             }
             maybe_print_nvars(num_vars, "markowitz");
-            return std::make_unique<NeoSolver>();
+            auto neo = std::make_unique<NeoSolver>();
+            neo->set_reuse_identical(is_linear);
+            return neo;
     }
 }
 

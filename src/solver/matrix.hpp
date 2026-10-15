@@ -44,6 +44,9 @@ public:
     void set_real() { complex_ = false; }
     void set_complex() { complex_ = true; }
     bool is_complex() const { return complex_; }
+    // True when factor() will refactor in place with the existing pivot order
+    // (no reordering or partitioning), so equal inputs give equal factors.
+    bool factors_in_place() const { return !needs_ordering_ && partitioned_ && !complex_; }
 
     // --- Queries ---
     int32_t size() const { return size_; }

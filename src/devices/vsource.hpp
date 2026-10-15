@@ -87,6 +87,7 @@ struct AmParams {
 class VSource : public Device {
 public:
     VSource(std::string name, int32_t node_pos, int32_t node_neg, double dc_value);
+    bool has_trunc() const override { return false; }
 
     /// Assign the branch (extra) variable index in the MNA system.
     void set_branch_index(int32_t idx);

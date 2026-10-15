@@ -34,13 +34,12 @@ bool has_loaded_unresolved_voltage_constraint(
         const std::vector<double>& solution,
         const SimOptions& opts) {
     const double unresolved = 1.0 / std::numeric_limits<double>::epsilon();
+    // Test the cheap numeric conditions first; device_type() builds a string.
     for (const Device* dev : load_order) {
-        const std::string type = dev->device_type();
-        if (type != "B" && type != "E" && type != "H" && type != "V")
-            continue;
-
         const int32_t branch = dev->branch_index();
         if (branch < 0 || branch >= static_cast<int32_t>(solution.size()))
+            continue;
+        if (!(std::abs(solution[branch]) > opts.abstol))
             continue;
 
         const auto nodes = dev->external_nodes();
@@ -48,8 +47,11 @@ bool has_loaded_unresolved_voltage_constraint(
             continue;
         const double vp = nodes[0] >= 0 ? solution[nodes[0]] : 0.0;
         const double vn = nodes[1] >= 0 ? solution[nodes[1]] : 0.0;
-        if (std::abs(vp - vn) > unresolved &&
-            std::abs(solution[branch]) > opts.abstol)
+        if (!(std::abs(vp - vn) > unresolved))
+            continue;
+
+        const std::string type = dev->device_type();
+        if (type == "B" || type == "E" || type == "H" || type == "V")
             return true;
     }
     return false;

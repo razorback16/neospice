@@ -98,6 +98,48 @@ TEST(NeoSolver, Refactorize) {
     EXPECT_NEAR(rhs[1], 3.0, 1e-10);
 }
 
+// Fill a 5x5 matrix whose values depend on `scale`.
+static void fill_scaled(const SparsityPattern& pat, NumericMatrix& mat, double scale) {
+    mat.clear();
+    for (int32_t i = 0; i < 5; ++i)
+        for (int32_t j = 0; j < 5; ++j)
+            mat.add(pat.offset(i, j), (i == j) ? 10.0 * scale : 1.0 + 0.1 * i - 0.2 * j);
+}
+
+TEST(NeoSolver, ReuseIdenticalMatchesFreshFactorization) {
+    // Reused factors must give bit-identical solutions, and a changed matrix
+    // must never reuse stale factors.
+    SparsityPattern pat = make_dense_pattern(5);
+    NumericMatrix mat(pat);
+    NeoSolver reuse, fresh;
+    reuse.set_reuse_identical(true);
+    for (NeoSolver* s : {&reuse, &fresh}) {
+        s->symbolic(pat);
+        fill_scaled(pat, mat, 1.0);
+        s->numeric(pat, mat);
+    }
+    const std::vector<double> b = {1.0, -2.0, 3.0, 0.5, 4.0};
+    for (double scale : {2.0, 2.0, 2.0, 3.0, 3.0, 2.0}) {
+        fill_scaled(pat, mat, scale);
+        ASSERT_FALSE(reuse.refactorize(mat, 1e-12));
+        ASSERT_FALSE(fresh.refactorize(mat, 1e-12));
+        std::vector<double> x_reuse = b, x_fresh = b;
+        reuse.solve(x_reuse);
+        fresh.solve(x_fresh);
+        for (int32_t i = 0; i < 5; ++i)
+            EXPECT_EQ(x_reuse[i], x_fresh[i]) << "scale " << scale << " row " << i;
+    }
+    // A different diagonal gmin is a different matrix.
+    fill_scaled(pat, mat, 2.0);
+    ASSERT_FALSE(reuse.refactorize(mat, 1e-3));
+    ASSERT_FALSE(fresh.refactorize(mat, 1e-3));
+    std::vector<double> x_reuse = b, x_fresh = b;
+    reuse.solve(x_reuse);
+    fresh.solve(x_fresh);
+    for (int32_t i = 0; i < 5; ++i)
+        EXPECT_EQ(x_reuse[i], x_fresh[i]);
+}
+
 TEST(NeoSolver, SolveBeforeSymbolicThrows) {
     NeoSolver solver;
     std::vector<double> rhs = {1.0};

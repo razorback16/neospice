@@ -165,6 +165,9 @@ public:
                                  const SimOptions& /*opts*/) const {
         return 1e30;  // no constraint by default
     }
+    /// False only for device types that keep the default compute_trunc(), so
+    /// the transient loop can skip them.
+    virtual bool has_trunc() const { return true; }
 
     /// Device-specific convergence check.  Called by Newton after node-voltage
     /// convergence passes.  Returns true if the device considers itself
@@ -240,7 +243,7 @@ public:
 
     struct SoaResult {
         bool ok = true;
-        std::string param_name;
+        const char* param_name = "";  // static string
         double value = 0.0;
         double limit = 0.0;
     };

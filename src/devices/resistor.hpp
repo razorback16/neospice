@@ -7,6 +7,7 @@ namespace neospice {
 class Resistor : public Device {
 public:
     Resistor(std::string name, int32_t node_pos, int32_t node_neg, double resistance);
+    bool has_trunc() const override { return false; }
 
     void stamp_pattern(SparsityBuilder& builder) const override;
     void assign_offsets(const SparsityPattern& pattern) override;

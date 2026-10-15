@@ -9,6 +9,7 @@ See NOTICE and CREDITS.md.
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <stdexcept>
 
 namespace neospice {
@@ -118,6 +119,7 @@ void NeoSolver::symbolic(const SparsityPattern& pattern) {
     factored_ = false;
     factored_complex_ = false;
     preordered_ = false;
+    factors_reusable_ = false;
 
     matrix_ = std::make_unique<solver::SparseMatrix>(n_);
     element_ptrs_.resize(nnz_);
@@ -158,6 +160,7 @@ bool NeoSolver::numeric(const SparsityPattern& /*pattern*/,
                          double diag_gmin) {
     if (!symbolized_)
         throw std::logic_error("NeoSolver::numeric: symbolic() not called");
+    factors_reusable_ = false;
 
     // [3D] When equilibration is on, load the scaled matrix (D_r A D_c) and add
     // the scaled diag_gmin ourselves; otherwise the original (bit-identical)
@@ -187,6 +190,13 @@ bool NeoSolver::refactorize(const NumericMatrix& mat, double diag_gmin) {
     if (!factored_)
         throw std::logic_error("NeoSolver::refactorize: numeric() not called");
 
+    const std::size_t value_bytes = static_cast<std::size_t>(nnz_) * sizeof(double);
+    if (factors_reusable_ && !equilibrate_ &&
+        std::memcmp(&diag_gmin, &factored_gmin_, sizeof(double)) == 0 &&
+        std::memcmp(mat.data(), factored_values_.data(), value_bytes) == 0)
+        return false;
+    factors_reusable_ = false;
+
     // [3D] Recompute scale factors for the new values (Newton updates them every
     // iteration) when equilibration is on; otherwise the bit-identical path.
     if (equilibrate_) {
@@ -195,9 +205,15 @@ bool NeoSolver::refactorize(const NumericMatrix& mat, double diag_gmin) {
         load_real(mat.data());
         matrix_->add_diag_gmin(diag_gmin);
     }
+    const bool in_place = reuse_identical_ && !equilibrate_ && matrix_->factors_in_place();
     auto err = matrix_->factor();
     if (err == solver::SparseError::NoMemory)
         throw std::runtime_error("NeoSolver::refactorize: out of memory");
+    if (in_place && err == solver::SparseError::OK) {
+        factored_values_.assign(mat.data(), mat.data() + nnz_);
+        factored_gmin_ = diag_gmin;
+        factors_reusable_ = true;
+    }
     return err == solver::SparseError::Singular;
 }
 
@@ -253,6 +269,7 @@ void NeoSolver::numeric_complex(const SparsityPattern& /*pattern*/,
     // Loading new values invalidates both factorization modes, even on failure.
     factored_ = false;
     factored_complex_ = false;
+    factors_reusable_ = false;
     load_complex(ax.data());
     if (!preordered_) {
         matrix_->mna_preorder();
@@ -276,6 +293,7 @@ bool NeoSolver::refactorize_complex(const std::vector<double>& ax) {
     if (static_cast<int32_t>(ax.size()) != 2 * nnz_)
         throw std::invalid_argument("NeoSolver::refactorize_complex: ax size mismatch");
 
+    factors_reusable_ = false;
     load_complex(ax.data());
     auto err = matrix_->factor();
     return err == solver::SparseError::Singular;

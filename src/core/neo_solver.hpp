@@ -37,7 +37,18 @@ public:
     // [3D] Row/column equilibration toggle. Default OFF: when off, behavior is
     // bit-for-bit identical to the pre-equilibration solver (the certified
     // baseline). Only ever enabled as a late convergence fallback in dc.cpp.
-    void set_equilibrate(bool on) override { equilibrate_ = on; }
+    void set_equilibrate(bool on) override {
+        equilibrate_ = on;
+        factors_reusable_ = false;
+    }
+
+    // Reuse factors when refactorize() receives bit-identical input. Worth
+    // enabling only for linear circuits, where repeated matrices are common;
+    // elsewhere the retained copy of the input costs more than it saves.
+    void set_reuse_identical(bool on) {
+        reuse_identical_ = on;
+        factors_reusable_ = false;
+    }
 
 private:
     int32_t n_ = 0;
@@ -61,6 +72,16 @@ private:
     // unscaled RHS/solution in solve(); they are all 1.0 when equilibration is
     // off, making the recovery a no-op.
     bool equilibrate_ = false;
+
+    // Input of the last in-place real refactorization. A refactorize() call
+    // with bit-identical values and diag_gmin reuses the existing factors:
+    // the same in-place factorization of the same input would reproduce them
+    // exactly. Linear circuits at a fixed step size hit this every iteration.
+    std::vector<double> factored_values_;
+    double factored_gmin_ = 0.0;
+    bool factors_reusable_ = false;
+    bool reuse_identical_ = false;
+
     std::vector<int32_t> row_idx_;
     std::vector<int32_t> col_idx_;
     std::vector<double> dr_;

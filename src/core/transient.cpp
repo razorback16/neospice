@@ -35,7 +35,6 @@ See NOTICE and CREDITS.md for full attribution.
 #include <functional>
 #include <iostream>
 #include <limits>
-#include <set>
 
 namespace neospice {
 
@@ -428,10 +427,40 @@ static void cleanup_transient_devices(Circuit& ckt) {
 }
 
 // ===================================================================
+// Cached typed device pointers — built once, eliminates per-step dynamic_cast
+// ===================================================================
+struct CachedDevicePtrs {
+    std::vector<Capacitor*> caps;
+    std::vector<Inductor*> inds;
+    std::vector<CoupledInductor*> coupled;
+    std::vector<VSource*> vsrc;
+    std::vector<ISource*> isrc;
+    std::vector<ASRCDevice*> asrc;
+    std::vector<TransmissionLine*> tline;
+    std::vector<LossyTransmissionLine*> ltline;
+    std::vector<const Device*> trunc;  // devices with an LTE timestep limit
+
+    void build(Circuit& ckt) {
+        for (auto& dev : ckt.devices()) {
+            if (dev->has_trunc()) trunc.push_back(dev.get());
+            if (auto* p = dynamic_cast<Capacitor*>(dev.get())) caps.push_back(p);
+            else if (auto* p = dynamic_cast<Inductor*>(dev.get())) inds.push_back(p);
+            else if (auto* p = dynamic_cast<CoupledInductor*>(dev.get())) coupled.push_back(p);
+            else if (auto* p = dynamic_cast<VSource*>(dev.get())) vsrc.push_back(p);
+            else if (auto* p = dynamic_cast<ISource*>(dev.get())) isrc.push_back(p);
+            else if (auto* p = dynamic_cast<ASRCDevice*>(dev.get())) asrc.push_back(p);
+            else if (auto* p = dynamic_cast<TransmissionLine*>(dev.get())) tline.push_back(p);
+            else if (auto* p = dynamic_cast<LossyTransmissionLine*>(dev.get())) ltline.push_back(p);
+        }
+    }
+};
+
+// ===================================================================
 // Helper: Evaluate global and device LTE; return whether step is accepted.
 // On rejection, sets proposed_dt_out to the suggested next timestep.
 // ===================================================================
-static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
+static bool evaluate_lte(Circuit& ckt, const CachedDevicePtrs& cached,
+                         TimeStepController& ctrl,
                          const std::vector<double>& solution,
                          const std::vector<double>& sol_prev,
                          const std::vector<double>& sol_prev2,
@@ -445,13 +474,12 @@ static bool evaluate_lte(Circuit& ckt, TimeStepController& ctrl,
     // step_count excludes the candidate being checked. ngspice skips only
     // the first timepoint, then evaluates device LTE on the second candidate.
     if (step_count + 1 >= kLteMinStepCount) {
-        for (const auto& dev : ckt.devices()) {
+        for (const Device* dev : cached.trunc)
             device_dt_out = std::min(device_dt_out,
                 dev->compute_trunc(ckt.integrator_ctx, ckt.options));
-            if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get()))
-                device_dt_out = std::min(device_dt_out,
-                    tl->trunc_timestep(ckt.integrator_ctx, solution));
-        }
+        for (auto* tl : cached.tline)
+            device_dt_out = std::min(device_dt_out,
+                tl->trunc_timestep(ckt.integrator_ctx, solution));
         device_dt_out = std::min(kMaxDtGrowthFactor * dt, device_dt_out);
         if (device_dt_out < dt * kDeviceLteRejectRatio && dt > dt_min * 1.01) {
             accepted = false;
@@ -518,33 +546,6 @@ static void interpolate_and_store_outputs(
         ++next_output_index;
     }
 }
-
-// ===================================================================
-// Cached typed device pointers — built once, eliminates per-step dynamic_cast
-// ===================================================================
-struct CachedDevicePtrs {
-    std::vector<Capacitor*> caps;
-    std::vector<Inductor*> inds;
-    std::vector<CoupledInductor*> coupled;
-    std::vector<VSource*> vsrc;
-    std::vector<ISource*> isrc;
-    std::vector<ASRCDevice*> asrc;
-    std::vector<TransmissionLine*> tline;
-    std::vector<LossyTransmissionLine*> ltline;
-
-    void build(Circuit& ckt) {
-        for (auto& dev : ckt.devices()) {
-            if (auto* p = dynamic_cast<Capacitor*>(dev.get())) caps.push_back(p);
-            else if (auto* p = dynamic_cast<Inductor*>(dev.get())) inds.push_back(p);
-            else if (auto* p = dynamic_cast<CoupledInductor*>(dev.get())) coupled.push_back(p);
-            else if (auto* p = dynamic_cast<VSource*>(dev.get())) vsrc.push_back(p);
-            else if (auto* p = dynamic_cast<ISource*>(dev.get())) isrc.push_back(p);
-            else if (auto* p = dynamic_cast<ASRCDevice*>(dev.get())) asrc.push_back(p);
-            else if (auto* p = dynamic_cast<TransmissionLine*>(dev.get())) tline.push_back(p);
-            else if (auto* p = dynamic_cast<LossyTransmissionLine*>(dev.get())) ltline.push_back(p);
-        }
-    }
-};
 
 // ===================================================================
 // Cached-pointer overloads of per-step helpers (no dynamic_cast)
@@ -658,25 +659,65 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     tran_result.voltages_dense.resize(num_nodes);
     tran_result.currents_dense.resize(ckt.devices().size());
 
+    // Branch indices are fixed once the circuit is set up.
+    std::vector<int32_t> dense_branch(ckt.devices().size());
+    for (std::size_t d = 0; d < dense_branch.size(); ++d) {
+        int32_t br = ckt.devices()[d]->branch_index();
+        dense_branch[d] = (br >= 0 && br < n) ? br : -1;
+    }
+
+    // Accepted points are buffered row-major, one solution vector per point,
+    // and copied into the per-signal result vectors by flush_points(), which
+    // runs once before solve_transient() returns. Appending a row per point
+    // is much cheaper than one push_back into every signal vector.
+    std::vector<double> point_rows;
     auto store_point = [&](double t, const std::vector<double>& sol) {
         if (t < tstart - 1e-18) return;  // skip points before tstart
         tran_result.time.push_back(t);
-        for (std::size_t k = 0; k < slots.v_slots.size(); ++k)
-            v_ptrs[k]->push_back(sol[slots.v_slots[k].idx]);
-        for (std::size_t k = 0; k < slots.c_slots.size(); ++k)
-            c_ptrs[k]->push_back(sol[slots.c_slots[k].idx]);
-
+        point_rows.insert(point_rows.end(), sol.begin(), sol.begin() + n);
+    };
+    auto flush_points = [&]() {
+        const std::size_t npts = n > 0 ? point_rows.size() / n : 0;
+        // Transpose in column blocks: each row read stays within a few lines.
+        std::vector<std::vector<double>> columns(n, std::vector<double>(npts));
+        constexpr int32_t kBlock = 8;
+        for (int32_t j0 = 0; j0 < n; j0 += kBlock) {
+            const int32_t j1 = std::min(n, j0 + kBlock);
+            for (std::size_t k = 0; k < npts; ++k) {
+                const double* row = point_rows.data() + k * n;
+                for (int32_t j = j0; j < j1; ++j)
+                    columns[j][k] = row[j];
+            }
+        }
+        std::vector<double>().swap(point_rows);
+        // Named slots normally have distinct keys. If two share a vector, keep
+        // the point-major interleaving of a per-point push_back.
+        std::vector<std::vector<double>*> named(v_ptrs);
+        named.insert(named.end(), c_ptrs.begin(), c_ptrs.end());
+        std::sort(named.begin(), named.end());
+        if (std::adjacent_find(named.begin(), named.end()) == named.end()) {
+            for (std::size_t k = 0; k < slots.v_slots.size(); ++k)
+                *v_ptrs[k] = columns[slots.v_slots[k].idx];
+            for (std::size_t k = 0; k < slots.c_slots.size(); ++k)
+                *c_ptrs[k] = columns[slots.c_slots[k].idx];
+        } else {
+            for (std::size_t p = 0; p < npts; ++p) {
+                for (std::size_t k = 0; k < slots.v_slots.size(); ++k)
+                    v_ptrs[k]->push_back(columns[slots.v_slots[k].idx][p]);
+                for (std::size_t k = 0; k < slots.c_slots.size(); ++k)
+                    c_ptrs[k]->push_back(columns[slots.c_slots[k].idx][p]);
+            }
+        }
+        // Dense branch current array (indexed by device ordinal)
+        for (std::size_t d = 0; d < dense_branch.size(); ++d) {
+            if (dense_branch[d] >= 0)
+                tran_result.currents_dense[d] = columns[dense_branch[d]];
+            else
+                tran_result.currents_dense[d].assign(npts, 0.0);
+        }
         // Dense node voltage array (ALL nodes, including internal)
         for (int32_t i = 0; i < num_nodes; ++i)
-            tran_result.voltages_dense[i].push_back(sol[i]);
-        // Dense branch current array (indexed by device ordinal)
-        for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
-            int32_t br = ckt.devices()[d]->branch_index();
-            if (br >= 0 && br < n)
-                tran_result.currents_dense[d].push_back(sol[br]);
-            else
-                tran_result.currents_dense[d].push_back(0.0);
-        }
+            tran_result.voltages_dense[i] = std::move(columns[i]);
     };
 
     // ---------------------------------------------------------------
@@ -771,7 +812,8 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     int total_iterations = 0;
     bool loop_converged = true;  // set false if we break due to no_throw failure
     bool tried_delmin = false;   // ngspice: one last try at dt_min before aborting
-    std::set<std::string> soa_warned;  // throttle: one SOA warning per device per sim
+    // Throttle: one SOA warning per device per simulation.
+    std::vector<char> soa_warned(ckt.devices().size(), 0);
     int order_promote_cooldown = 0;
 
     while (ctrl.current_time() < tstop) {
@@ -816,6 +858,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             failure.warnings.push_back("Transient timestep cannot advance time");
             if (!ckt.options.no_throw)
                 throw SimulationError(failure.warnings.back(), failure);
+            flush_points();
             tran_result.status = failure;
             tran_result.rejected_steps = ctrl.rejected_count();
             return tran_result;
@@ -862,6 +905,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                         throw SimulationError("Transient failed to converge at t=" + std::to_string(t),
                                               nr_fail_status);
                     }
+                    flush_points();
                     tran_result.rejected_steps = ctrl.rejected_count();
                     tran_result.status = nr_fail_status;
                     return tran_result;
@@ -875,7 +919,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
 
         // Evaluate LTE — reject step if error too large
         double device_dt = 1e30;
-        bool accepted = evaluate_lte(ckt, ctrl, solution, *sol_prev, *sol_prev2,
+        bool accepted = evaluate_lte(ckt, cached, ctrl, solution, *sol_prev, *sol_prev2,
                                      num_nodes, dt, dt_min, step_count, steps_after_bp,
                                      device_dt);
         if (!accepted) {
@@ -927,13 +971,12 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
             !ctrl.crossed_source_breakpoint()) {
             ckt.integrator_ctx.order = 2;
             double device_dt_order2 = 1e30;
-            for (const auto& dev : ckt.devices()) {
+            for (const Device* dev : cached.trunc)
                 device_dt_order2 = std::min(device_dt_order2,
                     dev->compute_trunc(ckt.integrator_ctx, ckt.options));
-                if (auto* tl = dynamic_cast<TransmissionLine*>(dev.get()))
-                    device_dt_order2 = std::min(device_dt_order2,
-                        tl->trunc_timestep(ckt.integrator_ctx, solution));
-            }
+            for (auto* tl : cached.tline)
+                device_dt_order2 = std::min(device_dt_order2,
+                    tl->trunc_timestep(ckt.integrator_ctx, solution));
             // CKTtrunc's speculative order-two proposal becomes the next
             // interval even when its size is insufficient to promote order.
             device_dt = device_dt_order2;
@@ -950,14 +993,15 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
                                ckt.integrator_ctx, ctrl, 10.0 * dt_min);
 
         // SOA (Safe Operating Area) checking — informational, once per device
-        for (auto& dev : ckt.devices()) {
-            if (soa_warned.count(dev->name())) continue;
+        for (std::size_t d = 0; d < ckt.devices().size(); ++d) {
+            if (soa_warned[d]) continue;
+            const auto& dev = ckt.devices()[d];
             auto soa = dev->check_soa(solution);
             if (!soa.ok) {
                 std::fprintf(stderr, "Warning: SOA violation in %s: %s = %g (limit %g)\n",
-                             dev->name().c_str(), soa.param_name.c_str(),
+                             dev->name().c_str(), soa.param_name,
                              soa.value, soa.limit);
-                soa_warned.insert(dev->name());
+                soa_warned[d] = 1;
             }
         }
 
@@ -1001,6 +1045,7 @@ TransientResult solve_transient(Circuit& ckt, double tstep, double tstop,
     // 6. Clean up
     // ---------------------------------------------------------------
     cleanup_transient_devices(ckt);
+    flush_points();
 
     tran_result.rejected_steps = ctrl.rejected_count();
 
