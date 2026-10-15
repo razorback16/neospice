@@ -668,7 +668,7 @@ neospice workflow:
 │  evaluate()       → call OSDI load() function            │
 │  ac_stamp()       → call OSDI load_ac() function         │
 │  noise_sources()  → call OSDI load_noise() function      │
-│  limit_voltages() → OSDI $limit callback                 │
+│  $limit           → inside evaluate(), as ngspice's OSDI │
 │  query_param()    → OSDI operating point info            │
 └─────────────────────────────────────────────────────────┘
 ```

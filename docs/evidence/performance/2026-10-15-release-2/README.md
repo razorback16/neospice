@@ -24,8 +24,9 @@ manifest reports `complete=true` and `evidence_valid=true`.
 
 Host: Intel Core Ultra 9 285K (24 cores), Linux 6.17, with no other benchmark
 jobs running. The one-minute load average was 2.7 at the start and 2.1 at the
-end. An idle inference server was resident. System observations do not prove
-that no other host jobs ran.
+end. A resident inference server and a helper process were running, together
+using well under one core just before the run. System observations do not
+prove that no other host jobs ran.
 
 The [first October 15 run](../2026-10-15-release/README.md) measured commit
 `b540d30`, before these fixes, under the same protocol and gave 1.95× with 30

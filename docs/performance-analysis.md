@@ -8,7 +8,8 @@ accuracy-qualified workloads. neospice had the lower median total time in all
 
 The run used 30 measured pairs and three warmups per workload, alternating
 engine order, on a 24-core Intel Core Ultra 9 285K with no other benchmark
-jobs running (one-minute load average 2.7 at the start, 2.1 at the end). It
+jobs running (one-minute load average 2.7 at the start, 2.1 at the end; a
+resident inference server used well under one core). It
 measured commit `368e4eb` with a clean worktree.
 [Retained evidence](evidence/performance/2026-10-15-release-2/README.md) includes
 the manifest, per-case summary, timing and qualification CSVs, and the generated
