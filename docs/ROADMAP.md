@@ -50,9 +50,10 @@ final measurements, and author review; it is separate from shipping 0.2.0.
   `b540d30` measured 1.95× (30 wins) and kept the raw-sample hash and numerical
   checks. The October 14 run at `906930c` gave 1.93×. Repeat it for the final
   release candidate.
-- Close the four remaining losses: diode truncation-error cost in mid-size
-  transients and complex refactorization in diode AC grids. Use controlled
-  ablations to attribute improvements to individual changes.
+- Close the four remaining losses. Done: the truncation-error estimate no
+  longer stalls on vectorized stack stores. Open: reuse the operating-point
+  pivot order in AC instead of reordering a fresh complex matrix, and trim
+  per-iteration Newton bookkeeping. Re-measure with the release harness.
 - Done October 14, 2026: parallel-study throughput against ngspice's in-session
   `alter` loop, with bit-identical reproducibility across worker counts.
   [Results](parallel-studies.md#throughput-compared-with-ngspice-47) show a

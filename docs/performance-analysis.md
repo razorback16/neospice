@@ -80,16 +80,30 @@ speedup or isolate the contribution of an individual optimization.
 ## Where ngspice is faster
 
 All four losses are mid-size RC grids with diodes. Load is 1.7–1.9× faster
-than ngspice in each case. The analysis phase is slower.
+than ngspice in each case. The analysis phase is slower. The causes below were
+found with `perf` hardware-counter profiles of both engines pinned to one
+performance core (diagnostic runs, not the release harness).
 
 - **Transient (`tran_diode_rc_grid_8`, 0.86×; `tran_diode_rc_grid_24`, 0.99×).**
-  Factorization and device evaluation match ngspice when timed in isolation.
-  The remaining cost is per-step overhead. Diode truncation-error estimation
-  takes about 2.3× ngspice's `trunc` time for the same formula. The cause is not
-  yet identified.
-- **AC (`ac_diode_rc_grid_24`, 0.98×; `ac_diode_rc_grid_48`, 0.90×).** The
-  complex refactorization per frequency point is about 12% slower than ngspice's
-  Sparse. Fill-in is identical to the real factorization.
+  Both engines make the same 216,876 `exp` calls, so they take the same Newton
+  path, and factorization costs the same. The largest difference was
+  truncation-error estimation: 9.4 M cycles per run against ngspice's 4.1 M for
+  the same `CKTterr` formula. GCC's `-O3` vectorizer turned the divided
+  difference loop into stack stores followed by overlapping vector loads, which
+  the CPU cannot forward from the store buffer. After that change (scalar code
+  for orders 1 and 2, bit-identical results), the estimate costs 2.9 M cycles
+  and `tran_diode_rc_grid_8` goes from 11.4 ms to 9.8 ms against ngspice's
+  8.8 ms. Most of the rest is per-iteration Newton bookkeeping that ngspice
+  does not do: a residual-norm scan over every equation, a virtual
+  `limit_voltages` call on every device, and full-vector copies around the
+  solve. The October 15 release run predates this change.
+- **AC (`ac_diode_rc_grid_24`, 0.98×; `ac_diode_rc_grid_48`, 0.90×).** AC
+  analysis builds a fresh solver, so the first frequency point runs a complete
+  Markowitz reordering of the complex matrix. ngspice reuses the operating-point
+  matrix and keeps its pivots when they pass the threshold test. On
+  `ac_diode_rc_grid_48` that reordering costs 182 M cycles per run against
+  ngspice's 0.3 M, more than the whole 86 M-cycle gap. The per-frequency
+  complex refactorization is 6% slower than Sparse's.
 
 Commit `87b9bd1` removed most of the transient overhead. It reuses unchanged
 factors in linear transients, buffers output rows, and skips devices that
